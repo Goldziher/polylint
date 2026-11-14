@@ -148,11 +148,12 @@ mod tests {
             ("sub/go.mod", "module example.com/sub\n\ngo 1.22\n"),
         ]);
         let inner = repo.path().join("sub/pkg/a.go");
-        let applied = apply(&cfg(""), &inner);
+        let bare = cfg("");
+        let applied = apply(&bare, &inner);
         assert_eq!(option(&applied, LANG_VERSION), Some("1.22"));
         assert_eq!(option(&applied, MODULE_PATH), Some("example.com/sub"));
         let outer = repo.path().join("b.go");
-        assert_eq!(option(&apply(&cfg(""), &outer), LANG_VERSION), Some("1.20"));
+        assert_eq!(option(&apply(&bare, &outer), LANG_VERSION), Some("1.20"));
     }
 
     #[test]

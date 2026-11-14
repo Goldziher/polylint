@@ -145,6 +145,16 @@ expression: json
       "detail": "not the sidecar: this build runs the host `shfmt` when it is on PATH, else the tree-sitter tier"
     },
     {
+      "name": "go",
+      "kind": "sidecar",
+      "state": "bundled",
+      "opt_in": false,
+      "engines": [
+        "gofmt"
+      ],
+      "detail": "not the sidecar: this build runs the host `gofmt` when it is on PATH, else the tree-sitter tier"
+    },
+    {
       "name": "mcp",
       "kind": "frontend",
       "state": "bundled",

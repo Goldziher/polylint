@@ -19,4 +19,5 @@ astgrep    bundled      -  astgrep
 uncomment  bundled      -  uncomment  (opt-in)
 misc       bundled      -  dockerfile, dotenv, graphql, hcl, ini
 sh         bundled      -  shfmt  [not the sidecar: this build runs the host `shfmt` when it is on PATH, else the tree-sitter tier]
+go         bundled      -  gofmt  [not the sidecar: this build runs the host `gofmt` when it is on PATH, else the tree-sitter tier]
 mcp        bundled      -

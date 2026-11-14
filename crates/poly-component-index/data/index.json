@@ -2693,6 +2693,99 @@
       "lock_sha": null
     },
     {
+      "name": "go",
+      "kind": "sidecar",
+      "opt_in": false,
+      "features": ["engine-gofmt"],
+      "engines": [
+        {
+          "name": "gofmt",
+          "languages": ["go"],
+          "capabilities": {
+            "lint": false,
+            "format": true,
+            "fix": false,
+            "project": false
+          },
+          "version": "gofumpt-v0.12.0+x-tools-v0.52.0",
+          "option_keys": [
+            {
+              "table": "Lint",
+              "checked": true,
+              "declared": [
+                {
+                  "name": "enabled",
+                  "types": 1
+                }
+              ],
+              "rule_selection": false,
+              "has_derived": false,
+              "note": null
+            },
+            {
+              "table": "Format",
+              "checked": true,
+              "declared": [
+                {
+                  "name": "enabled",
+                  "types": 1
+                },
+                {
+                  "name": "gofumpt",
+                  "types": 1
+                },
+                {
+                  "name": "extra",
+                  "types": 1
+                },
+                {
+                  "name": "group_imports",
+                  "types": 1
+                },
+                {
+                  "name": "local_prefixes",
+                  "types": 8
+                },
+                {
+                  "name": "lang_version",
+                  "types": 8
+                },
+                {
+                  "name": "module_path",
+                  "types": 8
+                }
+              ],
+              "rule_selection": false,
+              "has_derived": false,
+              "note": null
+            },
+            {
+              "table": "CrossCuttingLint",
+              "checked": true,
+              "declared": [],
+              "rule_selection": false,
+              "has_derived": false,
+              "note": null
+            }
+          ],
+          "hooks": 0,
+          "takes_over_tier_one": false,
+          "claimed_paths": [],
+          "host_hook": "go-mod",
+          "supplements_tier_one": false,
+          "self_manages_enabled": false,
+          "supersedes_generic_formatter": false,
+          "batch_shard_floor": 2,
+          "project_inputs": {
+            "gate_key": null,
+            "files": [],
+            "dirs": null
+          }
+        }
+      ],
+      "lock_sha": null
+    },
+    {
       "name": "mcp",
       "kind": "frontend",
       "opt_in": false,
@@ -2702,10 +2795,11 @@
     }
   ],
   "presets": {
-    "all": ["web", "python", "sql", "php", "biome", "ruby", "nix", "astgrep", "misc", "sh"],
+    "all": ["web", "python", "sql", "php", "biome", "ruby", "nix", "astgrep", "misc", "sh", "go"],
     "css": ["web", "biome"],
     "dockerfile": ["misc"],
     "dotenv": ["misc"],
+    "go": ["go"],
     "graphql": ["biome", "misc"],
     "hcl": ["misc"],
     "html": ["web"],

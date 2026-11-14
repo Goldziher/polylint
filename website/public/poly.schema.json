@@ -5051,14 +5051,29 @@
     "fmt_gofmt": {
       "type": "object",
       "properties": {
-        "batch": {
+        "enabled": {
           "type": "boolean"
         },
-        "enabled": {
+        "extra": {
+          "type": "boolean"
+        },
+        "gofumpt": {
+          "type": "boolean"
+        },
+        "group_imports": {
           "type": "boolean"
         },
         "indent_width": {
           "type": "integer"
+        },
+        "lang_version": {
+          "type": "string"
+        },
+        "local_prefixes": {
+          "type": "string"
+        },
+        "module_path": {
+          "type": "string"
         },
         "rules": {
           "oneOf": [
