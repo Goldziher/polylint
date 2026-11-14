@@ -1,11 +1,11 @@
-# @goldziher/polylint-linux-arm64-gnu
+# @polylint/polylint-linux-arm64-gnu
 
 The prebuilt `poly` binary for **Linux arm64 (glibc)** (`aarch64-unknown-linux-gnu`).
 
-This package exists only so that [`@goldziher/polylint`](https://www.npmjs.com/package/@goldziher/polylint)
+This package exists only so that [`@polylint/polylint`](https://www.npmjs.com/package/@polylint/polylint)
 can pull exactly one platform binary through `optionalDependencies`. Install that
 package instead — it is what puts the `poly` command on your `PATH`:
 
 ```sh
-pnpm add --global @goldziher/polylint
+pnpm add --global @polylint/polylint
 ```

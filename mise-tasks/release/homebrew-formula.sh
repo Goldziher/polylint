@@ -118,7 +118,7 @@ class Polylint < Formula
   def install
     bin.install "poly"
     # polylint is an alias for the same executable, not a second binary. The
-    # tool is published as polylint on PyPI and @goldziher/polylint on npm (the
+    # tool is published as polylint on PyPI and @polylint/polylint on npm (the
     # unscoped poly name is taken on both registries), so someone who installed
     # it under that name will reasonably type polylint.
     bin.install_symlink bin/"poly" => "polylint"

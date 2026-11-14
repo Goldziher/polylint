@@ -187,7 +187,7 @@ mirror the CLI.
 ```sh
 curl -fsSL https://raw.githubusercontent.com/Goldziher/polylint/main/install.sh | sh   # macOS, Linux
 brew install Goldziher/tap/poly
-pnpm add --global @goldziher/polylint
+pnpm add --global @polylint/polylint
 pip install polylint
 cargo binstall --git https://github.com/Goldziher/polylint poly-cli
 ```

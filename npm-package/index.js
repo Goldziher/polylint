@@ -18,11 +18,11 @@ const path = require("node:path");
 // being installed on a modern npm, and `detectLibc()` below picks correctly
 // even on a package manager that ignores the field and installs both.
 const PLATFORM_PACKAGES = [
-  { pkg: "@goldziher/polylint-darwin-arm64", platform: "darwin", arch: "arm64", libc: null },
-  { pkg: "@goldziher/polylint-linux-arm64-gnu", platform: "linux", arch: "arm64", libc: "glibc" },
-  { pkg: "@goldziher/polylint-linux-x64-gnu", platform: "linux", arch: "x64", libc: "glibc" },
-  { pkg: "@goldziher/polylint-linux-x64-musl", platform: "linux", arch: "x64", libc: "musl" },
-  { pkg: "@goldziher/polylint-win32-x64", platform: "win32", arch: "x64", libc: null },
+  { pkg: "@polylint/polylint-darwin-arm64", platform: "darwin", arch: "arm64", libc: null },
+  { pkg: "@polylint/polylint-linux-arm64-gnu", platform: "linux", arch: "arm64", libc: "glibc" },
+  { pkg: "@polylint/polylint-linux-x64-gnu", platform: "linux", arch: "x64", libc: "glibc" },
+  { pkg: "@polylint/polylint-linux-x64-musl", platform: "linux", arch: "x64", libc: "musl" },
+  { pkg: "@polylint/polylint-win32-x64", platform: "win32", arch: "x64", libc: null },
 ];
 
 const BINARY_NAME = process.platform === "win32" ? "poly.exe" : "poly";
@@ -107,7 +107,7 @@ function unsupportedPlatformMessage() {
         `This usually means the install ran with optional dependencies disabled\n` +
         `(pnpm install --no-optional, or an offline cache that\n` +
         `predates this version). Reinstall with optional dependencies enabled:\n\n` +
-        `  pnpm add @goldziher/polylint\n\n` +
+        `  pnpm add @polylint/polylint\n\n` +
         `Or install poly directly: https://github.com/Goldziher/polylint#installation`;
 }
 

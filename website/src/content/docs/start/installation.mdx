@@ -36,7 +36,7 @@ with `poly components import`. `poly rules` works in a core build too, through t
 component. See [Components and offline use](/poly/guides/components/).
 
 <Aside type="note" title="The command is `poly` everywhere">
-    The package is called `polylint` on PyPI and `@goldziher/polylint` on npm, because the unscoped
+    The package is called `polylint` on PyPI and `@polylint/polylint` on npm, because the unscoped
     `poly` name belongs to unrelated projects on both registries. **The executable it installs is
     `poly`.** `polylint` also works everywhere as an alias for the same binary, so whichever name
     you install under, both commands run the same tool.
@@ -99,9 +99,9 @@ scoop install poly
 ## npm
 
 ```sh
-pnpm add --global @goldziher/polylint
+pnpm add --global @polylint/polylint
 # or, per project:
-pnpm add --save-dev @goldziher/polylint
+pnpm add --save-dev @polylint/polylint
 ```
 
 The package pulls exactly one prebuilt binary through `optionalDependencies`, matched to your
@@ -111,11 +111,11 @@ is covered by the registry's integrity hashes like any other package content.
 
 | Platform                | Platform package                      |
 | ----------------------- | ------------------------------------- |
-| macOS (Apple silicon)   | `@goldziher/polylint-darwin-arm64`    |
-| Linux arm64 (glibc)     | `@goldziher/polylint-linux-arm64-gnu` |
-| Linux x64 (glibc)       | `@goldziher/polylint-linux-x64-gnu`   |
-| Linux x64 (musl/Alpine) | `@goldziher/polylint-linux-x64-musl`  |
-| Windows x64             | `@goldziher/polylint-win32-x64`       |
+| macOS (Apple silicon)   | `@polylint/polylint-darwin-arm64`    |
+| Linux arm64 (glibc)     | `@polylint/polylint-linux-arm64-gnu` |
+| Linux x64 (glibc)       | `@polylint/polylint-linux-x64-gnu`   |
+| Linux x64 (musl/Alpine) | `@polylint/polylint-linux-x64-musl`  |
+| Windows x64             | `@polylint/polylint-win32-x64`       |
 
 Installing with optional dependencies disabled (`--omit=optional`) is the one way to end up with
 the wrapper and no binary. `poly` then says so and tells you how to fix it, rather than failing
@@ -162,8 +162,8 @@ poly ships its own Claude/Codex plugin, registering `poly mcp` as a stdio server
 ```
 
 For Codex, `codex plugin marketplace add Goldziher/polylint` then `codex plugin add poly@poly`. OpenCode
-and Pi install `@goldziher/opencode-poly` from npm (`opencode plugin add @goldziher/opencode-poly`,
-`pi install npm:@goldziher/opencode-poly`), and Hermes installs `poly-hermes-plugin` from PyPI.
+and Pi install `@polylint/opencode-poly` from npm (`opencode plugin add @polylint/opencode-poly`,
+`pi install npm:@polylint/opencode-poly`), and Hermes installs `poly-hermes-plugin` from PyPI.
 
 <Aside type="caution">
     The plugin assumes `poly` is already on `PATH` — it does **not** bundle the binary. Install poly

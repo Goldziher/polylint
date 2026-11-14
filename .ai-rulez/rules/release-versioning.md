@@ -15,7 +15,7 @@ oxlint / biome are: **prebuilt, platform-specific binaries attached to a GitHub 
 installer**. The channels are the `curl | sh` / PowerShell installer (`install.sh` /
 `install.ps1`), the GitHub Action (`Goldziher/polylint@v0`, `action.yml` — which shells out to the
 same `install.sh`), Homebrew (`brew install Goldziher/tap/poly`), Scoop
-(`Goldziher/scoop-bucket`, `scoop install poly`), **npm (`@goldziher/polylint`)** and **PyPI
+(`Goldziher/scoop-bucket`, `scoop install poly`), **npm (`@polylint/polylint`)** and **PyPI
 (`polylint`)**. The release artifacts are named `poly-<version>-<triple>.tar.gz` (`.zip` on
 Windows), five targets, plus a `sha256sums.txt`; every other channel serves those same archives.
 We do **NOT publish to crates.io** — our crates depend on pinned git dependencies (**oxc, biome,

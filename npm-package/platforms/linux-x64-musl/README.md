@@ -1,11 +1,11 @@
-# @goldziher/polylint-linux-x64-musl
+# @polylint/polylint-linux-x64-musl
 
 The prebuilt `poly` binary for **Linux x64 (musl)** (`x86_64-unknown-linux-musl`).
 
-This package exists only so that [`@goldziher/polylint`](https://www.npmjs.com/package/@goldziher/polylint)
+This package exists only so that [`@polylint/polylint`](https://www.npmjs.com/package/@polylint/polylint)
 can pull exactly one platform binary through `optionalDependencies`. Install that
 package instead — it is what puts the `poly` command on your `PATH`:
 
 ```sh
-pnpm add --global @goldziher/polylint
+pnpm add --global @polylint/polylint
 ```

@@ -1,4 +1,4 @@
-# pnpm settings for the repository root (the `@goldziher/opencode-poly` agent-plugin
+# pnpm settings for the repository root (the `@polylint/opencode-poly` agent-plugin
 # package). Since pnpm 11 the build-script policy is `allowBuilds`; the older
 # `ignoredBuiltDependencies` / `onlyBuiltDependencies` keys are no-ops and leave
 # `pnpm install` failing with ERR_PNPM_IGNORED_BUILDS (strictDepBuilds defaults on).

@@ -1274,7 +1274,7 @@ jobs:
         run: mise run verify:binstall crates/poly-cli
 
   publish_npm:
-    name: Publish npm (@goldziher/polylint)
+    name: Publish npm (@polylint/polylint)
     needs: [meta, finalize_release]
     # Registry payloads must match the finalized release binaries before any skip or upload. ~keep
     if: >-
@@ -1347,7 +1347,7 @@ jobs:
           version="${{ needs.meta.outputs.version }}"
           # A real release claims `latest`. The 0.0.0 bootstrap publish sits under
           # a `placeholder` dist-tag precisely so it never becomes what
-          # `pnpm add @goldziher/polylint` resolves to; nothing here should
+          # `pnpm add @polylint/polylint` resolves to; nothing here should
           # carry that tag forward.
           case "$version" in
             *-rc.* | *-beta* | *-alpha*) npm_tag="next" ;;

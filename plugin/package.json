@@ -51,7 +51,7 @@
   ],
   "license": "MIT",
   "main": ".opencode/plugins/poly.js",
-  "name": "@goldziher/opencode-poly",
+  "name": "@polylint/opencode-poly",
   "pi": {
     "prompts": [
       "./.pi/prompts/poly-check.md",

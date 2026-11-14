@@ -72,7 +72,7 @@ shelling out and parsing terminal text.
 
 ## Optional
 
-- [npm](https://www.npmjs.com/package/@goldziher/polylint): `npm i -g @goldziher/polylint` — ships the prebuilt binary, no download at install time (a core build still downloads engine components on first run, except the linux-x64-musl package).
+- [npm](https://www.npmjs.com/package/@polylint/polylint): `npm i -g @polylint/polylint` — ships the prebuilt binary, no download at install time (a core build still downloads engine components on first run, except the linux-x64-musl package).
 - [PyPI](https://pypi.org/project/polylint/): `pip install polylint` — per-platform wheels carrying the binary.
 - [GitHub Action](https://github.com/Goldziher/polylint/blob/main/ACTION_USAGE.md): `Goldziher/polylint@v0`, caching the installed binary by version and platform; `components` pre-installs engine components and `version: from-config` reads `required_version` from `poly.toml`.
 - [Plugin marketplace](https://github.com/Goldziher/polylint/blob/main/.claude-plugin/marketplace.json): the Claude/Codex plugin registering `poly mcp` plus five skills and two slash commands.

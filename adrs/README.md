@@ -62,6 +62,7 @@ Context, Decision, Consequences (positive and negative/risks), and Alternatives 
 | [0045](0045-sidecar-components.md) | Sidecar Components: Non-Rust Engines as Out-of-Process Executables | Accepted |
 | [0046](0046-drop-intel-macos.md) | Drop the Intel macOS Release Target | Accepted |
 | [0047](0047-tool-release-sources.md) | Tool Release Sources: Download Any Upstream Version, Default to Latest | Accepted |
+| [0048](0048-npm-scope-polylint.md) | Publish npm packages under the `@polylint` scope | Accepted |
 
 ## Conventions
 

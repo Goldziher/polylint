@@ -182,7 +182,7 @@ for binary in $BINARIES; do
 done
 
 # `polylint` is an alias for the same executable, not a second binary: the
-# package is published as `polylint` on PyPI and `@goldziher/polylint` on npm
+# package is published as `polylint` on PyPI and `@polylint/polylint` on npm
 # (the unscoped `poly` name is taken on both), so someone who installed it under
 # that name will reasonably type `polylint`. A relative symlink keeps the two in
 # lock-step through an upgrade and survives the directory being moved. It is

@@ -6,7 +6,7 @@ none of them compiles anything, and none needs a Rust, Node, or Python toolchain
 Every release binary except Linux x64 musl is a **core** build: nothing is downloaded at
 install time, but the first `poly lint` or `poly fmt` downloads the engine components the
 repository needs, verifies them against the signed lock embedded in the binary, and caches
-them. The Linux x64 musl build (archive, `@goldziher/polylint-linux-x64-musl`, the
+them. The Linux x64 musl build (archive, `@polylint/polylint-linux-x64-musl`, the
 `musllinux_1_2_x86_64` wheel) is **bundled**: every engine is linked in and nothing is
 downloaded. For proxied or air-gapped hosts, `POLY_COMPONENT_MIRROR` redirects component
 downloads and `poly components import <archive>` installs from a file; see
@@ -19,7 +19,7 @@ downloads and `poly components import <archive>` installs from a file; see
 
 ## The command is `poly`
 
-The package is called `polylint` on PyPI and `@goldziher/polylint` on npm, because the
+The package is called `polylint` on PyPI and `@polylint/polylint` on npm, because the
 unscoped `poly` name belongs to unrelated projects on both registries. **The executable it
 installs is `poly`.** `polylint` also works everywhere as an alias for the same binary, so
 whichever name you install under, both commands run the same tool.
@@ -27,7 +27,7 @@ whichever name you install under, both commands run the same tool.
 ## npm
 
 ```sh
-pnpm add --global @goldziher/polylint   # or: pnpm add --save-dev @goldziher/polylint
+pnpm add --global @polylint/polylint   # or: pnpm add --save-dev @polylint/polylint
 poly lint .
 ```
 
@@ -39,11 +39,11 @@ content.
 
 | Platform                | Platform package                      |
 | ----------------------- | ------------------------------------- |
-| macOS (Apple silicon)   | `@goldziher/polylint-darwin-arm64`    |
-| Linux arm64 (glibc)     | `@goldziher/polylint-linux-arm64-gnu` |
-| Linux x64 (glibc)       | `@goldziher/polylint-linux-x64-gnu`   |
-| Linux x64 (musl/Alpine) | `@goldziher/polylint-linux-x64-musl`  |
-| Windows x64             | `@goldziher/polylint-win32-x64`       |
+| macOS (Apple silicon)   | `@polylint/polylint-darwin-arm64`    |
+| Linux arm64 (glibc)     | `@polylint/polylint-linux-arm64-gnu` |
+| Linux x64 (glibc)       | `@polylint/polylint-linux-x64-gnu`   |
+| Linux x64 (musl/Alpine) | `@polylint/polylint-linux-x64-musl`  |
+| Windows x64             | `@polylint/polylint-win32-x64`       |
 
 Installing with optional dependencies disabled (`--omit=optional`) is the one way to end
 up with the wrapper and no binary; `poly` then says so and tells you how to fix it rather
@@ -91,7 +91,7 @@ irm https://raw.githubusercontent.com/Goldziher/polylint/main/install.ps1 | iex
 ## Agent plugins
 
 The coding-agent plugins are separate packages that teach an agent to use an installed `poly`;
-none of them contains the binary. Two are on registries — `@goldziher/opencode-poly` (npm, for
+none of them contains the binary. Two are on registries — `@polylint/opencode-poly` (npm, for
 OpenCode and Pi) and `poly-hermes-plugin` (PyPI, for Hermes) — and the Claude Code and Codex
 plugins install from this repository's marketplace. See [`plugin/README.md`](../plugin/README.md)
 for every runtime.
@@ -120,7 +120,7 @@ take the release with it.
 Both registries authenticate by OIDC trusted publishing. There is no `NPM_TOKEN` and no
 PyPI API token anywhere in the workflow.
 
-**npm** — six packages (`@goldziher/polylint` plus the five platform packages) each need
+**npm** — six packages (`@polylint/polylint` plus the five platform packages) each need
 a trusted publisher pointing at:
 
 - Repository: `Goldziher/polylint`
@@ -130,7 +130,7 @@ a trusted publisher pointing at:
 npm can only configure a trusted publisher for a package that already exists, so each
 package needs one manual `pnpm publish` before CI can take over. Publish that first version
 under a non-`latest` dist-tag (`pnpm publish --access public --tag placeholder`) so it does
-not become what `pnpm add @goldziher/polylint` resolves to — note that npm sets `latest`
+not become what `pnpm add @polylint/polylint` resolves to — note that npm sets `latest`
 on a package's very first publish regardless, so the umbrella's `latest` has to be moved by
 the first real release. **This applies to every platform package too**, not just the
 umbrella. All six have had their bootstrap publish and exist on the registry; a new
@@ -176,8 +176,8 @@ mise run package:wheels    # build a platform wheel from target/debug/poly
 
 ### Agent plugin package
 
-`plugin/package.json` is the combined OpenCode/Pi package, `@goldziher/opencode-poly`,
-separate from the `@goldziher/polylint` binary wrapper. `publish_plugin_npm` checks
+`plugin/package.json` is the combined OpenCode/Pi package, `@polylint/opencode-poly`,
+separate from the `@polylint/polylint` binary wrapper. `publish_plugin_npm` checks
 the tagged manifest version, ai-rulez provenance, and the packed five Pi skills,
 two Pi prompts, and OpenCode adapter before publishing with provenance. It skips a version
 already on the registry, so a re-run is a no-op.

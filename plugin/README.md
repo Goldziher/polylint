@@ -28,9 +28,9 @@ For local testing, clone the repository and use the generated files below:
 Two runtimes also install from a registry. Each release publishes, through OIDC trusted
 publishing:
 
-- **`@goldziher/opencode-poly`** on npm — the OpenCode adapter plus the Pi skills and prompts.
-  For OpenCode, `opencode plugin add @goldziher/opencode-poly`; for Pi,
-  `pi install npm:@goldziher/opencode-poly`. Pi can also install from the Git repository with
+- **`@polylint/opencode-poly`** on npm — the OpenCode adapter plus the Pi skills and prompts.
+  For OpenCode, `opencode plugin add @polylint/opencode-poly`; for Pi,
+  `pi install npm:@polylint/opencode-poly`. Pi can also install from the Git repository with
   `pi install git:github.com/Goldziher/polylint`; the private root package manifest points to this
   directory's skills and prompts. Pi uses its bash tool to call the installed CLI; it does not
   register MCP.

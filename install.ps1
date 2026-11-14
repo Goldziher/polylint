@@ -63,7 +63,7 @@ function Install-Binary($Source, $Destination) {
 
 # Install `polylint.exe` beside `poly.exe` as an alias for the same tool, not a
 # second binary: the package is published as `polylint` on PyPI and
-# `@goldziher/polylint` on npm (the unscoped `poly` name is taken on both), so
+# `@polylint/polylint` on npm (the unscoped `poly` name is taken on both), so
 # someone who installed it under that name will reasonably type `polylint`.
 #
 # A hard link is preferred over a symlink because creating a symlink on Windows

@@ -1,5 +1,5 @@
 {
-  "name": "@goldziher/opencode-poly",
+  "name": "@polylint/opencode-poly",
   "private": true,
   "description": "Git-installable Pi resources; publishable runtime package lives under plugin/.",
   "keywords": [

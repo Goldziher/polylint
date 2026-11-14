@@ -14,6 +14,9 @@ binary drives lint, format, hooks, and commit checks from one `poly.toml`.
   Bazel-aware rules to the `skif` engine's findings, gitfluff 0.11.2, ast-grep 0.51.2, tree-sitter-language-pack 1.25
   (the built-in Zig definition query follows its renamed `function_declaration` node). Cached results from the engines
   whose crates moved are recomputed once.
+- **npm packages move to the `@polylint` scope.** `@goldziher/polylint` and its five platform packages are now
+  `@polylint/polylint` and `@polylint/polylint-<platform>`, and `@goldziher/opencode-poly` is
+  `@polylint/opencode-poly` (ADR 0048). Reinstall under the new names; the old packages stop receiving releases.
 - **Rust 1.100** is the minimum supported version, which skif 0.5.0 requires.
 
 ## [0.34.2] - 2026-11-09
