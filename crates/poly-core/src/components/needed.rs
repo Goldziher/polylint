@@ -40,6 +40,8 @@ const LINKED_FEATURES: &[&str] = &[
     "engine-graphql",
     #[cfg(feature = "engine-shfmt")]
     "engine-shfmt",
+    #[cfg(feature = "engine-gofmt")]
+    "engine-gofmt",
 ];
 
 /// Component feature names a bundled binary links through an engine provider rather than a

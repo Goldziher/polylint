@@ -29,6 +29,7 @@ use crate::engine::SourceFile;
 
 pub mod astgrep_rules;
 pub mod editorconfig;
+pub mod go_mod;
 pub mod oxfmt_native;
 pub mod oxfmt_scope;
 pub mod oxlintrc;
@@ -60,13 +61,18 @@ pub enum HostHook {
     /// ([`shell_dialect`]): shfmt, which reads `.editorconfig` only when it is given a filename,
     /// and poly never passes one.
     Editorconfig,
+    /// Formatting follows the nearest `go.mod`'s `go` version and module path ([`go_mod`]): the
+    /// `go` sidecar's gofumpt, which needs both and sees only the file's bytes.
+    GoMod,
 }
 
 /// Inputs shared by every file of a run (see [`Engine::run_context`](crate::engine::Engine::run_context)).
 #[must_use]
 pub fn run_context(hook: HostHook, cfg: &EngineConfig) -> String {
     match hook {
-        HostHook::None | HostHook::OxfmtScope | HostHook::Oxc | HostHook::Editorconfig => String::new(),
+        HostHook::None | HostHook::OxfmtScope | HostHook::Oxc | HostHook::Editorconfig | HostHook::GoMod => {
+            String::new()
+        }
         HostHook::RuffContext => {
             let src_roots: Vec<std::path::PathBuf> = cfg
                 .options
@@ -86,7 +92,7 @@ pub fn run_context(hook: HostHook, cfg: &EngineConfig) -> String {
 pub fn file_context(hook: HostHook, path: &Path, cfg: &EngineConfig) -> Option<String> {
     match hook {
         HostHook::None => None,
-        HostHook::OxfmtScope | HostHook::Editorconfig => format_input_salt(hook, path, cfg),
+        HostHook::OxfmtScope | HostHook::Editorconfig | HostHook::GoMod => format_input_salt(hook, path, cfg),
         HostHook::Oxc => match (lint_input_salt(hook, path, cfg), format_input_salt(hook, path, cfg)) {
             (None, None) => None,
             (lint, format) => Some(format!("{}|{}", lint.unwrap_or_default(), format.unwrap_or_default())),
@@ -105,7 +111,9 @@ pub fn file_context(hook: HostHook, path: &Path, cfg: &EngineConfig) -> Option<S
 pub fn lint_input_salt(hook: HostHook, path: &Path, cfg: &EngineConfig) -> Option<String> {
     match hook {
         HostHook::Oxc => oxlintrc::governing_for(cfg, path).map(|governing| governing.digest.clone()),
-        HostHook::None | HostHook::OxfmtScope | HostHook::RuffContext | HostHook::Editorconfig => None,
+        HostHook::None | HostHook::OxfmtScope | HostHook::RuffContext | HostHook::Editorconfig | HostHook::GoMod => {
+            None
+        }
     }
 }
 
@@ -122,6 +130,7 @@ pub fn format_input_salt(hook: HostHook, path: &Path, cfg: &EngineConfig) -> Opt
                 None => dialect,
             })
         }
+        HostHook::GoMod => go_mod::salt(cfg, path),
         HostHook::None | HostHook::RuffContext => None,
     }
 }
@@ -138,6 +147,7 @@ pub fn format_config<'a>(
     match hook {
         HostHook::OxfmtScope | HostHook::Oxc => oxfmt_scope::path_config(cfg, src, engine),
         HostHook::Editorconfig => editorconfig::apply(cfg, &src.path),
+        HostHook::GoMod => go_mod::apply(cfg, &src.path),
         HostHook::None | HostHook::RuffContext => Cow::Borrowed(cfg),
     }
 }

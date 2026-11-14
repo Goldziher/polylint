@@ -61,7 +61,7 @@ const PLACEMENT: &[(&str, Placement)] = &[
 /// `components/crates/poly-engines-web/tests/component_index.rs`, and
 /// `components-pyrefly/crates/poly-engines-pyrefly/tests/index.rs` for the pyrefly workspace) check the
 /// entries against the real engines.
-const EXTERNAL_COMPONENTS: &[&str] = &["biome", "pyrefly", "ruby", "web", "sh"];
+const EXTERNAL_COMPONENTS: &[&str] = &["biome", "pyrefly", "ruby", "web", "sh", "go"];
 
 /// Components built outside the `components/` workspace: no bundled build can link them.
 const DOWNLOAD_ONLY: &[&str] = &["pyrefly"];
@@ -96,6 +96,9 @@ const COMPONENTS: &[(&str, ComponentKind, bool, &[&str])] = &[
     // families'; `components/sidecars/sh` and `poly-component-host/tests/sidecar.rs` check it against the
     // real executable. `engine-shfmt` is the poly-core feature that keeps the host `shfmt` instead.
     ("sh", ComponentKind::Sidecar, false, &["engine-shfmt"]),
+    // The `go` sidecar (gofumpt and goimports grouping) is carried over the same way;
+    // `engine-gofmt` keeps the host `gofmt` in a bundled build.
+    ("go", ComponentKind::Sidecar, false, &["engine-gofmt"]),
     ("mcp", ComponentKind::Frontend, false, &[]),
 ];
 
@@ -119,6 +122,7 @@ const ALIASES: &[(&str, &[&str])] = &[
     ),
     ("python", &["python"]),
     ("shell", &["shell"]),
+    ("go", &["go"]),
     ("php", &["php"]),
     ("sql", &["sql"]),
     ("nix", &["nix"]),
