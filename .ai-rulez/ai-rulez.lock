@@ -4,7 +4,7 @@
 version = 1
 ai_rulez_version = '5.13.2'
 scope = 'all'
-tree = 'sha256:f208a7668ccbca0a3aa66d295e4902bcacb6d951c5ffa5d9bb2d5c3d02170c87'
+tree = 'sha256:3b3d4b9a94342fbb6646a0c50ef1e48ce61d4a4d743fa3e6e408d3ca63337310'
 
 [[served]]
 name = 'adr-workflow'
@@ -100,7 +100,7 @@ digest = 'sha256:f406604437e2998fc756a0a5b6a08cd832b871c188f76ee5ecbfef33184e965
 kind = 'agent'
 id = 'backend-author'
 path = 'agents/backend-author.md'
-digest = 'sha256:73e9acaf90753d3bb053a37756314c0f884f0099e4e2d85e3558c25e92b1c6c6'
+digest = 'sha256:a511857a03e7f3ec5216f29b5646a4a832a101f6ac6be228826b313a78a950af'
 
 [[item]]
 kind = 'agent'
@@ -136,7 +136,7 @@ digest = 'sha256:f805ea4203ac36a7fc3c707b12720cad6c62219c6652e3312fc8373d18415f7
 kind = 'context'
 id = 'poly'
 path = 'context/poly.md'
-digest = 'sha256:1c09cbfbaf0e404065e9709d9a4f4c4c32fcae20a47e574738beddc451a67257'
+digest = 'sha256:dc637f681a1dd1bc2fd8045b83ea51109e9237680999caaea409defb62a74f96'
 
 [[item]]
 kind = 'context'
@@ -148,7 +148,7 @@ digest = 'sha256:a990db02a0f705e889a3ef936125dcbd64c74cea4a95d38163d464e781c9e30
 kind = 'context'
 id = 'runtime-architecture'
 path = 'context/runtime-architecture.md'
-digest = 'sha256:efcfd8d7170d90a0101fbbad6eb629bd5a7b9c9b14b6406c0df1cd4055e1ca4c'
+digest = 'sha256:6501c4fc185173b717cb4466f769d9844f4154789c4db4a5b3326cf4f0fb51a8'
 
 [[item]]
 kind = 'rule'
