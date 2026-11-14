@@ -280,7 +280,7 @@ jobs:
         run: mise run sidecar:conformance
 
   sidecar-smoke:
-    # The cross-compiled sh executable must start and answer a describe and a format call on the
+    # The cross-compiled sh and go executables must start and answer a describe and a format call on the
     # platforms the conformance job (Linux) does not cover.
     name: sidecar smoke (${{ matrix.os }})
     runs-on: ${{ matrix.os }}
@@ -312,6 +312,16 @@ jobs:
           echo "POLY_SH_BINARY=$out" >> "$GITHUB_ENV"
       - name: Describe and format through the executable
         working-directory: components/sidecars/sh
+        run: go test -count=1 -v -run TestBuiltExecutableDescribesAndFormats ./...
+      - name: Build the go executable for this platform
+        env:
+          MISE_TASK_RUN_AUTO_INSTALL: "false"
+        run: |
+          out="${GITHUB_WORKSPACE//\\//}/target/sidecar-smoke/go-${{ matrix.exe }}"
+          mise run sidecar:build go ${{ matrix.triple }} "$out"
+          echo "POLY_GO_BINARY=$out" >> "$GITHUB_ENV"
+      - name: Describe and format through the go executable
+        working-directory: components/sidecars/go
         run: go test -count=1 -v -run TestBuiltExecutableDescribesAndFormats ./...
 
   alef-verify:

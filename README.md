@@ -39,7 +39,7 @@ flowchart LR
   K & H & P & T --> O["one report · one exit code<br/>pretty · JSON · TOON · MCP"]
 ```
 
-- **Components** — the engines (Rust crates, plus a Go sidecar for shell), signed and pinned to your poly version,
+- **Components** — the engines (Rust crates, plus a Go sidecar for shell and Go), signed and pinned to your poly version,
   downloaded once per language and cached. No Python, Node or Ruby runtime is needed for them. A needed component
   that cannot be installed is exit `2` (or a counted skip, if you ask for that), never a silent downgrade.
 - **Host tools** — a language's canonical CLI when it is on `PATH`: `rustfmt`, `gofmt` and `shellcheck` on by
@@ -119,7 +119,7 @@ built-in ast-grep rules.
 | Dockerfile | built-in rules; hadolint (recipe ↓) | — | component `misc` |
 | `.env`, INI | dotenv, ini | — | component `misc` |
 | Shell | shellcheck (host, default-on) | shfmt | component `sh` (Go sidecar) |
-| Go | golangci-lint (recipe ↓) · Q · AG | gofmt (host, default-on); golangci-lint (recipe ↓) | host, recipe |
+| Go | golangci-lint (recipe ↓) · Q · AG | gofumpt and goimports grouping (component `go`, Go sidecar; host `gofmt` in a bundled build); golangci-lint (recipe ↓) | component `go`, recipe |
 | Rust | cargo clippy, sort, machete, deny (whole-project phase) · Q · AG | rustfmt (host, default-on) | host |
 | Java | checkstyle (recipe ↓, RT: JRE) · Q · AG | google-java-format (host, opt-in); palantir-java-format (recipe ↓, native) | host, recipe |
 | Kotlin | Q · AG | ktfmt (host, opt-in) | host |

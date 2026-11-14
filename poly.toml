@@ -16,6 +16,9 @@ exclude = [
   # Deliberately unformatted shell (and one that does not parse): the sh sidecar's input, with the
   # host shfmt's output beside it as golden files.
   "components/sidecars/sh/testdata/**",
+  # Deliberately unformatted Go (and one that does not parse): the go sidecar's input, with gofumpt's
+  # output beside it as golden files.
+  "components/sidecars/go/testdata/**",
   ".ai-rulez/**",
   # Everything `ai-rulez generate --plugin` emits. These are generated bundles,
   # not sources: poly reformatting them and the next generation reverting it is

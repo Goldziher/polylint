@@ -30,11 +30,15 @@ directory needs.
 
 On a bundled build `poly components install` only prints a note: there is nothing to fetch.
 
-Two components are not part of a bundled build, and `poly components list` says so:
+Three components are not part of a bundled build, and `poly components list` says so:
 
 - **`sh`**: a Go executable cannot be linked into the binary, so a bundled build formats shell with the
   host `shfmt` when it is on `PATH`, and with the tree-sitter tier otherwise (ADR 0045). Install `shfmt`
   for shfmt's output, or use a core build, which downloads the `sh` sidecar.
+- **`go`**: the same reason. A bundled build formats Go with the host `gofmt` when it is on `PATH`, grouping
+  imports as `goimports` does, and with the tree-sitter tier otherwise. A core build downloads the `go` sidecar,
+  which formats with gofumpt and goimports grouping and needs no Go toolchain (ADR 0050). It sorts and groups
+  imports but never adds or removes one: that needs the `go` command, so an unused import stays.
 - **`pyrefly`**: it is built in a workspace of its own, so no bundled build links it, and a bundled build
   embeds no lock to download it. `[engines.python-types] backend = "pyrefly"` therefore fails the run
   (exit `2`) with that reason. Keep the default `backend = "ty"`, or use a core build.
@@ -54,6 +58,7 @@ Two components are not part of a bundled build, and `poly components list` says 
 | `astgrep` | ast-grep and the built-in rule pack |
 | `misc` | dockerfile, dotenv, hcl, graphql, ini |
 | `sh` | shfmt (`mvdan.cc/sh`), a Go executable poly runs as a sidecar |
+| `go` | gofumpt and goimports grouping, a Go executable poly runs as a sidecar |
 | `uncomment` | comment removal (opt-in) |
 | `typos` | typos (opt-in, see below) |
 | `mcp` | the MCP server, a frontend component |

@@ -49,7 +49,7 @@ checksummed release (macOS and Linux), and `RT` one that needs a host runtime.
 | Ruby (`*.rb`, `Gemfile`, `Rakefile`, `*.gemspec`, `*.rake`, `*.ru`, `Podfile`, …) | rubyfmt | no | yes | component `ruby` |
 | PHP | mago | yes | yes | component `php` |
 | Shell | shfmt (the host `shfmt` in the bundled build, or with `[components] disable = ["sh"]`); `shellcheck` when present (default-on) | optional | yes | component `sh` (Go sidecar); host `shellcheck` |
-| Go | `gofmt` when present (default-on), imports grouped as `goimports` does; tree-sitter fallback otherwise; opt-in `golangci-lint` | opt-in | yes | host; recipe `golangci-lint` ↓ |
+| Go | gofumpt with `goimports` import grouping (component `go`, no Go toolchain needed; unused imports are not removed); the host `gofmt` in a bundled build or with `[components] disable = ["go"]`; opt-in `golangci-lint` | opt-in | yes | component `go` (Go sidecar); recipe `golangci-lint` ↓ |
 | Rust | `rustfmt` when present (default-on), tree-sitter fallback otherwise; `cargo clippy`, `cargo-sort`, `cargo-machete`, `cargo-deny` in the whole-project phase | whole-project | yes | host |
 | Java | opt-in `google-java-format`, tree-sitter fallback otherwise; opt-in `checkstyle`, `palantir-java-format` | opt-in | yes | host; recipes `checkstyle` ↓ RT (JRE), `palantir-java-format` ↓ |
 | Kotlin | opt-in `ktfmt`, tree-sitter fallback otherwise | no | yes | host |

@@ -155,6 +155,21 @@ executable = { build = "../../../mise-tasks/sidecar/build.sh sh {target} {out}",
   "schemas/component-protocol.json",
 ] }
 
+# The go sidecar: gofumpt and goimports grouping as a pure-Go executable, built like `sh` (ADR 0050).
+[[crates.components]]
+name = "go"
+producer_language = "executable"
+producer_dir = "components/sidecars/go"
+provides = [{ contract = "poly", implementation = "NewGoComponent" }]
+features = []
+targets = ["aarch64-apple-darwin", "x86_64-unknown-linux-gnu", "aarch64-unknown-linux-gnu", "x86_64-pc-windows-msvc"]
+executable = { build = "../../../mise-tasks/sidecar/build.sh go {target} {out}", toolchain_version_cmd = "go version", inputs = [
+  "components/sidecars/go",
+  "mise-tasks/sidecar/build.sh",
+  "crates/poly-component-protocol",
+  "schemas/component-protocol.json",
+] }
+
 # Release distribution: component archives are GitHub release assets of the tag they were built for
 # ({version} is the version the artifact was packaged at, so an asset reused from an earlier release
 # keeps pointing at that release). The signing key is the repository secret POLY_COMPONENT_SIGNING_KEY

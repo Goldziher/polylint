@@ -1,0 +1,30 @@
+package basic
+
+import (
+	"fmt"
+	"os"
+)
+
+func  greet(name string,
+	 loud bool) error {
+
+	if loud {
+
+		fmt.Fprintln(os.Stdout, name)
+
+	}
+	var x = 0777
+	_ = x
+	return nil
+}
+
+func pair(a string, b string) (n int, err error) {
+	n = len(a) + len(b)
+	return
+}
+
+func call() {
+	fmt.Println(
+		"a",
+		"b")
+}
