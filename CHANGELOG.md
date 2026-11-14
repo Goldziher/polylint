@@ -7,6 +7,28 @@ binary drives lint, format, hooks, and commit checks from one `poly.toml`.
 
 ## [Unreleased]
 
+### Added
+
+- **Cross-file Markdown link checks.** `[engines.rumdl] cross_file_links = true` reports a `file.md#anchor` that no
+  longer exists in the target file, as a project check over the Markdown tree. `cross_file_links_dir` names the tree.
+  (#127)
+- **14 more hadolint rules in the `dockerfile` engine** (DL3002, DL3003, DL3004, DL3008, DL3013, DL3014, DL3015,
+  DL3016, DL3018, DL3019, DL3020, DL3027, DL3042, DL4006), and `[engines.dockerfile.rules.<id>] level` now overrides a
+  rule's severity. (#126)
+- **Four opt-in Go architecture rules** in the built-in ast-grep pack: `go-no-init`, `go-no-package-mutable-global`,
+  `go-context-background-outside-main` and `go-forbidden-ambient-call`. (#125)
+- **Go formatting without a Go toolchain.** A new `go` sidecar component formats with gofumpt and goimports grouping
+  (unused imports are not removed), reads the language version and module path from `go.mod`, and is configured under
+  `[engines.gofmt]` (ADR 0050). (#108)
+- **Catalog tools with pinned, checksummed downloads:** shellcheck, clang-format, zizmor, kubeconform, google-java-format
+  and ktfmt; ktlint as a host-JRE recipe; Elixir `mix format` and `credo` as host-runtime recipes. ADR 0049 records the
+  policy: GPL tools run as separate processes and no runtime is bundled. (#110, #124, #114, #128, #133, #134, #109)
+
+### Fixed
+
+- **Vue and Svelte `<script>` blocks are formatted** by `markup_fmt`; template expressions stay as written. (#166)
+- **The typos engine no longer flags the `mis-` prefix.** (#167)
+
 ### Changed
 
 - **Dependencies refreshed.** Every crates.io dependency moved to its latest release; the oxc git pin moved to
@@ -17,6 +39,8 @@ binary drives lint, format, hooks, and commit checks from one `poly.toml`.
 - **npm packages move to the `@polylint` scope.** `@goldziher/polylint` and its five platform packages are now
   `@polylint/polylint` and `@polylint/polylint-<platform>`, and `@goldziher/opencode-poly` is
   `@polylint/opencode-poly` (ADR 0048). Reinstall under the new names; the old packages stop receiving releases.
+- **Result cache keys are relative to the checkout** for the ruff context and native-tool configs, so a new git worktree
+  reuses cached results. (#165)
 - **Rust 1.100** is the minimum supported version, which skif 0.5.0 requires.
 
 ## [0.34.2] - 2026-11-09
