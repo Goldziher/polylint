@@ -192,7 +192,7 @@
             "fix": false,
             "project": false
           },
-          "version": "0.27.6+opts-2+tmpltarget-2+embedded-oxc-3+rev:74e5e66+syntax-skip-2",
+          "version": "0.27.6+opts-2+tmpltarget-2+embedded-oxc-3+rev:74e5e66+syntax-skip-2+script-fmt-1",
           "option_keys": [
             {
               "table": "Lint",

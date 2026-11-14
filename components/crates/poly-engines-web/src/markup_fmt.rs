@@ -7,10 +7,11 @@
 //! ## Embedded code
 //!
 //! markup_fmt delegates embedded `<script>` / `<style>` blocks to an external
-//! formatter callback. Astro JavaScript and TypeScript, and `<script>` in plain HTML, are routed
-//! through OXC; `<style>` blocks in HTML, Vue and Svelte through `oxc_formatter_css`. Vue and Svelte
-//! `<script>` blocks are left as written, because the callback also receives template expressions
-//! under the same extension and an expression is not a program.
+//! formatter callback. Astro JavaScript and TypeScript, and `<script>` in HTML, Vue and Svelte, are
+//! routed through OXC; `<style>` blocks in HTML, Vue and Svelte through `oxc_formatter_css`. Vue and
+//! Svelte template expressions reach the callback under the same extensions as scripts and an
+//! expression is not a program, so [`is_script_block`] recognises a script block by its position in
+//! the source and only those are formatted.
 //!
 //! ## Angular detection
 //! Angular templates share the `.html` extension with plain HTML. poly
@@ -60,7 +61,7 @@ pub struct MarkupFmtEngine;
 /// any stale cached output.
 /// Bumped suffix to +opts-1 after exposing full LanguageOptions (options were
 /// previously ignored — existing caches must be invalidated).
-const VERSION: &str = "0.27.6+opts-2+tmpltarget-2+embedded-oxc-3+rev:74e5e66+syntax-skip-2";
+const VERSION: &str = "0.27.6+opts-2+tmpltarget-2+embedded-oxc-3+rev:74e5e66+syntax-skip-2+script-fmt-1";
 
 /// Reason reported when a general-purpose template does not render markup.
 const NON_MARKUP_TEMPLATE_SKIP: &str = "template does not render markup";
@@ -159,13 +160,24 @@ impl Engine for MarkupFmtEngine {
                     .map(Cow::Owned)
                     .map_err(anyhow::Error::new);
             }
-            // `<style>` blocks, and `<script>` blocks in plain HTML. Vue and Svelte route template
-            // expressions through the same callback with a `ts` extension, and an expression is not a
-            // program (`{ a: 1 }` parses as a block), so their scripts stay as written. Anything that
-            // does not parse is left as written too.
+            // `<style>` blocks and `<script>` blocks. Vue and Svelte route template expressions
+            // through the same callback with a `ts` extension, and an expression is not a program
+            // (`{ a: 1 }` parses as a block), so only recognised script blocks are formatted there.
+            // Anything that does not parse is left as written.
             if hints.attr || !matches!(src.language, Language::Html | Language::Vue | Language::Svelte) {
                 return Ok(Cow::Borrowed(code));
             }
+            let script_ext = match src.language {
+                Language::Html => hints.ext,
+                _ if is_script_block(&src.content, code) => match hints.ext {
+                    "ts" | "mts" => "ts",
+                    "tsx" => "tsx",
+                    "jsx" => "jsx",
+                    "js" | "mjs" => "js",
+                    _ => "",
+                },
+                _ => "",
+            };
             let allocator = Allocator::new();
             let formatted = match hints.ext {
                 "css" | "scss" | "less" => {
@@ -183,8 +195,8 @@ impl Engine for MarkupFmtEngine {
                     .and_then(|formatted| formatted.print().ok())
                     .map(|printed| printed.into_code())
                 }
-                "js" | "jsx" | "ts" | "tsx" if src.language == Language::Html => {
-                    super::oxc::format_embedded_js(&allocator, code, hints.ext, &embedded_scratch).ok()
+                _ if !script_ext.is_empty() && (src.language != Language::Html || is_js_ext(script_ext)) => {
+                    super::oxc::format_embedded_js(&allocator, code, script_ext, &embedded_scratch).ok()
                 }
                 _ => None,
             };
@@ -207,6 +219,40 @@ impl Engine for MarkupFmtEngine {
             Ok(FormatOutput::Formatted(formatted))
         }
     }
+}
+
+fn is_js_ext(ext: &str) -> bool {
+    matches!(ext, "js" | "jsx" | "ts" | "tsx")
+}
+
+/// Whether `code` is the body of a `<script>` element of `source`, as opposed to a template
+/// expression, binding or statement header that markup_fmt hands to the same callback.
+///
+/// markup_fmt passes the body as a slice of `source` and wraps every other fragment it sends in a
+/// new string or cuts it from elsewhere in the template. The slice must therefore sit directly
+/// between a `<script ...>` opening tag and `</script`.
+fn is_script_block(source: &str, code: &str) -> bool {
+    let Some(start) = (code.as_ptr() as usize).checked_sub(source.as_ptr() as usize) else {
+        return false;
+    };
+    let end = start + code.len();
+    if end > source.len() {
+        return false;
+    }
+    let (Some(before), Some(after)) = (source.get(..start), source.get(end..)) else {
+        return false;
+    };
+    let closes = after.get(..8).is_some_and(|tag| tag.eq_ignore_ascii_case("</script"));
+    if !closes || !before.ends_with('>') {
+        return false;
+    }
+    before
+        .as_bytes()
+        .windows(8)
+        .rposition(|window| {
+            window[..7].eq_ignore_ascii_case(b"<script") && (window[7].is_ascii_whitespace() || window[7] == b'>')
+        })
+        .is_some()
 }
 
 /// Whether this language is a *general-purpose* template syntax, i.e. one whose
@@ -487,12 +533,29 @@ mod tests {
     }
 
     #[test]
-    fn vue_style_is_formatted_and_script_and_expressions_are_left_alone() {
+    fn vue_style_and_script_are_formatted_and_expressions_are_left_alone() {
         let input = "<template>\n  <p :a=\"{ b: 1 }\">{{ x }}</p>\n</template>\n<script setup lang=\"ts\">\nconst   a:number=1\n</script>\n<style>\n.a{color:red}\n</style>\n";
         let out = formatted_text(Language::Vue, "a.vue", input);
         assert!(out.contains("color: red;"), "{out}");
-        assert!(out.contains("const   a:number=1"), "{out}");
+        assert!(out.contains("const a: number = 1;"), "{out}");
         assert!(out.contains(":a=\"{ b: 1 }\""), "{out}");
+    }
+
+    #[test]
+    fn svelte_script_is_formatted_and_expressions_are_left_alone() {
+        let input = "<script lang=\"ts\">\nlet   n:number=1\n</script>\n<p class={ {a:1}.a }>{n}</p>\n";
+        let out = formatted_text(Language::Svelte, "a.svelte", input);
+        assert!(out.contains("let n: number = 1;"), "{out}");
+    }
+
+    #[test]
+    fn script_block_detection_rejects_expressions() {
+        let source = "<template><p>{{ x }}</p></template>\n<script setup generics=\"T extends Array<string>\">\nlet a\n</script>";
+        let body = &source[source.find("\nlet").unwrap()..source.find("</script").unwrap()];
+        assert!(is_script_block(source, body));
+        let expr = &source[source.find("x }}").unwrap()..][..1];
+        assert!(!is_script_block(source, expr));
+        assert!(!is_script_block(source, "\nlet a\n"));
     }
 
     #[test]
