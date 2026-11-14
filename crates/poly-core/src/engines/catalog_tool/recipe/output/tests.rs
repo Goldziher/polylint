@@ -562,3 +562,33 @@ fn kubeconform_output_that_is_not_its_report_is_an_error_not_a_clean_run() {
         assert!(parse(Output::KubeconformJson, stdout, "").is_err(), "{why}");
     }
 }
+
+const KTLINT_JSON: &str = r#"[
+{"file":"src/Clean.kt","errors":[]},
+{"file":"src/Bad.kt","errors":[
+{"line":1,"column":1,"message":"Wildcard import","rule":"standard:no-wildcard-imports"},
+{"line":4,"column":18,"message":"Missing spacing before \"{\"","rule":"standard:curly-spacing"}]}]"#;
+
+#[test]
+fn ktlint_errors_become_rule_named_findings_and_clean_files_report_nothing() {
+    let findings = parse(Output::KtlintJson, KTLINT_JSON, "").expect("parses");
+    assert_eq!(findings.len(), 2, "{findings:?}");
+    assert!(findings.iter().all(|f| f.path.as_deref() == Some("src/Bad.kt")));
+    assert_eq!((findings[0].line, findings[0].column), (Some(1), Some(1)));
+    assert_eq!(findings[0].code.as_deref(), Some("standard:no-wildcard-imports"));
+    assert_eq!(findings[0].message, "Wildcard import");
+    assert_eq!(findings[1].message, "Missing spacing before \"{\"");
+    assert_eq!(findings[1].severity, Severity::Error);
+}
+
+#[test]
+fn ktlint_output_that_is_not_its_report_is_an_error_not_a_clean_run() {
+    assert!(parse(Output::KtlintJson, "[]", "").expect("parses").is_empty());
+    for (stdout, why) in [
+        ("", "no output"),
+        ("Error: no such option", "usage text"),
+        (r#"{"file":"a"}"#, "not a list"),
+    ] {
+        assert!(parse(Output::KtlintJson, stdout, "").is_err(), "{why}");
+    }
+}

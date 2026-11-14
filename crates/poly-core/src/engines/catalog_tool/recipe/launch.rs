@@ -135,12 +135,17 @@ fn ready(program: PathBuf, prefix: Vec<String>, origin: &str) -> Resolved {
 /// A string that changes when the executable (or the jar it launches) does:
 /// its resolved path, size and modification time. `--version` would be more
 /// readable but not every tool answers it, and spawning a JVM to ask costs
-/// 400 ms on every run.
+/// 400 ms on every run. A jar's findings also depend on the JVM that ran it,
+/// so the `java` it was launched with is stamped the same way.
 fn identity(program: &Path, prefix: &[String], origin: &str) -> String {
-    let target = match prefix {
-        [_, jar] => Path::new(jar),
-        _ => program,
-    };
+    match prefix {
+        [_, jar] => format!("{}:java={}", stamped(Path::new(jar), origin), stamped(program, "")),
+        _ => stamped(program, origin),
+    }
+}
+
+/// `<origin>:<canonical path>:<size>:<mtime>` of `target`.
+fn stamped(target: &Path, origin: &str) -> String {
     let stamp = std::fs::metadata(target).ok().map(|meta| {
         let modified = meta
             .modified()
@@ -741,5 +746,20 @@ mod tests {
         let error = pinned_release(&resolver, tool, recipe, &auto(Some("../../x"))).expect_err("refused");
         assert!(error.contains("not a version"), "{error}");
         assert_eq!(server.total(), 0);
+    }
+
+    #[test]
+    fn a_jar_run_by_a_different_java_has_a_different_identity() {
+        let dir = tempfile::tempdir().unwrap();
+        let jar = dir.path().join("tool.jar");
+        let java_a = dir.path().join("java-a");
+        let java_b = dir.path().join("java-b");
+        std::fs::write(&jar, "jar").unwrap();
+        std::fs::write(&java_a, "a").unwrap();
+        std::fs::write(&java_b, "bb").unwrap();
+        let prefix = vec!["-jar".to_owned(), jar.to_string_lossy().into_owned()];
+        let a = identity(&java_a, &prefix, "1.0");
+        assert_ne!(a, identity(&java_b, &prefix, "1.0"));
+        assert_eq!(a, identity(&java_a, &prefix, "1.0"));
     }
 }

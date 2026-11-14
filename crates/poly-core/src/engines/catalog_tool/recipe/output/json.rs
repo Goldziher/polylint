@@ -1,5 +1,5 @@
 //! The JSON reports: actionlint, buf, hadolint, golangci-lint, buildifier,
-//! tflint, npm-groovy-lint, gh-actions-updater (`gau --lint-pins`), shellcheck and kubeconform.
+//! tflint, npm-groovy-lint, gh-actions-updater (`gau --lint-pins`), shellcheck, kubeconform and ktlint.
 //!
 //! Each reader pulls only the fields it needs through `serde_json::Value`, so a
 //! tool adding a field never breaks it; a field it needs going missing, or the
@@ -446,6 +446,28 @@ pub(super) fn kubeconform(stdout: &str) -> Result<Vec<Finding>> {
             } else {
                 format!("{path}: {reason}")
             });
+        }
+    }
+    Ok(findings)
+}
+
+/// ktlint's `--reporter=json`: a list of `{file, errors}` objects, each error
+/// with a 1-based line and column, a `standard:`-prefixed rule id and a message.
+pub(super) fn ktlint(stdout: &str) -> Result<Vec<Finding>> {
+    let report = document(stdout, "ktlint")?;
+    let Some(files) = report.as_array() else {
+        bail!("ktlint printed a JSON value that is not a list of files");
+    };
+    let mut findings = Vec::new();
+    for file in files {
+        let path = text(file, "file");
+        for error in file.get("errors").and_then(Value::as_array).into_iter().flatten() {
+            let mut finding = Finding::new(Severity::Error, text(error, "message").unwrap_or_default());
+            finding.path = path.clone();
+            finding.line = number(error, "line");
+            finding.column = number(error, "column");
+            finding.code = text(error, "rule");
+            findings.push(finding);
         }
     }
     Ok(findings)

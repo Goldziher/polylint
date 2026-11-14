@@ -382,6 +382,26 @@ fn kubeconform_reads_json_and_treats_exit_1_as_findings() {
 }
 
 #[test]
+fn ktlint_is_a_pinned_jar_for_the_host_jre_that_lints_and_fixes_kotlin() {
+    let recipe = recipe_of("ktlint");
+    assert_eq!(recipe.output, Output::KtlintJson);
+    assert!(recipe.java, "no bundled runtime: the host JRE runs the jar");
+    assert_eq!(recipe.fix.as_deref(), Some("fix"));
+    assert_eq!(recipe.ok_exits, [1]);
+    assert_eq!(recipe.config_files, [".editorconfig"]);
+    let tool = Catalog::get().tool("ktlint").expect("ktlint");
+    let (_, lint) = tool.lint_command().expect("a lint command");
+    assert_eq!(lint.arguments, ["--reporter=json", "--relative", "$FILES"]);
+    assert_eq!(
+        tool.command("fix").expect("fix").arguments,
+        ["--format", "--relative", "$FILES"]
+    );
+    let release = recipe.install.as_ref().unwrap().releases.get("1.8.0").expect("1.8.0");
+    assert_eq!(release.kind, crate::ReleaseKind::Jar);
+    assert!(release.assets.contains_key("any"));
+}
+
+#[test]
 fn gau_lints_the_pins_of_workflows_and_action_manifests_as_json() {
     let gau = Catalog::get().tool("gau").expect("gau");
     assert_eq!(gau.binary, "gau");
@@ -447,7 +467,7 @@ fn buf_and_hadolint_are_pinned_for_every_desktop_and_server_platform() {
     }
 }
 
-const MIGRATED_TOOLS: [&str; 14] = [
+const MIGRATED_TOOLS: [&str; 15] = [
     "checkstyle",
     "palantir-java-format",
     "buildifier",
@@ -462,6 +482,7 @@ const MIGRATED_TOOLS: [&str; 14] = [
     "shellcheck",
     "zizmor",
     "kubeconform",
+    "ktlint",
 ];
 
 #[test]

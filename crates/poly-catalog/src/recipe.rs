@@ -56,6 +56,8 @@ pub enum Output {
     Sarif,
     /// kubeconform `-output json`.
     KubeconformJson,
+    /// ktlint `--reporter=json`.
+    KtlintJson,
 }
 
 /// How a run's files are split into invocations.
