@@ -47,7 +47,7 @@ your lane: one backend, with worktree isolation when run in parallel with siblin
      a cross-cutting engine, a native tool that must be installed, a rule engine that needs
      rules — **answer from the same per-language lookup `lint` performs**, never from "the
      engine is enabled". The standing rule is recorded twice
-     (`crates/poly-engines-astgrep/src/lib.rs`, `engines/quality/coverage.rs`): answering from the enabled
+     (`crates/poly-engines-astgrep/src/lib.rs`; `quality` answers `false` outright, ADR 0053): answering from the enabled
      flag claims every file in every repository as linted and deletes the skip entirely.
      Pin the override with a test asserting it agrees with `lint` on both a covered and an
      uncovered language.

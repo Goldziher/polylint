@@ -64,8 +64,9 @@ The four defaulted predicates carry the coverage, skip and enablement accounting
   `skipped` payload, and `--deny-skips`. The default answers from `languages()`: a backend
   registered for languages lints them; a cross-cutting one claims nothing. Backends whose
   answer depends on the host or config override it — `native_tool` requires the binary to be
-  installed *and* enabled, `astgrep` runs the same rule lookup `lint` does, `quality` claims a
-  language only where it can model that language's control flow. A `true` here is a claim the
+  installed *and* enabled, `astgrep` runs the same rule lookup `lint` does, `quality` never claims
+  one (ADR 0053: metrics are not correctness; a quality-only file is skipped as
+  `no lint rules for <language> (quality metrics only)`). A `true` here is a claim the
   run relies on; never make it speculatively.
 - `skip_reason(src)` — why a backend declines a specific file (templated YAML is not YAML).
   Returning the reason, rather than bailing out inside `lint`/`format`, is what lets the runner
@@ -141,11 +142,13 @@ Two of them carry poly's lint coverage for languages no tier-1 backend reaches:
   `lazy-ignore`; `magic-number` and `law-of-demeter` ship opt-in; path-only
   `uncollected-test-file` (ADR 0036) is on for Python, Go and Ruby. A **per-language deferral
   table** (`quality/family.rs`) keeps the tier from ever duplicating a tier-1 rule (ruff's
-  `C901`/`PLR0913`, oxlint's `max-depth`/`max-params`). Coverage is claimed honestly: only where
-  poly has both a definition query (`definitions::has_query`) **and** a construct table
+  `C901`/`PLR0913`, oxlint's `max-depth`/`max-params`). It claims no lint coverage (ADR 0053).
+  Where poly has both a definition query (`definitions::has_query`) **and** a construct table
   (`kinds::has_table`) — Python, Rust, Go, JavaScript, TypeScript, TSX, Java, Kotlin, C, C++,
-  C#, Ruby. Query-only grammars (Zig, Swift, Dart, Gleam, Elixir, PHP, Nix, Scala, Lua, R) still
-  *report* the line-count floor but do **not** count as linted.
+  C#, Ruby — the tier models the language, and `coverage::models_language` only words the skip
+  reason of a file nothing else lints (`no lint rules for C (quality metrics only)`). Other grammars
+  (Zig, Swift, Dart, Gleam, Elixir, PHP, Nix, Scala, Lua, R) still *report* the line-count floor and
+  get the plain `no lint rules for <language>` skip.
 - **`poly-engines-astgrep/src/builtin/` — the built-in ast-grep rule pack (ADR 0029).** 30 rules across 9
   languages (C#, Elixir, Go, Java, Kotlin, Python, Ruby, Rust, Swift), each a YAML file embedded
   with `include_str!` and compiled once into a `OnceLock`. Pack rules go through the same

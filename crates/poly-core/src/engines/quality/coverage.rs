@@ -1,16 +1,18 @@
-//! Which languages `quality` may claim lint coverage for
-//! ([`crate::engine::Engine::provides_language_lint`]).
+//! Which languages `quality` structurally models.
 //!
 //! `quality` is registered for every language (`languages() == &[]`), but
 //! being *routed* a file is not the same as holding a rule that knows its
-//! language — the distinction `runner::lint_one` reports as
-//! `no lint rules for <language>`, counts in the run's `checked` total, and
-//! `--deny-skips` fails on. Answering that question from the engine's
-//! `enabled` flag alone would claim every file in every repository as linted
-//! and delete the skip entirely, which is the overclaim this module exists to
-//! prevent. It follows the rule `engines/astgrep/mod.rs` already records:
-//! coverage is answered by the *same per-language lookup* [`Engine::lint`](crate::engine::Engine::lint)
-//! performs, never by the weaker "the engine is switched on".
+//! language. This module answers the narrower question "does `quality` hold a
+//! structural model of this language", from the same per-language lookup
+//! [`Engine::lint`](crate::engine::Engine::lint) performs.
+//!
+//! The answer is **not** lint coverage (ADR 0053, amending ADR 0027): size and
+//! complexity metrics say nothing about correctness, so
+//! [`Engine::provides_language_lint`](crate::engine::Engine::provides_language_lint)
+//! is `false` for `quality` and a file only it models is skipped with
+//! `SkippedFile::quality_only_reason`. The
+//! runner uses [`models_language`] solely to choose that reason, so a reader
+//! sees `quality metrics only` rather than the claim that nothing ran.
 //!
 //! # What counts as knowing a language
 //!
@@ -96,9 +98,10 @@ fn structural_rules(settings: &Settings) -> [(Rule, bool); 5] {
     ]
 }
 
-/// Whether `quality` genuinely lints `language`: the engine is on, the
+/// Whether `quality` structurally models `language`: the engine is on, the
 /// grammar has a full structural model, and at least one structural rule is
-/// both enabled and not deferred to a tier-1 backend.
+/// both enabled and not deferred to a tier-1 backend. Modelling is not lint
+/// coverage; see the module docs.
 ///
 /// The last clause is what keeps the deferral table honest. A language whose
 /// every structural rule is deferred contributes nothing but the
@@ -106,7 +109,7 @@ fn structural_rules(settings: &Settings) -> [(Rule, bool); 5] {
 /// that position today (PHP defers three of the five and has no construct
 /// table anyway; Python defers two, JS/TS one), but deriving the answer means
 /// a future table change flips this rather than silently overclaiming.
-pub fn provides_language_lint(language: &Language, settings: &Settings) -> bool {
+pub fn models_language(language: &Language, settings: &Settings) -> bool {
     settings.enabled
         && has_structural_model(grammar_for(language))
         && structural_rules(settings)
@@ -170,12 +173,12 @@ mod tests {
     /// languages ADR 0027 gives a lint floor to for the first time, and the
     /// win is worthless if the run does not count them.
     #[test]
-    fn a_language_with_a_full_structural_model_claims_coverage() {
+    fn a_language_with_a_full_structural_model_is_modelled() {
         let settings = defaults();
         for language in MODELLED {
             assert!(
-                provides_language_lint(language, &settings),
-                "{language:?} has both a definition query and a construct table, so quality lints it"
+                models_language(language, &settings),
+                "{language:?} has both a definition query and a construct table, so quality models it"
             );
         }
     }
@@ -184,11 +187,11 @@ mod tests {
     /// module fixes): counting lines and scanning for ignore markers is what
     /// a plain text file gets, and it is not knowledge of the language.
     #[test]
-    fn a_language_that_only_gets_line_counting_claims_no_coverage() {
+    fn a_language_that_only_gets_line_counting_is_not_modelled() {
         let settings = defaults();
         for language in LINE_COUNTED_ONLY {
             assert!(
-                !provides_language_lint(language, &settings),
+                !models_language(language, &settings),
                 "{language:?} reaches only file-too-long + lazy-ignore, which is not language knowledge"
             );
         }
@@ -270,10 +273,10 @@ mod tests {
     }
 
     #[test]
-    fn a_disabled_engine_claims_no_coverage() {
+    fn a_disabled_engine_models_nothing() {
         let mut options = toml::Table::new();
         options.insert("enabled".to_owned(), toml::Value::Boolean(false));
-        assert!(!provides_language_lint(&Language::Rust, &settings(options)));
+        assert!(!models_language(&Language::Rust, &settings(options)));
     }
 
     /// A modelled language whose every non-deferred structural rule is
@@ -281,18 +284,18 @@ mod tests {
     /// `too-many-parameters` and `cyclomatic-complexity` are already deferred
     /// to ruff, so turning off the remaining three leaves nothing.
     #[test]
-    fn a_language_with_every_live_structural_rule_off_claims_no_coverage() {
+    fn a_language_with_every_live_structural_rule_off_is_not_modelled() {
         let mut options = toml::Table::new();
         for key in ["function_too_long", "type_too_long", "nesting_too_deep"] {
             options.insert(key.to_owned(), toml::Value::Boolean(false));
         }
         let settings = settings(options);
         assert!(
-            !provides_language_lint(&Language::Python, &settings),
+            !models_language(&Language::Python, &settings),
             "Python's other two structural rules are deferred to ruff, so nothing structural is left"
         );
         assert!(
-            provides_language_lint(&Language::Go, &settings),
+            models_language(&Language::Go, &settings),
             "Go defers nothing, so too-many-parameters and cyclomatic-complexity still run"
         );
     }

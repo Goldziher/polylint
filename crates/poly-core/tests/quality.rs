@@ -200,38 +200,35 @@ fn format_is_always_a_no_op() {
     }
 }
 
-/// Coverage, at the engine's public surface and in both directions. `quality`
-/// is registered for every language, so the interesting question is which of
-/// them it will let a run count as linted: Rust and Kotlin have a full
-/// structural model (definition query + construct table), Swift and Zig reach
-/// only the language-agnostic floor. See `engines/quality/coverage.rs`.
+/// Coverage, at the engine's public surface. Size and complexity metrics say
+/// nothing about correctness (ADR 0053), so `quality` never claims lint
+/// coverage, however well it models the language: a file only it measures must
+/// be skipped, not counted. Modelling is still observable through
+/// `coverage::models_language`, which the runner uses to word the skip reason.
 #[test]
-fn a_language_with_a_structural_model_claims_lint_coverage() {
+fn quality_never_claims_lint_coverage_even_for_a_modelled_language() {
     let cfg = engine_cfg(toml::Table::new());
-    for language in [Language::Rust, Language::Kotlin, Language::Go, Language::CSharp] {
-        assert!(
-            QualityEngine.provides_language_lint(&language, &cfg),
-            "{language:?} is structurally modelled, so quality lints it"
-        );
-    }
-}
-
-#[test]
-fn a_language_that_only_gets_line_counting_claims_no_lint_coverage() {
-    let cfg = engine_cfg(toml::Table::new());
-    for language in [Language::Swift, Language::Zig, Language::Shell, Language::Markdown] {
+    for language in [
+        Language::Rust,
+        Language::Kotlin,
+        Language::Go,
+        Language::CSharp,
+        Language::C,
+        Language::Swift,
+        Language::Zig,
+        Language::Markdown,
+    ] {
         assert!(
             !QualityEngine.provides_language_lint(&language, &cfg),
-            "{language:?} gets only file-too-long + lazy-ignore, which is not language knowledge"
+            "{language:?}: quality metrics are not lint coverage"
         );
     }
 }
 
 /// The two halves are independent: an unmodelled language still *gets* the
-/// floor rules and still reports their findings — it simply does not let the
-/// run claim the file was linted, exactly as a `typos` finding never did.
+/// floor rules and still reports their findings; coverage was never claimed.
 #[test]
-fn an_unmodelled_language_still_reports_the_floor_it_does_not_get_coverage_for() {
+fn an_unmodelled_language_still_reports_the_floor() {
     let cfg = engine_cfg(toml::Table::new());
     let src = SourceFile {
         path: "fixture.zig".into(),
@@ -243,7 +240,6 @@ fn an_unmodelled_language_still_reports_the_floor_it_does_not_get_coverage_for()
         diags.iter().any(|d| d.code.as_deref() == Some("file-too-long")),
         "the floor still runs for Zig: {diags:?}"
     );
-    assert!(!QualityEngine.provides_language_lint(&Language::Zig, &cfg));
 }
 
 /// A long changelog or YAML file is not a code-size problem; the same line count in code is.

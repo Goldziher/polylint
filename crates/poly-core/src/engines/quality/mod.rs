@@ -45,8 +45,9 @@
 //!
 //! Degrading honestly at the rule level also has to be reported honestly at
 //! the run level: a language left with nothing but the line count and the
-//! marker scan is not a language this engine lints, and
-//! [`Engine::provides_language_lint`] says so. See [`coverage`].
+//! marker scan is not a language this engine lints. Even a fully modelled
+//! language is not lint coverage (ADR 0053): metrics are not correctness, so
+//! [`Engine::provides_language_lint`] is always `false` here. See [`coverage`].
 
 pub mod complexity;
 pub mod coverage;
@@ -124,18 +125,13 @@ impl Engine for QualityEngine {
         QUALITY_VERSION
     }
 
-    /// Cross-cutting by registration, but a language is only *linted* here
-    /// when this engine holds a structural model of it — answered by
-    /// [`coverage::provides_language_lint`] from the same per-grammar tables,
-    /// deferral table and [`Settings`] [`Engine::lint`] consults below.
-    ///
-    /// The weaker "the engine is enabled" answer would claim every file in
-    /// every repository, since `file-too-long` (a line count) and
-    /// `lazy-ignore` (a marker scan) run over any language at all — the same
-    /// text scan a `.txt` file gets, which is not knowledge of the language.
-    /// See the [`coverage`] module docs.
-    fn provides_language_lint(&self, language: &Language, cfg: &EngineConfig) -> bool {
-        coverage::provides_language_lint(language, &Settings::from_config(cfg))
+    /// Never claims coverage: size and complexity metrics say nothing about
+    /// correctness (ADR 0053, amending ADR 0027), so a file only this engine
+    /// models must not count as linted. The findings are still reported;
+    /// [`coverage::models_language`] lets the runner name the situation in the
+    /// skip reason.
+    fn provides_language_lint(&self, _language: &Language, _cfg: &EngineConfig) -> bool {
+        false
     }
 
     fn lint(&self, src: &SourceFile, cfg: &EngineConfig) -> anyhow::Result<Vec<Diagnostic>> {

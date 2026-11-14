@@ -368,6 +368,34 @@ fn max_skips_budgets_languages_with_no_lint_rules() {
     assert!(text.contains("no lint rules for Dart"), "got:\n{text}");
 }
 
+/// ADR 0053: a file only the `quality` metric tier measures (C: no tier-1
+/// backend, no pack rule) is not checked. `--max-skips 0` fails on it, the
+/// reason says so, and the JSON `summary.checked` counts only the Python file.
+#[test]
+fn a_quality_only_file_is_skipped_and_gated_by_max_skips() {
+    let dir = tempfile::tempdir().expect("tempdir");
+    std::fs::write(dir.path().join("a.c"), "int main(void) { return 0; }\n").expect("write a.c");
+    std::fs::write(dir.path().join("d.py"), "x = 1\n").expect("write d.py");
+
+    let gated = poly(
+        dir.path(),
+        &["lint", "--workspace", "never", "--no-cache", "--max-skips", "0", "."],
+    );
+    let text = combined(&gated);
+    assert_eq!(gated.status.code(), Some(2), "got:\n{text}");
+    assert!(
+        text.contains("a.c: no lint rules for C (quality metrics only)"),
+        "got:\n{text}"
+    );
+
+    let json = poly(
+        dir.path(),
+        &["lint", "--workspace", "never", "--no-cache", "--format", "json", "."],
+    );
+    let doc: serde_json::Value = serde_json::from_slice(&json.stdout).expect("json document");
+    assert_eq!(doc["summary"]["checked"], 1, "only d.py is checked: {doc}");
+}
+
 /// The machine-readable path: the reason travels in the JSON document, so a
 /// consumer can assert on the uncovered set structurally.
 #[test]

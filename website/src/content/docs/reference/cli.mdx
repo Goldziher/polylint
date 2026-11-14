@@ -226,6 +226,11 @@ model — Zig, Swift, Dart, Gleam, Elixir, Nix, Scala, Lua, R — and any langua
 opt-in or missing from `PATH`; a shell script with no `shellcheck` installed is reported rather
 than counted.
 
+A file whose only lint-side engine is the code-quality tier (C and C++ with no other linter
+enabled) is skipped the same way, with the reason `no lint rules for C (quality metrics only)`:
+size and complexity metrics are not a correctness check. Its warnings are still reported, but the
+file is not in `summary.checked` and counts against `--deny-skips` / `--max-skips`.
+
 <Aside type="note">
     A skip is **coverage information, not a failure**. The run still exits 0 unless you ask for
     `--deny-skips` / `--max-skips`. Cross-cutting checks — opt-in typos, ast-grep rules, comment removal —

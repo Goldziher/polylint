@@ -8,13 +8,13 @@
 //! process knowing the language.
 //!
 //! The uncovered language in these fixtures has moved twice, and both moves are
-//! the system working. Kotlin left first: ADR 0027's `quality` tier holds a real
-//! structural model of it (`engines/quality/coverage.rs`). Swift left next: the
-//! built-in ast-grep pack ships `force-cast` / `force-try`
+//! the system working. Kotlin left first: the built-in ast-grep pack covers it.
+//! Swift left next: the pack ships `force-cast` / `force-try`
 //! (`engines/astgrep/builtin/swift/`). Zig has neither, so it still gets only a
 //! line count and an ignore-marker scan — what a `.txt` file gets, and not
-//! knowledge of the language. C stands in for the other half, structurally
-//! modelled by `quality` and covered by nothing else.
+//! knowledge of the language. C stands in for the other half: structurally
+//! modelled by the `quality` tier and covered by nothing else, which is still
+//! not lint coverage (ADR 0053).
 //!
 //! These tests pin the two halves that make the difference visible — the count,
 //! and the reason attached to what the count leaves out — because a run that
@@ -84,19 +84,58 @@ fn language_with_no_lint_rules_is_not_counted_as_linted() {
     );
 }
 
-/// The other side of the same count, and the point of ADR 0027: C still has
-/// no lint backend of its own and no built-in ast-grep rule, but the `quality`
-/// tier structurally models it (definition query + construct table), so the file
-/// really is linted and the run counts it with no skip line.
+/// ADR 0053: C has no lint backend of its own and no built-in ast-grep rule.
+/// The `quality` tier measures it (its findings still report) but metrics are
+/// not correctness, so the file is skipped with a reason naming the situation
+/// and excluded from `checked`.
 #[test]
-fn a_language_the_quality_tier_models_is_counted_as_linted() {
+fn a_quality_only_language_is_skipped_not_counted_as_linted() {
     let dir = tempfile::tempdir().expect("tempdir");
     write(dir.path(), "a.c", "int main(void) { return 0; }\n");
 
     let run = lint(dir.path());
 
-    assert_eq!(run.checked, 1, "the quality tier lints C");
-    assert_eq!(skips(&run), Vec::new());
+    assert_eq!(run.checked, 0, "quality metrics are not lint coverage");
+    assert_eq!(
+        skips(&run),
+        vec![(
+            "a.c".to_owned(),
+            "no lint rules for C (quality metrics only)".to_owned()
+        )]
+    );
+}
+
+/// The quality-only reason keeps the shared prefix, so anything matching
+/// `no lint rules for` still sees it.
+#[test]
+fn the_quality_only_reason_keeps_the_no_lint_rules_prefix() {
+    let dir = tempfile::tempdir().expect("tempdir");
+    write(dir.path(), "a.c", "int main(void) { return 0; }\n");
+
+    let run = lint(dir.path());
+
+    assert!(run.skipped[0].reason.starts_with(poly_core::NO_LINT_RULES_SKIP_PREFIX));
+}
+
+/// A language with real rules is unaffected: Python (ruff) and Java (built-in
+/// pack) still count beside a quality-only C file.
+#[test]
+fn real_coverage_still_counts_beside_a_quality_only_file() {
+    let dir = tempfile::tempdir().expect("tempdir");
+    write(dir.path(), "a.c", "int main(void) { return 0; }\n");
+    write(dir.path(), "d.py", "x = 1\n");
+    write(dir.path(), "A.java", "class A {}\n");
+
+    let run = lint(dir.path());
+
+    assert_eq!(run.checked, 2, "Python and Java are linted, C is only measured");
+    assert_eq!(
+        skips(&run),
+        vec![(
+            "a.c".to_owned(),
+            "no lint rules for C (quality metrics only)".to_owned()
+        )]
+    );
 }
 
 /// The mixed case is the dangerous one: with a linted file beside it, a wrong

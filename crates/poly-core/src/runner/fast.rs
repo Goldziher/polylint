@@ -353,9 +353,29 @@ pub(super) fn lint_skip_reason(plan: &RunPlan, f: &DiscoveredFile, externally_li
     (!provides_language_lint(engine_plans) && !externally_linted.contains(&f.language)).then(|| {
         match plan.withdrawal(f.config_id, &f.language) {
             Some(withdrawal) => withdrawal.reason(),
+            None if quality_models(engine_plans, &f.language) => SkippedFile::quality_only_reason(&f.language),
             None => SkippedFile::no_lint_rules_reason(&f.language),
         }
     })
+}
+
+/// Whether the `quality` tier ran a structural model over `language` in this plan, so an
+/// otherwise uncovered file is "measured but not linted" rather than untouched.
+#[cfg(feature = "engine-quality")]
+fn quality_models(engine_plans: &[EnginePlan], language: &Language) -> bool {
+    engine_plans.iter().any(|plan| {
+        plan.engine.name() == "quality"
+            && crate::engines::quality::coverage::models_language(
+                language,
+                &crate::engines::quality::settings::Settings::from_config(&plan.config),
+            )
+    })
+}
+
+/// Without the linked `quality` engine nothing in the plan can have measured the file.
+#[cfg(not(feature = "engine-quality"))]
+fn quality_models(_engine_plans: &[EnginePlan], _language: &Language) -> bool {
+    false
 }
 
 /// The result for a file whose findings were replayed from its record.

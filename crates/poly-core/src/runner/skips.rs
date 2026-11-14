@@ -114,6 +114,11 @@ pub fn is_withdrawal_reason(reason: &str) -> bool {
 /// (`[tools.<name>]`), not a rename or an exclude.
 pub const NO_LINT_RULES_SKIP_PREFIX: &str = "no lint rules for";
 
+/// Appended to a [`NO_LINT_RULES_SKIP_PREFIX`] reason when the `quality` metric tier ran over
+/// the file and nothing else lints its language, so findings may exist but the file was not
+/// checked for correctness.
+pub const QUALITY_ONLY_SKIP_SUFFIX: &str = "(quality metrics only)";
+
 /// Reason recorded for a machine-generated file that `[discovery] generated =
 /// false` kept out of the run — the same words from `poly lint` and `poly fmt`,
 /// because it is the same decision.
@@ -226,6 +231,13 @@ impl SkippedFile {
 
     pub(super) fn no_lint_rules_reason(language: &Language) -> String {
         format!("{NO_LINT_RULES_SKIP_PREFIX} {}", language.display_name())
+    }
+
+    /// The reason for a file whose only lint-side engine is the `quality` metric tier
+    /// (ADR 0053). It keeps [`NO_LINT_RULES_SKIP_PREFIX`] so existing matching still works,
+    /// and the suffix says the file was measured, just not linted for correctness.
+    pub(super) fn quality_only_reason(language: &Language) -> String {
+        format!("{} {QUALITY_ONLY_SKIP_SUFFIX}", Self::no_lint_rules_reason(language))
     }
 }
 

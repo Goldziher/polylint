@@ -131,43 +131,42 @@ fn a_language_the_cross_cutting_tier_only_line_counts_has_no_lint_coverage() {
     }
 }
 
-/// The other half, and the point of ADR 0027: C and C++ have no lint
-/// backend of their own and no built-in ast-grep rule, but the `quality`
-/// tier holds a genuine structural model of both grammars — a definition
-/// query *and* a construct table — so function size, nesting and
-/// complexity really are measured and the run is right to count the file.
-/// Asserted by engine name, since `quality` is the only thing standing
-/// between these two languages and a skip; if a future pack rule covers
-/// them, move them out rather than relaxing the assertion, or a regression
-/// that drops `quality`'s coverage would hide behind the other engine.
+/// ADR 0053: C and C++ have no lint backend of their own and no built-in
+/// ast-grep rule, and the `quality` tier's structural model is metrics, not
+/// correctness. `quality` is planned (its findings still report) but claims no
+/// coverage, so the plan covers nothing and the file is skipped as
+/// quality-metrics-only. If a future pack rule covers them, move them to the
+/// pack test below.
 #[test]
-fn a_language_the_quality_tier_structurally_models_has_lint_coverage() {
+fn a_language_only_the_quality_tier_models_has_no_lint_coverage() {
     let config = Config::default();
     for language in [Language::C, Language::Cpp] {
         let plan = plan_engines(&language, &config, Kind::Lint, unrestricted(), &mut None);
+        assert!(
+            planned_names(&plan).contains(&"quality"),
+            "{language:?} still runs the quality tier"
+        );
         assert_eq!(
             covering_engines(&plan),
-            vec!["quality"],
-            "{language:?} is linted by the quality tier alone"
+            Vec::<&str>::new(),
+            "{language:?} is measured by quality alone, which is not lint coverage"
         );
     }
 }
 
-/// Rust and Kotlin are covered twice over, and by two different kinds of
-/// knowledge: the built-in ast-grep pack holds hand-written rules for both
-/// (`unwrap-used`, `not-null-assertion`, …) while `quality` measures their
-/// structure. Asserted as the exact pair so that losing either one — a
-/// pack rule set emptied, or a construct table dropped — fails here
-/// instead of silently halving the coverage behind a still-true boolean.
+/// Rust and Kotlin are covered by the built-in ast-grep pack's hand-written
+/// rules (`unwrap-used`, `not-null-assertion`, ...); `quality` still runs
+/// beside it but contributes no coverage. Asserted as the exact set so a pack
+/// rule set emptied fails here instead of hiding behind `quality`.
 #[test]
-fn a_language_both_the_pack_and_the_quality_tier_cover_lists_both() {
+fn a_language_the_pack_covers_is_covered_by_the_pack_alone() {
     let config = Config::default();
     for language in [Language::Rust, Language::Kotlin] {
         let plan = plan_engines(&language, &config, Kind::Lint, unrestricted(), &mut None);
         assert_eq!(
             covering_engines(&plan),
-            vec!["astgrep", "quality"],
-            "{language:?} is linted by the built-in pack and the quality tier"
+            vec!["astgrep"],
+            "{language:?} is linted by the built-in pack; quality adds no coverage"
         );
     }
 }

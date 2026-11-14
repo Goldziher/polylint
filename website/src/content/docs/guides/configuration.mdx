@@ -764,7 +764,10 @@ function_too_long_lines = 200      # per-language override wins
     JavaScript, TypeScript, TSX, Java, Kotlin, C, C++, C# and Ruby**. A language poly can parse but
     not model — Zig, Swift, Dart, Gleam, Elixir, PHP, Nix, Scala, Lua, R — gets the file-length and
     ignore-marker checks only, and still reports `no lint rules for <language>`. Counting lines is
-    not knowledge of a language, and poly will not claim it is.
+    not knowledge of a language, and poly will not claim it is. Even a modelled language does not
+    count as linted on the quality tier alone: size and complexity are not correctness, so a file
+    only this tier covers (C, C++) is reported as `no lint rules for <language> (quality metrics
+    only)` and charged to `--deny-skips` / `--max-skips`.
 </Aside>
 
 Where a backend already reports the same measurement, poly defers to it rather than reporting it
