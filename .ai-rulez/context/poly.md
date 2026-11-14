@@ -131,11 +131,9 @@ Beyond the per-language backends, two cross-cutting lint mechanisms run on by de
   plus a threshold, e.g. `file_too_long = false`, `file_too_long_lines = 800`,
   `cyclomatic_complexity_max = 15`; `enabled = false` disables the tier. It never duplicates a
   tier-1 backend: a per-language deferral table yields each metric to the existing rule (ruff
-  `C901`/`PLR0913`, oxlint `max-depth`/`max-params`). It never claims lint *coverage* (ADR 0053):
-  metrics are not correctness, so a file whose only lint-side engine is `quality` (today C and C++;
-  Python, JS/TS, Go, Rust, Java, Kotlin, C# and Ruby have a tier-1 backend or pack rules) is reported as
-  `no lint rules for <language> (quality metrics only)`, excluded from `summary.checked` and charged to
-  `--deny-skips` / `--max-skips`, while its warnings are still reported.
+  `C901`/`PLR0913`, oxlint `max-depth`/`max-params`). It never claims lint *coverage* (ADR 0053): a file
+  only `quality` covers (today C and C++) is skipped as `no lint rules for <language> (quality metrics only)`,
+  not counted `checked` and charged to `--deny-skips`; its warnings still report.
 - **The built-in ast-grep rule pack** (ADR 0029) — 30 rules across C#, Elixir, Go, Java, Kotlin,
   Python, Ruby, Rust and Swift, embedded in the binary and loaded through the same parse path as
   user rules. It sits *beneath* `[engines.astgrep] rule_dirs` (default `[".poly/rules"]`; a user

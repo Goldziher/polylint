@@ -61,11 +61,16 @@ it in unnoticed, and `ATTRIBUTIONS.md` credits wordfreq, Betterleaks (MIT) and V
 ### Vectorscan build
 
 Prebuilt archives exist for every component target (aarch64 macOS, x86_64 and aarch64 Linux gnu, x86_64 Windows
-MSVC) and for Linux musl. The archive is built on Ubuntu 22.04 (glibc 2.35), while the release builds Linux components
-in a manylinux_2_28 image (glibc 2.28), so whether it links there is verified in CI (`secrets-manylinux`) rather than
-assumed. If it does not, the bridge crate's `vectorscan-source` feature builds vectorscan from source (cmake, Boost
-headers, a C++ toolchain); the second manylinux leg exercises that path. The Windows prebuilt uses the dynamic CRT, which
-is what a Rust cdylib on MSVC uses.
+MSVC) and for Linux musl. CI built and tested the component natively on all four targets: the prebuilt archive links
+and scans on macOS, Windows and both Linux gnu runners. The archive is built on Ubuntu 22.04 (glibc 2.35), though, and
+the release builds Linux components in a manylinux_2_28 image (glibc 2.28): there it fails to link on
+`__libc_single_threaded`, a glibc 2.32 symbol. The bridge crate's `vectorscan-source` feature builds vectorscan from
+source (cmake, Boost headers, a C++ toolchain) and its x86_64 manylinux leg passes.
+
+The first release therefore ships the component for aarch64 macOS and x86_64 Windows only. Linux gnu follows once the
+release container installs cmake and Boost and builds with `vectorscan-source` (and an aarch64 source-build leg joins
+CI); the targets in `alef.toml` list is the switch. The Windows prebuilt uses the dynamic CRT, which is what a Rust
+cdylib on MSVC uses.
 
 ## Consequences
 

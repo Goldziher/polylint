@@ -157,7 +157,10 @@ provides = [{ contract = "poly", implementation = "poly_engines_secrets::Secrets
 source_manifest = "components-secrets/crates/poly-engines-secrets/Cargo.toml"
 producer_dir = "components-secrets/crates/poly-engines-secrets-component"
 default_features = false
-targets = ["aarch64-apple-darwin", "x86_64-unknown-linux-gnu", "aarch64-unknown-linux-gnu", "x86_64-pc-windows-msvc"]
+# Linux gnu is left out until the release container builds vectorscan from source: the prebuilt archive needs glibc 2.32
+# (`__libc_single_threaded`) and the release builds in manylinux_2_28 (glibc 2.28). CI shows the source build links
+# (`secrets-manylinux`, source-build leg); wiring cmake and Boost into the release container is the follow-up (ADR 0054).
+targets = ["aarch64-apple-darwin", "x86_64-pc-windows-msvc"]
 
 # The MCP server as a frontend component: poly-mcp (rmcp, tokio) lives here instead of in the core
 # binary. It reaches the engines through the host services `poly mcp` registers.

@@ -14,6 +14,7 @@ if ! command -v cargo >/dev/null 2>&1; then
 fi
 
 root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
+doc_features=(--all-features)
 case "${2:-components}" in
 components)
   dir="components"
@@ -26,6 +27,8 @@ pyrefly)
 secrets)
   dir="components-secrets"
   generated=(poly-engines-secrets-component)
+  # `--all-features` would enable `vectorscan-source`, which builds vectorscan with cmake and Boost.
+  doc_features=()
   ;;
 tsrs)
   dir="components-tsrs"
@@ -50,7 +53,7 @@ deny)
 rustdoc)
   export RUSTDOCFLAGS="-D missing-docs -D rustdoc::broken_intra_doc_links"
   # alef-generated component producer crates carry no docs (xberg-io/alef generator output).
-  exec cargo doc --manifest-path "$manifest" --workspace "${exclude[@]}" --no-deps --quiet --all-features
+  exec cargo doc --manifest-path "$manifest" --workspace "${exclude[@]}" --no-deps --quiet "${doc_features[@]}"
   ;;
 *)
   echo "usage: mise run hooks:components-check <clippy|deny|rustdoc> [components|pyrefly|secrets|tsrs]" >&2

@@ -24,7 +24,8 @@ binary drives lint, format, hooks, and commit checks from one `poly.toml`.
   memory with tsrs, the Rust port of the TypeScript 7 compiler, and reports `TS<code>` findings through `poly lint`
   and the builtin pre-commit hook. It ships as a downloadable component in its own workspace (ADR 0051).
 - **Secret scanning.** `[engines.secrets] enabled = true` scans files with kingfisher's rule catalog, as a downloadable
-  component. Findings never echo the secret, and `poly: allow[...]` and `[per_file_ignores]` allowlist them
+  component for Apple silicon macOS and Windows x64 (Linux builds follow once the release container builds vectorscan
+  from source). Findings never echo the secret, and `poly: allow[...]` and `[per_file_ignores]` allowlist them
   (ADR 0054). (#112)
 - **JSON Schema validation.** `[engines.jsonschema] enabled = true` validates JSON, JSONC, YAML and TOML against a
   local schema, offline, with line and column spans (ADR 0052). (#111)
