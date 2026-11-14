@@ -441,3 +441,43 @@ fn gau_output_that_is_not_its_report_is_an_error_not_a_clean_run() {
         assert!(parse(Output::GauJson, stdout, "").is_err(), "{why}");
     }
 }
+
+const SHELLCHECK_JSON1: &str = r#"{"comments":[
+{"file":"deploy.sh","line":3,"endLine":3,"column":6,"endColumn":8,"level":"info","code":2086,"message":"Double quote to prevent globbing and word splitting.","fix":{"replacements":[{"line":3,"endLine":3,"precedence":7,"insertionPoint":"afterEnd","column":6,"replacement":"\"","endColumn":6}]}},
+{"file":"deploy.sh","line":5,"endLine":5,"column":1,"endColumn":4,"level":"error","code":1072,"message":"Unexpected token.","fix":null},
+{"file":"deploy.sh","line":7,"endLine":7,"column":3,"endColumn":9,"level":"style","code":2250,"message":"Prefer putting braces around variable references.","fix":null}]}"#;
+
+#[test]
+fn shellcheck_findings_carry_the_sc_code_span_level_and_fixability() {
+    let findings = parse(Output::ShellcheckJson1, SHELLCHECK_JSON1, "").expect("parses");
+    assert_eq!(findings.len(), 3, "{findings:?}");
+    let first = &findings[0];
+    assert_eq!(first.path.as_deref(), Some("deploy.sh"));
+    assert_eq!(
+        (first.line, first.column, first.end_line, first.end_column),
+        (Some(3), Some(6), Some(3), Some(8))
+    );
+    assert_eq!(first.code.as_deref(), Some("SC2086"));
+    assert_eq!(first.url.as_deref(), Some("https://www.shellcheck.net/wiki/SC2086"));
+    assert_eq!(first.severity, Severity::Info);
+    assert!(first.fixable);
+    assert_eq!(findings[1].severity, Severity::Error);
+    assert!(!findings[1].fixable);
+    assert_eq!(findings[2].severity, Severity::Hint);
+}
+
+#[test]
+fn shellcheck_clean_report_has_no_findings_and_other_output_is_an_error() {
+    assert!(
+        parse(Output::ShellcheckJson1, r#"{"comments":[]}"#, "")
+            .expect("parses")
+            .is_empty()
+    );
+    for (stdout, why) in [
+        ("", "no output"),
+        ("Usage: shellcheck [OPTIONS...] FILES...", "the usage text"),
+        (r#"{"files":[]}"#, "no comments list"),
+    ] {
+        assert!(parse(Output::ShellcheckJson1, stdout, "").is_err(), "{why}");
+    }
+}

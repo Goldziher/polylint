@@ -309,6 +309,17 @@ fn hadolint_reads_json_and_treats_exit_1_as_findings() {
 }
 
 #[test]
+fn shellcheck_reads_json1_and_treats_exit_1_as_findings() {
+    let recipe = recipe_of("shellcheck");
+    assert_eq!(recipe.output, Output::ShellcheckJson1);
+    assert_eq!(recipe.ok_exits, [1]);
+    assert_eq!(recipe.config_files, [".shellcheckrc"]);
+    let tool = Catalog::get().tool("shellcheck").expect("shellcheck");
+    let (_, lint) = tool.lint_command().expect("a lint command");
+    assert_eq!(lint.arguments, ["--format=json1", "$FILES"]);
+}
+
+#[test]
 fn gau_lints_the_pins_of_workflows_and_action_manifests_as_json() {
     let gau = Catalog::get().tool("gau").expect("gau");
     assert_eq!(gau.binary, "gau");
@@ -374,7 +385,7 @@ fn buf_and_hadolint_are_pinned_for_every_desktop_and_server_platform() {
     }
 }
 
-const MIGRATED_TOOLS: [&str; 11] = [
+const MIGRATED_TOOLS: [&str; 12] = [
     "checkstyle",
     "palantir-java-format",
     "buildifier",
@@ -386,6 +397,7 @@ const MIGRATED_TOOLS: [&str; 11] = [
     "helm-template",
     "tflint",
     "tofu",
+    "shellcheck",
 ];
 
 #[test]
@@ -458,7 +470,7 @@ fn sources_declare_the_windows_builds_upstream_publishes() {
             );
         }
     }
-    for name in ["hadolint", "tflint"] {
+    for name in ["hadolint", "tflint", "shellcheck"] {
         let source = recipe_of(name).install.as_ref().unwrap().source.as_ref().unwrap();
         assert!(source.asset_spec("windows-x86_64").is_some(), "{name}");
         assert!(

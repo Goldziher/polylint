@@ -1,5 +1,5 @@
 //! The JSON reports: actionlint, buf, hadolint, golangci-lint, buildifier,
-//! tflint, npm-groovy-lint and gh-actions-updater (`gau --lint-pins`).
+//! tflint, npm-groovy-lint, gh-actions-updater (`gau --lint-pins`) and shellcheck.
 //!
 //! Each reader pulls only the fields it needs through `serde_json::Value`, so a
 //! tool adding a field never breaks it; a field it needs going missing, or the
@@ -357,4 +357,39 @@ pub(super) fn gau(stdout: &str) -> Result<Vec<Finding>> {
         findings.push(finding);
     }
     Ok(findings)
+}
+
+/// shellcheck's `--format=json1`: `{"comments": [...]}`, each comment with a
+/// 1-based line and column, an end position, a numeric `code` and a `fix` when
+/// shellcheck can suggest one. Levels map as poly's own shellcheck backend does:
+/// `style` is a hint, so a style note does not fail the run.
+pub(super) fn shellcheck(stdout: &str) -> Result<Vec<Finding>> {
+    let report = document(stdout, "shellcheck")?;
+    let comments = report
+        .get("comments")
+        .and_then(Value::as_array)
+        .context("shellcheck's JSON report has no comments list")?;
+    Ok(comments
+        .iter()
+        .map(|item| {
+            let severity = match text(item, "level").as_deref() {
+                Some("error") => Severity::Error,
+                Some("info") => Severity::Info,
+                Some("style") => Severity::Hint,
+                _ => Severity::Warning,
+            };
+            let mut finding = Finding::new(severity, text(item, "message").unwrap_or_default());
+            finding.path = text(item, "file");
+            finding.line = number(item, "line");
+            finding.column = number(item, "column");
+            finding.end_line = number(item, "endLine");
+            finding.end_column = number(item, "endColumn");
+            if let Some(code) = item.get("code").and_then(Value::as_u64) {
+                finding.code = Some(format!("SC{code}"));
+                finding.url = Some(format!("https://www.shellcheck.net/wiki/SC{code}"));
+            }
+            finding.fixable = item.get("fix").is_some_and(|fix| !fix.is_null());
+            finding
+        })
+        .collect())
 }

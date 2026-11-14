@@ -50,6 +50,8 @@ pub enum Output {
     PathLine,
     /// gh-actions-updater `gau --lint-pins --format json`.
     GauJson,
+    /// shellcheck `--format=json1`.
+    ShellcheckJson1,
 }
 
 /// How a run's files are split into invocations.

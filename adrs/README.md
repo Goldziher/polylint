@@ -63,6 +63,7 @@ Context, Decision, Consequences (positive and negative/risks), and Alternatives 
 | [0046](0046-drop-intel-macos.md) | Drop the Intel macOS Release Target | Accepted |
 | [0047](0047-tool-release-sources.md) | Tool Release Sources: Download Any Upstream Version, Default to Latest | Accepted |
 | [0048](0048-npm-scope-polylint.md) | Publish npm packages under the `@polylint` scope | Accepted |
+| [0049](0049-external-tools-no-bundled-runtimes.md) | External Tools: GPL Tools as Separate Processes, No Bundled Runtimes | Accepted |
 | [0050](0050-go-sidecar.md) | The Go Sidecar: gofumpt and goimports Grouping Without a Go Toolchain | Accepted |
 
 ## Conventions
