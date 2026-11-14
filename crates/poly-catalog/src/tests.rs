@@ -602,6 +602,7 @@ fn sources_declare_the_windows_builds_upstream_publishes() {
         "tofu",
         "helm",
         "helm-template",
+        "kubeconform",
     ];
     for name in both {
         let source = recipe_of(name).install.as_ref().unwrap().source.as_ref().unwrap();
@@ -622,7 +623,6 @@ fn sources_declare_the_windows_builds_upstream_publishes() {
         "tflint",
         "shellcheck",
         "zizmor",
-        "kubeconform",
         "google-java-format",
         "ktfmt",
     ] {
