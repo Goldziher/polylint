@@ -239,7 +239,7 @@ fn dl4001_only_wget_ok() {
 // ---------------------------------------------------------------------------
 
 const KNOWN_BAD_HADOLINT: &str = "\
-FROM python:3.12
+FROM debian:12
 RUN cd /app && pip install flask
 ENV A=1
 RUN sudo make install

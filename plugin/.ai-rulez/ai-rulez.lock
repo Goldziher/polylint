@@ -2,9 +2,9 @@
 # Refresh it with `ai-rulez lock`; `ai-rulez generate --locked` fails when it is stale.
 
 version = 1
-ai_rulez_version = '5.11.1'
+ai_rulez_version = '5.13.2'
 scope = 'all'
-tree = 'sha256:e25ee8d92c897aa192b5c7841a4df35e363e7abfe66f4d380f8bad711d3e452c'
+tree = 'sha256:bdc0c74f671faea0d613a4e5e4037b13980db33a89ac93ccaaf226fabc1561f3'
 
 [[item]]
 kind = 'command'
@@ -40,10 +40,10 @@ digest = 'sha256:074da99096189158961e4c14f69cdc929c421affdf35fa83083b4dbd24da0fa
 kind = 'skill'
 id = 'poly-overview'
 path = 'skills/poly-overview'
-digest = 'sha256:e6dce3d28c97fe6b0bbd41099534a9ae6ac38d496e7b77cc70ae2591a2aae11f'
+digest = 'sha256:cac044ab359e3cc8f39a5962e6b049acd8eb0b1c522e1ca674b050e909773d75'
 
 [[item]]
 kind = 'skill'
 id = 'poly-tiers-and-scope'
 path = 'skills/poly-tiers-and-scope'
-digest = 'sha256:c2fb535ff18cce6eee69a92d469f807792ff80957e33e13f03e0a406e00c5db7'
+digest = 'sha256:c52253b2781b34439d4ecf0b62085d054bec662032b95e62508336eb649effdc'

@@ -85,18 +85,17 @@ pub(super) fn is_up_to_date(dir: &Path, entry: &git::StagedEntry, previous: &Has
 }
 
 fn matches_staged_mode(metadata: &std::fs::Metadata, entry: &git::StagedEntry) -> bool {
-    if metadata.file_type().is_symlink() != entry.is_symlink {
-        return false;
-    }
+    let same_kind = metadata.file_type().is_symlink() == entry.is_symlink;
     #[cfg(unix)]
     {
         use std::os::unix::fs::PermissionsExt as _;
 
-        if !entry.is_symlink {
-            return (metadata.permissions().mode() & 0o111 != 0) == entry.is_executable;
-        }
+        same_kind && (entry.is_symlink || (metadata.permissions().mode() & 0o111 != 0) == entry.is_executable)
     }
-    true
+    #[cfg(not(unix))]
+    {
+        same_kind
+    }
 }
 
 /// Remove snapshot files from the previous manifest that are no longer staged.

@@ -20,6 +20,16 @@ binary drives lint, format, hooks, and commit checks from one `poly.toml`.
 - **Go formatting without a Go toolchain.** A new `go` sidecar component formats with gofumpt and goimports grouping
   (unused imports are not removed), reads the language version and module path from `go.mod`, and is configured under
   `[engines.gofmt]` (ADR 0050). (#108)
+- **TypeScript type checking (experimental).** `[engines.tsrs] enabled = true` type-checks a TypeScript project in
+  memory with tsrs, the Rust port of the TypeScript 7 compiler, and reports `TS<code>` findings through `poly lint`
+  and the builtin pre-commit hook. It ships as a downloadable component in its own workspace (ADR 0051).
+- **Secret scanning.** `[engines.secrets] enabled = true` scans files with kingfisher's rule catalog, as a downloadable
+  component. Findings never echo the secret, and `poly: allow[...]` and `[per_file_ignores]` allowlist them
+  (ADR 0054). (#112)
+- **JSON Schema validation.** `[engines.jsonschema] enabled = true` validates JSON, JSONC, YAML and TOML against a
+  local schema, offline, with line and column spans (ADR 0052). (#111)
+- **R formatting and linting through pinned release binaries:** `air` formats and `jarl` lints R without an R install
+  (opt-in under `[tools.air]` and `[tools.jarl]`); the in-process component for R is not done yet. (#130)
 - **Catalog tools with pinned, checksummed downloads:** shellcheck, clang-format, zizmor, kubeconform, google-java-format
   and ktfmt; ktlint as a host-JRE recipe; Elixir `mix format` and `credo` as host-runtime recipes. ADR 0049 records the
   policy: GPL tools run as separate processes and no runtime is bundled. (#110, #124, #114, #128, #133, #134, #109)
@@ -41,6 +51,9 @@ binary drives lint, format, hooks, and commit checks from one `poly.toml`.
   `@polylint/opencode-poly` (ADR 0048). Reinstall under the new names; the old packages stop receiving releases.
 - **Result cache keys are relative to the checkout** for the ruff context and native-tool configs, so a new git worktree
   reuses cached results. (#165)
+- **Quality-metric coverage is no longer lint coverage.** A file whose only coverage is the quality tier (C and
+  C++) is skipped as `no lint rules for <language> (quality metrics only)`, so it is not counted as `checked` and
+  counts against `--deny-skips` and `--max-skips` (ADR 0053). (#168)
 - **Rust 1.100** is the minimum supported version, which skif 0.5.0 requires.
 
 ## [0.34.2] - 2026-11-09
