@@ -1631,5 +1631,105 @@
         }
       }
     }
+  },
+  {
+    "name": "kubeconform",
+    "binary": "kubeconform",
+    "categories": [
+      "linter"
+    ],
+    "languages": [
+      "yaml"
+    ],
+    "homepage": "https://github.com/yannh/kubeconform",
+    "commands": {
+      "lint": {
+        "arguments": [
+          "-output",
+          "json",
+          "$FILES"
+        ],
+        "stdin": false
+      }
+    },
+    "recipe": {
+      "output": "kubeconform_json",
+      "ok_exits": [
+        1
+      ],
+      "install": {
+        "hint": "brew install kubeconform, or set [tools.kubeconform] version to a pinned release poly can download; pass -schema-location through extra_args so runs do not fetch schemas at run time",
+        "source": {
+          "kind": "binary",
+          "github": "yannh/kubeconform",
+          "checksum": {
+            "list": "CHECKSUMS"
+          },
+          "assets": {
+            "darwin-aarch64": {
+              "name": "kubeconform-darwin-arm64.tar.gz",
+              "member": "kubeconform"
+            },
+            "darwin-x86_64": {
+              "name": "kubeconform-darwin-amd64.tar.gz",
+              "member": "kubeconform"
+            },
+            "linux-aarch64": {
+              "name": "kubeconform-linux-arm64.tar.gz",
+              "member": "kubeconform"
+            },
+            "linux-x86_64": {
+              "name": "kubeconform-linux-amd64.tar.gz",
+              "member": "kubeconform"
+            },
+            "windows-x86_64": {
+              "name": "kubeconform-windows-amd64.zip",
+              "member": "kubeconform.exe"
+            },
+            "windows-aarch64": {
+              "name": "kubeconform-windows-arm64.zip",
+              "member": "kubeconform.exe"
+            }
+          }
+        },
+        "releases": {
+          "0.8.0": {
+            "kind": "binary",
+            "assets": {
+              "darwin-aarch64": {
+                "url": "https://github.com/yannh/kubeconform/releases/download/v0.8.0/kubeconform-darwin-arm64.tar.gz",
+                "sha256": "f84f4dfbebf4a6b0b230385fa065a39ea35e02608c2b50d025dcf64775a69d67",
+                "member": "kubeconform"
+              },
+              "darwin-x86_64": {
+                "url": "https://github.com/yannh/kubeconform/releases/download/v0.8.0/kubeconform-darwin-amd64.tar.gz",
+                "sha256": "71dbc87ac9f24099a62b93570e65aa06312ba6ac8aea63b7f86e9d999edf5a92",
+                "member": "kubeconform"
+              },
+              "linux-aarch64": {
+                "url": "https://github.com/yannh/kubeconform/releases/download/v0.8.0/kubeconform-linux-arm64.tar.gz",
+                "sha256": "1f53fc8e81258197a35e8603054162a5af1de8c5af13746c71ab680d9534ed87",
+                "member": "kubeconform"
+              },
+              "linux-x86_64": {
+                "url": "https://github.com/yannh/kubeconform/releases/download/v0.8.0/kubeconform-linux-amd64.tar.gz",
+                "sha256": "9bc2bffbf71f261128533edaf912153948b7ff238f9a531ae6d34466ec287883",
+                "member": "kubeconform"
+              },
+              "windows-x86_64": {
+                "url": "https://github.com/yannh/kubeconform/releases/download/v0.8.0/kubeconform-windows-amd64.zip",
+                "sha256": "e3f56102bcf4f50b034a567e2482a1c5330799983ddd655952310211aef73d93",
+                "member": "kubeconform.exe"
+              },
+              "windows-aarch64": {
+                "url": "https://github.com/yannh/kubeconform/releases/download/v0.8.0/kubeconform-windows-arm64.zip",
+                "sha256": "4f3c9889f5f3a1e4aba84f9212f599ad3164d1fb32175fba3a53b505b0fffd0f",
+                "member": "kubeconform.exe"
+              }
+            }
+          }
+        }
+      }
+    }
   }
 ]

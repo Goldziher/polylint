@@ -1,5 +1,5 @@
 //! The JSON reports: actionlint, buf, hadolint, golangci-lint, buildifier,
-//! tflint, npm-groovy-lint, gh-actions-updater (`gau --lint-pins`) and shellcheck.
+//! tflint, npm-groovy-lint, gh-actions-updater (`gau --lint-pins`), shellcheck and kubeconform.
 //!
 //! Each reader pulls only the fields it needs through `serde_json::Value`, so a
 //! tool adding a field never breaks it; a field it needs going missing, or the
@@ -392,4 +392,61 @@ pub(super) fn shellcheck(stdout: &str) -> Result<Vec<Finding>> {
             finding
         })
         .collect())
+}
+
+/// kubeconform's `-output json`: one `resources` entry per manifest document.
+/// It reports no line numbers, so each finding names the resource and the
+/// JSON path of the invalid field instead. A valid, empty or skipped resource
+/// is not a finding; a schema kubeconform could not find is a warning, since
+/// the manifest was not checked rather than found wrong.
+pub(super) fn kubeconform(stdout: &str) -> Result<Vec<Finding>> {
+    let report = document(stdout, "kubeconform")?;
+    let resources = report
+        .get("resources")
+        .and_then(Value::as_array)
+        .context("kubeconform's JSON report has no resources list")?;
+    let mut findings = Vec::new();
+    for resource in resources {
+        let status = text(resource, "status").unwrap_or_default();
+        if !matches!(status.as_str(), "statusInvalid" | "statusError") {
+            continue;
+        }
+        let subject = match (text(resource, "kind"), text(resource, "name")) {
+            (Some(kind), Some(name)) if !name.is_empty() => format!("{kind}/{name}"),
+            (Some(kind), _) => kind,
+            _ => "resource".to_owned(),
+        };
+        let message = text(resource, "msg").unwrap_or_default();
+        let severity = if message.contains("could not find schema") {
+            Severity::Warning
+        } else {
+            Severity::Error
+        };
+        let code = text(resource, "kind");
+        let details: Vec<&Value> = resource
+            .get("validationErrors")
+            .and_then(Value::as_array)
+            .into_iter()
+            .flatten()
+            .collect();
+        let mut push = |detail: String| {
+            let mut finding = Finding::new(severity, format!("{subject}: {detail}"));
+            finding.path = text(resource, "filename");
+            finding.code = code.clone();
+            findings.push(finding);
+        };
+        if details.is_empty() {
+            push(message);
+        }
+        for detail in details {
+            let path = text(detail, "path").unwrap_or_default();
+            let reason = text(detail, "msg").unwrap_or_default();
+            push(if path.is_empty() {
+                reason
+            } else {
+                format!("{path}: {reason}")
+            });
+        }
+    }
+    Ok(findings)
 }

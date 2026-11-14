@@ -54,6 +54,8 @@ pub enum Output {
     ShellcheckJson1,
     /// A SARIF 2.1.0 log (`zizmor --format sarif`, `detekt --report sarif`).
     Sarif,
+    /// kubeconform `-output json`.
+    KubeconformJson,
 }
 
 /// How a run's files are split into invocations.

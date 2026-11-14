@@ -72,6 +72,7 @@ pub(in crate::engines::catalog_tool) fn parse(format: Output, stdout: &str, stde
         Output::GauJson => json::gau(stdout),
         Output::ShellcheckJson1 => json::shellcheck(stdout),
         Output::Sarif => sarif::parse(stdout),
+        Output::KubeconformJson => json::kubeconform(stdout),
     }
 }
 

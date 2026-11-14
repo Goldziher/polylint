@@ -520,3 +520,45 @@ fn a_sarif_log_without_results_is_clean_and_other_output_is_an_error() {
         assert!(parse(Output::Sarif, stdout, "").is_err(), "{why}");
     }
 }
+
+const KUBECONFORM_JSON: &str = r#"{"resources":[
+{"filename":"k8s/ok.yaml","kind":"Service","name":"web","version":"v1","status":"statusValid","msg":""},
+{"filename":"k8s/deploy.yaml","kind":"Deployment","name":"web","version":"apps/v1","status":"statusInvalid","msg":"For field spec.replicas: Invalid type. Expected: [integer,null], given: string","validationErrors":[{"path":"/spec/replicas","msg":"Invalid type. Expected: [integer,null], given: string"}]},
+{"filename":"k8s/crd.yaml","kind":"Widget","name":"w","version":"example.com/v1","status":"statusError","msg":"could not find schema for Widget"},
+{"filename":"k8s/skip.yaml","kind":"Pod","name":"p","version":"v1","status":"statusSkipped","msg":""}]}"#;
+
+#[test]
+fn kubeconform_reports_invalid_and_unchecked_resources_only() {
+    let findings = parse(Output::KubeconformJson, KUBECONFORM_JSON, "").expect("parses");
+    assert_eq!(findings.len(), 2, "{findings:?}");
+    assert_eq!(findings[0].path.as_deref(), Some("k8s/deploy.yaml"));
+    assert_eq!(findings[0].code.as_deref(), Some("Deployment"));
+    assert_eq!(findings[0].severity, Severity::Error);
+    assert_eq!(
+        findings[0].message,
+        "Deployment/web: /spec/replicas: Invalid type. Expected: [integer,null], given: string"
+    );
+    assert_eq!(findings[0].line, None, "kubeconform prints no line numbers");
+    assert_eq!(
+        findings[1].severity,
+        Severity::Warning,
+        "a missing schema is not a defect"
+    );
+    assert_eq!(findings[1].message, "Widget/w: could not find schema for Widget");
+}
+
+#[test]
+fn kubeconform_output_that_is_not_its_report_is_an_error_not_a_clean_run() {
+    assert!(
+        parse(Output::KubeconformJson, r#"{"resources":[]}"#, "")
+            .expect("parses")
+            .is_empty()
+    );
+    for (stdout, why) in [
+        ("", "no output"),
+        ("failed to load schema", "text"),
+        (r#"{}"#, "no resources"),
+    ] {
+        assert!(parse(Output::KubeconformJson, stdout, "").is_err(), "{why}");
+    }
+}
