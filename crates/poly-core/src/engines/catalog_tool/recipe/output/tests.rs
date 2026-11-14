@@ -592,3 +592,40 @@ fn ktlint_output_that_is_not_its_report_is_an_error_not_a_clean_run() {
         assert!(parse(Output::KtlintJson, stdout, "").is_err(), "{why}");
     }
 }
+
+const CREDO_JSON: &str = r#"{"issues":[
+{"category":"readability","check":"Credo.Check.Readability.ModuleDoc","column":null,"column_end":null,"filename":"lib/app/user.ex","line_no":1,"message":"Modules should have a @moduledoc tag.","priority":1,"scope":"App.User","trigger":"App.User"},
+{"category":"warning","check":"Credo.Check.Warning.IoInspect","column":5,"column_end":15,"filename":"lib/app/user.ex","line_no":9,"message":"There should be no calls to IO.inspect/1.","priority":20,"scope":"App.User.show","trigger":"IO.inspect"}]}"#;
+
+#[test]
+fn credo_issues_become_check_named_findings_with_optional_columns() {
+    let findings = parse(Output::CredoJson, CREDO_JSON, "").expect("parses");
+    assert_eq!(findings.len(), 2, "{findings:?}");
+    assert_eq!(findings[0].path.as_deref(), Some("lib/app/user.ex"));
+    assert_eq!((findings[0].line, findings[0].column), (Some(1), None));
+    assert_eq!(findings[0].code.as_deref(), Some("Credo.Check.Readability.ModuleDoc"));
+    assert_eq!(
+        (findings[1].line, findings[1].column, findings[1].end_column),
+        (Some(9), Some(5), Some(15))
+    );
+    assert!(findings.iter().all(|f| f.severity == Severity::Error));
+}
+
+#[test]
+fn credo_output_that_is_not_its_report_is_an_error_not_a_clean_run() {
+    assert!(
+        parse(Output::CredoJson, r#"{"issues":[]}"#, "")
+            .expect("parses")
+            .is_empty()
+    );
+    for (stdout, why) in [
+        ("", "no output"),
+        (
+            "** (Mix) The task \"credo\" could not be found",
+            "credo is not a dependency",
+        ),
+        (r#"{"files":[]}"#, "no issues list"),
+    ] {
+        assert!(parse(Output::CredoJson, stdout, "").is_err(), "{why}");
+    }
+}

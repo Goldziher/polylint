@@ -402,6 +402,31 @@ fn ktlint_is_a_pinned_jar_for_the_host_jre_that_lints_and_fixes_kotlin() {
 }
 
 #[test]
+fn elixir_tools_run_per_mix_project_on_the_host_and_download_nothing() {
+    for (name, role) in [("mix", "format"), ("credo", "lint")] {
+        let recipe = recipe_of(name);
+        assert_eq!(recipe.group, Group::Marker(vec!["mix.exs".to_owned()]), "{name}");
+        assert!(recipe.dependencies.iter().any(|d| d == "mix.lock"), "{name}");
+        let install = recipe.install.as_ref().expect("install");
+        assert!(
+            install.releases.is_empty() && install.source.is_none(),
+            "{name} bundles no runtime"
+        );
+        let tool = Catalog::get().tool(name).expect(name);
+        assert_eq!(tool.binary, "mix", "{role}");
+    }
+    assert_eq!(recipe_of("credo").output, Output::CredoJson);
+    let credo = Catalog::get().tool("credo").expect("credo");
+    let (_, lint) = credo.lint_command().expect("a lint command");
+    assert_eq!(
+        lint.arguments,
+        ["credo", "--strict", "--format", "json", "--mute-exit-status", "$FILES"]
+    );
+    let mix = Catalog::get().tool("mix").expect("mix");
+    assert_eq!(mix.format_command().expect("format").1.arguments, ["format", "$FILES"]);
+}
+
+#[test]
 fn gau_lints_the_pins_of_workflows_and_action_manifests_as_json() {
     let gau = Catalog::get().tool("gau").expect("gau");
     assert_eq!(gau.binary, "gau");

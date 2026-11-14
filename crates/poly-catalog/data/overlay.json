@@ -1796,5 +1796,86 @@
         }
       }
     }
+  },
+  {
+    "name": "mix",
+    "binary": "mix",
+    "categories": [
+      "formatter"
+    ],
+    "languages": [
+      "elixir"
+    ],
+    "homepage": "https://hexdocs.pm/mix/main/Mix.Tasks.Format.html",
+    "commands": {
+      "format": {
+        "arguments": [
+          "format",
+          "$FILES"
+        ],
+        "stdin": false
+      }
+    },
+    "recipe": {
+      "group": {
+        "marker": [
+          "mix.exs"
+        ]
+      },
+      "dependencies": [
+        "mix.exs",
+        "mix.lock",
+        ".formatter.exs"
+      ],
+      "config_files": [
+        ".formatter.exs"
+      ],
+      "install": {
+        "hint": "install Elixir (brew install elixir, or mise/asdf): poly runs the host `mix` and never bundles the BEAM"
+      }
+    }
+  },
+  {
+    "name": "credo",
+    "binary": "mix",
+    "categories": [
+      "linter"
+    ],
+    "languages": [
+      "elixir"
+    ],
+    "homepage": "https://hexdocs.pm/credo",
+    "commands": {
+      "lint": {
+        "arguments": [
+          "credo",
+          "--strict",
+          "--format",
+          "json",
+          "--mute-exit-status",
+          "$FILES"
+        ],
+        "stdin": false
+      }
+    },
+    "recipe": {
+      "output": "credo_json",
+      "group": {
+        "marker": [
+          "mix.exs"
+        ]
+      },
+      "dependencies": [
+        "mix.exs",
+        "mix.lock",
+        ".credo.exs"
+      ],
+      "config_files": [
+        ".credo.exs"
+      ],
+      "install": {
+        "hint": "install Elixir (brew install elixir, or mise/asdf): poly runs the host `mix` and never bundles the BEAM; the project must list :credo in its mix.exs deps"
+      }
+    }
   }
 ]

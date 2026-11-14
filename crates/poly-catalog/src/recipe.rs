@@ -58,6 +58,8 @@ pub enum Output {
     KubeconformJson,
     /// ktlint `--reporter=json`.
     KtlintJson,
+    /// credo `mix credo --format json`.
+    CredoJson,
 }
 
 /// How a run's files are split into invocations.

@@ -74,6 +74,7 @@ pub(in crate::engines::catalog_tool) fn parse(format: Output, stdout: &str, stde
         Output::Sarif => sarif::parse(stdout),
         Output::KubeconformJson => json::kubeconform(stdout),
         Output::KtlintJson => json::ktlint(stdout),
+        Output::CredoJson => json::credo(stdout),
     }
 }
 

@@ -1,5 +1,5 @@
 //! The JSON reports: actionlint, buf, hadolint, golangci-lint, buildifier,
-//! tflint, npm-groovy-lint, gh-actions-updater (`gau --lint-pins`), shellcheck, kubeconform and ktlint.
+//! tflint, npm-groovy-lint, gh-actions-updater (`gau --lint-pins`), shellcheck, kubeconform, ktlint and credo.
 //!
 //! Each reader pulls only the fields it needs through `serde_json::Value`, so a
 //! tool adding a field never breaks it; a field it needs going missing, or the
@@ -471,4 +471,28 @@ pub(super) fn ktlint(stdout: &str) -> Result<Vec<Finding>> {
         }
     }
     Ok(findings)
+}
+
+/// credo's `--format json`: `{"issues": [...]}`, each issue with the failed
+/// `check`, a 1-based `line_no` and a `column` that is `null` when the check
+/// reports a whole line. Every issue fails a `--strict` run, so every one is an
+/// error.
+pub(super) fn credo(stdout: &str) -> Result<Vec<Finding>> {
+    let report = document(stdout, "credo")?;
+    let issues = report
+        .get("issues")
+        .and_then(Value::as_array)
+        .context("credo's JSON report has no issues list")?;
+    Ok(issues
+        .iter()
+        .map(|issue| {
+            let mut finding = Finding::new(Severity::Error, text(issue, "message").unwrap_or_default());
+            finding.path = text(issue, "filename");
+            finding.line = number(issue, "line_no");
+            finding.column = number(issue, "column");
+            finding.end_column = number(issue, "column_end");
+            finding.code = text(issue, "check");
+            finding
+        })
+        .collect())
 }
