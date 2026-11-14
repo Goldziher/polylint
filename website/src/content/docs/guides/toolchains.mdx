@@ -86,6 +86,7 @@ full behavior is on the [tool catalog](/poly/reference/catalog/#tools-with-a-rec
 | `palantir-java-format` | Java format | yes (native image) | — |
 | `npm-groovy-lint` | Groovy | no | Node, `npm install --global npm-groovy-lint` |
 | `pyproject-fmt` | `pyproject.toml` | no | Python, `uv tool install pyproject-fmt` |
+| `air` | R format | yes (Linux builds need glibc) | — |
 
 - **Downloads** are available on macOS and Linux (arm64 and x86_64; the `checkstyle` jar is
   platform-independent). On Windows, install the tool yourself.
@@ -95,7 +96,7 @@ full behavior is on the [tool catalog](/poly/reference/catalog/#tools-with-a-rec
 - **Missing tool** — without `install = "auto"`, a missing recipe tool is a warning naming the
   command that installs it.
 - **Takes over its language** — an enabled recipe formatter that covers a whole language
-  (`golangci-lint` for Go, `tofu` for HCL) replaces the built-in formatter for it. If that tool is
+  (`golangci-lint` for Go, `tofu` for HCL, `air` for R, ahead of `styler`) replaces the built-in formatter for it. If that tool is
   missing, its files are reported as skipped rather than formatted by something else.
 
 <Aside type="note" title="Versions in the next release">

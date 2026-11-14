@@ -2007,5 +2007,105 @@
         }
       }
     }
+  },
+  {
+    "name": "air",
+    "binary": "air",
+    "categories": [
+      "formatter"
+    ],
+    "languages": [
+      "r"
+    ],
+    "homepage": "https://github.com/posit-dev/air",
+    "commands": {
+      "format": {
+        "arguments": [
+          "format",
+          "$FILES"
+        ],
+        "stdin": false
+      }
+    },
+    "recipe": {
+      "config_files": [
+        "air.toml",
+        ".air.toml"
+      ],
+      "install": {
+        "hint": "install air (https://posit-dev.github.io/air/cli.html), or set [tools.air] version to a pinned release poly can download (Linux builds need glibc)",
+        "source": {
+          "kind": "binary",
+          "github": "posit-dev/air",
+          "tag": "{version}",
+          "checksum": {
+            "sidecar": "{url}.sha256"
+          },
+          "assets": {
+            "darwin-aarch64": {
+              "name": "air-aarch64-apple-darwin.tar.gz",
+              "member": "air-aarch64-apple-darwin/air"
+            },
+            "darwin-x86_64": {
+              "name": "air-x86_64-apple-darwin.tar.gz",
+              "member": "air-x86_64-apple-darwin/air"
+            },
+            "linux-aarch64": {
+              "name": "air-aarch64-unknown-linux-gnu.tar.gz",
+              "member": "air-aarch64-unknown-linux-gnu/air"
+            },
+            "linux-x86_64": {
+              "name": "air-x86_64-unknown-linux-gnu.tar.gz",
+              "member": "air-x86_64-unknown-linux-gnu/air"
+            },
+            "windows-x86_64": {
+              "name": "air-x86_64-pc-windows-msvc.zip",
+              "member": "air.exe"
+            },
+            "windows-aarch64": {
+              "name": "air-aarch64-pc-windows-msvc.zip",
+              "member": "air.exe"
+            }
+          }
+        },
+        "releases": {
+          "0.13.0": {
+            "kind": "binary",
+            "assets": {
+              "darwin-aarch64": {
+                "url": "https://github.com/posit-dev/air/releases/download/0.13.0/air-aarch64-apple-darwin.tar.gz",
+                "sha256": "43a063302643c49c2e0eb98162a4a3e9388be1113252ff647e817378c251354f",
+                "member": "air-aarch64-apple-darwin/air"
+              },
+              "darwin-x86_64": {
+                "url": "https://github.com/posit-dev/air/releases/download/0.13.0/air-x86_64-apple-darwin.tar.gz",
+                "sha256": "f49a1659147224000da9d87b9a13dafc49170b7f40c5b6a90d4d874827c4329f",
+                "member": "air-x86_64-apple-darwin/air"
+              },
+              "linux-aarch64": {
+                "url": "https://github.com/posit-dev/air/releases/download/0.13.0/air-aarch64-unknown-linux-gnu.tar.gz",
+                "sha256": "73edf12b8c21f4499257ca8008e6ebbb039d7709891ecd01305d5c42d37c2654",
+                "member": "air-aarch64-unknown-linux-gnu/air"
+              },
+              "linux-x86_64": {
+                "url": "https://github.com/posit-dev/air/releases/download/0.13.0/air-x86_64-unknown-linux-gnu.tar.gz",
+                "sha256": "3909b12870df0b6a44e3f40376cd59aca373791c0abedd02dcbda7b136e4573c",
+                "member": "air-x86_64-unknown-linux-gnu/air"
+              },
+              "windows-x86_64": {
+                "url": "https://github.com/posit-dev/air/releases/download/0.13.0/air-x86_64-pc-windows-msvc.zip",
+                "sha256": "5a72240c5899440bc57fde421f0444840365ebad9f55e4f971fc73ee2281f828",
+                "member": "air.exe"
+              },
+              "windows-aarch64": {
+                "url": "https://github.com/posit-dev/air/releases/download/0.13.0/air-aarch64-pc-windows-msvc.zip",
+                "sha256": "1cf749a26939e2ee5f0401596281092bc576e0d731b96a8bd32e5efdf5e23c19",
+                "member": "air.exe"
+              }
+            }
+          }
+        }
+      }
+    }
   }
 ]

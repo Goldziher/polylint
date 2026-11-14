@@ -44,6 +44,7 @@ pre-commit gate typically runs, and `poly migrate` maps those jobs onto them.
 | `tofu`, `terraform` | format | all files | -- |
 | `pyproject-fmt` | format | `pyproject.toml` only | -- |
 | `npm-groovy-lint` | format, lint | all files | JSON |
+| `air` | format | R files, in place on a scratch copy | -- |
 
 ```toml
 [tools.checkstyle]

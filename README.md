@@ -124,7 +124,8 @@ built-in ast-grep rules.
 | Java | checkstyle (recipe ↓, RT: JRE) · Q · AG | google-java-format (host, opt-in); palantir-java-format (recipe ↓, native) | host, recipe |
 | Kotlin | Q · AG | ktfmt (host, opt-in) | host |
 | Swift | AG | swift-format (host, opt-in) | host |
-| Zig, Dart, Gleam, R | — | zig fmt, dart format, gleam format, styler (host, opt-in) | host |
+| Zig, Dart, Gleam | — | zig fmt, dart format, gleam format (host, opt-in) | host |
+| R | — | air (recipe ↓, native); styler (host, opt-in) | host, recipe |
 | Groovy | npm-groovy-lint (recipe, RT: Node) | npm-groovy-lint | recipe |
 | Protobuf | buf (recipe ↓) | buf | recipe |
 | Starlark, Bazel | buildifier (recipe ↓) | buildifier | recipe |

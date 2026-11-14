@@ -462,6 +462,36 @@ fn google_java_format_and_ktfmt_are_pinned_native_builds_without_a_jvm() {
 }
 
 #[test]
+fn air_formats_the_whole_r_language_and_is_pinned_for_every_published_platform() {
+    let tool = Catalog::get().tool("air").expect("air");
+    assert_eq!(tool.languages, ["r"]);
+    assert!(
+        tool.path_globs.is_empty(),
+        "no path restriction, so it takes the language over from styler"
+    );
+    assert_eq!(tool.format_command().expect("format").1.arguments, ["format", "$FILES"]);
+    let recipe = recipe_of("air");
+    assert_eq!(recipe.config_files, ["air.toml", ".air.toml"]);
+    let install = recipe.install.as_ref().expect("install");
+    let source = install.source.as_ref().expect("source");
+    assert_eq!(source.tag_template(), "{version}", "air tags carry no `v`");
+    let release = install.releases.get("0.13.0").expect("0.13.0");
+    let mut have: Vec<&str> = release.assets.keys().map(String::as_str).collect();
+    have.sort_unstable();
+    assert_eq!(
+        have,
+        [
+            "darwin-aarch64",
+            "darwin-x86_64",
+            "linux-aarch64",
+            "linux-x86_64",
+            "windows-aarch64",
+            "windows-x86_64"
+        ]
+    );
+}
+
+#[test]
 fn gau_lints_the_pins_of_workflows_and_action_manifests_as_json() {
     let gau = Catalog::get().tool("gau").expect("gau");
     assert_eq!(gau.binary, "gau");
@@ -527,7 +557,7 @@ fn buf_and_hadolint_are_pinned_for_every_desktop_and_server_platform() {
     }
 }
 
-const MIGRATED_TOOLS: [&str; 17] = [
+const MIGRATED_TOOLS: [&str; 18] = [
     "checkstyle",
     "palantir-java-format",
     "buildifier",
@@ -545,6 +575,7 @@ const MIGRATED_TOOLS: [&str; 17] = [
     "ktlint",
     "google-java-format",
     "ktfmt",
+    "air",
 ];
 
 #[test]
@@ -603,6 +634,7 @@ fn sources_declare_the_windows_builds_upstream_publishes() {
         "helm",
         "helm-template",
         "kubeconform",
+        "air",
     ];
     for name in both {
         let source = recipe_of(name).install.as_ref().unwrap().source.as_ref().unwrap();
