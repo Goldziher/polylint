@@ -16,9 +16,19 @@
 //! | DL3059 | warning  | Multiple consecutive `RUN` instructions                     |
 //! | DL4000 | warning  | `MAINTAINER` instruction is deprecated                      |
 //! | DL4001 | warning  | Both `wget` and `curl` used in `RUN` commands               |
+//!
+//! The rules in `rules` and `packages` reimplement hadolint's documented behaviour for
+//! DL3002, DL3003, DL3004, DL3008, DL3013, DL3014, DL3015, DL3016, DL3018, DL3019, DL3020,
+//! DL3027, DL3042 and DL4006 (see the website backends reference for severities). Every rule is
+//! on by default; `select`, `extend_select`, `ignore` and `[engines.dockerfile.rules.<id>] level`
+//! tune them.
 
 use dockerfile_parser::{Dockerfile, Instruction};
 use std::borrow::Cow;
+
+mod packages;
+mod rules;
+mod shell;
 
 use poly_engine_api::config::EngineConfig;
 use poly_engine_api::engine::{
@@ -56,7 +66,7 @@ const DL4001: &str = "DL4001";
 // ---------------------------------------------------------------------------
 
 /// dockerfile-parser crate version embedded into the cache key.
-const DOCKERFILE_PARSER_VERSION: &str = "0.10.0+vendored1+parse-diag-v1+extendsel2+tmplskip";
+const DOCKERFILE_PARSER_VERSION: &str = "0.10.0+vendored1+parse-diag-v1+extendsel2+tmplskip+hadolint-rules-v1";
 
 /// Diagnostic code emitted when the Dockerfile cannot be parsed at all.
 const PARSE_ERROR: &str = "parse-error";
@@ -133,6 +143,7 @@ impl Engine for DockerfileEngine {
         };
 
         let mut diags: Vec<Diagnostic> = Vec::new();
+        let mut extra = rules::RuleState::default();
 
         // DL4001 state: track where wget/curl first appear across all RUN commands.
         let mut wget_span: Option<EngineSpan> = None;
@@ -215,9 +226,15 @@ impl Engine for DockerfileEngine {
                     check_misc(self.name(), misc, &dockerfile, &mut diags);
                 }
 
-                // ARG, LABEL, COPY, ENV — no rules yet.
+                // ARG, LABEL, COPY, ENV — no rules of their own.
                 _ => {}
             }
+            for f in extra.on_instruction(ins) {
+                diags.push(finding_diag(self.name(), f, &dockerfile));
+            }
+        }
+        if let Some(f) = extra.finish() {
+            diags.push(finding_diag(self.name(), f, &dockerfile));
         }
 
         // DL4001: emit once if both wget and curl are present in any RUN.
@@ -240,6 +257,11 @@ impl Engine for DockerfileEngine {
     }
 }
 
+/// Anchor a [`rules::Finding`] to its instruction span as a [`Diagnostic`].
+fn finding_diag(engine: &str, f: rules::Finding, dockerfile: &Dockerfile) -> Diagnostic {
+    make_diag(engine, f.code, f.severity, f.message, Some(span_of(f.span, dockerfile)))
+}
+
 /// Filter Dockerfile diagnostics by a `[lint.dockerfile]` rule selection.
 ///
 /// Per ADR 0016, `select` *replaces* the default rule set — an empty `select`
@@ -248,6 +270,7 @@ impl Engine for DockerfileEngine {
 /// own it changes nothing here (every rule is already on) and it only widens a
 /// `select` allow-list. `ignore` removes codes from whatever is active. A code
 /// matches a pattern by exact string or prefix, so `DL30` covers `DL3009`.
+/// `[rules.<id>] level` then overrides the severity of the diagnostics that remain.
 fn apply_rule_selection(diags: Vec<Diagnostic>, selection: &RuleSelection) -> Vec<Diagnostic> {
     if selection.is_empty() {
         return diags;
@@ -269,6 +292,17 @@ fn apply_rule_selection(diags: Vec<Diagnostic>, selection: &RuleSelection) -> Ve
             let code = d.code.as_deref().unwrap_or_default();
             let selected = keep.is_empty() || matches(code, &keep);
             selected && !matches(code, &ignore)
+        })
+        .map(|mut d| {
+            let level = d
+                .code
+                .as_deref()
+                .and_then(|c| selection.rules.get(c))
+                .and_then(|r| r.level);
+            if let Some(level) = level {
+                d.severity = level;
+            }
+            d
         })
         .collect()
 }
@@ -578,6 +612,26 @@ extend_select = ["DL3000"]
             !codes.contains(&DL4000),
             "a rule in neither list must stay suppressed: {codes:?}",
         );
+    }
+
+    #[test]
+    fn rule_level_overrides_severity() {
+        let engine = DockerfileEngine;
+        let src = SourceFile {
+            path: "Dockerfile".into(),
+            language: Language::Dockerfile,
+            content: "FROM alpine:3.18\nWORKDIR app\nUSER root\n".into(),
+        };
+        let cfg = cfg_with("[rules.DL3000]\nlevel = \"info\"\n[rules.DL3002]\nlevel = \"error\"\n");
+        let diags = engine.lint(&src, &cfg).unwrap();
+        let sev = |code: &str| {
+            diags
+                .iter()
+                .find(|d| d.code.as_deref() == Some(code))
+                .map(|d| d.severity)
+        };
+        assert_eq!(sev("DL3000"), Some(Severity::Info), "{diags:?}");
+        assert_eq!(sev("DL3002"), Some(Severity::Error), "{diags:?}");
     }
 
     #[test]
