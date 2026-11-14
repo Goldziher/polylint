@@ -320,6 +320,43 @@ fn shellcheck_reads_json1_and_treats_exit_1_as_findings() {
 }
 
 #[test]
+fn clang_format_is_a_pinned_static_download_formatted_in_place_with_project_config() {
+    let tool = Catalog::get().tool("clang-format").expect("clang-format");
+    let (_, format) = tool.format_command().expect("a format command");
+    assert_eq!(format.arguments, ["-i", "$FILES"]);
+    let recipe = recipe_of("clang-format");
+    assert_eq!(recipe.config_files, [".clang-format", "_clang-format"]);
+    let install = recipe.install.as_ref().expect("install");
+    assert!(
+        install.source.is_none(),
+        "assets are named by major version, so only the seeded pin is downloadable"
+    );
+    let release = install.releases.get("21.1.8").expect("clang-format 21.1.8");
+    assert_eq!(release.kind, crate::ReleaseKind::Binary);
+    for platform in [
+        "darwin-aarch64",
+        "darwin-x86_64",
+        "linux-aarch64",
+        "linux-x86_64",
+        "windows-x86_64",
+        "windows-aarch64",
+    ] {
+        let asset = release
+            .assets
+            .get(platform)
+            .unwrap_or_else(|| panic!("clang-format lacks {platform}"));
+        assert!(asset.member.is_none(), "a static single-file binary: {platform}");
+        assert!(
+            asset
+                .url
+                .starts_with("https://github.com/cpp-linter/clang-tools-static-binaries/releases/download/llvm-21.1.8-2/clang-format-21_"),
+            "{platform}: {}",
+            asset.url
+        );
+    }
+}
+
+#[test]
 fn gau_lints_the_pins_of_workflows_and_action_manifests_as_json() {
     let gau = Catalog::get().tool("gau").expect("gau");
     assert_eq!(gau.binary, "gau");

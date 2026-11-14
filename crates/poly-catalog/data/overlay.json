@@ -1465,5 +1465,72 @@
         }
       }
     }
+  },
+  {
+    "name": "clang-format",
+    "binary": "clang-format",
+    "categories": [
+      "formatter"
+    ],
+    "languages": [
+      "c",
+      "c#",
+      "c++",
+      "java",
+      "javascript",
+      "json",
+      "objective-c",
+      "protobuf"
+    ],
+    "homepage": "https://clang.llvm.org/docs/ClangFormat.html",
+    "commands": {
+      "format": {
+        "arguments": [
+          "-i",
+          "$FILES"
+        ],
+        "stdin": false
+      }
+    },
+    "recipe": {
+      "config_files": [
+        ".clang-format",
+        "_clang-format"
+      ],
+      "install": {
+        "hint": "brew install clang-format, or set [tools.clang-format] version = \"21.1.8\" to use the pinned static build poly can download",
+        "releases": {
+          "21.1.8": {
+            "kind": "binary",
+            "assets": {
+              "darwin-aarch64": {
+                "url": "https://github.com/cpp-linter/clang-tools-static-binaries/releases/download/llvm-21.1.8-2/clang-format-21_macos-arm64",
+                "sha256": "903deee4f7aa06d40aee095467d98f03d55957dac2ad37003f28f5417446ed51"
+              },
+              "darwin-x86_64": {
+                "url": "https://github.com/cpp-linter/clang-tools-static-binaries/releases/download/llvm-21.1.8-2/clang-format-21_macos-amd64",
+                "sha256": "bd3af2c8319dfed7745e0cff4712dbe2c27bfdf6928bd979468177aba28aff37"
+              },
+              "linux-aarch64": {
+                "url": "https://github.com/cpp-linter/clang-tools-static-binaries/releases/download/llvm-21.1.8-2/clang-format-21_linux-arm64",
+                "sha256": "2278be3ee76663de52cb8a3683106d686bb2296ba22dce3a3772fa20f18cff9c"
+              },
+              "linux-x86_64": {
+                "url": "https://github.com/cpp-linter/clang-tools-static-binaries/releases/download/llvm-21.1.8-2/clang-format-21_linux-amd64",
+                "sha256": "ba28b2ee3b12a5f0b132024cc13686a8d73b17024aea4905cb0585d6f550f8b0"
+              },
+              "windows-x86_64": {
+                "url": "https://github.com/cpp-linter/clang-tools-static-binaries/releases/download/llvm-21.1.8-2/clang-format-21_windows-amd64.exe",
+                "sha256": "de1e96443e836d113dfc364ccc0e28c97a9bf1be15014d0dffdf3ba01b1ef8d3"
+              },
+              "windows-aarch64": {
+                "url": "https://github.com/cpp-linter/clang-tools-static-binaries/releases/download/llvm-21.1.8-2/clang-format-21_windows-arm64.exe",
+                "sha256": "18b11d3eac5beee3162c01d3453af50d1f1bc484456091b38c4a84e426c1f953"
+              }
+            }
+          }
+        }
+      }
+    }
   }
 ]
