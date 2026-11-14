@@ -42,7 +42,7 @@ checksummed release (macOS and Linux), and `RT` one that needs a host runtime.
 | HTML / Vue / Svelte / Astro / Angular / templates / XML | `markup_fmt` | no | yes | component `web` |
 | GraphQL | `graphql-parser` + `pretty_graphql` (parse-error lint + format) + biome (rule lint) | yes | yes | components `misc`, `biome` |
 | HCL / Terraform | `hcl-edit` (lint) + a port of `hclwrite.Format` (the layout `terraform fmt` and `terragrunt hclfmt` produce); opt-in `tflint`, `tofu`, `terraform` | yes | yes | component `misc`; recipes (`tflint` ↓, `tofu` ↓, `terraform`) |
-| Dockerfile (`Dockerfile`, `Dockerfile.*`, `Dockerfile-*`, `*.dockerfile`, `Containerfile`, …) | vendored `dockerfile-parser`, hadolint-style rules; opt-in `hadolint` | yes | no | component `misc`; recipe `hadolint` ↓ |
+| Dockerfile (`Dockerfile`, `Dockerfile.*`, `Dockerfile-*`, `*.dockerfile`, `Containerfile`, …) | vendored `dockerfile-parser`, 22 in-process hadolint rules (same `DLxxxx` ids); opt-in `hadolint` | yes | no | component `misc`; recipe `hadolint` ↓ |
 | `.env` files (`.env`, `.env.*`, `*.env`) | dotenv-analyzer | yes | no | component `misc` |
 | INI and compatible (`.ini`, `.cfg`, `.desktop`, `.npmrc`, `.editorconfig`, `.pylintrc`, `.coveragerc`, `.flake8`, …) | `rust-ini` | yes | no | component `misc` |
 | Nix | alejandra | no | yes | component `nix` |
@@ -160,6 +160,53 @@ The plugin's `correctness` rules come on with it, and poly's own categories are 
 the rules then behave like any other. An unrecognised plugin name fails the run rather than being
 ignored — a dropped name would leave you believing a rule set is live over a run that checks
 nothing of the kind.
+
+### Dockerfile rules
+
+The `dockerfile` engine reimplements the hadolint rules that need only the Dockerfile itself, under
+hadolint's own ids, so an existing `.hadolint.yaml` ignore list maps one to one onto `ignore`. It
+runs in-process; the `hadolint` recipe stays available for full parity, including the `SC` rules
+that shellcheck produces on `RUN` bodies. Every rule is on by default.
+
+| Rule | Severity | Checks |
+| --- | --- | --- |
+| DL3000 | error | `WORKDIR` with a relative path |
+| DL3002 | warning | the last `USER` of the final stage is root |
+| DL3003 | warning | `cd` in `RUN`; use `WORKDIR` |
+| DL3004 | error | `sudo` in `RUN` |
+| DL3006 | warning | `FROM` without a tag or digest |
+| DL3007 | warning | `FROM` with `:latest` |
+| DL3008 | warning | `apt-get install` packages without `=version` |
+| DL3009 | warning | `apt-get install` without removing `/var/lib/apt/lists` |
+| DL3013 | warning | `pip install` packages without a version specifier |
+| DL3014 | warning | `apt-get install` without `-y` |
+| DL3015 | info | `apt-get install` without `--no-install-recommends` |
+| DL3016 | warning | `npm install` packages without `@version` |
+| DL3018 | warning | `apk add` packages without `=version` |
+| DL3019 | info | `apk add` without `--no-cache` |
+| DL3020 | error | `ADD` for local non-archive files; use `COPY` |
+| DL3025 | warning | `CMD` / `ENTRYPOINT` in shell form |
+| DL3027 | warning | `apt` instead of `apt-get` in `RUN` |
+| DL3042 | warning | `pip install` without `--no-cache-dir` |
+| DL3059 | warning | consecutive `RUN` instructions |
+| DL4000 | warning | `MAINTAINER` |
+| DL4001 | warning | both `wget` and `curl` used |
+| DL4006 | warning | `RUN` with a pipe and no `pipefail` |
+
+Select with `select`, `extend_select` and `ignore` (an id or a prefix such as `DL30`), and change a
+severity per rule:
+
+```toml
+[engines.dockerfile]
+ignore = ["DL3059"]
+
+[engines.dockerfile.rules.DL3008]
+level = "info"
+```
+
+Package-pin rules skip arguments they cannot judge (variables, paths, URLs, requirement files).
+`DL3042` is silent when `PIP_NO_CACHE_DIR` is set or the `RUN` mounts a BuildKit cache.
+`# hadolint ignore=` comments are not read; use `poly: allow[DL3008] reason`.
 
 ### dotenv
 
