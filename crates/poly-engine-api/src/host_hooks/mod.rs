@@ -30,6 +30,7 @@ use crate::engine::SourceFile;
 pub mod astgrep_rules;
 pub mod editorconfig;
 pub mod go_mod;
+pub mod jsonschema_source;
 pub mod oxfmt_native;
 pub mod oxfmt_scope;
 pub mod oxlintrc;
@@ -64,15 +65,22 @@ pub enum HostHook {
     /// Formatting follows the nearest `go.mod`'s `go` version and module path ([`go_mod`]): the
     /// `go` sidecar's gofumpt, which needs both and sees only the file's bytes.
     GoMod,
+    /// Lint results follow the JSON Schema the file names (`$schema`, a `#:schema` comment) or
+    /// `[engines.jsonschema] schemas` maps to it, and the local files that schema `$ref`s
+    /// ([`jsonschema_source`]): the `jsonschema` engine.
+    JsonSchema,
 }
 
 /// Inputs shared by every file of a run (see [`Engine::run_context`](crate::engine::Engine::run_context)).
 #[must_use]
 pub fn run_context(hook: HostHook, cfg: &EngineConfig) -> String {
     match hook {
-        HostHook::None | HostHook::OxfmtScope | HostHook::Oxc | HostHook::Editorconfig | HostHook::GoMod => {
-            String::new()
-        }
+        HostHook::None
+        | HostHook::OxfmtScope
+        | HostHook::Oxc
+        | HostHook::Editorconfig
+        | HostHook::GoMod
+        | HostHook::JsonSchema => String::new(),
         HostHook::RuffContext => {
             let src_roots: Vec<std::path::PathBuf> = cfg
                 .options
@@ -93,6 +101,7 @@ pub fn file_context(hook: HostHook, path: &Path, cfg: &EngineConfig) -> Option<S
     match hook {
         HostHook::None => None,
         HostHook::OxfmtScope | HostHook::Editorconfig | HostHook::GoMod => format_input_salt(hook, path, cfg),
+        HostHook::JsonSchema => lint_input_salt(hook, path, cfg),
         HostHook::Oxc => match (lint_input_salt(hook, path, cfg), format_input_salt(hook, path, cfg)) {
             (None, None) => None,
             (lint, format) => Some(format!("{}|{}", lint.unwrap_or_default(), format.unwrap_or_default())),
@@ -111,6 +120,7 @@ pub fn file_context(hook: HostHook, path: &Path, cfg: &EngineConfig) -> Option<S
 pub fn lint_input_salt(hook: HostHook, path: &Path, cfg: &EngineConfig) -> Option<String> {
     match hook {
         HostHook::Oxc => oxlintrc::governing_for(cfg, path).map(|governing| governing.digest.clone()),
+        HostHook::JsonSchema => jsonschema_source::salt(cfg, path),
         HostHook::None | HostHook::OxfmtScope | HostHook::RuffContext | HostHook::Editorconfig | HostHook::GoMod => {
             None
         }
@@ -131,7 +141,7 @@ pub fn format_input_salt(hook: HostHook, path: &Path, cfg: &EngineConfig) -> Opt
             })
         }
         HostHook::GoMod => go_mod::salt(cfg, path),
-        HostHook::None | HostHook::RuffContext => None,
+        HostHook::None | HostHook::RuffContext | HostHook::JsonSchema => None,
     }
 }
 
@@ -148,7 +158,7 @@ pub fn format_config<'a>(
         HostHook::OxfmtScope | HostHook::Oxc => oxfmt_scope::path_config(cfg, src, engine),
         HostHook::Editorconfig => editorconfig::apply(cfg, &src.path),
         HostHook::GoMod => go_mod::apply(cfg, &src.path),
-        HostHook::None | HostHook::RuffContext => Cow::Borrowed(cfg),
+        HostHook::None | HostHook::RuffContext | HostHook::JsonSchema => Cow::Borrowed(cfg),
     }
 }
 

@@ -38,6 +38,7 @@ const PLACEMENT: &[(&str, Placement)] = &[
     ("graphql", In("misc")),
     ("ini", In("misc")),
     ("uncomment", In("uncomment")),
+    ("jsonschema", In("jsonschema")),
     ("quality", Core),
     ("treesitter", Core),
     ("polyconfig", Core),
@@ -80,6 +81,7 @@ const COMPONENTS: &[(&str, ComponentKind, bool, &[&str])] = &[
     ("typos", ComponentKind::Engines, true, &["engine-typos"]),
     ("astgrep", ComponentKind::Engines, false, &["engine-astgrep"]),
     ("uncomment", ComponentKind::Engines, true, &["engine-uncomment"]),
+    ("jsonschema", ComponentKind::Engines, true, &["engine-jsonschema"]),
     (
         "misc",
         ComponentKind::Engines,

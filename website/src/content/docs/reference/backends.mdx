@@ -66,6 +66,7 @@ checksummed release (macOS and Linux), and `RT` one that needs a host runtime.
 | `pyproject.toml` | opt-in `pyproject-fmt` | no | opt-in | recipe RT (Python) |
 | All text files | opt-in `typos` spell-check (`[engines.typos] enabled = true`) | opt-in | no | component `typos` |
 | Any recognized language | opt-in `uncomment` comment removal | opt-in | no | component `uncomment` |
+| JSON, JSONC, YAML, TOML | opt-in `jsonschema` validation against a local schema (`[engines.jsonschema] enabled = true`) | opt-in | no | component `jsonschema` |
 | Other identified grammars (C, C++, C#, Elixir, …) | tree-sitter generic tier | no | best effort | tree-sitter |
 
 Lint in this table is the language's own engine. The two cross-cutting tiers below add findings on

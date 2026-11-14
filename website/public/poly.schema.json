@@ -135,6 +135,9 @@
           "type": "object",
           "description": "Backends that handle json files.",
           "properties": {
+            "jsonschema": {
+              "$ref": "#/$defs/lint_jsonschema"
+            },
             "typos": {
               "$ref": "#/$defs/lint_typos"
             },
@@ -157,6 +160,9 @@
           "type": "object",
           "description": "Backends that handle jsonc files.",
           "properties": {
+            "jsonschema": {
+              "$ref": "#/$defs/lint_jsonschema"
+            },
             "typos": {
               "$ref": "#/$defs/lint_typos"
             },
@@ -179,6 +185,9 @@
           "type": "object",
           "description": "Backends that handle yaml files.",
           "properties": {
+            "jsonschema": {
+              "$ref": "#/$defs/lint_jsonschema"
+            },
             "typos": {
               "$ref": "#/$defs/lint_typos"
             },
@@ -203,6 +212,9 @@
           "properties": {
             "polyconfig": {
               "$ref": "#/$defs/lint_polyconfig"
+            },
+            "jsonschema": {
+              "$ref": "#/$defs/lint_jsonschema"
             },
             "typos": {
               "$ref": "#/$defs/lint_typos"
@@ -3865,6 +3877,34 @@
           ]
         },
         "select": {
+          "type": "array"
+        }
+      },
+      "additionalProperties": true
+    },
+    "lint_jsonschema": {
+      "type": "object",
+      "properties": {
+        "cache_dir": {
+          "type": "string"
+        },
+        "enabled": {
+          "type": "boolean"
+        },
+        "indent_width": {
+          "type": "integer"
+        },
+        "rules": {
+          "oneOf": [
+            {
+              "type": "array"
+            },
+            {
+              "type": "object"
+            }
+          ]
+        },
+        "schemas": {
           "type": "array"
         }
       },

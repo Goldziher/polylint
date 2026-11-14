@@ -47,6 +47,12 @@ describe_test!(
     poly_engines::UncommentComponent
 );
 describe_test!(
+    "jsonschema",
+    jsonschema_matches_the_index,
+    "jsonschema",
+    poly_engines::JsonSchemaComponent
+);
+describe_test!(
     "astgrep",
     astgrep_matches_the_index,
     "astgrep",

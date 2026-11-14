@@ -195,6 +195,8 @@ pub fn engines_for(lang: &Language) -> Vec<Box<dyn Engine>> {
     // `mut` is unused when every cross-cutting family is compiled out.
     #[allow(unused_mut)]
     let mut engines = with_external_engines(lang, engines);
+    #[cfg(feature = "engine-jsonschema")]
+    engines.extend(poly_engines_jsonschema::engines_for(lang));
     #[cfg(feature = "engine-typos")]
     engines.extend(poly_engines_typos::engines_for(lang));
     #[cfg(feature = "engine-astgrep")]
@@ -333,10 +335,11 @@ pub(crate) const CROSS_CUTTING_ENGINES: &[&str] = &["typos", "astgrep", "uncomme
 ///
 /// Every other engine runs unless switched off. An absent key on one of these means
 /// "off", so a project that never mentions `typos` neither spell-checks nor loads it.
+/// `jsonschema` is listed for the same reason: it validates nothing until a schema is configured.
 /// `uncomment` is listed so a core build, which serves it from the `uncomment` component, never
 /// fetches that component for a project that has not enabled it; it also gates itself inside `lint`.
 /// Not feature-gated, like [`CROSS_CUTTING_ENGINES`]: a component-served typos is opt-in too.
-pub(crate) const OPT_IN_ENGINES: &[&str] = &["typos", "uncomment"];
+pub(crate) const OPT_IN_ENGINES: &[&str] = &["typos", "uncomment", "jsonschema"];
 
 /// Every concrete (non-[`Language::Other`]) [`Language`] variant, used to
 /// walk every arm of [`engines_for`]. Kept from silently narrowing by

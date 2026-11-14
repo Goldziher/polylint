@@ -11,6 +11,8 @@ pub mod producer;
 pub use component::{ComponentCallError, PolyComponent, PolyFrontend};
 #[cfg(feature = "astgrep")]
 pub use components::AstgrepComponent;
+#[cfg(feature = "jsonschema")]
+pub use components::JsonSchemaComponent;
 #[cfg(feature = "mcp")]
 pub use components::McpComponent;
 #[cfg(feature = "misc")]
@@ -31,6 +33,8 @@ pub use producer::Producer;
 
 #[cfg(feature = "astgrep")]
 pub use poly_engines_astgrep as astgrep;
+#[cfg(feature = "jsonschema")]
+pub use poly_engines_jsonschema as jsonschema;
 #[cfg(feature = "misc")]
 pub use poly_engines_misc as misc;
 #[cfg(feature = "nix")]

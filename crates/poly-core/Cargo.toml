@@ -48,6 +48,7 @@ all-engines = [
   "engine-quality",
   "engine-astgrep",
   "engine-uncomment",
+  "engine-jsonschema",
   "engine-dockerfile",
   "engine-dotenv",
   "engine-ini",
@@ -71,6 +72,7 @@ engine-typos = ["dep:poly-engines-typos"]
 engine-quality = []
 engine-astgrep = ["dep:poly-engines-astgrep"]
 engine-uncomment = ["dep:poly-engines-uncomment"]
+engine-jsonschema = ["dep:poly-engines-jsonschema"]
 engine-dockerfile = ["dep:poly-engines-misc", "poly-engines-misc/dockerfile"]
 engine-dotenv = ["dep:poly-engines-misc", "poly-engines-misc/dotenv"]
 engine-ini = ["dep:poly-engines-misc", "poly-engines-misc/ini"]
@@ -93,6 +95,7 @@ poly-component-protocol.workspace = true
 poly-config.workspace = true
 poly-engine-api.workspace = true
 poly-engines-astgrep = { workspace = true, optional = true }
+poly-engines-jsonschema = { workspace = true, optional = true }
 poly-engines-misc = { workspace = true, optional = true }
 poly-engines-nix = { workspace = true, optional = true }
 poly-engines-php = { workspace = true, optional = true }

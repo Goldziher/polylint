@@ -47,6 +47,8 @@ pub mod rule_config;
 pub use poly_engines_sql::sqruff;
 pub mod template;
 pub mod treesitter;
+#[cfg(feature = "engine-jsonschema")]
+pub use poly_engines_jsonschema::engine as jsonschema;
 #[cfg(feature = "engine-typos")]
 pub use poly_engines_typos::typos;
 #[cfg(feature = "engine-uncomment")]

@@ -37,6 +37,7 @@ use poly_core::engines::dotenv::DotenvEngine;
 use poly_core::engines::graphql::GraphQlEngine;
 use poly_core::engines::hcl::HclEngine;
 use poly_core::engines::ini::IniEngine;
+use poly_core::engines::jsonschema::JsonSchemaEngine;
 use poly_core::engines::mago::MagoEngine;
 use poly_core::engines::nixfmt::NixFmtEngine;
 use poly_core::engines::quality::QualityEngine;
@@ -129,6 +130,11 @@ fn engine_versions_track_cargo_lock() {
         check("ruff", RuffEngine.version(), vec!["ruff_linter"]),
         check("python-types", TyEngine.version(), vec!["ty_python_semantic"]),
         check("uncomment", UncommentEngine.version(), vec!["uncomment"]),
+        check(
+            "jsonschema",
+            JsonSchemaEngine.version(),
+            vec!["jsonschema", "granit-parser"],
+        ),
         check("dotenv", DotenvEngine.version(), vec!["dotenv-analyzer", "dotenv-core"]),
         check("ini", IniEngine.version(), vec!["rust-ini"]),
         // `astgrep` parses with the same grammar pack as `treesitter`, so both

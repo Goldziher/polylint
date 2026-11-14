@@ -75,6 +75,13 @@ family_component!(
     vec![Box::new(crate::typos::TyposEngine)]
 );
 family_component!(
+    "jsonschema",
+    jsonschema,
+    JsonSchemaComponent,
+    "The `jsonschema` component: JSON Schema validation of JSON, YAML and TOML.",
+    vec![Box::new(crate::jsonschema::JsonSchemaEngine)]
+);
+family_component!(
     "astgrep",
     astgrep,
     AstgrepComponent,

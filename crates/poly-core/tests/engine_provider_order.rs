@@ -43,6 +43,8 @@ fn a_provider_formatter_precedes_the_lint_only_core_engine_for_toml() {
     let names: Vec<&str> = registered_engines()
         .iter()
         .filter(|engine| engine.languages().contains(&Language::Toml))
+        // The opt-in schema validator is registered after the provider's engines; its place is not under test.
+        .filter(|engine| engine.name() != "jsonschema")
         .map(|engine| engine.name())
         .collect();
 

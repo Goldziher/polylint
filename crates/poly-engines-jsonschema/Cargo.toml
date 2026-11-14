@@ -1,0 +1,30 @@
+[package]
+name = "poly-engines-jsonschema"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+documentation.workspace = true
+publish = false
+description = "The JSON Schema validation engine family for poly."
+
+[lib]
+name = "poly_engines_jsonschema"
+path = "src/lib.rs"
+
+[dependencies]
+anyhow.workspace = true
+blake3.workspace = true
+granit-parser.workspace = true
+jsonschema.workspace = true
+poly-engine-api.workspace = true
+serde_json.workspace = true
+toml.workspace = true
+
+[dev-dependencies]
+tempfile.workspace = true
+
+[lints.rust]
+unsafe_code = "forbid"

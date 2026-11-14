@@ -122,6 +122,15 @@ expression: json
       ]
     },
     {
+      "name": "jsonschema",
+      "kind": "engines",
+      "state": "bundled",
+      "opt_in": true,
+      "engines": [
+        "jsonschema"
+      ]
+    },
+    {
       "name": "misc",
       "kind": "engines",
       "state": "bundled",

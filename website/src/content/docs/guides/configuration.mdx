@@ -853,6 +853,34 @@ remove_docs = true
 Per-language booleans override the global value; `preserve_patterns` are unioned with the global
 list. A language `uncomment` does not recognize is simply left untouched.
 
+## JSON Schema validation (opt-in)
+
+The `jsonschema` backend validates JSON, JSONC, YAML and TOML files against a JSON Schema, in process and
+offline. It is a **lint** backend and **off by default**; it checks only files that name a schema, so it
+never claims a language as linted.
+
+```toml
+[engines.jsonschema]
+enabled = true
+# Files with no reference of their own take the first mapping whose glob matches their path.
+schemas = [{ glob = "config/*.yaml", schema = "schemas/app.json" }]
+# Where remote schemas must already sit, as <cache_dir>/<host>/<path> (default).
+cache_dir = ".poly/schemas"
+```
+
+A file can name its schema itself: `"$schema": "./schema.json"` in JSON, or a `#:schema ./schema.json` or
+`# yaml-language-server: $schema=./schema.json` comment at the top of a YAML or TOML file. Relative paths
+are relative to the file in a reference and to the project root (the nearest `poly.toml`) in `schemas`.
+A `$schema` naming a JSON Schema meta-schema marks the file as a schema and names nothing.
+
+poly never downloads a schema. An `https://` reference is read from the cache, so
+`https://example.com/schemas/app.json` must be saved at `.poly/schemas/example.com/schemas/app.json`;
+otherwise the file gets an info finding, `schema-unavailable`, rather than passing unchecked. The same
+finding covers a schema that is missing or outside the project root. A violation is an error at the
+offending value, coded `schema/<keyword>` (`schema/required`, `schema/type`, `schema/enum`, ...). A schema
+that does not compile is `schema-invalid`. Editing a schema, or a local file it `$ref`s, re-runs the files
+it governs.
+
 ## Markdown link and anchor checks
 
 rumdl's per-file pass already reports a relative link whose target file does not exist (`MD057`) and a

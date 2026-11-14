@@ -453,6 +453,14 @@ const ENGINE_SOURCES: &[(&str, &[&str])] = &[
     ("typos", &["../../../poly-engines-typos/src/typos.rs"]),
     ("quality", &["quality/settings.rs"]),
     ("uncomment", &["../../../poly-engines-uncomment/src/uncomment.rs"]),
+    (
+        "jsonschema",
+        &[
+            "../../../poly-engines-jsonschema/src/engine.rs",
+            // The `schemas` and `cache_dir` reads are shared with the cache-key hook.
+            "../../../poly-engine-api/src/host_hooks/jsonschema_source.rs",
+        ],
+    ),
     ("astgrep", &["../../../poly-engines-astgrep/src/lib.rs"]),
     // Every wrapped toolchain binary shares one implementation and one key —
     // except shfmt, which also takes `use_tabs`, and the batch-capable tools,
