@@ -43,7 +43,13 @@ const ENGINE_SOURCES: &[(&str, &[&str])] = &[
     ),
     (
         "rumdl",
-        &["rumdl.rs", "markdown_fmt.rs", "markdown_embed.rs", "core_options.rs"],
+        &[
+            "rumdl.rs",
+            "rumdl/links.rs",
+            "markdown_fmt.rs",
+            "markdown_embed.rs",
+            "core_options.rs",
+        ],
     ),
     ("taplo", &["taplo.rs", "core_options.rs"]),
     ("yaml", &["yaml.rs", "core_options.rs"]),

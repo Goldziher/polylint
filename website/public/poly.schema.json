@@ -3988,6 +3988,12 @@
     "lint_rumdl": {
       "type": "object",
       "properties": {
+        "cross_file_links": {
+          "type": "boolean"
+        },
+        "cross_file_links_dir": {
+          "type": "string"
+        },
         "disable": {
           "type": "array"
         },

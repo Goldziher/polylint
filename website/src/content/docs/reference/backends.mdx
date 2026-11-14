@@ -33,6 +33,7 @@ checksummed release (macOS and Linux), and `RT` one that needs a host runtime.
 | JS/TS workspaces (npm, pnpm, yarn, bun) | skif (opt-in dependency, manifest, version-policy and dead-code project check; `[engines.skif] enabled = true`) | opt-in | no | component `web` |
 | TOML | taplo (lint) + `oxc_formatter_toml` (format; taplo's formatter when a taplo layout key is set) | yes | yes | component `web` |
 | Markdown | rumdl (lint) + `oxc_formatter_markdown` (format; rumdl's fixer when a rumdl rule key is set) | yes | yes | component `web` |
+| Markdown cross-file link anchors (`file.md#heading`) | rumdl `MD051` as a project check | opt-in (`cross_file_links`) | no | component `web` |
 | Markdown ADRs (`NNNN-*.md`) | adrlint (opt-in MADR structural rules) | opt-in | no | component `web` |
 | SQL | sqruff | yes | yes | component `sql` |
 | YAML | `serde_yaml` (libyaml, the grammar PyYAML implements) + `oxc_formatter_yaml` | yes | yes | component `web` |

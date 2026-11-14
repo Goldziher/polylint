@@ -457,9 +457,9 @@
             "lint": true,
             "format": true,
             "fix": true,
-            "project": false
+            "project": true
           },
-          "version": "0.3.4+defaults5-mdx-rules-tmplskip-codeaware-md020guard-md038fmt-structfix+ruleparams1+extendsel2+oxc_formatter_markdown-74e5e66+md-embed-1+oxfmtrc-scope-1",
+          "version": "0.3.4+defaults5-mdx-rules-tmplskip-codeaware-md020guard-md038fmt-structfix+ruleparams1+extendsel2+oxc_formatter_markdown-74e5e66+md-embed-1+oxfmtrc-scope-1+links1",
           "option_keys": [
             {
               "table": "Lint",
@@ -480,6 +480,14 @@
                 {
                   "name": "disable",
                   "types": 16
+                },
+                {
+                  "name": "cross_file_links",
+                  "types": 1
+                },
+                {
+                  "name": "cross_file_links_dir",
+                  "types": 8
                 }
               ],
               "rule_selection": true,
@@ -557,9 +565,18 @@
           "supersedes_generic_formatter": false,
           "batch_shard_floor": 2,
           "project_inputs": {
-            "gate_key": null,
+            "gate_key": "cross_file_links",
             "files": [],
-            "dirs": null
+            "dirs": {
+              "dir_key": "cross_file_links_dir",
+              "dir_default": ".",
+              "paths_key": null,
+              "recursive_key": null,
+              "recursive_default": true,
+              "whole_tree": true,
+              "file_names": [],
+              "list_unserved": false
+            }
           }
         },
         {

@@ -850,6 +850,26 @@ remove_docs = true
 Per-language booleans override the global value; `preserve_patterns` are unioned with the global
 list. A language `uncomment` does not recognize is simply left untouched.
 
+## Markdown link and anchor checks
+
+rumdl's per-file pass already reports a relative link whose target file does not exist (`MD057`) and a
+`#fragment` that matches no heading in the same file (`MD051`). A fragment into another file
+(`guide.md#install`) needs that file's headings, so it is an opt-in project check over the Markdown
+tree. Nothing touches the network.
+
+```toml
+[engines.rumdl]
+cross_file_links = true
+# Optional: the directory to index, relative to the project root (default: the whole project).
+cross_file_links_dir = "docs"
+```
+
+The check indexes every Markdown file under the directory, ignoring `[discovery] exclude` (a link into an
+excluded file still resolves), and reports a finding on the linking file. Its cached result depends on every
+file it indexed, so editing, adding or removing any of them re-runs it. `ignore = ["MD051"]` turns it off
+along with the per-file rule. `MD057` stays per-file and reads the filesystem for its targets, so a target
+created or deleted without touching the linking file is not noticed until that file changes.
+
 ## Architecture decision records (opt-in)
 
 The `adrlint` backend checks numbered ADR files (`NNNN-*.md`) against the

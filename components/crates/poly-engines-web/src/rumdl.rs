@@ -9,6 +9,9 @@
 //! keys, which selects the rule-based formatter (apply all auto-fixable rules iteratively until
 //! convergence). MDX always uses the rule-based formatter.
 //!
+//! Optional cross-file link-fragment checking (`cross_file_links = true`) runs rumdl's `MD051`
+//! workspace check as a project check; see [`links`].
+//!
 //! Config layering: rumdl defaults → opinionated override (line-length 120) → user
 //! `[lint.markdown.rumdl]` / `[fmt.markdown.rumdl]` table in `poly.toml`.
 //!
@@ -19,8 +22,11 @@
 //! `enable` / `extend_enable` / `disable` keys remain accepted as aliases and are
 //! unioned with their canonical counterparts.
 
+mod links;
+
 use std::borrow::Cow;
 use std::collections::{BTreeMap, HashSet};
+use std::path::PathBuf;
 use std::sync::{Arc, LazyLock};
 
 use regex::Regex;
@@ -36,8 +42,8 @@ use rumdl_lib::{
 use super::markdown_fmt;
 use poly_engine_api::config::EngineConfig;
 use poly_engine_api::engine::{
-    Capabilities, Diagnostic, Edit, Engine, FormatOutput, OptionKeys, OptionTable, OptionType, Severity, SourceFile,
-    Span,
+    Capabilities, Diagnostic, Edit, Engine, FormatOutput, OptionKeys, OptionTable, OptionType, ProjectInputs,
+    ProjectRequest, Severity, SourceFile, Span,
 };
 use poly_engine_api::language::Language;
 use poly_engine_api::rule_config::{RuleOptions, RuleSelection, string_list, union_codes, warn_and_skip_blank};
@@ -56,7 +62,7 @@ pub struct RumdlEngine;
 /// [`contains_go_template_markdown`]), and the MD020 guard ([`GuardedMd020`]). Bump the
 /// suffix whenever any of these change so stale cached diagnostics are
 /// invalidated.
-const RUMDL_VERSION: &str = "0.3.4+defaults5-mdx-rules-tmplskip-codeaware-md020guard-md038fmt-structfix+ruleparams1+extendsel2+oxc_formatter_markdown-74e5e66+md-embed-1+oxfmtrc-scope-1";
+const RUMDL_VERSION: &str = "0.3.4+defaults5-mdx-rules-tmplskip-codeaware-md020guard-md038fmt-structfix+ruleparams1+extendsel2+oxc_formatter_markdown-74e5e66+md-embed-1+oxfmtrc-scope-1+links1";
 
 /// rumdl-proprietary stylistic rules disabled by default.
 ///
@@ -108,7 +114,7 @@ impl Engine for RumdlEngine {
             lint: true,
             format: true,
             fix: true,
-            project: false,
+            project: true,
         }
     }
 
@@ -122,6 +128,8 @@ impl Engine for RumdlEngine {
                 ("enable", OptionType::ARRAY),
                 ("extend_enable", OptionType::ARRAY),
                 ("disable", OptionType::ARRAY),
+                (links::ENABLE_KEY, OptionType::BOOLEAN),
+                (links::DIR_KEY, OptionType::STRING),
             ])
             .with_rule_selection(),
             OptionTable::Format => OptionKeys::declared(&[
@@ -153,6 +161,15 @@ impl Engine for RumdlEngine {
 
     fn skip_reason(&self, src: &SourceFile) -> Option<Cow<'static, str>> {
         contains_go_template_markdown(&src.content).then_some(Cow::Borrowed(GO_TEMPLATE_SKIP))
+    }
+
+    /// Cross-file link fragments, off unless `cross_file_links = true`; see [`links`].
+    fn project_inputs(&self) -> ProjectInputs {
+        links::project_inputs()
+    }
+
+    fn project_check(&self, req: &ProjectRequest<'_>) -> anyhow::Result<Vec<(PathBuf, Vec<Diagnostic>)>> {
+        links::check(req)
     }
 
     fn lint(&self, src: &SourceFile, cfg: &EngineConfig) -> anyhow::Result<Vec<Diagnostic>> {
