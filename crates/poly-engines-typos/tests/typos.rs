@@ -124,6 +124,16 @@ fn builtin_valid_words_are_not_flagged() {
     }
 }
 
+#[test]
+fn mis_prefix_in_hyphenated_words_is_not_flagged() {
+    let engine = TyposEngine;
+    for text in ["mis-parsed", "mis-typed input", "a mis-match here"] {
+        let src = make_src(&format!("the {text} value\n"));
+        let diags = engine.lint(&src, &engine_cfg()).unwrap();
+        assert!(diags.is_empty(), "`{text}` must not be flagged, got: {diags:?}");
+    }
+}
+
 const SHORT_TOKENS: &str = include_str!("fixtures/typos/short_tokens.txt");
 
 #[test]
