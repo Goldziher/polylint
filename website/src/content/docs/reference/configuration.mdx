@@ -231,6 +231,41 @@ reported as unused (a lock file supplies peers, not pnpm binary names). Turn one
 edit another file stay suggestions. After the fixes the check runs once more and that run is the report. Set
 `[engines.skif.rules.<id>] level` to move a finding's severity.
 
+### TypeScript type checking
+
+`[engines.tsrs]` is an **experimental**, opt-in `tsc --noEmit`: a project-check engine in its own `tsrs` component,
+built on [tsrs](https://github.com/oxc-project/tsrs), a Rust port of the TypeScript 7 compiler (ADR 0051). It builds one
+program from the project's `tsconfig.json` and reports the compiler's errors and warnings as `TS<code>` findings
+(`TS2322`, `TS2307`, ...), with the message chain in the description (`--verbose`).
+
+```toml
+[engines.tsrs]
+enabled = true
+project = "tsconfig.json"          # default: the nearest tsconfig.json from `dir` up to the project root
+dir = "."                          # the project directory, relative to the project root
+strict = true                      # overrides the tsconfig's `strict`
+skip_lib_check = true              # overrides the tsconfig's `skipLibCheck`
+report_unresolved_modules = false  # report packages the project declares but the check cannot see
+threads = 4                        # checkers; default: poly's job count
+```
+
+Because it is an engine, `poly lint` runs it when enabled, and so does the builtin `lint` hook of pre-commit; no
+`[hooks.pre-commit.commands.*]` entry is needed. A project check judges the whole program, so poly hands it every
+JavaScript, TypeScript and JSON file under `dir` (`.gitignore` and the pruned directories apply; `[discovery] exclude`
+and nested `poly.toml` scopes do not cut the program) and the result is cached on all of them.
+
+The check is hermetic: tsrs reads those files through an in-memory file system, never the disk, and poly hands over no
+`node_modules`. An import of an installed package therefore cannot resolve. `TS2307`, `TS2792`, `TS7016` and
+`TS2688`, and the `Cannot find name ... install type definitions` codes, are dropped when a `package.json` of the
+project declares the package (or its `@types` package, or `@types/node` for Node built-ins) and reported when it does
+not, since an undeclared import is a real error. Set `report_unresolved_modules = true` to see them all. Findings in
+declaration files (`.d.ts`), under `node_modules`, and in JavaScript files (unless `allowJs` puts them in the program)
+are never reported, though those files are inputs. Findings follow `tsc`'s order and stop at the first group that has
+any: config, syntax, then semantic errors.
+
+One program is checked: set `project` to the `tsconfig` of the package you want in a monorepo, one `poly.toml` scope per
+package. tsrs reads its own `TSRS_*` environment variables; poly sets none and reads none.
+
 ## `[workspace]`
 
 | Key | Type | Default | Meaning |

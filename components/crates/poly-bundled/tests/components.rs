@@ -51,12 +51,12 @@ fn list_reports_every_family_as_bundled() {
     // The `mcp` front end hosts no engines and is never linked; only engine components count.
     let engines: Vec<_> = components.iter().filter(|c| c["kind"] == "engines").collect();
     assert!(!engines.is_empty());
-    // `pyrefly` and `secrets` are built in workspaces of their own, so no bundled build links them: they stay
-    // downloadable.
+    // `pyrefly`, `secrets` and `tsrs` are built in workspaces of their own, so no bundled build links them: they
+    // stay downloadable.
     let (download_only, linkable): (Vec<&&serde_json::Value>, Vec<&&serde_json::Value>) = engines
         .iter()
-        .partition(|c| c["name"] == "pyrefly" || c["name"] == "secrets");
-    assert_eq!(download_only.len(), 2, "{value}");
+        .partition(|c| c["name"] == "pyrefly" || c["name"] == "secrets" || c["name"] == "tsrs");
+    assert_eq!(download_only.len(), 3, "{value}");
     assert!(download_only.iter().all(|c| c["state"] != "bundled"), "{value}");
     assert!(!linkable.is_empty());
     assert!(linkable.iter().all(|c| c["state"] == "bundled"), "{value}");

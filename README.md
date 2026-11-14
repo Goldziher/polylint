@@ -102,7 +102,7 @@ built-in ast-grep rules.
 | Language or files | Lint | Format | How it runs |
 |---|---|---|---|
 | Python | ruff; ty or pyrefly (opt-in type check) · Q · AG | ruff | component `python` (`pyrefly`) |
-| JavaScript, TypeScript, JSX, TSX | oxlint; skif (opt-in workspace check) · Q | oxc formatter | component `web` |
+| JavaScript, TypeScript, JSX, TSX | oxlint; skif (opt-in workspace check); tsrs (opt-in, experimental type check) · Q | oxc formatter | component `web` (`tsrs`) |
 | JSON, JSONC | oxc parse errors | oxc formatter | component `web` |
 | YAML | serde_yaml | oxc_formatter_yaml | component `web` |
 | TOML | taplo | oxc_formatter_toml (taplo on request) | component `web` |

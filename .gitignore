@@ -67,4 +67,5 @@ node_modules/
 .alef/
 /components-pyrefly/target
 /components-secrets/target
+/components-tsrs/target
 /components/target

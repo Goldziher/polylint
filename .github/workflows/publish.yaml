@@ -140,6 +140,13 @@ jobs:
             exit 1
           fi
 
+          # The tsrs workspace is built separately: tsrs's exact ICU pins cannot share a lockfile with the SQL engine.
+          tsrs_version="$(grep -E '^version = "' components-tsrs/Cargo.toml | head -1 | cut -d'"' -f2)"
+          if [ "$tsrs_version" != "$target_version" ]; then
+            echo "::error::components-tsrs/Cargo.toml version mismatch: expected $target_version, got $tsrs_version"
+            exit 1
+          fi
+
           plugin_version="$(jq -r '.version' plugin/package.json)"
           if [ "$plugin_version" != "$target_version" ]; then
             echo "::error::Agent plugin version mismatch: expected $target_version, got $plugin_version"

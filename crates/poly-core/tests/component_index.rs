@@ -61,12 +61,13 @@ const PLACEMENT: &[(&str, Placement)] = &[
 /// `components/crates/poly-engines-biome/tests/index.rs`,
 /// `components/crates/poly-engines-web/tests/component_index.rs`, and
 /// `components-pyrefly/crates/poly-engines-pyrefly/tests/index.rs` for the pyrefly workspace and
-/// `components-secrets/crates/poly-engines-secrets/tests/index.rs` for the secrets one) check the
+/// `components-secrets/crates/poly-engines-secrets/tests/index.rs` for the secrets one and
+/// `components-tsrs/crates/poly-engines-tsrs/tests/component_index.rs` for the tsrs one) check the
 /// entries against the real engines.
-const EXTERNAL_COMPONENTS: &[&str] = &["biome", "pyrefly", "ruby", "secrets", "web", "sh", "go"];
+const EXTERNAL_COMPONENTS: &[&str] = &["biome", "pyrefly", "ruby", "secrets", "tsrs", "web", "sh", "go"];
 
 /// Components built outside the `components/` workspace: no bundled build can link them.
-const DOWNLOAD_ONLY: &[&str] = &["pyrefly", "secrets"];
+const DOWNLOAD_ONLY: &[&str] = &["pyrefly", "secrets", "tsrs"];
 
 /// Components in index order: name, kind, opt-in, cargo features.
 const COMPONENTS: &[(&str, ComponentKind, bool, &[&str])] = &[
@@ -76,6 +77,8 @@ const COMPONENTS: &[(&str, ComponentKind, bool, &[&str])] = &[
     ("pyrefly", ComponentKind::Engines, true, &["engine-pyrefly"]),
     // Opt-in and cross-cutting: nothing scans for secrets until `[engines.secrets] enabled = true`.
     ("secrets", ComponentKind::Engines, true, &["engine-secrets"]),
+    // Opt-in: `[engines.tsrs] enabled = true` selects this TypeScript type checker.
+    ("tsrs", ComponentKind::Engines, true, &["engine-tsrs"]),
     ("sql", ComponentKind::Engines, false, &["engine-sql"]),
     ("php", ComponentKind::Engines, false, &["engine-php"]),
     ("biome", ComponentKind::Engines, false, &["engine-biome"]),

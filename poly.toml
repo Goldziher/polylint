@@ -140,8 +140,29 @@ files = "components-secrets/**/*.rs"
 workspace = true
 serial = "cargo"
 
-# components/, components-pyrefly/ and components-secrets/ build the root crates by path, so a dependency change in
-# one of them stales their Cargo.lock without touching either directory; CI's --locked builds then fail.
+# The same gates for components-tsrs/, the TypeScript type-checking workspace (tsrs's exact ICU pins cannot share a
+# lockfile with the SQL engine's dependencies).
+[hooks.pre-commit.commands.tsrs-clippy]
+run = "mise run hooks:components-check clippy tsrs"
+files = "components-tsrs/**"
+workspace = true
+serial = "cargo"
+
+[hooks.pre-commit.commands.tsrs-deny]
+run = "mise run hooks:components-check deny tsrs"
+files = "components-tsrs/**"
+workspace = true
+serial = "cargo"
+
+[hooks.pre-commit.commands.tsrs-rustdoc]
+run = "mise run hooks:components-check rustdoc tsrs"
+files = "components-tsrs/**/*.rs"
+workspace = true
+serial = "cargo"
+
+# components/, components-pyrefly/, components-secrets/ and components-tsrs/ build the root crates by path, so a
+# dependency change in one of them stales their Cargo.lock without touching either directory; CI's --locked builds
+# then fail.
 [hooks.pre-commit.commands.components-lock]
 run = "mise run check:components-lock"
 files = [
@@ -153,6 +174,8 @@ files = [
   "components-pyrefly/Cargo.lock",
   "components-secrets/**/Cargo.toml",
   "components-secrets/Cargo.lock",
+  "components-tsrs/**/Cargo.toml",
+  "components-tsrs/Cargo.lock",
 ]
 workspace = true
 serial = "cargo"

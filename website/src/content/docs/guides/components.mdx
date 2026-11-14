@@ -42,6 +42,9 @@ Three components are not part of a bundled build, and `poly components list` say
 - **`pyrefly`**: it is built in a workspace of its own, so no bundled build links it, and a bundled build
   embeds no lock to download it. `[engines.python-types] backend = "pyrefly"` therefore fails the run
   (exit `2`) with that reason. Keep the default `backend = "ty"`, or use a core build.
+- **`tsrs`**: no bundled build links it (the compiler is large and the engine experimental), so
+  `[engines.tsrs] enabled = true` needs a build that can download the component; elsewhere it fails the run with
+  the same reason as `pyrefly`.
 
 ## The components
 
@@ -50,6 +53,7 @@ Three components are not part of a bundled build, and `poly components list` say
 | `web` | JavaScript, TypeScript, JSON (oxc), YAML, TOML, Markdown, CSS (malva), HTML and the other markup languages, adrlint, skif |
 | `python` | ruff, and `ty` for type checking |
 | `pyrefly` | pyrefly type checking (opt-in, fetched when `[engines.python-types] backend = "pyrefly"`) |
+| `tsrs` | tsrs TypeScript type checking (opt-in and experimental, fetched when `[engines.tsrs] enabled = true`) |
 | `sql` | sqruff |
 | `php` | mago |
 | `biome` | biome CSS and GraphQL lint |
@@ -65,7 +69,7 @@ Three components are not part of a bundled build, and `poly components list` say
 | `mcp` | the MCP server, a frontend component |
 
 `poly components list` prints the authoritative list from the index compiled into the binary.
-Presets name groups: `all` (every engine component except the opt-in `typos`, `uncomment`, `pyrefly` and `secrets`, and `mcp`), and language names
+Presets name groups: `all` (every engine component except the opt-in `typos`, `uncomment`, `pyrefly`, `secrets` and `tsrs`, and `mcp`), and language names
 such as `python`, `ts`, `markdown` or `css`.
 
 ## Selecting components

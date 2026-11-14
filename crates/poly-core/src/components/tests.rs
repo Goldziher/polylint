@@ -425,6 +425,7 @@ const EXTERNAL_FAMILIES: &[&str] = &[
     "engine-pyrefly",
     "engine-ruby",
     "engine-secrets",
+    "engine-tsrs",
     "engine-web",
 ];
 

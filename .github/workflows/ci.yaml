@@ -45,6 +45,7 @@ jobs:
       - run: cargo fmt --manifest-path components/Cargo.toml --all --check
       - run: cargo fmt --manifest-path components-pyrefly/Cargo.toml --all --check
       - run: cargo fmt --manifest-path components-secrets/Cargo.toml --all --check
+      - run: cargo fmt --manifest-path components-tsrs/Cargo.toml --all --check
 
   clippy:
     name: clippy
@@ -73,6 +74,7 @@ jobs:
             components
             components-pyrefly
             components-secrets
+            components-tsrs
       - run: cargo clippy --workspace --exclude conformance --all-targets -- -D warnings
       - uses: xberg-io/actions/setup-mise@v1
       - name: clippy (components workspace)
@@ -90,6 +92,11 @@ jobs:
         env:
           MISE_TASK_RUN_AUTO_INSTALL: "false"
         run: mise run hooks:components-check clippy secrets
+      - name: clippy (tsrs workspace)
+        shell: bash
+        env:
+          MISE_TASK_RUN_AUTO_INSTALL: "false"
+        run: mise run hooks:components-check clippy tsrs
       # Linux only: rustdoc output does not vary by host, and the hook runs the same task.
       - name: rustdoc lint (components workspace)
         if: runner.os == 'Linux'
@@ -106,6 +113,11 @@ jobs:
         env:
           MISE_TASK_RUN_AUTO_INSTALL: "false"
         run: mise run hooks:components-check rustdoc secrets
+      - name: rustdoc lint (tsrs workspace)
+        if: runner.os == 'Linux'
+        env:
+          MISE_TASK_RUN_AUTO_INSTALL: "false"
+        run: mise run hooks:components-check rustdoc tsrs
 
   test:
     name: test / ${{ matrix.os }}
@@ -335,6 +347,51 @@ jobs:
       - name: Describe and format through the go executable
         working-directory: components/sidecars/go
         run: go test -count=1 -v -run TestBuiltExecutableDescribesAndFormats ./...
+
+  # tsrs, the Rust port of the TypeScript 7 compiler, is pure Rust with its own lockfile (ADR 0051), so a native build
+  # on each platform the component ships for is the whole check: the engine tests type-check real fixture projects
+  # (the exact error codes and lines), and the component test loads the built cdylib through the host.
+  tsrs:
+    name: tsrs / ${{ matrix.triple }}
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 60
+    env:
+      CARGO_PROFILE_DEV_DEBUG: "0"
+      CARGO_PROFILE_TEST_DEBUG: "0"
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - triple: x86_64-unknown-linux-gnu
+            os: ubuntu-latest
+          - triple: aarch64-unknown-linux-gnu
+            os: ubuntu-24.04-arm
+          - triple: aarch64-apple-darwin
+            os: macos-26
+          - triple: x86_64-pc-windows-msvc
+            os: windows-latest
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v7
+      - uses: dtolnay/rust-toolchain@v1
+        with:
+          toolchain: stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: components-tsrs
+      - uses: xberg-io/actions/setup-mise@v1
+        with:
+          tools: github:xberg-io/alef
+      - name: Engine tests (type-checked fixture projects, options, version audit)
+        run: |
+          set -euo pipefail
+          cargo test --locked --manifest-path components-tsrs/Cargo.toml -p poly-engines-tsrs --no-fail-fast 2>&1 | tee tsrs-test.log
+          # A green run that collected nothing proves nothing: the fixture projects must have run.
+          grep -q "test result: ok. 14 passed" tsrs-test.log
+      - name: Build the component cdylib
+        run: cargo build --locked --release --manifest-path components-tsrs/Cargo.toml -p poly-engines-tsrs-component
 
   # kingfisher's rule engine links vectorscan (C++). Its -sys crate's build script fetches a checksum-verified prebuilt
   # archive for the target (cmake and Boost only for a source build), so whether it links, and scans, is a per-platform
@@ -590,3 +647,9 @@ jobs:
           command: check
           manifest-path: components-secrets/Cargo.toml
           arguments: --all-features --config components-secrets/deny.toml
+      - name: cargo-deny (tsrs workspace)
+        uses: EmbarkStudios/cargo-deny-action@v2
+        with:
+          command: check
+          manifest-path: components-tsrs/Cargo.toml
+          arguments: --all-features --config components-tsrs/deny.toml

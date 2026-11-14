@@ -137,6 +137,17 @@ producer_dir = "components-pyrefly/crates/poly-engines-pyrefly-component"
 default_features = false
 targets = ["aarch64-apple-darwin", "x86_64-unknown-linux-gnu", "aarch64-unknown-linux-gnu", "x86_64-pc-windows-msvc"]
 
+# TypeScript type checking with tsrs, the Rust port of the TypeScript 7 compiler, opt-in. tsrs pins `icu_normalizer`
+# exactly, which cannot share a lockfile with the SQL engine's ICU dependencies in `components/`, so its family crate
+# lives in the separate `components-tsrs/` workspace and alef generates and builds the producer there (ADR 0051).
+[[crates.components]]
+name = "tsrs"
+provides = [{ contract = "poly", implementation = "poly_engines_tsrs::TsrsComponent" }]
+source_manifest = "components-tsrs/crates/poly-engines-tsrs/Cargo.toml"
+producer_dir = "components-tsrs/crates/poly-engines-tsrs-component"
+default_features = false
+targets = ["aarch64-apple-darwin", "x86_64-unknown-linux-gnu", "aarch64-unknown-linux-gnu", "x86_64-pc-windows-msvc"]
+
 # Secret scanning with kingfisher, opt-in. kingfisher links vectorscan, a C++ library fetched as a checksum-verified
 # prebuilt archive by its -sys crate's build script, so its family crate lives in the separate `components-secrets/`
 # workspace and alef generates and builds the producer there (ADR 0054). Not a bundled-build engine.

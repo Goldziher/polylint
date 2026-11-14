@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
-#MISE description="Whole-workspace clippy, cargo-deny or rustdoc gate for the components/, components-pyrefly/ or components-secrets/ cargo workspace"
+#MISE description="Whole-workspace clippy, cargo-deny or rustdoc gate for the components/, components-pyrefly/, components-secrets/ or components-tsrs/ cargo workspace"
 #USAGE arg "<check>" help="Which gate to run" { choices "clippy" "deny" "rustdoc"; }
-#USAGE arg "[workspace]" help="Which workspace (default: components)" default="components" { choices "components" "pyrefly" "secrets"; }
-# Whole-workspace checks for the `components/`, `components-pyrefly/` and `components-secrets/` cargo workspaces, which the root
+#USAGE arg "[workspace]" help="Which workspace (default: components)" default="components" { choices "components" "pyrefly" "secrets" "tsrs"; }
+# Whole-workspace checks for the `components/`, `components-pyrefly/`, `components-secrets/` and `components-tsrs/` cargo workspaces, which the root
 # workspace excludes so the root `cargo clippy` / `cargo deny` / `cargo doc` never see them.
 #
-# Usage: mise run hooks:components-check <clippy|deny|rustdoc> [components|pyrefly|secrets]
+# Usage: mise run hooks:components-check <clippy|deny|rustdoc> [components|pyrefly|secrets|tsrs]
 set -euo pipefail
 
 if ! command -v cargo >/dev/null 2>&1; then
@@ -27,8 +27,12 @@ secrets)
   dir="components-secrets"
   generated=(poly-engines-secrets-component)
   ;;
+tsrs)
+  dir="components-tsrs"
+  generated=(poly-engines-tsrs-component)
+  ;;
 *)
-  echo "usage: mise run hooks:components-check <clippy|deny|rustdoc> [components|pyrefly|secrets]" >&2
+  echo "usage: mise run hooks:components-check <clippy|deny|rustdoc> [components|pyrefly|secrets|tsrs]" >&2
   exit 2
   ;;
 esac
@@ -49,7 +53,7 @@ rustdoc)
   exec cargo doc --manifest-path "$manifest" --workspace "${exclude[@]}" --no-deps --quiet --all-features
   ;;
 *)
-  echo "usage: mise run hooks:components-check <clippy|deny|rustdoc> [components|pyrefly|secrets]" >&2
+  echo "usage: mise run hooks:components-check <clippy|deny|rustdoc> [components|pyrefly|secrets|tsrs]" >&2
   exit 2
   ;;
 esac
