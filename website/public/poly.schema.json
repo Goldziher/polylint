@@ -39,6 +39,9 @@
             },
             "quality": {
               "$ref": "#/$defs/lint_quality"
+            },
+            "secrets": {
+              "$ref": "#/$defs/lint_secrets"
             }
           },
           "additionalProperties": true
@@ -61,6 +64,9 @@
             },
             "oxc": {
               "$ref": "#/$defs/lint_oxc"
+            },
+            "secrets": {
+              "$ref": "#/$defs/lint_secrets"
             }
           },
           "additionalProperties": true
@@ -83,6 +89,9 @@
             },
             "oxc": {
               "$ref": "#/$defs/lint_oxc"
+            },
+            "secrets": {
+              "$ref": "#/$defs/lint_secrets"
             }
           },
           "additionalProperties": true
@@ -105,6 +114,9 @@
             },
             "oxc": {
               "$ref": "#/$defs/lint_oxc"
+            },
+            "secrets": {
+              "$ref": "#/$defs/lint_secrets"
             }
           },
           "additionalProperties": true
@@ -127,6 +139,9 @@
             },
             "oxc": {
               "$ref": "#/$defs/lint_oxc"
+            },
+            "secrets": {
+              "$ref": "#/$defs/lint_secrets"
             }
           },
           "additionalProperties": true
@@ -152,6 +167,9 @@
             },
             "oxc": {
               "$ref": "#/$defs/lint_oxc"
+            },
+            "secrets": {
+              "$ref": "#/$defs/lint_secrets"
             }
           },
           "additionalProperties": true
@@ -177,6 +195,9 @@
             },
             "oxc": {
               "$ref": "#/$defs/lint_oxc"
+            },
+            "secrets": {
+              "$ref": "#/$defs/lint_secrets"
             }
           },
           "additionalProperties": true
@@ -202,6 +223,9 @@
             },
             "yaml": {
               "$ref": "#/$defs/lint_yaml"
+            },
+            "secrets": {
+              "$ref": "#/$defs/lint_secrets"
             }
           },
           "additionalProperties": true
@@ -230,6 +254,9 @@
             },
             "taplo": {
               "$ref": "#/$defs/lint_taplo"
+            },
+            "secrets": {
+              "$ref": "#/$defs/lint_secrets"
             }
           },
           "additionalProperties": true
@@ -255,6 +282,9 @@
             },
             "rumdl": {
               "$ref": "#/$defs/lint_rumdl"
+            },
+            "secrets": {
+              "$ref": "#/$defs/lint_secrets"
             }
           },
           "additionalProperties": true
@@ -277,6 +307,9 @@
             },
             "rumdl": {
               "$ref": "#/$defs/lint_rumdl"
+            },
+            "secrets": {
+              "$ref": "#/$defs/lint_secrets"
             }
           },
           "additionalProperties": true
@@ -299,6 +332,9 @@
             },
             "quality": {
               "$ref": "#/$defs/lint_quality"
+            },
+            "secrets": {
+              "$ref": "#/$defs/lint_secrets"
             }
           },
           "additionalProperties": true
@@ -318,6 +354,9 @@
             },
             "quality": {
               "$ref": "#/$defs/lint_quality"
+            },
+            "secrets": {
+              "$ref": "#/$defs/lint_secrets"
             },
             "biome": {
               "$ref": "#/$defs/lint_biome"
@@ -341,6 +380,9 @@
             "quality": {
               "$ref": "#/$defs/lint_quality"
             },
+            "secrets": {
+              "$ref": "#/$defs/lint_secrets"
+            },
             "biome": {
               "$ref": "#/$defs/lint_biome"
             }
@@ -362,6 +404,9 @@
             },
             "quality": {
               "$ref": "#/$defs/lint_quality"
+            },
+            "secrets": {
+              "$ref": "#/$defs/lint_secrets"
             }
           },
           "additionalProperties": true
@@ -381,6 +426,9 @@
             },
             "quality": {
               "$ref": "#/$defs/lint_quality"
+            },
+            "secrets": {
+              "$ref": "#/$defs/lint_secrets"
             }
           },
           "additionalProperties": true
@@ -400,6 +448,9 @@
             },
             "quality": {
               "$ref": "#/$defs/lint_quality"
+            },
+            "secrets": {
+              "$ref": "#/$defs/lint_secrets"
             }
           },
           "additionalProperties": true
@@ -419,6 +470,9 @@
             },
             "quality": {
               "$ref": "#/$defs/lint_quality"
+            },
+            "secrets": {
+              "$ref": "#/$defs/lint_secrets"
             }
           },
           "additionalProperties": true
@@ -438,6 +492,9 @@
             },
             "quality": {
               "$ref": "#/$defs/lint_quality"
+            },
+            "secrets": {
+              "$ref": "#/$defs/lint_secrets"
             }
           },
           "additionalProperties": true
@@ -457,6 +514,9 @@
             },
             "quality": {
               "$ref": "#/$defs/lint_quality"
+            },
+            "secrets": {
+              "$ref": "#/$defs/lint_secrets"
             }
           },
           "additionalProperties": true
@@ -476,6 +536,9 @@
             },
             "quality": {
               "$ref": "#/$defs/lint_quality"
+            },
+            "secrets": {
+              "$ref": "#/$defs/lint_secrets"
             }
           },
           "additionalProperties": true
@@ -495,6 +558,9 @@
             },
             "quality": {
               "$ref": "#/$defs/lint_quality"
+            },
+            "secrets": {
+              "$ref": "#/$defs/lint_secrets"
             }
           },
           "additionalProperties": true
@@ -514,6 +580,9 @@
             },
             "quality": {
               "$ref": "#/$defs/lint_quality"
+            },
+            "secrets": {
+              "$ref": "#/$defs/lint_secrets"
             }
           },
           "additionalProperties": true
@@ -533,6 +602,9 @@
             },
             "quality": {
               "$ref": "#/$defs/lint_quality"
+            },
+            "secrets": {
+              "$ref": "#/$defs/lint_secrets"
             }
           },
           "additionalProperties": true
@@ -555,6 +627,9 @@
             },
             "quality": {
               "$ref": "#/$defs/lint_quality"
+            },
+            "secrets": {
+              "$ref": "#/$defs/lint_secrets"
             },
             "biome": {
               "$ref": "#/$defs/lint_biome"
@@ -580,6 +655,9 @@
             },
             "quality": {
               "$ref": "#/$defs/lint_quality"
+            },
+            "secrets": {
+              "$ref": "#/$defs/lint_secrets"
             }
           },
           "additionalProperties": true
@@ -599,6 +677,9 @@
             },
             "quality": {
               "$ref": "#/$defs/lint_quality"
+            },
+            "secrets": {
+              "$ref": "#/$defs/lint_secrets"
             }
           },
           "additionalProperties": true
@@ -621,6 +702,9 @@
             },
             "quality": {
               "$ref": "#/$defs/lint_quality"
+            },
+            "secrets": {
+              "$ref": "#/$defs/lint_secrets"
             }
           },
           "additionalProperties": true
@@ -643,6 +727,9 @@
             },
             "quality": {
               "$ref": "#/$defs/lint_quality"
+            },
+            "secrets": {
+              "$ref": "#/$defs/lint_secrets"
             }
           },
           "additionalProperties": true
@@ -662,6 +749,9 @@
             },
             "quality": {
               "$ref": "#/$defs/lint_quality"
+            },
+            "secrets": {
+              "$ref": "#/$defs/lint_secrets"
             }
           },
           "additionalProperties": true
@@ -681,6 +771,9 @@
             },
             "quality": {
               "$ref": "#/$defs/lint_quality"
+            },
+            "secrets": {
+              "$ref": "#/$defs/lint_secrets"
             }
           },
           "additionalProperties": true
@@ -700,6 +793,9 @@
             },
             "quality": {
               "$ref": "#/$defs/lint_quality"
+            },
+            "secrets": {
+              "$ref": "#/$defs/lint_secrets"
             }
           },
           "additionalProperties": true
@@ -719,6 +815,9 @@
             },
             "quality": {
               "$ref": "#/$defs/lint_quality"
+            },
+            "secrets": {
+              "$ref": "#/$defs/lint_secrets"
             }
           },
           "additionalProperties": true
@@ -741,6 +840,9 @@
             },
             "quality": {
               "$ref": "#/$defs/lint_quality"
+            },
+            "secrets": {
+              "$ref": "#/$defs/lint_secrets"
             }
           },
           "additionalProperties": true
@@ -760,6 +862,9 @@
             },
             "quality": {
               "$ref": "#/$defs/lint_quality"
+            },
+            "secrets": {
+              "$ref": "#/$defs/lint_secrets"
             }
           },
           "additionalProperties": true
@@ -779,6 +884,9 @@
             },
             "quality": {
               "$ref": "#/$defs/lint_quality"
+            },
+            "secrets": {
+              "$ref": "#/$defs/lint_secrets"
             }
           },
           "additionalProperties": true
@@ -798,6 +906,9 @@
             },
             "quality": {
               "$ref": "#/$defs/lint_quality"
+            },
+            "secrets": {
+              "$ref": "#/$defs/lint_secrets"
             }
           },
           "additionalProperties": true
@@ -817,6 +928,9 @@
             },
             "quality": {
               "$ref": "#/$defs/lint_quality"
+            },
+            "secrets": {
+              "$ref": "#/$defs/lint_secrets"
             }
           },
           "additionalProperties": true
@@ -836,6 +950,9 @@
             },
             "quality": {
               "$ref": "#/$defs/lint_quality"
+            },
+            "secrets": {
+              "$ref": "#/$defs/lint_secrets"
             }
           },
           "additionalProperties": true
@@ -855,6 +972,9 @@
             },
             "quality": {
               "$ref": "#/$defs/lint_quality"
+            },
+            "secrets": {
+              "$ref": "#/$defs/lint_secrets"
             }
           },
           "additionalProperties": true
@@ -874,6 +994,9 @@
             },
             "quality": {
               "$ref": "#/$defs/lint_quality"
+            },
+            "secrets": {
+              "$ref": "#/$defs/lint_secrets"
             }
           },
           "additionalProperties": true
@@ -893,6 +1016,9 @@
             },
             "quality": {
               "$ref": "#/$defs/lint_quality"
+            },
+            "secrets": {
+              "$ref": "#/$defs/lint_secrets"
             }
           },
           "additionalProperties": true
@@ -912,6 +1038,9 @@
             },
             "quality": {
               "$ref": "#/$defs/lint_quality"
+            },
+            "secrets": {
+              "$ref": "#/$defs/lint_secrets"
             }
           },
           "additionalProperties": true
@@ -931,6 +1060,9 @@
             },
             "quality": {
               "$ref": "#/$defs/lint_quality"
+            },
+            "secrets": {
+              "$ref": "#/$defs/lint_secrets"
             }
           },
           "additionalProperties": true
@@ -950,6 +1082,9 @@
             },
             "quality": {
               "$ref": "#/$defs/lint_quality"
+            },
+            "secrets": {
+              "$ref": "#/$defs/lint_secrets"
             }
           },
           "additionalProperties": true
@@ -972,6 +1107,9 @@
             },
             "quality": {
               "$ref": "#/$defs/lint_quality"
+            },
+            "secrets": {
+              "$ref": "#/$defs/lint_secrets"
             }
           },
           "additionalProperties": true
@@ -994,6 +1132,9 @@
             },
             "quality": {
               "$ref": "#/$defs/lint_quality"
+            },
+            "secrets": {
+              "$ref": "#/$defs/lint_secrets"
             }
           },
           "additionalProperties": true
@@ -1009,6 +1150,9 @@
         },
         "quality": {
           "$ref": "#/$defs/lint_cross_quality"
+        },
+        "secrets": {
+          "$ref": "#/$defs/lint_cross_secrets"
         }
       },
       "additionalProperties": true
@@ -3832,6 +3976,28 @@
       },
       "additionalProperties": true
     },
+    "lint_secrets": {
+      "type": "object",
+      "properties": {
+        "enabled": {
+          "type": "boolean"
+        },
+        "indent_width": {
+          "type": "integer"
+        },
+        "rules": {
+          "oneOf": [
+            {
+              "type": "array"
+            },
+            {
+              "type": "object"
+            }
+          ]
+        }
+      },
+      "additionalProperties": true
+    },
     "lint_oxc": {
       "type": "object",
       "properties": {
@@ -4496,6 +4662,15 @@
           "type": "integer"
         },
         "uncollected_test_file": {
+          "type": "boolean"
+        }
+      },
+      "additionalProperties": true
+    },
+    "lint_cross_secrets": {
+      "type": "object",
+      "properties": {
+        "enabled": {
           "type": "boolean"
         }
       },

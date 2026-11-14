@@ -14,6 +14,7 @@
 #   components/Cargo.toml                 [workspace.package] version (poly-bundled and the poly-engines-* crates
 #                                         inherit it); components/Cargo.lock is refreshed with the root lock.
 #   components-pyrefly/Cargo.toml         the same for the pyrefly workspace and its lock.
+#   components-secrets/Cargo.toml         the same for the secret-scanning workspace and its lock.
 #                                         alef.toml reads the component version from Cargo.toml (version_from)
 
 set -euo pipefail
@@ -54,6 +55,14 @@ if ! grep -qxF "version = \"$VERSION\"" components-pyrefly/Cargo.toml; then
   exit 1
 fi
 
+echo "→ components-secrets/Cargo.toml [workspace.package] → $VERSION"
+sed -i.bak -E "s/^version = \"[^\"]+\"$/version = \"$VERSION\"/" components-secrets/Cargo.toml
+rm components-secrets/Cargo.toml.bak
+if ! grep -qxF "version = \"$VERSION\"" components-secrets/Cargo.toml; then
+  echo "error: components-secrets/Cargo.toml [workspace.package] version bump did not apply" >&2
+  exit 1
+fi
+
 # The alef-generated component crates pin their own version and their poly-engines dependency, so
 # regenerate them before resolving: otherwise neither lockfile can resolve the bumped workspace.
 # Then refresh both lockfiles so the tagged build is reproducible. A failure here is fatal: a stale
@@ -61,10 +70,11 @@ fi
 if [[ "${SKIP_CARGO_UPDATE:-0}" != "1" ]]; then
   echo "→ alef component crates → $VERSION"
   "${ALEF:-alef}" generate --skip-compile >/dev/null
-  echo "→ Cargo.lock, components/Cargo.lock and components-pyrefly/Cargo.lock"
+  echo "→ Cargo.lock, components/Cargo.lock, components-pyrefly/Cargo.lock and components-secrets/Cargo.lock"
   cargo update --workspace --quiet
   cargo update --workspace --manifest-path components/Cargo.toml --quiet
   cargo update --workspace --manifest-path components-pyrefly/Cargo.toml --quiet
+  cargo update --workspace --manifest-path components-secrets/Cargo.toml --quiet
 fi
 
 echo "→ npm-package → $VERSION"

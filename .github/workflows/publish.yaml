@@ -133,6 +133,13 @@ jobs:
             exit 1
           fi
 
+          # The secrets workspace is built separately (kingfisher's native vectorscan build stays out of the other lockfiles).
+          secrets_version="$(grep -E '^version = "' components-secrets/Cargo.toml | head -1 | cut -d'"' -f2)"
+          if [ "$secrets_version" != "$target_version" ]; then
+            echo "::error::components-secrets/Cargo.toml version mismatch: expected $target_version, got $secrets_version"
+            exit 1
+          fi
+
           plugin_version="$(jq -r '.version' plugin/package.json)"
           if [ "$plugin_version" != "$target_version" ]; then
             echo "::error::Agent plugin version mismatch: expected $target_version, got $plugin_version"

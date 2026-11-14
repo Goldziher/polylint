@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
-#MISE description="Whole-workspace clippy, cargo-deny or rustdoc gate for the components/ or components-pyrefly/ cargo workspace"
+#MISE description="Whole-workspace clippy, cargo-deny or rustdoc gate for the components/, components-pyrefly/ or components-secrets/ cargo workspace"
 #USAGE arg "<check>" help="Which gate to run" { choices "clippy" "deny" "rustdoc"; }
-#USAGE arg "[workspace]" help="Which workspace (default: components)" default="components" { choices "components" "pyrefly"; }
-# Whole-workspace checks for the `components/` and `components-pyrefly/` cargo workspaces, which the root
+#USAGE arg "[workspace]" help="Which workspace (default: components)" default="components" { choices "components" "pyrefly" "secrets"; }
+# Whole-workspace checks for the `components/`, `components-pyrefly/` and `components-secrets/` cargo workspaces, which the root
 # workspace excludes so the root `cargo clippy` / `cargo deny` / `cargo doc` never see them.
 #
-# Usage: mise run hooks:components-check <clippy|deny|rustdoc> [components|pyrefly]
+# Usage: mise run hooks:components-check <clippy|deny|rustdoc> [components|pyrefly|secrets]
 set -euo pipefail
 
 if ! command -v cargo >/dev/null 2>&1; then
@@ -23,8 +23,12 @@ pyrefly)
   dir="components-pyrefly"
   generated=(poly-engines-pyrefly-component)
   ;;
+secrets)
+  dir="components-secrets"
+  generated=(poly-engines-secrets-component)
+  ;;
 *)
-  echo "usage: mise run hooks:components-check <clippy|deny|rustdoc> [components|pyrefly]" >&2
+  echo "usage: mise run hooks:components-check <clippy|deny|rustdoc> [components|pyrefly|secrets]" >&2
   exit 2
   ;;
 esac
@@ -45,7 +49,7 @@ rustdoc)
   exec cargo doc --manifest-path "$manifest" --workspace "${exclude[@]}" --no-deps --quiet --all-features
   ;;
 *)
-  echo "usage: mise run hooks:components-check <clippy|deny|rustdoc> [components|pyrefly]" >&2
+  echo "usage: mise run hooks:components-check <clippy|deny|rustdoc> [components|pyrefly|secrets]" >&2
   exit 2
   ;;
 esac

@@ -67,6 +67,7 @@ Context, Decision, Consequences (positive and negative/risks), and Alternatives 
 | [0050](0050-go-sidecar.md) | The Go Sidecar: gofumpt and goimports Grouping Without a Go Toolchain | Accepted |
 | [0052](0052-jsonschema-validation.md) | JSON Schema Validation Engine | Accepted |
 | [0053](0053-quality-coverage-is-not-lint-coverage.md) | Quality Metrics Are Not Lint Coverage | Accepted |
+| [0054](0054-secret-scanning-kingfisher.md) | Secret Scanning with kingfisher, as a Download-Only Component | Accepted |
 
 ## Conventions
 

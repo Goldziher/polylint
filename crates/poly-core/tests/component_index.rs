@@ -60,12 +60,13 @@ const PLACEMENT: &[(&str, Placement)] = &[
 /// The family crates' own tests (`components/crates/poly-engines-ruby/tests/rubyfmt.rs`,
 /// `components/crates/poly-engines-biome/tests/index.rs`,
 /// `components/crates/poly-engines-web/tests/component_index.rs`, and
-/// `components-pyrefly/crates/poly-engines-pyrefly/tests/index.rs` for the pyrefly workspace) check the
+/// `components-pyrefly/crates/poly-engines-pyrefly/tests/index.rs` for the pyrefly workspace and
+/// `components-secrets/crates/poly-engines-secrets/tests/index.rs` for the secrets one) check the
 /// entries against the real engines.
-const EXTERNAL_COMPONENTS: &[&str] = &["biome", "pyrefly", "ruby", "web", "sh", "go"];
+const EXTERNAL_COMPONENTS: &[&str] = &["biome", "pyrefly", "ruby", "secrets", "web", "sh", "go"];
 
 /// Components built outside the `components/` workspace: no bundled build can link them.
-const DOWNLOAD_ONLY: &[&str] = &["pyrefly"];
+const DOWNLOAD_ONLY: &[&str] = &["pyrefly", "secrets"];
 
 /// Components in index order: name, kind, opt-in, cargo features.
 const COMPONENTS: &[(&str, ComponentKind, bool, &[&str])] = &[
@@ -73,6 +74,8 @@ const COMPONENTS: &[(&str, ComponentKind, bool, &[&str])] = &[
     ("python", ComponentKind::Engines, false, &["engine-python"]),
     // Opt-in: ty is the default type checker, and `[engines.python-types] backend = "pyrefly"` selects this one.
     ("pyrefly", ComponentKind::Engines, true, &["engine-pyrefly"]),
+    // Opt-in and cross-cutting: nothing scans for secrets until `[engines.secrets] enabled = true`.
+    ("secrets", ComponentKind::Engines, true, &["engine-secrets"]),
     ("sql", ComponentKind::Engines, false, &["engine-sql"]),
     ("php", ComponentKind::Engines, false, &["engine-php"]),
     ("biome", ComponentKind::Engines, false, &["engine-biome"]),

@@ -48,6 +48,16 @@ expression: json
       "detail": "this build embeds no component lock"
     },
     {
+      "name": "secrets",
+      "kind": "engines",
+      "state": "unavailable",
+      "opt_in": true,
+      "engines": [
+        "secrets"
+      ],
+      "detail": "this build embeds no component lock"
+    },
+    {
       "name": "sql",
       "kind": "engines",
       "state": "bundled",

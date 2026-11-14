@@ -329,7 +329,7 @@ pub fn engine_versions() -> &'static BTreeMap<&'static str, String> {
 ///
 /// Not feature-gated: a family left out of the build is served by a component, and its engine
 /// reads the same tables.
-pub(crate) const CROSS_CUTTING_ENGINES: &[&str] = &["typos", "astgrep", "uncomment", "quality"];
+pub(crate) const CROSS_CUTTING_ENGINES: &[&str] = &["typos", "astgrep", "uncomment", "quality", "secrets"];
 
 /// Engines that are planned only when their `enabled` option is explicitly `true`.
 ///
@@ -338,8 +338,10 @@ pub(crate) const CROSS_CUTTING_ENGINES: &[&str] = &["typos", "astgrep", "uncomme
 /// `jsonschema` is listed for the same reason: it validates nothing until a schema is configured.
 /// `uncomment` is listed so a core build, which serves it from the `uncomment` component, never
 /// fetches that component for a project that has not enabled it; it also gates itself inside `lint`.
+/// `secrets` is served only by a downloaded component (no build links it), so this gate is what keeps
+/// the component, and its scan of every file, off a project that never enabled it.
 /// Not feature-gated, like [`CROSS_CUTTING_ENGINES`]: a component-served typos is opt-in too.
-pub(crate) const OPT_IN_ENGINES: &[&str] = &["typos", "uncomment", "jsonschema"];
+pub(crate) const OPT_IN_ENGINES: &[&str] = &["typos", "uncomment", "jsonschema", "secrets"];
 
 /// Every concrete (non-[`Language::Other`]) [`Language`] variant, used to
 /// walk every arm of [`engines_for`]. Kept from silently narrowing by

@@ -120,8 +120,28 @@ files = "components-pyrefly/**/*.rs"
 workspace = true
 serial = "cargo"
 
-# components/ and components-pyrefly/ build the root crates by path, so a dependency change in one of them
-# stales their Cargo.lock without touching either directory; CI's --locked builds then fail.
+# The same gates for components-secrets/, the secret-scanning workspace (kingfisher's native vectorscan build stays
+# out of every other lockfile).
+[hooks.pre-commit.commands.secrets-clippy]
+run = "mise run hooks:components-check clippy secrets"
+files = "components-secrets/**"
+workspace = true
+serial = "cargo"
+
+[hooks.pre-commit.commands.secrets-deny]
+run = "mise run hooks:components-check deny secrets"
+files = "components-secrets/**"
+workspace = true
+serial = "cargo"
+
+[hooks.pre-commit.commands.secrets-rustdoc]
+run = "mise run hooks:components-check rustdoc secrets"
+files = "components-secrets/**/*.rs"
+workspace = true
+serial = "cargo"
+
+# components/, components-pyrefly/ and components-secrets/ build the root crates by path, so a dependency change in
+# one of them stales their Cargo.lock without touching either directory; CI's --locked builds then fail.
 [hooks.pre-commit.commands.components-lock]
 run = "mise run check:components-lock"
 files = [
@@ -131,6 +151,8 @@ files = [
   "components/Cargo.lock",
   "components-pyrefly/**/Cargo.toml",
   "components-pyrefly/Cargo.lock",
+  "components-secrets/**/Cargo.toml",
+  "components-secrets/Cargo.lock",
 ]
 workspace = true
 serial = "cargo"

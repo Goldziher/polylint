@@ -305,7 +305,7 @@ enabled = false      # ...or for one phase only
 ```
 
 An absent `enabled` means *the engine's own default*, which is not the same as `false`: most
-backends are on, `typos`, `uncomment` and `adrlint` are opt-in (`[engines.typos] enabled = true`), and each native-toolchain tool carries its own default
+backends are on, `typos`, `uncomment`, `secrets` and `adrlint` are opt-in (`[engines.typos] enabled = true`), and each native-toolchain tool carries its own default
 (`rustfmt`, `gofmt` and `shellcheck` run when present, `zig fmt` does not; shfmt comes from the `sh` component). Only an explicit `false` withdraws
 an engine.
 
@@ -880,6 +880,37 @@ finding covers a schema that is missing or outside the project root. A violation
 offending value, coded `schema/<keyword>` (`schema/required`, `schema/type`, `schema/enum`, ...). A schema
 that does not compile is `schema-invalid`. Editing a schema, or a local file it `$ref`s, re-runs the files
 it governs.
+
+## Secret scanning (opt-in)
+
+The `secrets` backend scans every text file for committed credentials with [kingfisher](https://github.com/mongodb/kingfisher)'s
+built-in rule catalog (API keys, tokens, private keys and connection strings from the Betterleaks and Veles
+rule sets). It runs in the downloadable `secrets` component, entirely offline: kingfisher's live-credential
+validation is not compiled in. It is **off by default**:
+
+```toml
+[engines.secrets]
+enabled = true
+```
+
+Each finding is an **error** with the code `secrets/<rule id>`, for example `secrets/betterleaks.github-pat`, at the line
+and column of the matched value. The message carries the rule name and the length of the value, never the
+value, and the backend offers no autofix: a leaked credential has to be revoked and rotated.
+
+Allow a deliberate fixture with poly's own mechanisms; a reason is mandatory for the inline form:
+
+```python
+TOKEN = "ghp_..."  # poly: allow[secrets/betterleaks.github-pat] fake token for the parser test
+```
+
+```toml
+[per_file_ignores]
+"tests/fixtures/**" = ["secrets"]    # a rule id, or `secrets` for every rule
+```
+
+To gate commits, keep the `lint` builtin on (`[hooks.builtin] lint = true`): it runs `poly lint` over the staged
+files, so an enabled `secrets` backend fails the commit on a finding. In a core build the first run downloads the
+component, so `--offline` and `install = "never"` apply as for any other component.
 
 ## Markdown link and anchor checks
 

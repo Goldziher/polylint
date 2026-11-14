@@ -1,0 +1,45 @@
+[licenses]
+version = 2
+# Workspace crates are never published; the alef-generated component producer crate carries no
+# license field.
+private = { ignore = true }
+confidence-threshold = 0.9
+allow = [
+  "MIT",
+  "Apache-2.0",
+  "Apache-2.0 WITH LLVM-exception",
+  "BSD-2-Clause",
+  "BSD-3-Clause",
+  "ISC",
+  "Unlicense",
+  "MPL-2.0",
+  "Zlib",
+  "CC0-1.0",
+  "Unicode-DFS-2016",
+  "Unicode-3.0",
+  "BSL-1.0",
+  "0BSD",
+]
+
+# kingfisher-rules embeds a word-frequency list (wordfreq by Robyn Speer, data/wordfreq-LICENSE.txt) that is licensed
+# CC-BY-SA-4.0, hence the crate's `Apache-2.0 AND MIT AND CC-BY-SA-4.0` expression. Share-alike applies to the
+# data, not to the code that reads it, and the crate redistributes it unmodified. The exception names the one
+# crate, so no other dependency can bring the licence in unnoticed (ADR 0054; credit in ATTRIBUTIONS.md).
+[[licenses.exceptions]]
+name = "kingfisher-rules"
+allow = ["Apache-2.0", "MIT", "CC-BY-SA-4.0"]
+
+[bans]
+multiple-versions = "allow"
+wildcards = "allow"
+
+[advisories]
+version = 2
+# Maintenance notices, not vulnerabilities, on dependencies of kingfisher that this workspace cannot change:
+# `anymap2` (via liquid-core of kingfisher-rules), `term_size` (via tokei of kingfisher-core) and
+# `serde_yaml` -> `unsafe-libyaml` (kingfisher-rules).
+ignore = ["RUSTSEC-2026-0319", "RUSTSEC-2020-0163", "RUSTSEC-2024-0449"]
+
+[sources]
+unknown-registry = "deny"
+unknown-git = "deny"

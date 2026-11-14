@@ -61,10 +61,11 @@ Three components are not part of a bundled build, and `poly components list` say
 | `go` | gofumpt and goimports grouping, a Go executable poly runs as a sidecar |
 | `uncomment` | comment removal (opt-in) |
 | `typos` | typos (opt-in, see below) |
+| `secrets` | secret scanning with kingfisher (opt-in; download only, not in the bundled binary) |
 | `mcp` | the MCP server, a frontend component |
 
 `poly components list` prints the authoritative list from the index compiled into the binary.
-Presets name groups: `all` (every engine component except the opt-in `typos`, `uncomment` and `pyrefly`, and `mcp`), and language names
+Presets name groups: `all` (every engine component except the opt-in `typos`, `uncomment`, `pyrefly` and `secrets`, and `mcp`), and language names
 such as `python`, `ts`, `markdown` or `css`.
 
 ## Selecting components

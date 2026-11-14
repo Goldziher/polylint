@@ -112,3 +112,23 @@ OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE,
 ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR
 OTHER DEALINGS IN THE SOFTWARE.
 ```
+
+---
+
+## kingfisher — secret scanning (Cargo dependency, data attribution)
+
+- Project: <https://github.com/mongodb/kingfisher>
+- License: Apache-2.0 (`kingfisher-scanner`, `kingfisher-core`); `kingfisher-rules` is
+  `Apache-2.0 AND MIT AND CC-BY-SA-4.0`
+- Copyright © MongoDB, Inc. and the kingfisher authors
+
+The `secrets` component (`components-secrets/`, ADR 0054) links the `kingfisher-scanner` and `kingfisher-rules`
+crates. Nothing is vendored. The crates carry data that needs credit:
+
+- **Betterleaks** (MIT, Copyright © 2026 Zachary Rice) and **Veles / OSV-SCALIBR** (Google, Apache-2.0): the
+  built-in rule catalog is generated from their rules. Rule provenance (source revisions, hashes) ships in the crate's
+  `generated/provenance.json` and `generated/NOTICES.txt`.
+- **wordfreq** by Robyn Speer (Apache-2.0 code; its data files are CC-BY-SA-4.0 and include Google Books Ngrams,
+  Wikipedia, the Leeds Internet Corpus, ParaCrawl, OpenSubtitles and SUBTLEX data under their own terms): a
+  word-frequency list that `kingfisher-rules` redistributes unmodified. Robyn Speer must be credited by that name. The
+  share-alike term covers the data, not poly. `components-secrets/deny.toml` allows the licence for that one crate.

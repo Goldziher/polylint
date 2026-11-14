@@ -137,6 +137,17 @@ producer_dir = "components-pyrefly/crates/poly-engines-pyrefly-component"
 default_features = false
 targets = ["aarch64-apple-darwin", "x86_64-unknown-linux-gnu", "aarch64-unknown-linux-gnu", "x86_64-pc-windows-msvc"]
 
+# Secret scanning with kingfisher, opt-in. kingfisher links vectorscan, a C++ library fetched as a checksum-verified
+# prebuilt archive by its -sys crate's build script, so its family crate lives in the separate `components-secrets/`
+# workspace and alef generates and builds the producer there (ADR 0054). Not a bundled-build engine.
+[[crates.components]]
+name = "secrets"
+provides = [{ contract = "poly", implementation = "poly_engines_secrets::SecretsComponent" }]
+source_manifest = "components-secrets/crates/poly-engines-secrets/Cargo.toml"
+producer_dir = "components-secrets/crates/poly-engines-secrets-component"
+default_features = false
+targets = ["aarch64-apple-darwin", "x86_64-unknown-linux-gnu", "aarch64-unknown-linux-gnu", "x86_64-pc-windows-msvc"]
+
 # The MCP server as a frontend component: poly-mcp (rmcp, tokio) lives here instead of in the core
 # binary. It reaches the engines through the host services `poly mcp` registers.
 [[crates.components]]

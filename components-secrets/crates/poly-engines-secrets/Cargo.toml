@@ -1,0 +1,54 @@
+[package]
+name = "poly-engines-secrets"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+documentation.workspace = true
+publish = false
+description = "The secret-scanning engine family for poly (kingfisher) and its component."
+
+[lib]
+name = "poly_engines_secrets"
+path = "src/lib.rs"
+
+[features]
+# Compile vectorscan with cmake and Boost instead of fetching the checksum-verified prebuilt archive for the target.
+# For a triple whose archive does not link (an older glibc than the archive's, say). Off by default.
+vectorscan-source = ["dep:kingfisher-vectorscan-sys", "kingfisher-vectorscan-sys/build-from-source"]
+
+[package.metadata.cargo-machete]
+# Only reached through the `vectorscan-source` feature.
+ignored = ["kingfisher-vectorscan-sys"]
+
+[dependencies]
+anyhow.workspace = true
+kingfisher-rules.workspace = true
+kingfisher-scanner.workspace = true
+kingfisher-vectorscan-sys = { workspace = true, optional = true }
+poly-engine-api.workspace = true
+poly-engines.workspace = true
+toml.workspace = true
+
+[dev-dependencies]
+poly-component-host.workspace = true
+poly-component-index.workspace = true
+poly-component-protocol.workspace = true
+poly-config.workspace = true
+poly-core = { workspace = true, features = [
+  "engine-quality",
+  "engine-astgrep",
+  "engine-uncomment",
+  "engine-dockerfile",
+  "engine-dotenv",
+  "engine-ini",
+  "engine-hcl",
+  "engine-graphql",
+] }
+serde_json.workspace = true
+tempfile.workspace = true
+
+[lints.rust]
+unsafe_code = "forbid"

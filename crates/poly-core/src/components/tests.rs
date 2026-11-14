@@ -420,7 +420,13 @@ fn an_explicit_selection_is_not_needed_when_its_engines_are_skipped() {
 /// Families whose engines live outside `poly-core`: a build links them only through an engine
 /// provider that declares the feature with `register_linked_features`.
 #[cfg(feature = "all-engines")]
-const EXTERNAL_FAMILIES: &[&str] = &["engine-biome", "engine-pyrefly", "engine-ruby", "engine-web"];
+const EXTERNAL_FAMILIES: &[&str] = &[
+    "engine-biome",
+    "engine-pyrefly",
+    "engine-ruby",
+    "engine-secrets",
+    "engine-web",
+];
 
 #[cfg(feature = "all-engines")]
 #[test]
