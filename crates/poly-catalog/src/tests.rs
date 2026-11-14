@@ -427,6 +427,41 @@ fn elixir_tools_run_per_mix_project_on_the_host_and_download_nothing() {
 }
 
 #[test]
+fn google_java_format_and_ktfmt_are_pinned_native_builds_without_a_jvm() {
+    for (name, version, platforms) in [
+        (
+            "google-java-format",
+            "2.0.0",
+            &["darwin-aarch64", "linux-aarch64", "linux-x86_64", "windows-x86_64"][..],
+        ),
+        (
+            "ktfmt",
+            "0.65",
+            &["darwin-aarch64", "linux-x86_64", "windows-x86_64"][..],
+        ),
+    ] {
+        let recipe = recipe_of(name);
+        assert!(!recipe.java, "{name} is a native image, not a jar");
+        let release = recipe
+            .install
+            .as_ref()
+            .and_then(|install| install.releases.get(version))
+            .unwrap_or_else(|| panic!("{name} {version}"));
+        assert_eq!(release.kind, crate::ReleaseKind::Binary, "{name}");
+        let mut have: Vec<&str> = release.assets.keys().map(String::as_str).collect();
+        have.sort_unstable();
+        assert_eq!(have, platforms, "{name}: no asset where upstream publishes none");
+    }
+    let gjf = Catalog::get().tool("google-java-format").expect("google-java-format");
+    assert_eq!(
+        gjf.format_command().expect("format").1.arguments,
+        ["--replace", "$FILES"]
+    );
+    let ktfmt = Catalog::get().tool("ktfmt").expect("ktfmt");
+    assert_eq!(ktfmt.format_command().expect("format").1.arguments, ["$FILES"]);
+}
+
+#[test]
 fn gau_lints_the_pins_of_workflows_and_action_manifests_as_json() {
     let gau = Catalog::get().tool("gau").expect("gau");
     assert_eq!(gau.binary, "gau");
@@ -492,7 +527,7 @@ fn buf_and_hadolint_are_pinned_for_every_desktop_and_server_platform() {
     }
 }
 
-const MIGRATED_TOOLS: [&str; 15] = [
+const MIGRATED_TOOLS: [&str; 17] = [
     "checkstyle",
     "palantir-java-format",
     "buildifier",
@@ -508,6 +543,8 @@ const MIGRATED_TOOLS: [&str; 15] = [
     "zizmor",
     "kubeconform",
     "ktlint",
+    "google-java-format",
+    "ktfmt",
 ];
 
 #[test]
@@ -580,7 +617,15 @@ fn sources_declare_the_windows_builds_upstream_publishes() {
             );
         }
     }
-    for name in ["hadolint", "tflint", "shellcheck", "zizmor", "kubeconform"] {
+    for name in [
+        "hadolint",
+        "tflint",
+        "shellcheck",
+        "zizmor",
+        "kubeconform",
+        "google-java-format",
+        "ktfmt",
+    ] {
         let source = recipe_of(name).install.as_ref().unwrap().source.as_ref().unwrap();
         assert!(source.asset_spec("windows-x86_64").is_some(), "{name}");
         assert!(

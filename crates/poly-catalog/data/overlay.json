@@ -1877,5 +1877,135 @@
         "hint": "install Elixir (brew install elixir, or mise/asdf): poly runs the host `mix` and never bundles the BEAM; the project must list :credo in its mix.exs deps"
       }
     }
+  },
+  {
+    "name": "google-java-format",
+    "binary": "google-java-format",
+    "categories": [
+      "formatter"
+    ],
+    "languages": [
+      "java"
+    ],
+    "homepage": "https://github.com/google/google-java-format",
+    "commands": {
+      "format": {
+        "arguments": [
+          "--replace",
+          "$FILES"
+        ],
+        "stdin": false
+      }
+    },
+    "recipe": {
+      "install": {
+        "hint": "brew install google-java-format, or set [tools.google-java-format] version to a pinned release poly can download (a GraalVM native build: no JVM needed)",
+        "source": {
+          "kind": "binary",
+          "github": "google/google-java-format",
+          "assets": {
+            "darwin-aarch64": {
+              "name": "google-java-format_darwin-arm64"
+            },
+            "linux-aarch64": {
+              "name": "google-java-format_linux-arm64"
+            },
+            "linux-x86_64": {
+              "name": "google-java-format_linux-x86-64"
+            },
+            "windows-x86_64": {
+              "name": "google-java-format_windows-x86-64.exe"
+            }
+          }
+        },
+        "releases": {
+          "2.0.0": {
+            "kind": "binary",
+            "assets": {
+              "darwin-aarch64": {
+                "url": "https://github.com/google/google-java-format/releases/download/v2.0.0/google-java-format_darwin-arm64",
+                "sha256": "04b13ad486bcc29ef64f7168c2d3eb330e73ae458610ba5bcf44f6018b655dc4"
+              },
+              "linux-aarch64": {
+                "url": "https://github.com/google/google-java-format/releases/download/v2.0.0/google-java-format_linux-arm64",
+                "sha256": "3193ae2e3a32634a45effc9f575005e7adf202699ab4d9d6488ff1a715588d10"
+              },
+              "linux-x86_64": {
+                "url": "https://github.com/google/google-java-format/releases/download/v2.0.0/google-java-format_linux-x86-64",
+                "sha256": "c351f587e6dd1f11836be7296894ea2ab3bd91847dbd14101f4f04d390380fe9"
+              },
+              "windows-x86_64": {
+                "url": "https://github.com/google/google-java-format/releases/download/v2.0.0/google-java-format_windows-x86-64.exe",
+                "sha256": "6e757021d3b5a8133ca3b5b1915c4cf38dc46ad0886bc9059fcc2ccb7b6036e5"
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  {
+    "name": "ktfmt",
+    "binary": "ktfmt",
+    "categories": [
+      "formatter"
+    ],
+    "languages": [
+      "kotlin"
+    ],
+    "homepage": "https://github.com/facebook/ktfmt",
+    "commands": {
+      "format": {
+        "arguments": [
+          "$FILES"
+        ],
+        "stdin": false
+      }
+    },
+    "recipe": {
+      "install": {
+        "hint": "brew install ktfmt, or set [tools.ktfmt] version to a pinned release poly can download (a GraalVM native build: no JVM needed; none exists for Linux aarch64)",
+        "source": {
+          "kind": "binary",
+          "github": "facebook/ktfmt",
+          "assets": {
+            "darwin-aarch64": {
+              "name": "ktfmt-macos-aarch64-{version}.tar.gz",
+              "member": "ktfmt-macos-aarch64-{version}/ktfmt"
+            },
+            "linux-x86_64": {
+              "name": "ktfmt-linux-x86_64-{version}.tar.gz",
+              "member": "ktfmt-linux-x86_64-{version}/ktfmt"
+            },
+            "windows-x86_64": {
+              "name": "ktfmt-windows-x86_64-{version}.zip",
+              "member": "ktfmt-windows-x86_64-{version}/ktfmt.exe"
+            }
+          }
+        },
+        "releases": {
+          "0.65": {
+            "kind": "binary",
+            "assets": {
+              "darwin-aarch64": {
+                "url": "https://github.com/facebook/ktfmt/releases/download/v0.65/ktfmt-macos-aarch64-0.65.tar.gz",
+                "sha256": "d10ec46dadc4ae19e5b8ddc72d10ce45e5be35d632ce9e73c9b8a59d2147fb85",
+                "member": "ktfmt-macos-aarch64-0.65/ktfmt"
+              },
+              "linux-x86_64": {
+                "url": "https://github.com/facebook/ktfmt/releases/download/v0.65/ktfmt-linux-x86_64-0.65.tar.gz",
+                "sha256": "3684327b092db9b76fffcb9525decf73f8331ed17e00ce3232769c11cd36d352",
+                "member": "ktfmt-linux-x86_64-0.65/ktfmt"
+              },
+              "windows-x86_64": {
+                "url": "https://github.com/facebook/ktfmt/releases/download/v0.65/ktfmt-windows-x86_64-0.65.zip",
+                "sha256": "3286d659fa8df6a480e3b53ca4a30d9321c372286c46b8d74556b434189bee5f",
+                "member": "ktfmt-windows-x86_64-0.65/ktfmt.exe"
+              }
+            }
+          }
+        }
+      }
+    }
   }
 ]
