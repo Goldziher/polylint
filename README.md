@@ -49,7 +49,7 @@ flowchart LR
   download a checksummed release (`install = "auto"`); tools that need the JVM, Node or Python use the runtime
   already on your machine. polylint never bundles a runtime.
 - **Tree-sitter tier** — best-effort formatting for languages with nothing better. Grammars are fetched on demand.
-- **On every language** — a code-quality metrics engine and a 26-rule ast-grep pack, at warning severity.
+- **On every language** — a code-quality metrics engine and a 30-rule ast-grep pack, at warning severity.
 - **Never silent** — a file nothing could check is counted and named; `--deny-skips` makes that a CI failure.
 
 Files are discovered once (respecting `.gitignore`) and processed in parallel. The result cache is keyed by file
@@ -320,7 +320,7 @@ see [plugin/README.md](plugin/README.md) and
 Two cross-cutting lint tiers are on by default for every language, and two more are opt-in:
 
 - **The code-quality engine** (on) — tree-sitter metric rules, listed below.
-- **The built-in ast-grep pack** (on) — 26 rules across C#, Elixir, Go, Java, Kotlin, Python, Ruby, Rust and Swift.
+- **The built-in ast-grep pack** (on) — 30 rules across C#, Elixir, Go, Java, Kotlin, Python, Ruby, Rust and Swift.
   13 are on by default; the other 13 ship `severity: off` and are one config line away. Your own rules under
   `[engines.astgrep] rule_dirs` sit above the pack — a rule with the same `id` replaces the built-in one.
 - **`typos`** (opt-in) — spell-checks identifiers, comments and strings: `[engines.typos] enabled = true`.

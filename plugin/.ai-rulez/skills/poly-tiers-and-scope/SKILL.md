@@ -45,7 +45,7 @@ Five mechanisms decide what actually inspects a file (`crates/poly-core/src/regi
    Kotlin, C, C++, C#, and Ruby; `magic-number` and `law-of-demeter` are opt-in. A
    per-language deferral table keeps it from duplicating
    a tier-1 rule (ruff's `C901`/`PLR0913`, oxlint's `max-depth`/`max-params`).
-5. **The built-in ast-grep rule pack** (ADR 0029) — 26 rules across 9 languages (C#, Elixir,
+5. **The built-in ast-grep rule pack** (ADR 0029) — 30 rules across 9 languages (C#, Elixir,
    Go, Java, Kotlin, Python, Ruby, Rust, Swift) embedded in the binary and on by default; 13
    of them ship `severity: off`. It sits *beneath* `[engines.astgrep] rule_dirs` (default
    `.poly/rules`), so a user rule with the same `id` replaces a pack rule. `builtin_pack = false`

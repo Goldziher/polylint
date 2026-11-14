@@ -1,0 +1,59 @@
+id: go-context-background-outside-main
+language: go
+severity: off
+message: "`context.Background()`/`context.TODO()` outside `package main` drops the caller's cancellation and deadline; accept a `context.Context` parameter."
+note: |
+  `context.Background` and `context.TODO` create a root context with no
+  cancellation, deadline or request-scoped values. Library code that calls
+  them detaches its work from the caller, so a cancelled request keeps
+  running. The root context belongs in `main` (or a test), and everything
+  below it should receive a `ctx` parameter.
+
+  Exempt: any file in `package main`, `func main`/`func init`, and anything
+  inside a function taking a `*testing.T`/`B`/`F`/`M` or `testing.TB`.
+  `_test.go` files are excluded by default.
+
+  The rule matches written call syntax on the identifier `context`; an
+  import alias is not followed.
+
+  Off by default: some library entry points legitimately create a root
+  context. Enable it with `severity = "warning"` and grandfather existing
+  uses with `[per-file-ignores]`.
+
+  Idea origin: the `context` package documentation's guidance that
+  `Background` is for the top level of `main`, `init` and tests; the matcher
+  and message are poly's own.
+url: https://pkg.go.dev/context#Background
+ignores:
+  - "**/*_test.go"
+utils:
+  root-context-call:
+    kind: call_expression
+    has:
+      nthChild: 1
+      kind: selector_expression
+      regex: '^context\s*\.\s*(Background|TODO)$'
+  in-entrypoint:
+    inside:
+      stopBy: end
+      kind: function_declaration
+      has:
+        field: name
+        kind: identifier
+        regex: "^(main|init)$"
+  in-main-package:
+    inside:
+      stopBy: end
+      kind: source_file
+      has:
+        kind: package_clause
+        has:
+          kind: package_identifier
+          regex: "^main$"
+rule:
+  matches: root-context-call
+  not:
+    any:
+      - matches: in-entrypoint
+      - matches: go-in-test-function
+      - matches: in-main-package

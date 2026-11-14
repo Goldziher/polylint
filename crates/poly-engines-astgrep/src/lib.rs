@@ -120,7 +120,12 @@ pub fn engines_for(_language: &Language) -> Vec<Box<dyn Engine>> {
 /// that — but "intended" is not a property a cache may rely on: the rules are
 /// compiled through a different registration than the cached payload was, so
 /// the entry is invalidated rather than trusted.
-const ENGINE_VERSION: &str = "ast-grep-core-0.51.2-engine-4+tslp1.25.0+builtin-pack-3";
+///
+/// `builtin-pack-4` marks a sixth: four Go architecture rules joined the pack
+/// (`go-no-init`, `go-no-package-mutable-global`,
+/// `go-context-background-outside-main`, `go-forbidden-ambient-call`), all
+/// shipped `off`.
+const ENGINE_VERSION: &str = "ast-grep-core-0.51.2-engine-4+tslp1.25.0+builtin-pack-4";
 
 /// Cross-cutting custom-rule engine backed by ast-grep + TSLP grammars.
 ///
@@ -714,7 +719,7 @@ mod tests {
         assert_eq!(listed(&listings, "swift", "force-cast").source, RuleSource::Builtin);
         assert_eq!(
             listings.len(),
-            26,
+            30,
             "every pack rule must be listed, not only the active ones"
         );
     }

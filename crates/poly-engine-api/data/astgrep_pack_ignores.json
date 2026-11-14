@@ -4,6 +4,22 @@
     "ignores": ["**/RustBridge/**"]
   },
   {
+    "id": "go-context-background-outside-main",
+    "ignores": ["**/*_test.go"]
+  },
+  {
+    "id": "go-forbidden-ambient-call",
+    "ignores": ["**/*_test.go"]
+  },
+  {
+    "id": "go-no-init",
+    "ignores": ["**/*_test.go"]
+  },
+  {
+    "id": "go-no-package-mutable-global",
+    "ignores": ["**/*_test.go"]
+  },
+  {
     "id": "not-null-assertion",
     "ignores": ["**/test/**", "**/androidTest/**", "**/*Test.kt"]
   },

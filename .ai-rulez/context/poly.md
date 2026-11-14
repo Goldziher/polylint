@@ -135,11 +135,11 @@ Beyond the per-language backends, two cross-cutting lint mechanisms run on by de
   languages whose control flow it
   can model — Python, Rust, Go, JavaScript, TypeScript, TSX, Java, Kotlin, C, C++, C#, Ruby —
   while others still get the line-counting floor without being counted as linted.
-- **The built-in ast-grep rule pack** (ADR 0029) — 26 rules across C#, Elixir, Go, Java, Kotlin,
+- **The built-in ast-grep rule pack** (ADR 0029) — 30 rules across C#, Elixir, Go, Java, Kotlin,
   Python, Ruby, Rust and Swift, embedded in the binary and loaded through the same parse path as
   user rules. It sits *beneath* `[engines.astgrep] rule_dirs` (default `[".poly/rules"]`; a user
   rule with the same `id` replaces a pack rule); `builtin_pack = false` disables the pack
-  wholesale. Each rule carries its own `severity:`, 13 of the 26 `off`; `select`/`extend_select`/
+  wholesale. Each rule carries its own `severity:`, 17 of the 30 `off`; `select`/`extend_select`/
   `ignore` and `[engines.astgrep.rules.<id>] level` move individual rules.
 
 ## Inline suppression

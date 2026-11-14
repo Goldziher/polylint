@@ -19,7 +19,7 @@ falls through to the tree-sitter tier rather than being skipped.
 
 Two cross-cutting lint tiers run on every language on top of the per-language backends: a native
 code-quality engine (file/function/type length, parameter count, nesting depth, cyclomatic
-complexity) and a built-in ast-grep pack of 26 rules across nine languages, 13 of them on by
+complexity) and a built-in ast-grep pack of 30 rules across nine languages, 13 of them on by
 default. Both report at **warning** severity, and warnings alone do not fail a run, so adopting
 poly does not redden an unconfigured CI.
 

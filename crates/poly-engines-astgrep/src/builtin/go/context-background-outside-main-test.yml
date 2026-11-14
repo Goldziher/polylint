@@ -1,0 +1,9 @@
+id: go-context-background-outside-main
+valid:
+  - "package main\n\nimport \"context\"\n\nfunc helper() {\n\trun(context.Background())\n}\n"
+  - "package app\n\nimport \"context\"\n\nfunc run(ctx context.Context) {\n\tdo(ctx)\n}\n"
+  - "package app\n\nimport (\n\t\"context\"\n\t\"testing\"\n)\n\nfunc newCtx(t *testing.T) context.Context {\n\treturn context.Background()\n}\n"
+  - "package app\n\nimport \"context\"\n\nfunc init() {\n\twarm(context.Background())\n}\n"
+invalid:
+  - "package app\n\nimport \"context\"\n\nfunc run() {\n\tdo(context.Background())\n}\n"
+  - "package service\n\nimport \"context\"\n\nfunc (s *Service) Start() {\n\ts.loop(context.TODO())\n}\n"

@@ -626,7 +626,7 @@ relative to the `poly.toml` that declares them, so a rule set works from any wor
 ```toml
 [engines.astgrep]
 rule_dirs = [".poly/rules"]   # default; set to [] to disable custom rules
-builtin_pack = true           # set false to disable poly's own 26-rule pack wholesale
+builtin_pack = true           # set false to disable poly's own 30-rule pack wholesale
 ```
 
 Each rule is a standard ast-grep YAML document. The `language:` field names a tree-sitter grammar;
@@ -710,14 +710,14 @@ Run the checks with `poly rules test` (exits non-zero on any failed snippet) and
 rules with `poly rules list`. Both default to the configured `rule_dirs`, or accept explicit
 directories as arguments.
 
-`poly rules list` covers poly's **built-in rule pack** — 26 rules across C#, Elixir, Go, Java,
+`poly rules list` covers poly's **built-in rule pack** — 30 rules across C#, Elixir, Go, Java,
 Kotlin, Python, Ruby, Rust and Swift — as well as your own, marking each row `builtin` or `user`,
 and reflects the config that governs them: `builtin_pack = false`, `[engines.astgrep]` `select` /
 `extend_select` / `ignore`, and `[engines.astgrep.rules.<id>] level`.
 
 <Aside type="note">
     A user rule with the same `id` as a pack rule **replaces** the pack's outright. Each pack rule
-    also authors its own default severity, including `off` — 13 of the 26 ship off.
+    also authors its own default severity, including `off` — 17 of the 30 ship off.
 </Aside>
 
 ## Code quality metrics

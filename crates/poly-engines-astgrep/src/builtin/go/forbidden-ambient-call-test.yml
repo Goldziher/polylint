@@ -1,0 +1,11 @@
+id: go-forbidden-ambient-call
+valid:
+  - "package main\n\nimport \"os\"\n\nfunc main() {\n\t_ = os.Getenv(\"HOME\")\n}\n"
+  - "package app\n\nfunc run(clock Clock, env Env) {\n\t_ = clock.Now()\n\t_ = env.Get(\"HOME\")\n}\n"
+  - "package app\n\nimport (\n\t\"os\"\n\t\"testing\"\n)\n\nfunc setup(t *testing.T) {\n\t_ = os.Getenv(\"HOME\")\n}\n"
+  - "package app\n\nimport \"os\"\n\nfunc run() {\n\t_ = os.ReadFile(\"x\")\n}\n"
+invalid:
+  - "package app\n\nimport \"os\"\n\nfunc run() {\n\t_ = os.Getenv(\"HOME\")\n}\n"
+  - "package app\n\nimport \"time\"\n\nfunc run() {\n\tstart := time.Now()\n\t_ = time.Since(start)\n}\n"
+  - "package app\n\nimport \"os/exec\"\n\nfunc run() {\n\t_ = exec.Command(\"ls\")\n}\n"
+  - "package app\n\nimport \"log/slog\"\n\nfunc run() {\n\tslog.Info(\"hi\")\n}\n"

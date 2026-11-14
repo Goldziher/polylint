@@ -9,8 +9,8 @@ metadata:
 
 <!--
 AI-RULEZ :: GENERATED FILE — DO NOT EDIT
-Content-Hash: blake3:06c6c5ee1b63cdeca58dd7321947ba41b8b9668a10fc30e8e5277acaa67e743c
-Source-Hash: blake3:5b6cd21a1c8c195999e647349e5ae5fd51b47b4b78029a0f0c0c0f96b1bfdfa5
+Content-Hash: blake3:5b906f5a5197c7472dc25e7565eb5526c362f0b76fa77f55b99083cdec2d612e
+Source-Hash: blake3:13a23c83a375baf8fd409fba80118a435f69bdd45ceb6fd5c5d821c1d023fc0f
 Schema-Version: v1
 -->
 
@@ -73,7 +73,7 @@ Four engines apply to every language regardless of tier (`typos` only when enabl
   like a test that the language's test runner will not collect (`parser.test.py` under
   pytest) — on for Python, Go and Ruby, off for JavaScript/TypeScript. Configure under
   `[engines.quality]` / `[engines.quality.lang.<lang>]`.
-- **`astgrep`** — ast-grep pattern rules. poly embeds a **built-in rule pack** of 26 rules
+- **`astgrep`** — ast-grep pattern rules. poly embeds a **built-in rule pack** of 30 rules
   across 9 languages (C#, Elixir, Go, Java, Kotlin, Python, Ruby, Rust, Swift), on by
   default; 13 of them ship `severity: off`. User rules under `[engines.astgrep] rule_dirs`
   (default `.poly/rules`) layer on top and replace a pack rule sharing its `id`. Disable the

@@ -1,0 +1,53 @@
+id: go-forbidden-ambient-call
+language: go
+severity: off
+message: "Ambient-authority call `$FN`; inject the environment, clock, process runner or logger as a dependency instead."
+note: |
+  Calls that reach into the process environment make code hard to test and
+  reason about: `os.Getenv`/`os.LookupEnv`/`os.Getwd` read ambient state,
+  `time.Now`/`time.Since` read the wall clock, `exec.Command` spawns a
+  process, and the global `log.Print*` and `slog.Info`-style functions write
+  through a package-level logger. Architecture-minded Go projects confine
+  them to `main` and a few adapter packages, and pass everything else in.
+
+  The selector list is fixed: `os.Getenv`, `os.LookupEnv`, `os.Getwd`,
+  `time.Now`, `time.Since`, `exec.Command`, `exec.CommandContext`,
+  `log.Print`/`Printf`/`Println`, and `slog.Debug`/`Info`/`Warn`/`Error`.
+  Matching is syntactic on the package identifier, so an import alias is not
+  followed and a method on a local variable named `os` would be a false
+  positive.
+
+  Exempt: files in `package main` and anything inside a function taking a
+  `testing` parameter. `_test.go` files are excluded by default. To allow the
+  calls in particular directories (an `adapters/` package, say) while
+  banning them elsewhere, enable the rule and list those paths in
+  `[per-file-ignores]`; a user rule with the same id replaces this one when a
+  different selector list is needed.
+
+  Off by default: it is an architecture policy, not a defect.
+
+  Idea origin: the archlint "no ambient authority in internal/" rule; the
+  matcher, selector list and message are poly's own.
+url: https://pkg.go.dev/os#Getenv
+ignores:
+  - "**/*_test.go"
+utils:
+  in-main-package:
+    inside:
+      stopBy: end
+      kind: source_file
+      has:
+        kind: package_clause
+        has:
+          kind: package_identifier
+          regex: "^main$"
+rule:
+  kind: selector_expression
+  regex: '^(os\s*\.\s*(Getenv|LookupEnv|Getwd)|time\s*\.\s*(Now|Since)|exec\s*\.\s*(Command|CommandContext)|log\s*\.\s*(Print|Printf|Println)|slog\s*\.\s*(Debug|Info|Warn|Error))$'
+  inside:
+    kind: call_expression
+    field: function
+  not:
+    any:
+      - matches: in-main-package
+      - matches: go-in-test-function

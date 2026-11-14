@@ -1,0 +1,8 @@
+id: go-no-init
+valid:
+  - "package app\n\nfunc setup() {\n\tregister()\n}\n"
+  - "package app\n\nfunc (s *Server) init() {\n\ts.ready = true\n}\n"
+  - "package app\n\nfunc initialize() {}\n"
+invalid:
+  - "package app\n\nfunc init() {\n\tregister()\n}\n"
+  - "package app\n\nimport \"os\"\n\nfunc init() {\n\tos.Setenv(\"A\", \"b\")\n}\n\nfunc init() {}\n"

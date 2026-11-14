@@ -1,0 +1,35 @@
+id: go-no-init
+language: go
+severity: off
+message: "`init()` runs implicitly at import time; construct state explicitly and call it from `main` or a constructor."
+note: |
+  An `init` function runs when its package is imported, in an order the
+  importer does not control, with no way to pass it arguments, return an
+  error from it or skip it in a test. It is the usual home of hidden global
+  state, so architecture-minded Go projects ban new ones and ratchet the
+  existing ones.
+
+  Replace it with an explicit constructor or setup function that `main` (or
+  the caller) invokes, so the dependency is visible and testable.
+
+  Matches every top-level `func init()`. Methods named `init` are not
+  matched; they are ordinary methods. `_test.go` files are excluded by
+  default.
+
+  Off by default: plenty of Go code legitimately registers drivers or
+  codecs in `init`, so this is an architecture policy a project opts into.
+  Enable it with `severity = "warning"` and grandfather the existing
+  `init` functions with `[per-file-ignores]`.
+
+  Idea origin: the Go specification's description of package
+  initialization and the archlint-style "no new init()" ratchet; the
+  matcher and message are poly's own.
+url: https://go.dev/ref/spec#Package_initialization
+ignores:
+  - "**/*_test.go"
+rule:
+  kind: function_declaration
+  has:
+    field: name
+    kind: identifier
+    regex: "^init$"

@@ -1,0 +1,65 @@
+id: go-no-package-mutable-global
+language: go
+severity: off
+message: "Package-level `var` is shared mutable state; pass the value through a constructor or parameter instead."
+note: |
+  A package-level `var` is a global every function in the package, and every
+  test, can read and write. It couples callers through hidden state and makes
+  parallel tests unsafe. Architecture-minded Go projects ban new ones and
+  ratchet the existing ones.
+
+  Reported once per declared name group (one finding per `var` spec), at
+  package scope only; variables declared inside functions are not matched.
+
+  Exempt, because they are not mutable state in practice:
+
+  - the blank identifier (`var _ Iface = (*T)(nil)`, compile-time interface
+    checks);
+  - sentinel errors built with `errors.New` or `fmt.Errorf`;
+  - compiled patterns built with `regexp.MustCompile` or `regexp.Compile`.
+
+  A variable holding a map, slice or pointer that is only written once is
+  still reported: the rule cannot prove it is never mutated. `_test.go`
+  files are excluded by default.
+
+  Off by default: it is an architecture policy, not a defect. Enable it with
+  `severity = "warning"` and grandfather the existing globals with
+  `[per-file-ignores]`.
+
+  Idea origin: the archlint "no package-level mutable globals" ratchet and
+  Go's own guidance against global state; the matcher, carve-outs and message
+  are poly's own.
+url: https://go.dev/doc/effective_go#initialization
+ignores:
+  - "**/*_test.go"
+utils:
+  at-package-scope:
+    inside:
+      kind: var_declaration
+      stopBy:
+        kind: var_declaration
+      inside:
+        kind: source_file
+        stopBy: neighbor
+  blank-name:
+    has:
+      field: name
+      kind: identifier
+      regex: "^_$"
+  immutable-initializer:
+    has:
+      field: value
+      kind: expression_list
+      has:
+        kind: call_expression
+        has:
+          nthChild: 1
+          kind: selector_expression
+          regex: '^(errors\s*\.\s*New|fmt\s*\.\s*Errorf|regexp\s*\.\s*(MustCompile|Compile))$'
+rule:
+  kind: var_spec
+  matches: at-package-scope
+  not:
+    any:
+      - matches: blank-name
+      - matches: immutable-initializer

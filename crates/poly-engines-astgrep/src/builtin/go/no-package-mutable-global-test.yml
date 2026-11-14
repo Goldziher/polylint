@@ -1,0 +1,13 @@
+id: go-no-package-mutable-global
+valid:
+  - "package app\n\nfunc run() {\n\tvar count int\n\tcount++\n}\n"
+  - "package app\n\nvar _ Handler = (*server)(nil)\n"
+  - "package app\n\nimport \"errors\"\n\nvar ErrNotFound = errors.New(\"not found\")\n"
+  - "package app\n\nimport \"regexp\"\n\nvar pattern = regexp.MustCompile(`^a+$`)\n"
+  - "package app\n\nconst limit = 10\n"
+  - "package app\n\nfunc run() {\n\tfn := func() {\n\t\tvar local int\n\t\t_ = local\n\t}\n\tfn()\n}\n"
+invalid:
+  - "package app\n\nvar counter int\n"
+  - "package app\n\nvar cache = map[string]int{}\n"
+  - "package app\n\nvar (\n\tmu sync.Mutex\n\tErrX = errors.New(\"x\")\n)\n"
+  - "package app\n\nvar handler = func() {\n\tvar local int\n\t_ = local\n}\n"
