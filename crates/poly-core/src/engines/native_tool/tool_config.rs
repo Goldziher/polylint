@@ -132,24 +132,27 @@ pub(crate) fn fingerprint(names: &[&str]) -> String {
 /// [`fingerprint`] with an explicit anchor directory, so the search is testable
 /// without mutating the process's current directory.
 ///
-/// Hashes the absolute path **and** the bytes of every existing candidate found
-/// in `anchor` and each of its ancestors, nearest first. Hashing the path as
-/// well as the content means moving a config file up or down the tree changes
-/// the fingerprint even when its bytes do not — the tool would resolve a
-/// different file, so the cache must too. Hashing *every* match rather than
+/// Hashes the path **and** the bytes of every existing candidate found in
+/// `anchor` and each of its ancestors, nearest first. The path is taken relative
+/// to `anchor` (`../rustfmt.toml` for a parent's), so worktrees of one
+/// repository fingerprint alike while moving a config file up or down the tree
+/// still changes the fingerprint even when its bytes do not — the tool would
+/// resolve a different file, so the cache must too. Hashing *every* match rather than
 /// stopping at the first only ever over-invalidates, which is the safe
 /// direction.
 pub(crate) fn fingerprint_at(anchor: &Path, names: &[&str]) -> String {
     let mut hasher = blake3::Hasher::new();
     let mut found_any = false;
 
-    for dir in anchor.ancestors() {
+    for (depth, dir) in anchor.ancestors().enumerate() {
         for name in names {
-            let candidate = dir.join(name);
-            let Ok(bytes) = std::fs::read(&candidate) else {
+            let Ok(bytes) = std::fs::read(dir.join(name)) else {
                 continue;
             };
-            hasher.update(candidate.to_string_lossy().as_bytes());
+            for _ in 0..depth {
+                hasher.update(b"../");
+            }
+            hasher.update(name.as_bytes());
             hasher.update(b"\0");
             hasher.update(&bytes);
             hasher.update(b"\0");
@@ -234,6 +237,22 @@ mod tests {
         let both = fingerprint_at(&nested, RUSTFMT_CONFIG_FILES);
 
         assert_ne!(parent_only, both, "a nearer config file must change the fingerprint");
+    }
+
+    /// Two checkouts of one project, at different absolute paths, fingerprint
+    /// alike; different config bytes still differ.
+    #[test]
+    fn the_fingerprint_is_relative_to_the_anchor() {
+        let one = tempfile::tempdir().expect("tempdir");
+        let two = tempfile::tempdir().expect("tempdir");
+        let three = tempfile::tempdir().expect("tempdir");
+        for (dir, width) in [(&one, 40), (&two, 40), (&three, 80)] {
+            fs::write(dir.path().join("rustfmt.toml"), format!("max_width = {width}\n")).expect("write config");
+        }
+
+        let at = |dir: &tempfile::TempDir| fingerprint_at(dir.path(), RUSTFMT_CONFIG_FILES);
+        assert_eq!(at(&one), at(&two));
+        assert_ne!(at(&one), at(&three));
     }
 
     /// A config file above the anchor is found: the search walks ancestors, as

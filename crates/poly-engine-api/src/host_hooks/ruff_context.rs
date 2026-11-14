@@ -43,13 +43,27 @@ fn detect_package_root(dir: &Path) -> Option<PathBuf> {
 /// would dominate the cost of the digest on a JavaScript or Rust checkout.
 const SKIPPED_DIRS: [&str; 3] = ["node_modules", "target", "__pycache__"];
 
+/// `path` as the text folded into a cache key: relative to `base` (the checkout the run started
+/// in) when it lies beneath it, so two worktrees of one repository key alike; the full path
+/// otherwise, which can never collide with a relative one since it starts at the filesystem root.
+fn checkout_relative(path: &Path, base: &Path) -> String {
+    match path.strip_prefix(base) {
+        Ok(rest) if rest.as_os_str().is_empty() => ".".to_owned(),
+        Ok(rest) => rest.to_string_lossy().into_owned(),
+        Err(_) => path.to_string_lossy().into_owned(),
+    }
+}
+
+/// The package-root text folded into the cache key: `-` when `root` is `None`.
+fn package_root_text(root: Option<&Path>, base: &Path) -> String {
+    root.map_or_else(|| "-".to_owned(), |root| checkout_relative(root, base))
+}
+
 /// The package root `detect_package_root` finds for `path`'s directory, as the
 /// text folded into the cache key.
 #[cfg(test)]
-pub(super) fn package_root(path: &Path) -> String {
-    path.parent()
-        .and_then(detect_package_root)
-        .map_or_else(|| "-".to_owned(), |root| root.to_string_lossy().into_owned())
+pub(super) fn package_root(path: &Path, base: &Path) -> String {
+    package_root_text(path.parent().and_then(detect_package_root).as_deref(), base)
 }
 
 /// Package roots already found, keyed by the directory they were found for. A
@@ -78,10 +92,15 @@ impl PackageRoots {
 
 static PACKAGE_ROOTS: LazyLock<PackageRoots> = LazyLock::new(PackageRoots::default);
 
-/// Drop every remembered package root. Called when a run is planned, so an
-/// `__init__.py` added or removed between runs of a long-lived process is seen.
+/// The run's checkout root (the current directory), read once per plan rather than per file.
+static RUN_BASE: Mutex<Option<PathBuf>> = Mutex::new(None);
+
+/// Drop every remembered package root and the remembered checkout root. Called when a run is
+/// planned, so an `__init__.py` added or removed, or a changed current directory, between runs of
+/// a long-lived process is seen.
 pub fn forget_package_roots() {
     PACKAGE_ROOTS.clear();
+    *RUN_BASE.lock().unwrap_or_else(PoisonError::into_inner) = None;
 }
 
 /// The package root of `dir`, remembered until the next plan.
@@ -89,28 +108,34 @@ pub fn cached_package_root(dir: &Path) -> Option<PathBuf> {
     PACKAGE_ROOTS.get(dir)
 }
 
-/// The package root of `path`, answered from the run's remembered roots.
+/// The package root of `path`, answered from the run's remembered roots and keyed relative to the
+/// checkout so another worktree of the repository shares the result.
 pub fn run_package_root(path: &Path) -> String {
-    path.parent()
-        .and_then(cached_package_root)
-        .map_or_else(|| "-".to_owned(), |root| root.to_string_lossy().into_owned())
+    let root = path.parent().and_then(cached_package_root);
+    let mut base = RUN_BASE.lock().unwrap_or_else(PoisonError::into_inner);
+    let base = base.get_or_insert_with(|| std::env::current_dir().unwrap_or_default());
+    package_root_text(root.as_deref(), base)
 }
 
-/// A digest of the module tree isort probes: the current directory (which ruff
-/// treats as the base of its default source roots), the resolved source roots,
-/// and every directory and `.py`/`.pyi` path beneath them.
+/// A digest of the module tree isort probes: the resolved source roots (ruff
+/// defaults them to the current directory and its `src`) and every directory and
+/// `.py`/`.pyi` path beneath them. Roots are keyed relative to the current
+/// directory so identical trees in two worktrees digest alike.
 pub fn module_tree(src_roots: &[PathBuf]) -> String {
     let cwd = std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
+    module_tree_at(&cwd, src_roots)
+}
+
+fn module_tree_at(cwd: &Path, src_roots: &[PathBuf]) -> String {
     let roots: Vec<PathBuf> = if src_roots.is_empty() {
-        vec![cwd.clone(), cwd.join("src")]
+        vec![cwd.to_path_buf(), cwd.join("src")]
     } else {
         src_roots.iter().map(|root| cwd.join(root)).collect()
     };
     let mut hasher = blake3::Hasher::new();
-    hasher.update(cwd.as_os_str().as_encoded_bytes());
     for root in &roots {
         hasher.update(b"\0root\0");
-        hasher.update(root.as_os_str().as_encoded_bytes());
+        hasher.update(checkout_relative(root, cwd).as_bytes());
         let mut entries = walk(root);
         entries.sort_unstable();
         for entry in entries {

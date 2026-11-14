@@ -1,7 +1,7 @@
 use std::fs;
 use std::path::{Path, PathBuf};
 
-use super::{PackageRoots, module_tree, package_root, walk};
+use super::{PackageRoots, module_tree, module_tree_at, package_root, walk};
 
 fn touch(path: &Path) {
     fs::create_dir_all(path.parent().unwrap()).unwrap();
@@ -22,7 +22,11 @@ fn the_package_root_follows_init_files_up_to_the_first_gap() {
     touch(&pkg.join("sub/__init__.py"));
     touch(&pkg.join("sub/mod.py"));
 
-    assert_eq!(package_root(&pkg.join("sub/mod.py")), pkg.to_string_lossy());
+    assert_eq!(package_root(&pkg.join("sub/mod.py"), dir.path()), "proj/pkg");
+    assert_eq!(
+        package_root(&pkg.join("sub/mod.py"), Path::new("/elsewhere")),
+        pkg.to_string_lossy()
+    );
 }
 
 #[test]
@@ -30,7 +34,7 @@ fn a_directory_without_an_init_file_has_no_package_root() {
     let dir = tempfile::tempdir().unwrap();
     touch(&dir.path().join("loose/mod.py"));
 
-    assert_eq!(package_root(&dir.path().join("loose/mod.py")), "-");
+    assert_eq!(package_root(&dir.path().join("loose/mod.py"), dir.path()), "-");
 }
 
 #[test]
@@ -38,14 +42,14 @@ fn adding_or_removing_a_sibling_init_file_changes_the_package_root() {
     let dir = tempfile::tempdir().unwrap();
     let module = dir.path().join("pkg/mod.py");
     touch(&module);
-    let before = package_root(&module);
+    let before = package_root(&module, dir.path());
 
     touch(&dir.path().join("pkg/__init__.py"));
-    let during = package_root(&module);
+    let during = package_root(&module, dir.path());
     fs::remove_file(dir.path().join("pkg/__init__.py")).unwrap();
 
     assert_ne!(before, during);
-    assert_eq!(before, package_root(&module));
+    assert_eq!(before, package_root(&module, dir.path()));
 }
 
 #[test]
@@ -54,11 +58,11 @@ fn an_init_file_in_a_parent_directory_moves_the_root() {
     let module = dir.path().join("outer/inner/mod.py");
     touch(&module);
     touch(&dir.path().join("outer/inner/__init__.py"));
-    let inner_only = package_root(&module);
+    let inner_only = package_root(&module, dir.path());
 
     touch(&dir.path().join("outer/__init__.py"));
 
-    assert_ne!(inner_only, package_root(&module));
+    assert_ne!(inner_only, package_root(&module, dir.path()));
 }
 
 #[test]
@@ -120,4 +124,61 @@ fn the_module_tree_ignores_vendored_and_non_identifier_directories() {
 
     assert_eq!(before, module_tree(&src));
     assert!(!digest_of(dir.path()).contains("bazel-out"));
+}
+
+fn checkout(layout: &[&str], contents: &str) -> tempfile::TempDir {
+    let dir = tempfile::tempdir().unwrap();
+    for file in layout {
+        touch(&dir.path().join(file));
+    }
+    fs::write(dir.path().join(layout[0]), contents).unwrap();
+    dir
+}
+
+#[test]
+fn identical_checkouts_share_a_module_tree_digest() {
+    let layout = ["a/x.py", "a/__init__.py", "src/b/y.py"];
+    let (one, two) = (checkout(&layout, ""), checkout(&layout, ""));
+
+    assert_eq!(module_tree_at(one.path(), &[]), module_tree_at(two.path(), &[]));
+    assert_eq!(
+        module_tree_at(one.path(), &[PathBuf::from("src")]),
+        module_tree_at(two.path(), &[PathBuf::from("src")]),
+    );
+    assert_eq!(
+        module_tree_at(one.path(), &[one.path().join("src")]),
+        module_tree_at(two.path(), &[PathBuf::from("src")]),
+        "an absolute root inside the checkout keys like its relative spelling",
+    );
+}
+
+#[test]
+fn checkouts_with_different_module_trees_digest_differently() {
+    let one = checkout(&["a/x.py"], "");
+    let two = checkout(&["a/x.py", "a/y.py"], "");
+
+    assert_ne!(module_tree_at(one.path(), &[]), module_tree_at(two.path(), &[]));
+}
+
+#[test]
+fn a_source_root_outside_the_checkout_keeps_its_full_path() {
+    let (one, two) = (checkout(&["a/x.py"], ""), checkout(&["a/x.py"], ""));
+    let outside = checkout(&["m/z.py"], "");
+    let other = checkout(&["m/z.py"], "");
+
+    assert_ne!(
+        module_tree_at(one.path(), &[outside.path().to_path_buf()]),
+        module_tree_at(two.path(), &[other.path().to_path_buf()]),
+    );
+}
+
+#[test]
+fn identical_checkouts_share_a_package_root() {
+    let layout = ["pkg/__init__.py", "pkg/m.py"];
+    let (one, two) = (checkout(&layout, ""), checkout(&layout, ""));
+
+    assert_eq!(
+        package_root(&one.path().join("pkg/m.py"), one.path()),
+        package_root(&two.path().join("pkg/m.py"), two.path()),
+    );
 }
