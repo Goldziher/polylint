@@ -1,4 +1,4 @@
-//! SARIF 2.1.0 logs, the report format zizmor and detekt share.
+//! SARIF 2.1.0 logs, the report format zizmor, detekt and jarl share.
 //!
 //! Only the fields a diagnostic needs are read: the rule, level and message of
 //! each result and the first location's file and region. A log without a `runs`
@@ -57,6 +57,10 @@ fn finding(result: &Value, help: &BTreeMap<String, String>) -> Finding {
     let rule = result.get("ruleId").and_then(Value::as_str);
     finding.code = rule.map(str::to_owned);
     finding.url = rule.and_then(|rule| help.get(rule)).cloned();
+    finding.fixable = result
+        .get("fixes")
+        .and_then(Value::as_array)
+        .is_some_and(|fixes| !fixes.is_empty());
     if let Some(location) = result.pointer("/locations/0/physicalLocation") {
         finding.path = location
             .pointer("/artifactLocation/uri")

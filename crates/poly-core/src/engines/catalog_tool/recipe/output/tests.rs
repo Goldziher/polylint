@@ -521,6 +521,25 @@ fn a_sarif_log_without_results_is_clean_and_other_output_is_an_error() {
     }
 }
 
+const JARL_SARIF: &str = r#"{"version":"2.1.0","runs":[{"tool":{"driver":{"name":"jarl","rules":[{"id":"any_is_na","helpUri":"https://jarl.etiennebacher.com/rules/any_is_na"},{"id":"true_false_symbol","helpUri":"https://jarl.etiennebacher.com/rules/true_false_symbol"}]}},"results":[
+{"ruleId":"any_is_na","ruleIndex":0,"level":"warning","message":{"text":"`any(is.na(...))` is inefficient. Use `anyNA(...)` instead."},"locations":[{"physicalLocation":{"artifactLocation":{"uri":"a.R","uriBaseId":"ROOTPATH"},"region":{"startLine":3,"startColumn":1,"endLine":3,"endColumn":14}}}],"fixes":[{"description":{"text":"`any(is.na(...))` is inefficient."},"artifactChanges":[{"artifactLocation":{"uri":"a.R","uriBaseId":"ROOTPATH"},"replacements":[{"deletedRegion":{"startLine":3,"startColumn":1,"endLine":3,"endColumn":14},"insertedContent":{"text":"anyNA(x)"}}]}]}]},
+{"ruleId":"true_false_symbol","ruleIndex":1,"level":"warning","message":{"text":"`T` and `F` can be confused with variable names."},"locations":[{"physicalLocation":{"artifactLocation":{"uri":"a.R","uriBaseId":"ROOTPATH"},"region":{"startLine":6,"startColumn":1,"endLine":6,"endColumn":2}}}]}]}]}"#;
+
+#[test]
+fn sarif_results_with_fixes_are_fixable_and_those_without_are_not() {
+    let findings = parse(Output::Sarif, JARL_SARIF, "").expect("parses");
+    assert_eq!(findings.len(), 2, "{findings:?}");
+    assert_eq!(findings[0].path.as_deref(), Some("a.R"));
+    assert_eq!(findings[0].code.as_deref(), Some("any_is_na"));
+    assert_eq!(findings[0].severity, Severity::Warning);
+    assert_eq!(
+        findings[0].url.as_deref(),
+        Some("https://jarl.etiennebacher.com/rules/any_is_na")
+    );
+    assert!(findings[0].fixable);
+    assert!(!findings[1].fixable);
+}
+
 const KUBECONFORM_JSON: &str = r#"{"resources":[
 {"filename":"k8s/ok.yaml","kind":"Service","name":"web","version":"v1","status":"statusValid","msg":""},
 {"filename":"k8s/deploy.yaml","kind":"Deployment","name":"web","version":"apps/v1","status":"statusInvalid","msg":"For field spec.replicas: Invalid type. Expected: [integer,null], given: string","validationErrors":[{"path":"/spec/replicas","msg":"Invalid type. Expected: [integer,null], given: string"}]},

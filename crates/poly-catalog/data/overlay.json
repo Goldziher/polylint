@@ -2107,5 +2107,114 @@
         }
       }
     }
+  },
+  {
+    "name": "jarl",
+    "binary": "jarl",
+    "categories": [
+      "linter"
+    ],
+    "languages": [
+      "r"
+    ],
+    "homepage": "https://github.com/etiennebacher/jarl",
+    "commands": {
+      "lint": {
+        "arguments": [
+          "check",
+          "--output-format",
+          "sarif",
+          "$FILES"
+        ],
+        "stdin": false
+      },
+      "fix": {
+        "arguments": [
+          "check",
+          "--fix-only",
+          "--allow-dirty",
+          "--allow-no-vcs",
+          "$FILES"
+        ],
+        "stdin": false
+      }
+    },
+    "recipe": {
+      "output": "sarif",
+      "fix": "fix",
+      "config_files": [
+        "jarl.toml",
+        ".jarl.toml",
+        "DESCRIPTION"
+      ],
+      "ok_exits": [
+        1
+      ],
+      "install": {
+        "hint": "install jarl (https://jarl.etiennebacher.com), or set [tools.jarl] version to a pinned release poly can download",
+        "source": {
+          "kind": "binary",
+          "github": "etiennebacher/jarl",
+          "tag": "{version}",
+          "checksum": {
+            "sidecar": "{url}.sha256"
+          },
+          "assets": {
+            "darwin-aarch64": {
+              "name": "jarl-aarch64-apple-darwin.tar.gz",
+              "member": "jarl-aarch64-apple-darwin/jarl"
+            },
+            "darwin-x86_64": {
+              "name": "jarl-x86_64-apple-darwin.tar.gz",
+              "member": "jarl-x86_64-apple-darwin/jarl"
+            },
+            "linux-aarch64": {
+              "name": "jarl-aarch64-unknown-linux-musl.tar.gz",
+              "member": "jarl-aarch64-unknown-linux-musl/jarl"
+            },
+            "linux-x86_64": {
+              "name": "jarl-x86_64-unknown-linux-musl.tar.gz",
+              "member": "jarl-x86_64-unknown-linux-musl/jarl"
+            },
+            "windows-x86_64": {
+              "name": "jarl-x86_64-pc-windows-msvc.zip",
+              "member": "jarl.exe"
+            }
+          }
+        },
+        "releases": {
+          "0.7.1": {
+            "kind": "binary",
+            "assets": {
+              "darwin-aarch64": {
+                "url": "https://github.com/etiennebacher/jarl/releases/download/0.7.1/jarl-aarch64-apple-darwin.tar.gz",
+                "sha256": "7012ed5fabe118769a43b93e9a197a44cb7d21756f7e80beb9235efa1bc3b834",
+                "member": "jarl-aarch64-apple-darwin/jarl"
+              },
+              "darwin-x86_64": {
+                "url": "https://github.com/etiennebacher/jarl/releases/download/0.7.1/jarl-x86_64-apple-darwin.tar.gz",
+                "sha256": "32b79a5466b0477a28b9fdaf150fe5371478b710eaa9b14df0e5716fedb7e0fd",
+                "member": "jarl-x86_64-apple-darwin/jarl"
+              },
+              "linux-aarch64": {
+                "url": "https://github.com/etiennebacher/jarl/releases/download/0.7.1/jarl-aarch64-unknown-linux-musl.tar.gz",
+                "sha256": "097a71c9a9182836747ee6be6b4376d4ca8efad77e65b471bc0bd668415a65ce",
+                "member": "jarl-aarch64-unknown-linux-musl/jarl"
+              },
+              "linux-x86_64": {
+                "url": "https://github.com/etiennebacher/jarl/releases/download/0.7.1/jarl-x86_64-unknown-linux-musl.tar.gz",
+                "sha256": "5e8795f497a3653e166ea92846f5575bd1e91748252b0546a1e8e35365071194",
+                "member": "jarl-x86_64-unknown-linux-musl/jarl"
+              },
+              "windows-x86_64": {
+                "url": "https://github.com/etiennebacher/jarl/releases/download/0.7.1/jarl-x86_64-pc-windows-msvc.zip",
+                "sha256": "062a5358d2e3d2d7c21ba36ebc86fe52c71e38bdf509a484040db69c97a222ec",
+                "member": "jarl.exe"
+              }
+            }
+          }
+        }
+      }
+    }
   }
 ]

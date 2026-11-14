@@ -86,6 +86,8 @@ pub(in crate::engines::catalog_tool) fn revision(format: Output) -> u32 {
     match format {
         // 2: severity per kind; runner-label a warning, shellcheck at its own level.
         Output::ActionlintJson => 2,
+        // 2: a result carrying `fixes` is reported fixable (jarl).
+        Output::Sarif => 2,
         _ => 1,
     }
 }

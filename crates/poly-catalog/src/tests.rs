@@ -492,6 +492,46 @@ fn air_formats_the_whole_r_language_and_is_pinned_for_every_published_platform()
 }
 
 #[test]
+fn jarl_lints_r_through_sarif_and_fixes_on_a_scratch_copy() {
+    let tool = Catalog::get().tool("jarl").expect("jarl");
+    assert_eq!(tool.languages, ["r"]);
+    let (_, lint) = tool.lint_command().expect("a lint command");
+    assert_eq!(lint.arguments, ["check", "--output-format", "sarif", "$FILES"]);
+    assert_eq!(
+        tool.command("fix").expect("fix").arguments,
+        ["check", "--fix-only", "--allow-dirty", "--allow-no-vcs", "$FILES"],
+        "a scratch copy is no git checkout, so jarl would refuse to fix without --allow-no-vcs"
+    );
+    let recipe = recipe_of("jarl");
+    assert_eq!(recipe.output, Output::Sarif);
+    assert_eq!(recipe.fix.as_deref(), Some("fix"));
+    assert_eq!(recipe.ok_exits, [1], "findings exit 1, a syntax error exits 255");
+    assert_eq!(recipe.config_files, ["jarl.toml", ".jarl.toml", "DESCRIPTION"]);
+    let install = recipe.install.as_ref().expect("install");
+    assert_eq!(install.source.as_ref().expect("source").tag_template(), "{version}");
+    let release = install.releases.get("0.7.1").expect("0.7.1");
+    let mut have: Vec<&str> = release.assets.keys().map(String::as_str).collect();
+    have.sort_unstable();
+    assert_eq!(
+        have,
+        [
+            "darwin-aarch64",
+            "darwin-x86_64",
+            "linux-aarch64",
+            "linux-x86_64",
+            "windows-x86_64"
+        ],
+        "no Windows arm64 build upstream"
+    );
+    for platform in ["linux-aarch64", "linux-x86_64"] {
+        assert!(
+            release.assets[platform].url.contains("unknown-linux-musl"),
+            "static build: {platform}"
+        );
+    }
+}
+
+#[test]
 fn gau_lints_the_pins_of_workflows_and_action_manifests_as_json() {
     let gau = Catalog::get().tool("gau").expect("gau");
     assert_eq!(gau.binary, "gau");
@@ -557,7 +597,7 @@ fn buf_and_hadolint_are_pinned_for_every_desktop_and_server_platform() {
     }
 }
 
-const MIGRATED_TOOLS: [&str; 18] = [
+const MIGRATED_TOOLS: [&str; 19] = [
     "checkstyle",
     "palantir-java-format",
     "buildifier",
@@ -576,6 +616,7 @@ const MIGRATED_TOOLS: [&str; 18] = [
     "google-java-format",
     "ktfmt",
     "air",
+    "jarl",
 ];
 
 #[test]
@@ -657,6 +698,7 @@ fn sources_declare_the_windows_builds_upstream_publishes() {
         "zizmor",
         "google-java-format",
         "ktfmt",
+        "jarl",
     ] {
         let source = recipe_of(name).install.as_ref().unwrap().source.as_ref().unwrap();
         assert!(source.asset_spec("windows-x86_64").is_some(), "{name}");
