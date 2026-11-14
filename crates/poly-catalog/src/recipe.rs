@@ -52,6 +52,8 @@ pub enum Output {
     GauJson,
     /// shellcheck `--format=json1`.
     ShellcheckJson1,
+    /// A SARIF 2.1.0 log (`zizmor --format sarif`, `detekt --report sarif`).
+    Sarif,
 }
 
 /// How a run's files are split into invocations.

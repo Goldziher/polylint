@@ -8,6 +8,7 @@
 mod checkstyle;
 mod helm;
 mod json;
+mod sarif;
 
 use anyhow::Result;
 use poly_catalog::Output;
@@ -70,6 +71,7 @@ pub(in crate::engines::catalog_tool) fn parse(format: Output, stdout: &str, stde
         Output::PathLine => Ok(helm::path_lines(stdout, stderr)),
         Output::GauJson => json::gau(stdout),
         Output::ShellcheckJson1 => json::shellcheck(stdout),
+        Output::Sarif => sarif::parse(stdout),
     }
 }
 

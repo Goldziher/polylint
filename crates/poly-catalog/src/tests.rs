@@ -357,6 +357,21 @@ fn clang_format_is_a_pinned_static_download_formatted_in_place_with_project_conf
 }
 
 #[test]
+fn zizmor_audits_workflows_offline_and_reads_sarif() {
+    let tool = Catalog::get().tool("zizmor").expect("zizmor");
+    assert_eq!(tool.path_globs[0], "**/.github/workflows/*.yml");
+    let (_, lint) = tool.lint_command().expect("a lint command");
+    assert_eq!(
+        lint.arguments,
+        ["--offline", "--no-exit-codes", "--format", "sarif", "$FILES"],
+        "offline keeps results deterministic"
+    );
+    let recipe = recipe_of("zizmor");
+    assert_eq!(recipe.output, Output::Sarif);
+    assert!(recipe.config_files.iter().any(|f| f == ".github/zizmor.yml"));
+}
+
+#[test]
 fn gau_lints_the_pins_of_workflows_and_action_manifests_as_json() {
     let gau = Catalog::get().tool("gau").expect("gau");
     assert_eq!(gau.binary, "gau");
@@ -422,7 +437,7 @@ fn buf_and_hadolint_are_pinned_for_every_desktop_and_server_platform() {
     }
 }
 
-const MIGRATED_TOOLS: [&str; 12] = [
+const MIGRATED_TOOLS: [&str; 13] = [
     "checkstyle",
     "palantir-java-format",
     "buildifier",
@@ -435,6 +450,7 @@ const MIGRATED_TOOLS: [&str; 12] = [
     "tflint",
     "tofu",
     "shellcheck",
+    "zizmor",
 ];
 
 #[test]
@@ -507,7 +523,7 @@ fn sources_declare_the_windows_builds_upstream_publishes() {
             );
         }
     }
-    for name in ["hadolint", "tflint", "shellcheck"] {
+    for name in ["hadolint", "tflint", "shellcheck", "zizmor"] {
         let source = recipe_of(name).install.as_ref().unwrap().source.as_ref().unwrap();
         assert!(source.asset_spec("windows-x86_64").is_some(), "{name}");
         assert!(

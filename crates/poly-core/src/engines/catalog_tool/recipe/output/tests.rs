@@ -481,3 +481,42 @@ fn shellcheck_clean_report_has_no_findings_and_other_output_is_an_error() {
         assert!(parse(Output::ShellcheckJson1, stdout, "").is_err(), "{why}");
     }
 }
+
+const ZIZMOR_SARIF: &str = r#"{"version":"2.1.0","runs":[{"tool":{"driver":{"name":"zizmor","rules":[{"id":"zizmor/template-injection","helpUri":"https://docs.zizmor.sh/audits/#template-injection"}]}},"results":[
+{"ruleId":"zizmor/template-injection","level":"error","message":{"text":"code injection via template expansion"},"locations":[{"physicalLocation":{"artifactLocation":{"uri":".github/workflows/ci.yml"},"region":{"startLine":12,"startColumn":9,"endLine":12,"endColumn":40}}}]},
+{"ruleId":"zizmor/excessive-permissions","level":"note","message":{"text":"overly broad permissions"},"locations":[{"physicalLocation":{"artifactLocation":{"uri":".github/workflows/ci.yml"},"region":{"startLine":1}}}]}]}]}"#;
+
+#[test]
+fn sarif_results_become_line_spanned_findings_with_the_rule_help_uri() {
+    let findings = parse(Output::Sarif, ZIZMOR_SARIF, "").expect("parses");
+    assert_eq!(findings.len(), 2, "{findings:?}");
+    let first = &findings[0];
+    assert_eq!(first.path.as_deref(), Some(".github/workflows/ci.yml"));
+    assert_eq!(
+        (first.line, first.column, first.end_line, first.end_column),
+        (Some(12), Some(9), Some(12), Some(40))
+    );
+    assert_eq!(first.code.as_deref(), Some("zizmor/template-injection"));
+    assert_eq!(
+        first.url.as_deref(),
+        Some("https://docs.zizmor.sh/audits/#template-injection")
+    );
+    assert_eq!(first.severity, Severity::Error);
+    assert_eq!(first.message, "code injection via template expansion");
+    assert_eq!(findings[1].severity, Severity::Info);
+    assert_eq!((findings[1].line, findings[1].column), (Some(1), None));
+    assert_eq!(findings[1].url, None);
+}
+
+#[test]
+fn a_sarif_log_without_results_is_clean_and_other_output_is_an_error() {
+    let clean = r#"{"version":"2.1.0","runs":[{"tool":{"driver":{"name":"zizmor"}},"results":[]}]}"#;
+    assert!(parse(Output::Sarif, clean, "").expect("parses").is_empty());
+    for (stdout, why) in [
+        ("", "no output"),
+        ("error: unexpected argument '--offline' found", "a usage error"),
+        (r#"{"version":"2.1.0"}"#, "no runs"),
+    ] {
+        assert!(parse(Output::Sarif, stdout, "").is_err(), "{why}");
+    }
+}
