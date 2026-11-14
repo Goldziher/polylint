@@ -184,18 +184,23 @@ fn every_file_skif_read_was_an_input_of_the_request() {
 const ABSENT_BY_DESIGN: &[&str] = &[
     "",
     ".git",
+    ".github/workflows",
     ".skif.toml",
     "MODULE.bazel",
     "WORKSPACE",
     "WORKSPACE.bazel",
     "bun.lock",
-    "node_modules/vue/package.json",
+    "lerna.json",
+    "node_modules/lerna/package.json",
+    "node_modules/typescript/package.json",
     "pnpm-workspace.yaml",
     "rush.json",
+    "server.js",
     "skif.toml",
     "src/App.vue/tsconfig.json",
     "src/generated",
     "src/generated/api",
+    "src/generated/api/package.json",
     "src/generated/api.ts",
     "src/main.ts/tsconfig.json",
     "yarn.lock",
@@ -206,6 +211,9 @@ const ABSENT_BY_DESIGN: &[&str] = &[
 const ANCESTOR_PROBES: &[&str] = &[
     ".git",
     ".skif.toml",
+    "MODULE.bazel",
+    "WORKSPACE",
+    "WORKSPACE.bazel",
     "package.json",
     "pnpm-workspace.yaml",
     "skif.toml",
@@ -469,6 +477,12 @@ fn pair(file: &str, rule: &str) -> (String, String) {
     (file.to_owned(), rule.to_owned())
 }
 
+/// A lock file written by another package manager than the workspace's is `stray-lockfile`'s to report; the tests
+/// of the unused-dependency rules put one in a pnpm workspace on purpose and leave that finding out.
+fn without_stray_lockfile() -> (&'static str, toml::Value) {
+    ("ignore", toml::Value::Array(vec!["stray-lockfile".into()]))
+}
+
 fn select(rule: &str) -> (&'static str, toml::Value) {
     ("select", toml::Value::Array(vec![rule.into()]))
 }
@@ -562,9 +576,14 @@ fn a_lock_file_that_records_binaries_keeps_the_unused_dependency_rules_on_by_def
     for (name, lock) in [("package-lock.json", NPM_LOCK), ("yarn.lock", BERRY_LOCK)] {
         let (root, files) = with_lock(name, lock);
         assert_eq!(
-            rules_found(&root, &files, &cfg(&[])),
+            rules_found(&root, &files, &cfg(&[without_stray_lockfile()])),
             [pair("packages/host/package.json", "unused-dependencies")],
             "{name}: the lock names kit and the peer, so only left-pad is unused"
+        );
+        assert_eq!(
+            rules_found(&root, &files, &cfg(&[select("stray-lockfile")])),
+            [pair(name, "stray-lockfile")],
+            "{name}: a lock file of another package manager in a pnpm workspace is stray"
         );
     }
 }
@@ -576,7 +595,11 @@ fn without_a_lock_file_that_records_binaries_the_unused_dependency_rules_stay_of
         ("yarn.lock", CLASSIC_YARN_LOCK),
     ] {
         let (root, files) = with_lock(name, lock);
-        assert_eq!(rules_found(&root, &files, &cfg(&[])), [], "{name}");
+        assert_eq!(
+            rules_found(&root, &files, &cfg(&[without_stray_lockfile()])),
+            [],
+            "{name}"
+        );
         assert_eq!(
             rules_found(&root, &files, &cfg(&[select("unused-dependencies")])),
             [
@@ -886,14 +909,14 @@ fn a_lock_file_skif_gets_no_packages_from_does_not_keep_the_unused_dependency_ru
         ("bun.lock", "{ not json"),
     ] {
         let (root, files) = with_lock(name, lock);
-        let analysis = run(&root, &files, &cfg(&[]));
+        let analysis = run(&root, &files, &cfg(&[without_stray_lockfile()]));
         assert_eq!(summary(&root, &analysis).len(), 0, "{name} {lock}: the rules stay off");
         let note = analysis.note.expect("rules were left off").1;
         assert!(note.title.contains("unused-dependencies"), "{name}: {}", note.title);
     }
     let (root, files) = with_lock("package-lock.json", NPM_LOCK);
     assert_eq!(
-        rules_found(&root, &files, &cfg(&[])),
+        rules_found(&root, &files, &cfg(&[without_stray_lockfile()])),
         [pair("packages/host/package.json", "unused-dependencies")]
     );
 }

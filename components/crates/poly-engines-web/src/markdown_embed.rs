@@ -14,7 +14,7 @@
 
 use std::sync::Arc;
 
-use oxc_formatter::JsEmbeddedIn;
+use oxc_formatter::{JsEmbeddedIn, JsRoot, ProgramLayout, ProgramSemicolons};
 use oxc_formatter_core::{DispatchRequest, DispatchResponse, FormatDispatcher, FormatSession};
 use oxc_formatter_css::CssVariant;
 use oxc_formatter_json::JsonVariant;
@@ -127,15 +127,21 @@ fn build(configs: Arc<ChildConfigs>) -> FormatDispatcher {
         let text = request.text;
         let embedded = match target {
             Target::Js(source_type) => {
-                let embedded_in = request
-                    .parent_context_as::<XxxInMarkdownCodeBlock>()
-                    .map(|_| JsEmbeddedIn::MarkdownCodeBlock);
+                let semicolons = if request.parent_context_as::<XxxInMarkdownCodeBlock>().is_some() {
+                    ProgramSemicolons::LoneJsxOmitted
+                } else {
+                    ProgramSemicolons::AsOptions
+                };
                 oxc_formatter::format_to_ir(
                     session,
                     text,
                     source_type,
                     super::oxc::embedded_js_options(&configs.js),
-                    embedded_in,
+                    JsRoot::Program {
+                        semicolons,
+                        layout: ProgramLayout::Bare,
+                    },
+                    JsEmbeddedIn::default(),
                 )
             }
             Target::Css(variant) => oxc_formatter_css::format_to_ir(

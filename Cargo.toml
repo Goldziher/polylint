@@ -43,27 +43,26 @@ members = [
 [workspace.package]
 version = "0.34.2"
 edition = "2024"
-rust-version = "1.99"
+rust-version = "1.100"
 license = "MIT"
 authors = ["Na'aman Hirschfeld <nhirschfeld@gmail.com>"]
 repository = "https://github.com/Goldziher/polylint"
-homepage = "https://github.com/Goldziher/polylint"
 documentation = "https://github.com/Goldziher/polylint"
 
 [workspace.dependencies]
 aho-corasick = "1.1.5"
-alef-component-abi = "=0.129.0"
-alef-component-runtime = "=0.129.0"
+alef-component-abi = "=0.129.4"
+alef-component-runtime = "=0.129.4"
 # alejandra — Nix formatter (UNLICENSE, pure Rust via rnix); chosen over
 alejandra = "3.1"
-annotate-snippets = "0.12.17"
+annotate-snippets = "0.12.18"
 anstream = "1.0.0"
 anstyle-query = "1.1.5"
 anyhow = "1"
 assert_cmd = "2"
 assert_fs = "1.1.4"
-ast-grep-config = "0.51.1"
-ast-grep-core = "0.51.1"
+ast-grep-config = "0.51.2"
+ast-grep-core = "0.51.2"
 axoupdater = { version = "0.10.3", default-features = false, features = ["github_releases"] }
 blake3 = "1"
 bstr = "1.13.1"
@@ -79,11 +78,11 @@ dotenv-core = "0.1"
 dunce = "1.0.5"
 enquote = "1.1.0"
 etcetera = "0.11.0"
-fancy-regex = "0.20.0"
+fancy-regex = "0.20.2"
 flate2 = "1.1"
 fs-err = "3.3.2"
 fs2 = "0.4"
-gitfluff = { version = "0.11.1", default-features = false }
+gitfluff = { version = "0.11.2", default-features = false }
 globset = "0.4.21"
 graphql-parser = "0.4"
 hcl-edit = "0.10.0"
@@ -111,8 +110,8 @@ mago-text-edit = { version = "1.59" }
 markdown = "1.0.0"
 memchr = "2.8.3"
 owo-colors = { version = "4", features = ["supports-colors"] }
-pest = "2.9.5"
-pest_derive = "2.9.5"
+pest = "2.9.6"
+pest_derive = "2.9.6"
 phf = { version = "0.14.0", default-features = false, features = ["macros"] }
 poly-buildinfo = { path = "crates/poly-buildinfo" }
 poly-cache = { path = "crates/poly-cache" }
@@ -149,7 +148,7 @@ quick-xml = "0.42"
 rand = "0.10.3"
 rayon = "1"
 regex = "1"
-rmcp = { version = "3.9.0", features = ["schemars"] }
+rmcp = { version = "3.10.0", features = ["schemars"] }
 rmp-serde = "1.3"
 ruff_db = "=0.0.21"
 ruff_formatter = "=0.0.21"
@@ -180,7 +179,7 @@ sqruff-lib = "0.44"
 sqruff-lib-core = "0.44"
 strum = { version = "0.28.0", features = ["derive"] }
 tar = { version = "0.4", default-features = false }
-target-lexicon = "0.13.5"
+target-lexicon = "0.13.6"
 tempfile = "3"
 terminal_size = "0.4.4"
 textwrap = "0.16.4"
@@ -191,7 +190,7 @@ toml_edit = "0.25"
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["fmt", "env-filter"] }
 tree-sitter = "0.27"
-tree-sitter-language-pack = "1.24"
+tree-sitter-language-pack = "1.25"
 ty_module_resolver = "=0.0.21"
 # `testing` only exposes `TestProgramDb` (a salsa-cached `Program` from settings, no extra deps); poly-engines-python's
 # ty database is built on it because `ty_project` is unpublished.
@@ -207,7 +206,7 @@ unicode-width = { version = "0.2.3", default-features = false }
 ureq = "3"
 walkdir = "2.5.0"
 which = "8.0.6"
-zip = { version = "9.4", default-features = false, features = ["deflate-flate2-zlib-rs"] }
+zip = { version = "9.5", default-features = false, features = ["deflate-flate2-zlib-rs"] }
 
 [profile.release]
 lto = "thin"

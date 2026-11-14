@@ -281,7 +281,7 @@ jobs:
       BUILD_IMAGE: ${{ matrix.image }}
       # One exact toolchain for every component build: the host setup, the manylinux container's
       # rustup and the input hash all use this value. Bump it deliberately; it rebuilds everything.
-      RUST_TOOLCHAIN: "1.99.1"
+      RUST_TOOLCHAIN: "1.100.0"
       REBUILD_COMPONENTS: ${{ github.event.inputs.rebuild_components || 'false' }}
     strategy:
       fail-fast: false

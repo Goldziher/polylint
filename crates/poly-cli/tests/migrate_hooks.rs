@@ -325,7 +325,7 @@ fn a_fully_mapped_lefthook_config_is_deleted_on_write() {
     let plan = plan(dir.path());
     assert_eq!(result(&plan, "lefthook").absorb, Absorb::Full);
 
-    run_migrate(migrate_args(dir.path(), true, false));
+    let _ = run_migrate(migrate_args(dir.path(), true, false));
     assert!(
         !dir.path().join("lefthook.yml").exists(),
         "fully absorbed source is deleted"
@@ -343,13 +343,13 @@ fn a_partially_mapped_config_is_kept_and_rewriting_is_idempotent() {
         "lefthook.yml",
         "post-merge:\n  jobs:\n    - name: lock\n      run: bash check.sh {push_files}\npre-commit:\n  jobs:\n    - name: fmt\n      run: ruff format {staged_files}\n",
     )]);
-    run_migrate(migrate_args(dir.path(), true, false));
+    let _ = run_migrate(migrate_args(dir.path(), true, false));
     assert!(
         dir.path().join("lefthook.yml").exists(),
         "an unmigrated {{push_files}} job keeps the source"
     );
     let first = fs::read_to_string(dir.path().join("poly.toml")).unwrap();
-    run_migrate(migrate_args(dir.path(), true, false));
+    let _ = run_migrate(migrate_args(dir.path(), true, false));
     assert_eq!(first, fs::read_to_string(dir.path().join("poly.toml")).unwrap());
 }
 
@@ -359,7 +359,7 @@ fn recurse_finds_directories_that_only_hold_a_hook_config() {
         "svc/lefthook.yml",
         "pre-commit:\n  jobs:\n    - run: ruff format {staged_files}\n",
     )]);
-    run_migrate(migrate_args(dir.path(), true, true));
+    let _ = run_migrate(migrate_args(dir.path(), true, true));
     assert!(dir.path().join("svc/poly.toml").is_file());
     assert!(
         !dir.path().join("svc/lefthook.yml").exists(),
@@ -373,7 +373,7 @@ fn a_nested_hook_config_that_loses_something_is_kept() {
         "svc/lefthook.yml",
         "post-merge:\n  jobs:\n    - name: lock\n      run: bash check.sh {push_files}\npre-commit:\n  jobs:\n    - run: ruff format {staged_files}\n",
     )]);
-    run_migrate(migrate_args(dir.path(), true, true));
+    let _ = run_migrate(migrate_args(dir.path(), true, true));
     assert!(dir.path().join("svc/poly.toml").is_file());
     assert!(
         dir.path().join("svc/lefthook.yml").is_file(),
@@ -754,7 +754,7 @@ fn recurse_skips_virtualenvs_gitignored_trees_and_build_output() {
         ("bazel-out/pkg/pyproject.toml", ruff),
         (".gitignore", "generated/\n"),
     ]);
-    run_migrate(migrate_args(dir.path(), true, true));
+    let _ = run_migrate(migrate_args(dir.path(), true, true));
     assert!(
         dir.path().join("svc/poly.toml").is_file(),
         "the real project is migrated"
@@ -776,7 +776,7 @@ fn recurse_skips_virtualenvs_gitignored_trees_and_build_output() {
 fn a_nested_ruff_config_replaces_the_ancestors_and_says_so() {
     let ruff = "[tool.ruff.lint]\nselect = [\"E\"]\n[tool.ruff.lint.per-file-ignores]\n\"a.py\" = [\"F401\"]\n";
     let dir = repo(&[("pyproject.toml", ruff), ("svc/pyproject.toml", ruff)]);
-    run_migrate(migrate_args(dir.path(), true, true));
+    let _ = run_migrate(migrate_args(dir.path(), true, true));
     let root: toml::Table = toml::from_str(&fs::read_to_string(dir.path().join("poly.toml")).unwrap()).unwrap();
     let nested: toml::Table = toml::from_str(&fs::read_to_string(dir.path().join("svc/poly.toml")).unwrap()).unwrap();
     assert!(root["lint"]["python"]["ruff"].get("inherit_mode").is_none());
@@ -796,7 +796,7 @@ fn the_root_hook_config_is_still_deleted_when_fully_absorbed_under_recurse() {
         ),
         ("svc/pyproject.toml", "[tool.ruff.lint]\nselect = [\"E\"]\n"),
     ]);
-    run_migrate(migrate_args(dir.path(), true, true));
+    let _ = run_migrate(migrate_args(dir.path(), true, true));
     assert!(!dir.path().join("lefthook.yml").exists());
 }
 
@@ -1020,7 +1020,7 @@ fn migrating_the_armis_fixture_writes_a_config_the_loader_accepts() {
     let dir = tempdir().unwrap();
     copy_tree(&armis(), dir.path());
 
-    run_migrate(migrate_args(dir.path(), true, false));
+    let _ = run_migrate(migrate_args(dir.path(), true, false));
 
     let written = dir.path().join("poly.toml");
     assert!(written.is_file(), "--write must produce poly.toml");

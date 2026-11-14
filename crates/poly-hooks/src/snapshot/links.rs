@@ -49,14 +49,12 @@ const LINKS_FILE: &str = ".poly-links";
 /// The mirror roots the last refresh recorded under `dir`, as repo-relative
 /// directories.
 pub(super) fn recorded(dir: &Path) -> Vec<PathBuf> {
-    std::fs::read_to_string(dir.join(LINKS_FILE))
-        .map(|text| {
-            text.lines()
-                .map(PathBuf::from)
-                .filter(|entry| git::is_safe_relative_path(entry))
-                .collect()
-        })
-        .unwrap_or_default()
+    std::fs::read_to_string(dir.join(LINKS_FILE)).map_or_default(|text| {
+        text.lines()
+            .map(PathBuf::from)
+            .filter(|entry| git::is_safe_relative_path(entry))
+            .collect()
+    })
 }
 
 /// Remove the mirrors the previous refresh created that `wanted` does not keep.

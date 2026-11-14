@@ -6,7 +6,6 @@ rust-version.workspace = true
 license.workspace = true
 authors.workspace = true
 repository.workspace = true
-homepage.workspace = true
 documentation.workspace = true
 description = "Whole-project (workspace) lint orchestration shared by the poly CLI and MCP server: lowers poly.toml hooks into the poly-hooks model and runs the whole-workspace tool set against the live worktree."
 publish = false

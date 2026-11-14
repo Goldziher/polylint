@@ -6,7 +6,6 @@ rust-version.workspace = true
 license.workspace = true
 authors.workspace = true
 repository.workspace = true
-homepage.workspace = true
 documentation.workspace = true
 publish = false
 description = "Wire types and the service seam between poly and a frontend component such as the MCP server."

@@ -78,7 +78,7 @@ ignore = ["E501"]
     )
     .unwrap();
 
-    run_migrate(args(dir.path(), true));
+    let _ = run_migrate(args(dir.path(), true));
 
     let poly = fs::read_to_string(dir.path().join("poly.toml")).expect("poly.toml written");
     insta::assert_snapshot!("python_repo_poly_toml", poly);
@@ -105,11 +105,11 @@ fn write_is_idempotent() {
     )
     .unwrap();
 
-    run_migrate(args(dir.path(), true));
+    let _ = run_migrate(args(dir.path(), true));
     let first = fs::read_to_string(dir.path().join("poly.toml")).unwrap();
     assert!(!dir.path().join("ruff.toml").exists(), "ruff.toml absorbed and deleted");
 
-    run_migrate(args(dir.path(), true));
+    let _ = run_migrate(args(dir.path(), true));
     let second = fs::read_to_string(dir.path().join("poly.toml")).unwrap();
     assert_eq!(first, second, "re-running --write must be idempotent");
 }

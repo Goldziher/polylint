@@ -19,15 +19,15 @@ dependencies = [
 
 [[package]]
 name = "alef-component-abi"
-version = "0.129.0"
+version = "0.129.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "3663c61851969e17d9a34484015e2f1d7d9f2035489ba828dee3b2242abecc36"
+checksum = "b716c75f87a6a72ee4c1f78d3ad8829e23f4497e9ada9a9a04f3d20ff8789fdb"
 
 [[package]]
 name = "alef-component-runtime"
-version = "0.129.0"
+version = "0.129.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a5c315a4bfcf9acb6aaf9fee095ab7f0a10107de5e8f428562526ffd87c9cce7"
+checksum = "df778fa0adea8fff2ad7b0fd76f10f87f0659dc6599dd1f7bf3ba53c567fab27"
 dependencies = [
  "alef-component-abi",
  "base64",

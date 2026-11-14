@@ -7,6 +7,15 @@ binary drives lint, format, hooks, and commit checks from one `poly.toml`.
 
 ## [Unreleased]
 
+### Changed
+
+- **Dependencies refreshed.** Every crates.io dependency moved to its latest release; the oxc git pin moved to
+  `crates_v0.158.0`, biome to 2.6.7 and rubyfmt to upstream HEAD. skif 0.5.0 adds the Lerna, `stray-lockfile` and
+  Bazel-aware rules to the `skif` engine's findings, gitfluff 0.11.2, ast-grep 0.51.2, tree-sitter-language-pack 1.25
+  (the built-in Zig definition query follows its renamed `function_declaration` node). Cached results from the engines
+  whose crates moved are recomputed once.
+- **Rust 1.100** is the minimum supported version, which skif 0.5.0 requires.
+
 ## [0.34.2] - 2026-11-09
 
 ### Changed

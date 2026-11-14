@@ -6,7 +6,6 @@ rust-version.workspace = true
 license.workspace = true
 authors.workspace = true
 repository.workspace = true
-homepage.workspace = true
 documentation.workspace = true
 publish = false
 description = "The Engine contract and shared helpers for poly engines (no engine crates in its tree)."

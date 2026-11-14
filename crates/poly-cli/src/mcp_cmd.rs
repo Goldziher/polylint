@@ -27,7 +27,6 @@ fn services() -> Arc<Services> {
 }
 
 /// Run `poly mcp`; `config` is the global `--config`, the fallback for requests naming none.
-#[must_use]
 pub fn run_mcp(config: Option<PathBuf>) -> ExitCode {
     match serve(config) {
         Ok(()) => ExitCode::SUCCESS,

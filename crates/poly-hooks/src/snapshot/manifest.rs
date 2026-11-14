@@ -116,15 +116,13 @@ pub(super) fn prune_stale(dir: &Path, staged: &[git::StagedEntry], previous: &Ha
 /// yields an empty map, so everything is re-materialized once — the safe
 /// direction.
 pub(super) fn read_manifest(dir: &Path) -> HashMap<PathBuf, Record> {
-    std::fs::read(dir.join(MANIFEST_FILE))
-        .map(|bytes| {
-            bytes
-                .split(|&byte| byte == 0)
-                .filter(|slice| !slice.is_empty())
-                .filter_map(parse_manifest_record)
-                .collect()
-        })
-        .unwrap_or_default()
+    std::fs::read(dir.join(MANIFEST_FILE)).map_or_default(|bytes| {
+        bytes
+            .split(|&byte| byte == 0)
+            .filter(|slice| !slice.is_empty())
+            .filter_map(parse_manifest_record)
+            .collect()
+    })
 }
 
 /// Parse one `<oid> <size> <mtime> <path>` manifest record. The leading fields

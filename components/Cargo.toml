@@ -8,42 +8,41 @@ members = ["crates/*"]
 [workspace.package]
 version = "0.34.2"
 edition = "2024"
-rust-version = "1.99"
+rust-version = "1.100"
 license = "MIT"
 authors = ["Na'aman Hirschfeld <nhirschfeld@gmail.com>"]
 repository = "https://github.com/Goldziher/polylint"
-homepage = "https://github.com/Goldziher/polylint"
 documentation = "https://github.com/Goldziher/polylint"
 
 [workspace.dependencies]
 adrlint = { version = "=0.5.0", default-features = false }
 anyhow = "1"
-biome_analyze = { git = "https://github.com/biomejs/biome", rev = "fca5c35007fc3ff9c55edb2085fc557a7fbfd16d" }
-biome_css_analyze = { git = "https://github.com/biomejs/biome", rev = "fca5c35007fc3ff9c55edb2085fc557a7fbfd16d" }
-biome_css_parser = { git = "https://github.com/biomejs/biome", rev = "fca5c35007fc3ff9c55edb2085fc557a7fbfd16d" }
-biome_diagnostics = { git = "https://github.com/biomejs/biome", rev = "fca5c35007fc3ff9c55edb2085fc557a7fbfd16d" }
-biome_graphql_analyze = { git = "https://github.com/biomejs/biome", rev = "fca5c35007fc3ff9c55edb2085fc557a7fbfd16d" }
-biome_graphql_parser = { git = "https://github.com/biomejs/biome", rev = "fca5c35007fc3ff9c55edb2085fc557a7fbfd16d" }
-biome_languages = { git = "https://github.com/biomejs/biome", rev = "fca5c35007fc3ff9c55edb2085fc557a7fbfd16d", features = [
+biome_analyze = { git = "https://github.com/biomejs/biome", rev = "ec3b4b25eea29634fdab941b27baf4d8c85d8736" }
+biome_css_analyze = { git = "https://github.com/biomejs/biome", rev = "ec3b4b25eea29634fdab941b27baf4d8c85d8736" }
+biome_css_parser = { git = "https://github.com/biomejs/biome", rev = "ec3b4b25eea29634fdab941b27baf4d8c85d8736" }
+biome_diagnostics = { git = "https://github.com/biomejs/biome", rev = "ec3b4b25eea29634fdab941b27baf4d8c85d8736" }
+biome_graphql_analyze = { git = "https://github.com/biomejs/biome", rev = "ec3b4b25eea29634fdab941b27baf4d8c85d8736" }
+biome_graphql_parser = { git = "https://github.com/biomejs/biome", rev = "ec3b4b25eea29634fdab941b27baf4d8c85d8736" }
+biome_languages = { git = "https://github.com/biomejs/biome", rev = "ec3b4b25eea29634fdab941b27baf4d8c85d8736", features = [
   "lang_css",
 ] }
-biome_rowan = { git = "https://github.com/biomejs/biome", rev = "fca5c35007fc3ff9c55edb2085fc557a7fbfd16d" }
+biome_rowan = { git = "https://github.com/biomejs/biome", rev = "ec3b4b25eea29634fdab941b27baf4d8c85d8736" }
 insta = "1"
 malva = "0.16"
 markup_fmt = "0.27"
-oxc_allocator = { git = "https://github.com/oxc-project/oxc", rev = "f799f174b5db10f1fa9e136594e53de82d4f4f83" }
-oxc_diagnostics = { git = "https://github.com/oxc-project/oxc", rev = "f799f174b5db10f1fa9e136594e53de82d4f4f83" }
-oxc_formatter = { git = "https://github.com/oxc-project/oxc", rev = "f799f174b5db10f1fa9e136594e53de82d4f4f83" }
-oxc_formatter_core = { git = "https://github.com/oxc-project/oxc", rev = "f799f174b5db10f1fa9e136594e53de82d4f4f83" }
-oxc_formatter_css = { git = "https://github.com/oxc-project/oxc", rev = "f799f174b5db10f1fa9e136594e53de82d4f4f83" }
-oxc_formatter_json = { git = "https://github.com/oxc-project/oxc", rev = "f799f174b5db10f1fa9e136594e53de82d4f4f83" }
-oxc_formatter_markdown = { git = "https://github.com/oxc-project/oxc", rev = "f799f174b5db10f1fa9e136594e53de82d4f4f83" }
-oxc_formatter_toml = { git = "https://github.com/oxc-project/oxc", rev = "f799f174b5db10f1fa9e136594e53de82d4f4f83" }
-oxc_formatter_yaml = { git = "https://github.com/oxc-project/oxc", rev = "f799f174b5db10f1fa9e136594e53de82d4f4f83" }
-oxc_linter = { git = "https://github.com/oxc-project/oxc", rev = "f799f174b5db10f1fa9e136594e53de82d4f4f83" }
-oxc_parser = { git = "https://github.com/oxc-project/oxc", rev = "f799f174b5db10f1fa9e136594e53de82d4f4f83" }
-oxc_semantic = { git = "https://github.com/oxc-project/oxc", rev = "f799f174b5db10f1fa9e136594e53de82d4f4f83" }
-oxc_span = { git = "https://github.com/oxc-project/oxc", rev = "f799f174b5db10f1fa9e136594e53de82d4f4f83" }
+oxc_allocator = { git = "https://github.com/oxc-project/oxc", rev = "74e5e665ab8227c3d43abf3ce0e4383830e80c12" }
+oxc_diagnostics = { git = "https://github.com/oxc-project/oxc", rev = "74e5e665ab8227c3d43abf3ce0e4383830e80c12" }
+oxc_formatter = { git = "https://github.com/oxc-project/oxc", rev = "74e5e665ab8227c3d43abf3ce0e4383830e80c12" }
+oxc_formatter_core = { git = "https://github.com/oxc-project/oxc", rev = "74e5e665ab8227c3d43abf3ce0e4383830e80c12" }
+oxc_formatter_css = { git = "https://github.com/oxc-project/oxc", rev = "74e5e665ab8227c3d43abf3ce0e4383830e80c12" }
+oxc_formatter_json = { git = "https://github.com/oxc-project/oxc", rev = "74e5e665ab8227c3d43abf3ce0e4383830e80c12" }
+oxc_formatter_markdown = { git = "https://github.com/oxc-project/oxc", rev = "74e5e665ab8227c3d43abf3ce0e4383830e80c12" }
+oxc_formatter_toml = { git = "https://github.com/oxc-project/oxc", rev = "74e5e665ab8227c3d43abf3ce0e4383830e80c12" }
+oxc_formatter_yaml = { git = "https://github.com/oxc-project/oxc", rev = "74e5e665ab8227c3d43abf3ce0e4383830e80c12" }
+oxc_linter = { git = "https://github.com/oxc-project/oxc", rev = "74e5e665ab8227c3d43abf3ce0e4383830e80c12" }
+oxc_parser = { git = "https://github.com/oxc-project/oxc", rev = "74e5e665ab8227c3d43abf3ce0e4383830e80c12" }
+oxc_semantic = { git = "https://github.com/oxc-project/oxc", rev = "74e5e665ab8227c3d43abf3ce0e4383830e80c12" }
+oxc_span = { git = "https://github.com/oxc-project/oxc", rev = "74e5e665ab8227c3d43abf3ce0e4383830e80c12" }
 poly-cache = { path = "../crates/poly-cache" }
 poly-cli = { path = "../crates/poly-cli" }
 poly-component-host = { path = "../crates/poly-component-host" }
@@ -57,12 +56,12 @@ poly-engines-biome = { path = "crates/poly-engines-biome" }
 poly-engines-ruby = { path = "crates/poly-engines-ruby" }
 poly-engines-web = { path = "crates/poly-engines-web" }
 regex = "1"
-rubyfmt = { git = "https://github.com/fables-tales/rubyfmt", rev = "7c6ddaa73ed5c73f9431eb72e27e40070b095f47", default-features = false }
+rubyfmt = { git = "https://github.com/fables-tales/rubyfmt", rev = "eb5363ac922214bd79b1e4d146b1bd2097f3e168", default-features = false }
 rumdl = { version = "0.3", default-features = false }
 serde = { version = "1", features = ["derive"] }
 serde_json = { version = "1", features = ["preserve_order"] }
 serde_yaml = "0.9"
-skif = { version = "=0.1.1", default-features = false, features = ["manifest", "js-analysis", "fix"] }
+skif = { version = "=0.5.0", default-features = false, features = ["manifest", "js-analysis", "fix"] }
 sort-package-json = "1.0.0"
 taplo = "0.14"
 tempfile = "3"
@@ -78,17 +77,17 @@ codegen-units = 1
 # `oxc_allocator` through their parsers, and skif's `skif-js-syntax` takes the parser, semantic and AST
 # crates at `^0.157`. Each resolves to the same git copy as the rest of the oxc crates so the web family has
 # one `Allocator`, one `Span` and one AST. ADR 0044.
-oxc_allocator = { git = "https://github.com/oxc-project/oxc", rev = "f799f174b5db10f1fa9e136594e53de82d4f4f83" }
-oxc_ast = { git = "https://github.com/oxc-project/oxc", rev = "f799f174b5db10f1fa9e136594e53de82d4f4f83" }
-oxc_ast_macros = { git = "https://github.com/oxc-project/oxc", rev = "f799f174b5db10f1fa9e136594e53de82d4f4f83" }
-oxc_ast_visit = { git = "https://github.com/oxc-project/oxc", rev = "f799f174b5db10f1fa9e136594e53de82d4f4f83" }
-oxc_data_structures = { git = "https://github.com/oxc-project/oxc", rev = "f799f174b5db10f1fa9e136594e53de82d4f4f83" }
-oxc_diagnostics = { git = "https://github.com/oxc-project/oxc", rev = "f799f174b5db10f1fa9e136594e53de82d4f4f83" }
-oxc_ecmascript = { git = "https://github.com/oxc-project/oxc", rev = "f799f174b5db10f1fa9e136594e53de82d4f4f83" }
-oxc_estree = { git = "https://github.com/oxc-project/oxc", rev = "f799f174b5db10f1fa9e136594e53de82d4f4f83" }
-oxc_parser = { git = "https://github.com/oxc-project/oxc", rev = "f799f174b5db10f1fa9e136594e53de82d4f4f83" }
-oxc_regular_expression = { git = "https://github.com/oxc-project/oxc", rev = "f799f174b5db10f1fa9e136594e53de82d4f4f83" }
-oxc_semantic = { git = "https://github.com/oxc-project/oxc", rev = "f799f174b5db10f1fa9e136594e53de82d4f4f83" }
-oxc_span = { git = "https://github.com/oxc-project/oxc", rev = "f799f174b5db10f1fa9e136594e53de82d4f4f83" }
-oxc_str = { git = "https://github.com/oxc-project/oxc", rev = "f799f174b5db10f1fa9e136594e53de82d4f4f83" }
-oxc_syntax = { git = "https://github.com/oxc-project/oxc", rev = "f799f174b5db10f1fa9e136594e53de82d4f4f83" }
+oxc_allocator = { git = "https://github.com/oxc-project/oxc", rev = "74e5e665ab8227c3d43abf3ce0e4383830e80c12" }
+oxc_ast = { git = "https://github.com/oxc-project/oxc", rev = "74e5e665ab8227c3d43abf3ce0e4383830e80c12" }
+oxc_ast_macros = { git = "https://github.com/oxc-project/oxc", rev = "74e5e665ab8227c3d43abf3ce0e4383830e80c12" }
+oxc_ast_visit = { git = "https://github.com/oxc-project/oxc", rev = "74e5e665ab8227c3d43abf3ce0e4383830e80c12" }
+oxc_data_structures = { git = "https://github.com/oxc-project/oxc", rev = "74e5e665ab8227c3d43abf3ce0e4383830e80c12" }
+oxc_diagnostics = { git = "https://github.com/oxc-project/oxc", rev = "74e5e665ab8227c3d43abf3ce0e4383830e80c12" }
+oxc_ecmascript = { git = "https://github.com/oxc-project/oxc", rev = "74e5e665ab8227c3d43abf3ce0e4383830e80c12" }
+oxc_estree = { git = "https://github.com/oxc-project/oxc", rev = "74e5e665ab8227c3d43abf3ce0e4383830e80c12" }
+oxc_parser = { git = "https://github.com/oxc-project/oxc", rev = "74e5e665ab8227c3d43abf3ce0e4383830e80c12" }
+oxc_regular_expression = { git = "https://github.com/oxc-project/oxc", rev = "74e5e665ab8227c3d43abf3ce0e4383830e80c12" }
+oxc_semantic = { git = "https://github.com/oxc-project/oxc", rev = "74e5e665ab8227c3d43abf3ce0e4383830e80c12" }
+oxc_span = { git = "https://github.com/oxc-project/oxc", rev = "74e5e665ab8227c3d43abf3ce0e4383830e80c12" }
+oxc_str = { git = "https://github.com/oxc-project/oxc", rev = "74e5e665ab8227c3d43abf3ce0e4383830e80c12" }
+oxc_syntax = { git = "https://github.com/oxc-project/oxc", rev = "74e5e665ab8227c3d43abf3ce0e4383830e80c12" }

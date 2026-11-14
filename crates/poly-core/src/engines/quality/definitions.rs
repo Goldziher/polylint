@@ -15,9 +15,8 @@
 //!   produces **zero** captures. [`BUILTIN_TAGS`] below supplies a minimal
 //!   replacement query naming the real node kinds directly.
 //! - **Zig has no bundled tags query at all** (`get_tags_query` returns
-//!   `None`). Zig's grammar wraps a function's signature (`FnProto`) and body
-//!   (`Block`) as two *siblings* under one `Decl` node, so `(Decl (FnProto))
-//!   @definition.function` captures the whole function in one shot.
+//!   `None`). Zig's `function_declaration` node spans the whole function, so
+//!   `(function_declaration) @definition.function` captures it in one shot.
 //! - **JSX has no grammar of its own.** `detect_language("*.jsx")` resolves
 //!   to `"javascript"` (confirmed empirically), so `.jsx` files never reach
 //!   this table at all — they parse and tag exactly like `.js`.
@@ -76,10 +75,9 @@ const TS_FAMILY_TAGS: &str = "\
 (interface_declaration name: (type_identifier) @name) @definition.interface
 ";
 
-/// Zig has no bundled tags query. A function's signature (`FnProto`) and body
-/// (`Block`) are siblings under one `Decl` node, so capturing `Decl` whenever
-/// it has a `FnProto` child gives the whole function in one span.
-const ZIG_TAGS: &str = "(Decl (FnProto)) @definition.function";
+/// Zig has no bundled tags query. A `function_declaration` node spans the whole function, signature and body,
+/// so capturing it gives the function in one span.
+const ZIG_TAGS: &str = "(function_declaration) @definition.function";
 
 thread_local! {
     static QUERY_STATE: RefCell<HashMap<String, (QueryCursor, Query)>> = RefCell::new(HashMap::new());

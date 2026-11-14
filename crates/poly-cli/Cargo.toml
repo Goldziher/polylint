@@ -6,7 +6,6 @@ rust-version.workspace = true
 license.workspace = true
 authors.workspace = true
 repository.workspace = true
-homepage.workspace = true
 documentation.workspace = true
 publish = false
 description = "polylint: a universal polyglot linter and formatter (`poly lint`, `poly fmt`) with engines downloaded on demand."
