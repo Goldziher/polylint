@@ -443,7 +443,7 @@ const ENGINE_SOURCES: &[(&str, &[&str])] = &[
     ("graphql", &["../../../poly-engines-misc/src/graphql.rs"]),
     ("alejandra", &["../../../poly-engines-nix/src/nixfmt.rs"]),
     ("hcl", &["../../../poly-engines-misc/src/hcl/mod.rs"]),
-    ("dockerfile", &["../../../poly-engines-misc/src/dockerfile.rs"]),
+    ("dockerfile", &["../../../poly-engines-misc/src/dockerfile/mod.rs"]),
     ("dotenv", &["../../../poly-engines-misc/src/dotenv.rs"]),
     ("ini", &["../../../poly-engines-misc/src/ini.rs"]),
     ("treesitter", &["treesitter/mod.rs"]),

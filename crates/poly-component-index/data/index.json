@@ -2375,7 +2375,7 @@
             "fix": false,
             "project": false
           },
-          "version": "0.10.0+vendored1+parse-diag-v1+extendsel2+tmplskip",
+          "version": "0.10.0+vendored1+parse-diag-v1+extendsel2+tmplskip+hadolint-rules-v1",
           "option_keys": [
             {
               "table": "Lint",

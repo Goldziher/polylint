@@ -98,7 +98,7 @@ fn known_bad_diagnostics() {
 
 const CLEAN: &str = "\
 FROM alpine:3.20
-RUN apk add --no-cache curl
+RUN apk add --no-cache curl=8.9.1-r2
 WORKDIR /app
 COPY . .
 CMD [\"./my-app\"]

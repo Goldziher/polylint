@@ -142,10 +142,11 @@ fn check_command(words: &[String], ctx: &RunContext<'_>, hits: &mut Vec<Hit>) {
         "apk" => packages::apk(args, ctx, hits),
         "npm" => packages::npm(args, hits),
         n if is_pip(n) => packages::pip(args, ctx, hits),
-        n if n.starts_with("python") && args.first().map(String::as_str) == Some("-m") => {
-            if args.get(1).map(String::as_str) == Some("pip") {
-                packages::pip(&args[2..], ctx, hits);
-            }
+        n if n.starts_with("python")
+            && args.first().map(String::as_str) == Some("-m")
+            && args.get(1).map(String::as_str) == Some("pip") =>
+        {
+            packages::pip(&args[2..], ctx, hits);
         }
         _ => {}
     }
