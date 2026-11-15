@@ -84,6 +84,10 @@ tracing-subscriber.workspace = true
 walkdir.workspace = true
 which.workspace = true
 
+# musl's malloc serialises allocating threads behind one lock; the bundled release is musl (#179).
+[target.'cfg(target_env = "musl")'.dependencies]
+mimalloc.workspace = true
+
 [dev-dependencies]
 insta.workspace = true
 libc.workspace = true

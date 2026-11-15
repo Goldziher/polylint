@@ -155,3 +155,12 @@ attribution, add `debug = 1` to `[profile.bench]` before profiling.
      but a single-file fast path that folds the raw 32-byte hashes through the
      key without the intermediate hex `String` allocations removes per-file heap
      traffic from the hot loop.
+
+## Allocator on the musl release
+
+The bundled release (`x86_64-unknown-linux-musl`) sets `mimalloc` as the global allocator in the
+`poly` binary only (`crates/poly-cli/src/main.rs`, `cfg(target_env = "musl")`), because musl's
+malloc takes one global lock and serialises the rayon workers (#179). glibc, macOS and Windows
+builds keep their system allocator, and no library or component crate sets one. The effect is
+unmeasured; compare `runner_e2e` and a cold `poly lint --no-cache` on a musl build with and without
+it.

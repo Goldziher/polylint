@@ -111,6 +111,7 @@ mago-php-version = { version = "1.59" }
 mago-reporting = { version = "1.59" }
 mago-span = { version = "1.59" }
 mago-syntax = { version = "1.59" }
+mimalloc = { version = "0.1.52", default-features = false }
 mago-text-edit = { version = "1.59" }
 markdown = "1.0.0"
 memchr = "2.8.3"
