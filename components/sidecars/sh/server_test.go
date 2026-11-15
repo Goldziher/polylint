@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/binary"
 	"encoding/json"
+	"fmt"
 	"strings"
 	"testing"
 
@@ -56,19 +57,16 @@ func register(t *testing.T, s *server, id uint32, indent int64, tabs bool) {
 	if tabs {
 		options = wireTab("use_tabs", wireBool(true))
 	}
-	resp := call(t, s, map[string]any{"RegisterConfig": map[string]any{
-		"id":     id,
-		"config": wireTab("indent_width", wireInt(indent), "options", options),
-	}}, nil)
+	resp := call(t, s, map[string]any{"RegisterConfig": []any{id, wireTab("indent_width", wireInt(indent), "options", options)}}, nil)
 	if _, ok := resp.Result["Ok"]; !ok {
 		t.Fatalf("RegisterConfig failed: %v", resp.Result)
 	}
 }
 
+// formatRequestFor is a v3 Format header: `{"Format": [engine, config, [path, language, len]]}`.
 func formatRequestFor(id uint32, path string, n int) map[string]any {
-	return map[string]any{"Format": map[string]any{
-		"engine": "shfmt", "config": id,
-		"file": map[string]any{"path": path, "language": "shell", "len": uint64(n)}, //nolint:gosec // n is a small test length
+	return map[string]any{"Format": []any{
+		"shfmt", id, []any{path, "shell", uint64(n)}, //nolint:gosec // n is a small test length
 	}}
 }
 
@@ -85,9 +83,7 @@ func TestInit(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			s := newServer("1.2.3")
-			resp := call(t, s, map[string]any{"Init": map[string]any{
-				"protocol": tt.protocol, "host_version": "x", "threads": 1, "stack_size": 1, "max_log_level": "Debug",
-			}}, nil)
+			resp := call(t, s, map[string]any{"Init": []any{tt.protocol, "x", uint32(1), uint64(1), "Debug"}}, nil)
 			_, ok := resp.Result["Ok"]
 			if ok != tt.wantOK {
 				t.Fatalf("ok = %v, want %v (%v)", ok, tt.wantOK, resp.Result)
@@ -155,7 +151,7 @@ func TestFormatErrors(t *testing.T) {
 	}{
 		{"unknown engine", func() map[string]any {
 			r := formatRequestFor(1, "a.sh", 1)
-			r["Format"].(map[string]any)["engine"] = "other"
+			r["Format"].([]any)[0] = "other"
 			return r
 		}, []byte("x"), true, errKindUnknownEng},
 		{"unknown config", func() map[string]any { return formatRequestFor(9, "a.sh", 1) }, []byte("x"), true, errKindUnknownCfg},
@@ -189,6 +185,45 @@ func TestFormatErrors(t *testing.T) {
 				t.Fatalf("server unusable after an error: %v", after.Result)
 			}
 		})
+	}
+}
+
+// TestResponsesArePositional pins the v3 encoding: a Response is
+// `[result, logs]` and every struct inside it an array, so no field name is on
+// the wire.
+func TestResponsesArePositional(t *testing.T) {
+	failure := newWireError(errKindProtocol, "bad")
+	out, err := encodeResponse(nil, failure, []wireLog{{Level: logDebug, Target: "t", Message: "m"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var decoded []any
+	if err := msgpack.Unmarshal(out, &decoded); err != nil {
+		t.Fatal(err)
+	}
+	want := []any{
+		map[string]any{"Err": []any{errKindProtocol, "bad", []any{}}},
+		[]any{[]any{logDebug, "t", "m"}},
+	}
+	if got, wantText := fmt.Sprint(decoded), fmt.Sprint(want); got != wantText {
+		t.Fatalf("response = %s, want %s", got, wantText)
+	}
+	for _, name := range []string{"result", "logs", "kind", "message", "chain", "level", "target"} {
+		if bytes.Contains(out, []byte(name)) {
+			t.Errorf("field name %q is on the wire: %q", name, out)
+		}
+	}
+	init, err := newServer("1.2.3").call(mustPack(t, map[string]any{"Init": []any{uint32(protocolVersion), "x", uint32(1), uint64(1), "Debug"}}), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var answer []any
+	if err := msgpack.Unmarshal(init, &answer); err != nil {
+		t.Fatalf("Init answer %q: %v", init, err)
+	}
+	want = []any{map[string]any{"Ok": map[string]any{"Init": []any{protocolVersion, "1.2.3"}}}, []any{}}
+	if got, wantText := fmt.Sprint(answer), fmt.Sprint(want); got != wantText {
+		t.Errorf("Init answer = %s, want %s", got, wantText)
 	}
 }
 

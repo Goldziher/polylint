@@ -1,9 +1,9 @@
 //! Language-neutral wire protocol between the poly host and engine components.
 //!
 //! A component exposes `describe() -> bytes` and `call(header, body) -> bytes`. The header is a
-//! MessagePack-encoded [`Request`] (structs as maps, see [`encode_request`]); file content travels
-//! in the separate `body` slice and requests carry offsets and lengths into it. The reply is a
-//! MessagePack-encoded [`Response`]. A JSON Schema of every message is committed at
+//! MessagePack-encoded [`Request`] (structs as positional arrays, see [`encode_request`]); file
+//! content travels in the separate `body` slice and requests carry offsets and lengths into it. The
+//! reply is a MessagePack-encoded [`Response`], positional too; only [`Describe`] keeps named fields. A JSON Schema of every message is committed at
 //! `schemas/component-protocol.json` for non-Rust implementers ([`json_schema`]).
 //!
 //! A sidecar component (an executable, not a dylib) carries the same two calls over alef's framed
@@ -26,7 +26,7 @@ pub use value::{WireValue, WireValueError, to_toml};
 pub use wire::*;
 
 /// Version of this protocol; bumped on any incompatible change to the messages.
-pub const PROTOCOL_VERSION: u32 = 2;
+pub const PROTOCOL_VERSION: u32 = 3;
 
 /// The JSON Schema of [`ProtocolSchema`], pretty-printed with a trailing newline.
 ///

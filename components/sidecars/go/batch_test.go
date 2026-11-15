@@ -58,15 +58,15 @@ func perFile(t *testing.T, s *server, in batchInput) outcome {
 // members that no member covers.
 func batchRequestFor(id uint32, inputs []batchInput, gap int) (map[string]any, []byte) {
 	var body []byte
-	files := make([]map[string]any, 0, len(inputs))
+	files := make([]any, 0, len(inputs))
 	for _, in := range inputs {
 		body = append(body, bytes.Repeat([]byte{0xff}, gap)...)
-		files = append(files, map[string]any{
-			"path": in.path, "language": "go", "offset": uint64(len(body)), "len": uint64(len(in.src)), //nolint:gosec // test sizes are small
+		files = append(files, []any{
+			in.path, "go", uint64(len(body)), uint64(len(in.src)), //nolint:gosec // test sizes are small
 		})
 		body = append(body, in.src...)
 	}
-	return map[string]any{"FormatBatch": map[string]any{"engine": "gofmt", "config": id, "files": files}}, body
+	return map[string]any{"FormatBatch": []any{"gofmt", id, files}}, body
 }
 
 // batch formats inputs through FormatBatch and returns each member's outcome.
@@ -104,7 +104,7 @@ func batch(t *testing.T, s *server, inputs []batchInput, gap int) ([]outcome, re
 func TestBatchSupportIsAdvertised(t *testing.T) {
 	s := newServer("1.2.3")
 	register(t, s, 1, wireTab())
-	resp := call(t, s, map[string]any{"BatchSupport": map[string]any{"engine": "gofmt", "config": uint32(1)}}, nil)
+	resp := call(t, s, map[string]any{"BatchSupport": []any{"gofmt", uint32(1)}}, nil)
 	ok, found := resp.Result["Ok"]
 	if !found {
 		t.Fatalf("not ok: %v", resp.Result)
@@ -119,7 +119,7 @@ func TestBatchSupportIsAdvertised(t *testing.T) {
 	if got := payload["BatchSupport"]; !got.Format || got.Lint {
 		t.Fatalf("batch support = %+v, want format only", got)
 	}
-	unknown := call(t, s, map[string]any{"BatchSupport": map[string]any{"engine": "other", "config": uint32(1)}}, nil)
+	unknown := call(t, s, map[string]any{"BatchSupport": []any{"other", uint32(1)}}, nil)
 	if _, found := unknown.Result["Err"]; !found {
 		t.Fatalf("an unknown engine must be an error, got %v", unknown.Result)
 	}
@@ -217,27 +217,29 @@ func TestFormatBatchMemberFailuresAreIsolated(t *testing.T) {
 func TestFormatBatchRejectsMalformedRequests(t *testing.T) {
 	s := newServer("1.2.3")
 	register(t, s, 1, wireTab())
-	file := func(offset, n uint64) map[string]any {
-		return map[string]any{"path": "a.go", "language": "go", "offset": offset, "len": n}
+	file := func(offset, n uint64) []any {
+		return []any{"a.go", "go", offset, n}
 	}
 	tests := []struct {
 		name     string
 		engine   string
 		config   uint32
-		files    []map[string]any
+		files    []any
 		wantKind string
 	}{
 		{"unknown engine", "other", 1, nil, errKindUnknownEng},
 		{"unknown config", "gofmt", 9, nil, errKindUnknownCfg},
-		{"slice past the body", "gofmt", 1, []map[string]any{file(2, 9)}, errKindProtocol},
-		{"offset past the body", "gofmt", 1, []map[string]any{file(9, 0)}, errKindProtocol},
-		{"offset and length overflow", "gofmt", 1, []map[string]any{file(1, ^uint64(0))}, errKindProtocol},
+		{"slice past the body", "gofmt", 1, []any{file(2, 9)}, errKindProtocol},
+		{"offset past the body", "gofmt", 1, []any{file(9, 0)}, errKindProtocol},
+		{"offset and length overflow", "gofmt", 1, []any{file(1, ^uint64(0))}, errKindProtocol},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			resp := call(t, s, map[string]any{"FormatBatch": map[string]any{
-				"engine": tt.engine, "config": tt.config, "files": tt.files,
-			}}, []byte("12345"))
+			files := tt.files
+			if files == nil {
+				files = []any{}
+			}
+			resp := call(t, s, map[string]any{"FormatBatch": []any{tt.engine, tt.config, files}}, []byte("12345"))
 			raw, ok := resp.Result["Err"]
 			if !ok {
 				t.Fatalf("want an Err result, got %v", resp.Result)

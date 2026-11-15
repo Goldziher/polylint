@@ -16,7 +16,7 @@ const DIAGNOSTIC_COUNTS: [usize; 3] = [0, 10, 1000];
 
 fn diagnostic(i: usize) -> WireDiagnostic {
     WireDiagnostic {
-        engine: "ruff".to_owned(),
+        engine: None,
         code: Some(format!("E{:03}", i % 999)),
         severity: WireSeverity::Warning,
         title: format!("unused variable `value_{i}`"),

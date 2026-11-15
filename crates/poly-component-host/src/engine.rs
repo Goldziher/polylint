@@ -7,11 +7,12 @@ use std::sync::Arc;
 
 use anyhow::Context;
 use poly_component_protocol::{
-    Payload, Request, WireBatchSupport, WireDiagnostic, WireEngineDesc, WireFile, WireFileSlice, WireFormatOutput,
-    WireKind, WireOptionTable, WireProjectInputs, WireSelection, hooks,
+    Payload, Request, WireDiagnostic, WireEngineDesc, WireFile, WireFileSlice, WireFormatOutput, WireKind,
+    WireOptionTable, WireProjectInputs, WireSelection, hooks,
 };
-use poly_engine_api::component_wire::OffsetOutOfRange;
+use poly_engine_api::component_wire::{OffsetOutOfRange, diagnostic_from_wire};
 use poly_engine_api::config::EngineConfig;
+use poly_engine_api::declined::Declined;
 use poly_engine_api::engine::{
     BatchSupport, Capabilities, Diagnostic, Engine, FormatOutput, OptionKeys, OptionTable, OptionType, ProjectDirs,
     ProjectInputs, ProjectRequest, ProjectSideFile, SourceFile,
@@ -310,6 +311,9 @@ impl ComponentEngine {
     /// The byte limit `src` is over, if any. `skip_reason` reports it, but the runner only skips a
     /// file every planned engine declines, so `lint` and `format` check it again rather than ship
     /// a frame the component cannot read.
+    ///
+    /// The one decline `skip_reason` answers for a usable component: the engine's own declines come
+    /// back in the `Format` reply instead, so asking for them never costs a call of its own.
     fn frame_limit_exceeded(&self, src: &SourceFile) -> Option<usize> {
         self.max_file_bytes.filter(|&max| src.content.len() > max)
     }
@@ -332,10 +336,6 @@ impl ComponentEngine {
         self.hooks & bit != 0
     }
 
-    fn engine(&self) -> String {
-        self.name.to_owned()
-    }
-
     fn connect(&self) -> anyhow::Result<Arc<Connection>> {
         self.slot.connection()
     }
@@ -350,10 +350,15 @@ impl ComponentEngine {
 
 fn wire_file(src: &SourceFile) -> WireFile {
     WireFile {
-        path: src.path.display().to_string(),
+        path: path_string(&src.path),
         language: src.language.id().to_owned(),
         len: src.content.len() as u64,
     }
+}
+
+/// `path` as wire text, without the formatting machinery `Path::display().to_string()` goes through.
+fn path_string(path: &Path) -> String {
+    path.to_string_lossy().into_owned()
 }
 
 fn slices(batch: &[SourceFile]) -> (Vec<WireFileSlice>, Vec<u8>) {
@@ -362,7 +367,7 @@ fn slices(batch: &[SourceFile]) -> (Vec<WireFileSlice>, Vec<u8>) {
         .iter()
         .map(|file| {
             let slice = WireFileSlice {
-                path: file.path.display().to_string(),
+                path: path_string(&file.path),
                 language: file.language.id().to_owned(),
                 offset: body.len() as u64,
                 len: file.content.len() as u64,
@@ -374,16 +379,20 @@ fn slices(batch: &[SourceFile]) -> (Vec<WireFileSlice>, Vec<u8>) {
     (files, body)
 }
 
-fn diagnostics(wire: Vec<WireDiagnostic>) -> anyhow::Result<Vec<Diagnostic>> {
+/// The findings of a reply to a request naming `engine`.
+fn diagnostics(wire: Vec<WireDiagnostic>, engine: &str) -> anyhow::Result<Vec<Diagnostic>> {
     wire.into_iter()
-        .map(|d| Diagnostic::try_from(d).map_err(|e: OffsetOutOfRange| anyhow::Error::new(e)))
+        .map(|d| diagnostic_from_wire(d, engine).map_err(|e: OffsetOutOfRange| anyhow::Error::new(e)))
         .collect()
 }
 
-fn format_output(wire: WireFormatOutput) -> FormatOutput {
+/// A format reply as the engine's answer; a decline is the [`Declined`] error the runner reports as
+/// the file's skip.
+fn format_output(wire: WireFormatOutput) -> anyhow::Result<FormatOutput> {
     match wire {
-        WireFormatOutput::Unchanged => FormatOutput::Unchanged,
-        WireFormatOutput::Formatted(text) => FormatOutput::Formatted(text),
+        WireFormatOutput::Unchanged => Ok(FormatOutput::Unchanged),
+        WireFormatOutput::Formatted(text) => Ok(FormatOutput::Formatted(text)),
+        WireFormatOutput::Declined(reason) => Err(anyhow::Error::new(Declined(reason))),
     }
 }
 
@@ -436,55 +445,26 @@ impl Engine for ComponentEngine {
         if let Some(reason) = &self.unavailable {
             return self.unavailable_skips.then(|| Cow::Owned(reason.clone()));
         }
-        if let Some(max) = self.frame_limit_exceeded(src) {
-            return Some(Cow::Owned(format!(
+        self.frame_limit_exceeded(src).map(|max| {
+            Cow::Owned(format!(
                 "larger than the {max}-byte limit of the {} component",
                 self.slot.component_id()
-            )));
-        }
-        if !self.hook(hooks::SKIP_REASON) {
-            return None;
-        }
-        let call = || -> anyhow::Result<Option<String>> {
-            let request = Request::SkipReason {
-                engine: self.engine(),
-                file: wire_file(src),
-            };
-            match self
-                .connect()?
-                .call_plain(self.name, &request, src.content.as_bytes())?
-            {
-                Payload::OptString(reason) => Ok(reason),
-                _ => Err(self.unexpected("SkipReason")),
-            }
-        };
-        match call() {
-            Ok(reason) => reason.map(Cow::Owned),
-            Err(error) => {
-                tracing::warn!(engine = self.name, "skip_reason unavailable: {error:#}");
-                None
-            }
-        }
+            ))
+        })
     }
 
     fn lint(&self, src: &SourceFile, cfg: &EngineConfig) -> anyhow::Result<Vec<Diagnostic>> {
         if self.unavailable_noop || self.frame_limit_exceeded(src).is_some() {
             return Ok(Vec::new());
         }
-        let connection = self.connect()?;
-        let file = wire_file(src);
-        let payload = connection.call(
-            self.name,
-            cfg,
-            |config| Request::Lint {
-                engine: self.engine(),
-                config,
-                file: file.clone(),
-            },
-            src.content.as_bytes(),
-        )?;
+        let request = Request::Lint {
+            engine: self.name.to_owned(),
+            config: 0,
+            file: wire_file(src),
+        };
+        let payload = self.connect()?.call(self.name, cfg, request, src.content.as_bytes())?;
         match payload {
-            Payload::Diagnostics(found) => diagnostics(found),
+            Payload::Diagnostics(found) => diagnostics(found, self.name),
             _ => Err(self.unexpected("Lint")),
         }
     }
@@ -493,20 +473,14 @@ impl Engine for ComponentEngine {
         if self.unavailable_noop || self.frame_limit_exceeded(src).is_some() {
             return Ok(FormatOutput::Unchanged);
         }
-        let connection = self.connect()?;
-        let file = wire_file(src);
-        let payload = connection.call(
-            self.name,
-            cfg,
-            |config| Request::Format {
-                engine: self.engine(),
-                config,
-                file: file.clone(),
-            },
-            src.content.as_bytes(),
-        )?;
+        let request = Request::Format {
+            engine: self.name.to_owned(),
+            config: 0,
+            file: wire_file(src),
+        };
+        let payload = self.connect()?.call(self.name, cfg, request, src.content.as_bytes())?;
         match payload {
-            Payload::Formatted(output) => Ok(match format_output(output) {
+            Payload::Formatted(output) => Ok(match format_output(output)? {
                 FormatOutput::Formatted(text) if self.lf_output && text.contains('\r') => {
                     FormatOutput::Formatted(text.replace("\r\n", "\n"))
                 }
@@ -526,10 +500,7 @@ impl Engine for ComponentEngine {
         let mut files = Vec::with_capacity(req.files.len());
         let mut originals: HashMap<String, PathBuf> = HashMap::with_capacity(req.files.len());
         for file in req.files {
-            let rel = relative(&file.path)
-                .display()
-                .to_string()
-                .replace(std::path::MAIN_SEPARATOR, "/");
+            let rel = path_string(&relative(&file.path)).replace(std::path::MAIN_SEPARATOR, "/");
             files.push(WireFileSlice {
                 path: rel.clone(),
                 language: file.language.id().to_owned(),
@@ -539,22 +510,15 @@ impl Engine for ComponentEngine {
             body.extend_from_slice(file.content.as_bytes());
             originals.insert(rel, file.path.clone());
         }
-        let environment = req.environment.to_wire_pairs();
-        let threads = req.threads.map(|n| u32::try_from(n).unwrap_or(u32::MAX));
-        let root = req.root.display().to_string();
-        let payload = connection.call(
-            self.name,
-            req.config,
-            |config| Request::ProjectCheck {
-                engine: self.engine(),
-                root: root.clone(),
-                files: files.clone(),
-                config,
-                environment: environment.clone(),
-                threads,
-            },
-            &body,
-        )?;
+        let request = Request::ProjectCheck {
+            engine: self.name.to_owned(),
+            root: path_string(req.root),
+            files,
+            config: 0,
+            environment: req.environment.to_wire_pairs(),
+            threads: req.threads.map(|n| u32::try_from(n).unwrap_or(u32::MAX)),
+        };
+        let payload = connection.call(self.name, req.config, request, &body)?;
         let Payload::Project(per_file) = payload else {
             return Err(self.unexpected("ProjectCheck"));
         };
@@ -565,7 +529,7 @@ impl Engine for ComponentEngine {
                     .get(&entry.path)
                     .cloned()
                     .unwrap_or_else(|| req.root.join(&entry.path));
-                Ok((path, diagnostics(entry.diagnostics)?))
+                Ok((path, diagnostics(entry.diagnostics, self.name)?))
             })
             .collect()
     }
@@ -574,22 +538,12 @@ impl Engine for ComponentEngine {
         if self.unavailable.is_some() || !self.hook(hooks::BATCH_SUPPORT) {
             return BatchSupport::default();
         }
-        let call = || -> anyhow::Result<WireBatchSupport> {
-            let payload = self.connect()?.call(
-                self.name,
-                cfg,
-                |config| Request::BatchSupport {
-                    engine: self.engine(),
-                    config,
-                },
-                &[],
-            )?;
-            match payload {
-                Payload::BatchSupport(support) => Ok(support),
-                _ => Err(self.unexpected("BatchSupport")),
-            }
-        };
-        match call() {
+        // Asked once per config for the life of the connection (`Connection::batch_support`): the
+        // runner asks for every file it considers batching, and the answer depends on the config alone.
+        match self
+            .connect()
+            .and_then(|connection| connection.batch_support(self.name, cfg))
+        {
             Ok(support) => BatchSupport {
                 format: support.format,
                 lint: support.lint,
@@ -633,16 +587,12 @@ impl Engine for ComponentEngine {
     ) -> anyhow::Result<Vec<anyhow::Result<Vec<Diagnostic>>>> {
         let connection = self.connect()?;
         let (files, body) = slices(batch);
-        let payload = connection.call(
-            self.name,
-            cfg,
-            |config| Request::LintBatch {
-                engine: self.engine(),
-                config,
-                files: files.clone(),
-            },
-            &body,
-        )?;
+        let request = Request::LintBatch {
+            engine: self.name.to_owned(),
+            config: 0,
+            files,
+        };
+        let payload = connection.call(self.name, cfg, request, &body)?;
         let Payload::LintBatch(items) = payload else {
             return Err(self.unexpected("LintBatch"));
         };
@@ -655,7 +605,7 @@ impl Engine for ComponentEngine {
         Ok(items
             .into_iter()
             .map(|item| match item {
-                poly_component_protocol::WireLintItem::Ok(found) => diagnostics(found),
+                poly_component_protocol::WireLintItem::Ok(found) => diagnostics(found, self.name),
                 poly_component_protocol::WireLintItem::Err(error) => Err(wire_error_to_anyhow(self.name, error)),
             })
             .collect())
@@ -667,7 +617,7 @@ impl Engine for ComponentEngine {
         }
         let call = || -> anyhow::Result<Option<String>> {
             let request = Request::LintCacheSalt {
-                engine: self.engine(),
+                engine: self.name.to_owned(),
                 file: wire_file(src),
             };
             match self
@@ -725,16 +675,12 @@ impl ComponentEngine {
     ) -> anyhow::Result<Vec<anyhow::Result<FormatOutput>>> {
         let connection = self.connect()?;
         let (files, body) = slices(batch);
-        let payload = connection.call(
-            self.name,
-            cfg,
-            |config| Request::FormatBatch {
-                engine: self.engine(),
-                config,
-                files: files.clone(),
-            },
-            &body,
-        )?;
+        let request = Request::FormatBatch {
+            engine: self.name.to_owned(),
+            config: 0,
+            files,
+        };
+        let payload = connection.call(self.name, cfg, request, &body)?;
         let Payload::FormatBatch(items) = payload else {
             return Err(self.unexpected("FormatBatch"));
         };
@@ -747,7 +693,7 @@ impl ComponentEngine {
         Ok(items
             .into_iter()
             .map(|item| match item {
-                poly_component_protocol::WireFormatItem::Ok(output) => Ok(format_output(output)),
+                poly_component_protocol::WireFormatItem::Ok(output) => format_output(output),
                 poly_component_protocol::WireFormatItem::Err(error) => Err(wire_error_to_anyhow(self.name, error)),
             })
             .collect())
@@ -755,17 +701,13 @@ impl ComponentEngine {
 
     fn provides_language(&self, language: &Language, cfg: &EngineConfig, kind: WireKind) -> bool {
         let call = || -> anyhow::Result<bool> {
-            let payload = self.connect()?.call(
-                self.name,
-                cfg,
-                |config| Request::ProvidesLanguage {
-                    engine: self.engine(),
-                    config,
-                    language: language.id().to_owned(),
-                    kind,
-                },
-                &[],
-            )?;
+            let request = Request::ProvidesLanguage {
+                engine: self.name.to_owned(),
+                config: 0,
+                language: language.id().to_owned(),
+                kind,
+            };
+            let payload = self.connect()?.call(self.name, cfg, request, &[])?;
             match payload {
                 Payload::Bool(answer) => Ok(answer),
                 _ => Err(self.unexpected("ProvidesLanguage")),

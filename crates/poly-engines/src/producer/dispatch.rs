@@ -6,7 +6,9 @@ use poly_component_protocol::{
     PROTOCOL_VERSION, Payload, Request, WireBatchSupport, WireDiagnostic, WireError, WireErrorKind,
     WireFileDiagnostics, WireFormatItem, WireFormatOutput, WireKind, WireLintItem, WireOptionTable, to_toml,
 };
-use poly_engine_api::engine::{Engine, FormatOutput, ProjectEnvironment, ProjectFile, ProjectRequest};
+use poly_engine_api::component_wire::wire_diagnostic;
+use poly_engine_api::config::EngineConfig;
+use poly_engine_api::engine::{Engine, FormatOutput, ProjectEnvironment, ProjectFile, ProjectRequest, SourceFile};
 
 use super::describe::TABLES;
 use super::errors::{from_anyhow, guarded, protocol};
@@ -15,8 +17,9 @@ use super::language::language_from_id;
 use super::{InitState, Producer};
 use poly_engine_api::component_wire::engine_config_from_wire;
 
-fn diagnostics(found: &[poly_engine_api::engine::Diagnostic]) -> Vec<WireDiagnostic> {
-    found.iter().map(WireDiagnostic::from).collect()
+/// `found` as the findings of a reply to a request naming `engine`.
+fn diagnostics(found: &[poly_engine_api::engine::Diagnostic], engine: &str) -> Vec<WireDiagnostic> {
+    found.iter().map(|d| wire_diagnostic(d, engine)).collect()
 }
 
 fn format_output(output: FormatOutput) -> WireFormatOutput {
@@ -24,6 +27,61 @@ fn format_output(output: FormatOutput) -> WireFormatOutput {
         FormatOutput::Unchanged => WireFormatOutput::Unchanged,
         FormatOutput::Formatted(text) => WireFormatOutput::Formatted(text),
     }
+}
+
+/// `Engine::format`, or the engine's decline of the file without formatting it.
+///
+/// The decline is answered here, inside the `Format` reply, so the host never makes a separate
+/// round trip carrying the file to ask `skip_reason` first. A declining engine must not reformat the
+/// file (the `skip_reason` contract), so `format` is not called.
+fn format_or_decline(engine: &dyn Engine, src: &SourceFile, cfg: &EngineConfig) -> anyhow::Result<WireFormatOutput> {
+    if let Some(reason) = engine.skip_reason(src) {
+        return Ok(WireFormatOutput::Declined(reason.into_owned()));
+    }
+    engine.format(src, cfg).map(format_output)
+}
+
+/// `Engine::format_batch` over the members the engine does not decline, merged back in member order
+/// with the declines.
+fn format_batch_or_decline(
+    engine: &dyn Engine,
+    batch: Vec<SourceFile>,
+    cfg: &EngineConfig,
+) -> anyhow::Result<Vec<anyhow::Result<WireFormatOutput>>> {
+    let declines: Vec<Option<String>> = batch
+        .iter()
+        .map(|src| engine.skip_reason(src).map(std::borrow::Cow::into_owned))
+        .collect();
+    let accepted: Vec<SourceFile> = batch
+        .into_iter()
+        .zip(&declines)
+        .filter(|(_, declined)| declined.is_none())
+        .map(|(src, _)| src)
+        .collect();
+    let mut formatted = if accepted.is_empty() {
+        Vec::new()
+    } else {
+        let results = engine.format_batch(&accepted, cfg)?;
+        if results.len() != accepted.len() {
+            anyhow::bail!(
+                "format_batch returned {} result(s) for {} file(s)",
+                results.len(),
+                accepted.len()
+            );
+        }
+        results
+    }
+    .into_iter();
+    Ok(declines
+        .into_iter()
+        .map(|declined| match declined {
+            Some(reason) => Ok(WireFormatOutput::Declined(reason)),
+            None => formatted
+                .next()
+                .unwrap_or_else(|| Err(anyhow::anyhow!("format_batch lost a member")))
+                .map(format_output),
+        })
+        .collect())
 }
 
 /// A batch answer must have one entry per member, or the host would pair results with the wrong files.
@@ -63,14 +121,14 @@ impl Producer {
                 let cfg = self.config(config)?;
                 let src = single(&file, body)?;
                 let found = guarded(engine.name(), || engine.lint(&src, &cfg))?;
-                Ok(Payload::Diagnostics(diagnostics(&found)))
+                Ok(Payload::Diagnostics(diagnostics(&found, engine.name())))
             }
             Request::Format { engine, config, file } => {
                 let engine = self.engine(&engine, Some(&file.language))?;
                 let cfg = self.config(config)?;
                 let src = single(&file, body)?;
-                let output = guarded(engine.name(), || engine.format(&src, &cfg))?;
-                Ok(Payload::Formatted(format_output(output)))
+                let output = guarded(engine.name(), || format_or_decline(engine, &src, &cfg))?;
+                Ok(Payload::Formatted(output))
             }
             Request::LintBatch { engine, config, files } => {
                 let engine = self.engine(&engine, files.first().map(|f| f.language.as_str()))?;
@@ -82,7 +140,7 @@ impl Producer {
                     results
                         .into_iter()
                         .map(|item| match item {
-                            Ok(found) => WireLintItem::Ok(diagnostics(&found)),
+                            Ok(found) => WireLintItem::Ok(diagnostics(&found, engine.name())),
                             Err(error) => WireLintItem::Err(from_anyhow(&error)),
                         })
                         .collect(),
@@ -92,13 +150,14 @@ impl Producer {
                 let engine = self.engine(&engine, files.first().map(|f| f.language.as_str()))?;
                 let cfg = self.config(config)?;
                 let batch = slices(&files, body)?;
-                let results = guarded(engine.name(), || engine.format_batch(&batch, &cfg))?;
-                check_batch_len("format_batch", results.len(), batch.len())?;
+                let members = batch.len();
+                let results = guarded(engine.name(), || format_batch_or_decline(engine, batch, &cfg))?;
+                check_batch_len("format_batch", results.len(), members)?;
                 Ok(Payload::FormatBatch(
                     results
                         .into_iter()
                         .map(|item| match item {
-                            Ok(output) => WireFormatItem::Ok(format_output(output)),
+                            Ok(output) => WireFormatItem::Ok(output),
                             Err(error) => WireFormatItem::Err(from_anyhow(&error)),
                         })
                         .collect(),
@@ -137,16 +196,10 @@ impl Producer {
                         .iter()
                         .map(|(path, found)| WireFileDiagnostics {
                             path: path.display().to_string(),
-                            diagnostics: diagnostics(found),
+                            diagnostics: diagnostics(found, engine.name()),
                         })
                         .collect(),
                 ))
-            }
-            Request::SkipReason { engine, file } => {
-                let engine = self.engine(&engine, Some(&file.language))?;
-                let src = single(&file, body)?;
-                let reason = guarded(engine.name(), || Ok(engine.skip_reason(&src)))?;
-                Ok(Payload::OptString(reason.map(std::borrow::Cow::into_owned)))
             }
             Request::LintCacheSalt { engine, file } => {
                 let engine = self.engine(&engine, Some(&file.language))?;

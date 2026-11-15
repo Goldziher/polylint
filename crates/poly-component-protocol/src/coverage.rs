@@ -26,7 +26,8 @@ pub const ENGINE_METHODS: &[(&str, Coverage)] = &[
     ("file_context", Coverage::Request("FileContext")),
     ("provides_language_lint", Coverage::Request("ProvidesLanguage")),
     ("provides_language_format", Coverage::Request("ProvidesLanguage")),
-    ("skip_reason", Coverage::Request("SkipReason")),
+    // Answered inside the component's Format / FormatBatch as `WireFormatOutput::Declined`.
+    ("skip_reason", Coverage::Request("Format")),
     ("lint_input_salt", Coverage::Request("LintInputSalt")),
     (
         "format_config",

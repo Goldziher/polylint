@@ -8,6 +8,7 @@ use std::sync::Arc;
 use common::{FakeComponent, config, desc, describe_of, init, source};
 use poly_component_host::{ComponentEngine, ComponentSlot, SlotStatus, component_version};
 use poly_component_protocol::hooks;
+use poly_engine_api::declined::Declined;
 use poly_engine_api::engine::{BatchSupport, Engine, FormatOutput};
 
 fn engine_with(hooks: u32, host_hook: &str) -> (ComponentEngine, Arc<FakeComponent>) {
@@ -120,14 +121,81 @@ fn cache_path_hooks_never_reach_the_component() {
 
 #[test]
 fn per_file_hooks_are_called_only_when_the_bit_is_set() {
-    let (engine, fake) = engine_with(hooks::SKIP_REASON | hooks::PROVIDES_LANGUAGE, "none");
+    let (engine, fake) = engine_with(hooks::PROVIDES_LANGUAGE, "none");
     let src = source("x");
     let cfg = config(4);
-    assert_eq!(engine.skip_reason(&src).as_deref(), Some("generated file"));
     assert!(engine.provides_language_lint(&src.language, &cfg));
     assert!(!engine.provides_language_lint(&poly_engine_api::language::Language::Go, &cfg));
-    assert_eq!(fake.count("SkipReason"), 1);
     assert_eq!(fake.count("ProvidesLanguage"), 2);
+}
+
+/// v3: a component's own declines come back in the `Format` reply, so `skip_reason` never makes a
+/// call, even for an engine that declares it overrides the method.
+#[test]
+fn skip_reason_never_reaches_the_component() {
+    let (engine, fake) = engine_with(hooks::SKIP_REASON, "none");
+    assert_eq!(engine.skip_reason(&source("{{ x }}")), None);
+    assert!(fake.calls().is_empty(), "{:?}", fake.calls());
+    assert_eq!(engine.slot().status(), SlotStatus::Unloaded);
+}
+
+#[test]
+fn a_declining_format_reply_is_a_declined_error_from_one_call() {
+    let (engine, fake) = engine_with(hooks::SKIP_REASON, "none");
+    let error = engine.format(&source("{{ x }}"), &config(4)).unwrap_err();
+    assert_eq!(Declined::reason(&error), Some("templated input"));
+    assert_eq!(fake.calls(), ["Init", "RegisterConfig", "Format"]);
+    // Any other failure is not a decline.
+    let error = engine.format(&source("error"), &config(4)).unwrap_err();
+    assert_eq!(Declined::reason(&error), None);
+}
+
+#[test]
+fn a_declined_batch_member_is_a_declined_error_beside_its_siblings() {
+    let (engine, fake) = engine_with(hooks::BATCH_SUPPORT, "none");
+    let batch = [source("a"), source("{{ x }}"), source("B")];
+    let results = engine.format_batch(&batch, &config(4)).unwrap();
+    assert_eq!(results.len(), 3);
+    assert!(matches!(&results[0], Ok(FormatOutput::Formatted(text)) if text == "A"));
+    let declined = results[1].as_ref().unwrap_err();
+    assert_eq!(Declined::reason(declined), Some("templated input"));
+    assert!(matches!(results[2], Ok(FormatOutput::Unchanged)));
+    assert_eq!(fake.count("FormatBatch"), 1);
+}
+
+#[test]
+fn batch_support_is_asked_once_per_config() {
+    let (engine, fake) = engine_with(hooks::BATCH_SUPPORT, "none");
+    let expected = BatchSupport {
+        format: true,
+        lint: false,
+    };
+    for _ in 0..50 {
+        assert_eq!(engine.batch_support(&config(4)), expected);
+    }
+    assert_eq!(fake.count("BatchSupport"), 1);
+    // A clone of the engine shares the connection, and with it the answer.
+    assert_eq!(engine.clone().batch_support(&config(4)), expected);
+    assert_eq!(fake.count("BatchSupport"), 1);
+    // Another config is another question.
+    assert_eq!(engine.batch_support(&config(2)), expected);
+    assert_eq!(fake.count("BatchSupport"), 2);
+}
+
+#[test]
+fn concurrent_batch_support_asks_are_answered_from_one_memo() {
+    let (engine, fake) = engine_with(hooks::BATCH_SUPPORT, "none");
+    engine.batch_support(&config(4));
+    std::thread::scope(|scope| {
+        for _ in 0..8 {
+            scope.spawn(|| {
+                for _ in 0..20 {
+                    assert!(engine.batch_support(&config(4)).format);
+                }
+            });
+        }
+    });
+    assert_eq!(fake.count("BatchSupport"), 1);
 }
 
 #[test]

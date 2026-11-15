@@ -6,15 +6,15 @@
 #![cfg(feature = "all-engines")]
 
 use std::path::{Path, PathBuf};
-use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::{Arc, Mutex};
 
 use alef_component_runtime::{ComponentError, ComponentManager};
 use poly_component_host::{ComponentHost, ComponentTransport, HostOptions, TransportConnector};
 use poly_component_index::{Component, ComponentIndex, ComponentKind};
 use poly_component_protocol::{
-    Describe, PROTOCOL_VERSION, Payload, Request, Response, WireCapabilities, WireDiagnostic, WireEngineDesc,
-    WireFormatOutput, WireSeverity, decode_request, encode_describe, encode_response,
+    Describe, PROTOCOL_VERSION, Payload, Request, Response, WireBatchSupport, WireCapabilities, WireDiagnostic,
+    WireEngineDesc, WireFormatOutput, WireSeverity, decode_request, encode_describe, encode_response, hooks,
 };
 use poly_config::v2::{ComponentInstallPolicy, ComponentsConfig, OnMissing};
 use poly_core::components::ComponentInjection;
@@ -103,7 +103,7 @@ impl ComponentTransport for Demo {
                 component_version: "1.0.0".into(),
             },
             Request::Lint { .. } => Payload::Diagnostics(vec![WireDiagnostic {
-                engine: "demo".into(),
+                engine: None,
                 code: Some("D001".into()),
                 severity: WireSeverity::Warning,
                 title: "demo finding".into(),
@@ -802,4 +802,149 @@ fn needed_components_are_installed_concurrently_and_reported_in_name_order() {
     assert_eq!(run.components.used, NAMES);
     assert_eq!(run.components.installed_now, NAMES);
     assert!(run.components.missing.is_empty(), "{:?}", run.components.missing);
+}
+
+/// Serves `demo` for `.lua` and records every request it answers: a body starting `{{` is declined
+/// from the `Format` reply, anything else is left unchanged; `BatchSupport` answers "no batching".
+struct Counting {
+    desc: WireEngineDesc,
+    calls: Mutex<Vec<&'static str>>,
+}
+
+impl Counting {
+    fn new(desc: WireEngineDesc) -> Arc<Self> {
+        Arc::new(Self {
+            desc,
+            calls: Mutex::new(Vec::new()),
+        })
+    }
+
+    fn calls(&self) -> Vec<&'static str> {
+        self.calls.lock().unwrap().clone()
+    }
+
+    fn count(&self, variant: &str) -> usize {
+        self.calls().iter().filter(|call| **call == variant).count()
+    }
+}
+
+impl ComponentTransport for Counting {
+    fn describe(&self) -> anyhow::Result<Vec<u8>> {
+        Ok(encode_describe(&Describe {
+            protocol: PROTOCOL_VERSION,
+            component_version: "1.0.0".into(),
+            engines: vec![self.desc.clone()],
+        })?)
+    }
+
+    fn call(&self, header: &[u8], body: &[u8]) -> anyhow::Result<Vec<u8>> {
+        let request = decode_request(header)?;
+        self.calls.lock().unwrap().push(request.variant_name());
+        let payload = match request {
+            Request::Format { .. } if body.starts_with(b"{{") => {
+                Payload::Formatted(WireFormatOutput::Declined("templated lua".into()))
+            }
+            Request::BatchSupport { .. } => Payload::BatchSupport(WireBatchSupport {
+                format: false,
+                lint: false,
+            }),
+            _ => return Demo.call(header, body),
+        };
+        Ok(encode_response(&Response {
+            result: Ok(payload),
+            logs: Vec::new(),
+        })?)
+    }
+}
+
+struct CountingConnector(Arc<Counting>);
+
+impl TransportConnector for CountingConnector {
+    fn connect(&self, _: &ComponentManager, _: &str) -> anyhow::Result<Arc<dyn ComponentTransport>> {
+        Ok(self.0.clone())
+    }
+}
+
+fn counting_host(transport: &Arc<Counting>) -> (ComponentHost, tempfile::TempDir) {
+    let cache = tempfile::tempdir().unwrap();
+    let mut options = HostOptions::new(lock(), PathBuf::from(cache.path()));
+    options.allow_unsigned = true;
+    options.target = Some(TARGET.into());
+    options.gate_loads = true;
+    let host = ComponentHost::new(options)
+        .unwrap()
+        .with_connector(Arc::new(CountingConnector(transport.clone())));
+    (host, cache)
+}
+
+/// Protocol v3 folds `skip_reason` into the `Format` reply: a declined file is a counted skip with
+/// the component's reason, and asking cost no request beyond the `Format` itself (v2 sent a
+/// `SkipReason` carrying the whole file first).
+#[test]
+fn a_format_reply_that_declines_is_a_counted_skip_and_costs_no_extra_request() {
+    let mut declares = desc();
+    declares.hooks = hooks::SKIP_REASON;
+    let transport = Counting::new(declares.clone());
+    let (host, _cache) = counting_host(&transport);
+    let dir = tempfile::tempdir().unwrap();
+    std::fs::write(dir.path().join("a.lua"), "{{ template }}\n").unwrap();
+    std::fs::write(dir.path().join("b.lua"), "print('x')\n").unwrap();
+    let run = format(dir.path(), &default_config(), &inject(host, index_of(declares)));
+    assert!(run.errors.is_empty(), "{:?}", run.errors);
+    assert_eq!(
+        run.skipped
+            .iter()
+            .map(|skip| (skip.path.file_name().and_then(|n| n.to_str()), skip.reason.as_str()))
+            .collect::<Vec<_>>(),
+        [(Some("a.lua"), "templated lua")]
+    );
+    assert_eq!(run.checked, 1, "b.lua was formatted; the declined a.lua is not counted");
+    assert!(run.results.iter().all(|result| !result.changed), "{:?}", run.results);
+    assert_eq!(transport.count("Format"), 2, "{:?}", transport.calls());
+    assert_eq!(
+        transport.calls().len(),
+        4,
+        "Init, RegisterConfig and one Format per file: {:?}",
+        transport.calls()
+    );
+    let json = serde_json::to_value(FormatDocument::from_run(&run)).unwrap();
+    assert_eq!(json["summary"]["skipped"], 1);
+    assert_eq!(json["summary"]["checked"], 1);
+    assert_eq!(
+        std::fs::read_to_string(dir.path().join("a.lua")).unwrap(),
+        "{{ template }}\n",
+        "a declined file is never rewritten"
+    );
+}
+
+/// `batch_support` depends on the config alone: a run over many files asks the component once per
+/// config, not once per file it considers batching.
+#[test]
+fn batch_support_is_asked_once_per_config_not_per_file() {
+    let mut declares = desc();
+    declares.hooks = hooks::BATCH_SUPPORT;
+    let transport = Counting::new(declares.clone());
+    let (host, _cache) = counting_host(&transport);
+    let dir = tempfile::tempdir().unwrap();
+    for i in 0..12 {
+        std::fs::write(dir.path().join(format!("m{i}.lua")), format!("print({i})\n")).unwrap();
+    }
+    let options = inject(host, index_of(declares));
+    let run = format(dir.path(), &default_config(), &options);
+    assert!(run.errors.is_empty(), "{:?}", run.errors);
+    assert_eq!(run.checked, 12);
+    assert_eq!(
+        transport.count("Format"),
+        12,
+        "batching was declined, so every file is a call"
+    );
+    assert_eq!(transport.count("BatchSupport"), 1, "{:?}", transport.calls());
+    let run = lint(dir.path(), &default_config(), &options);
+    assert_eq!(run.checked, 12);
+    assert_eq!(
+        transport.count("BatchSupport"),
+        1,
+        "the lint run reuses the answer for the same config: {:?}",
+        transport.calls()
+    );
 }

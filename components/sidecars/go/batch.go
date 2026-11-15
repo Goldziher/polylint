@@ -18,7 +18,7 @@ func (s *server) handleBatchSupport(fields msgpack.RawMessage) (any, *wireError)
 	if _, failure := s.lookup(req.Engine, req.Config); failure != nil {
 		return nil, failure
 	}
-	return map[string]any{"BatchSupport": map[string]any{"format": true, "lint": false}}, nil
+	return map[string]any{"BatchSupport": []any{true, false}}, nil
 }
 
 // lookup checks that an engine is the one hosted here and its config is

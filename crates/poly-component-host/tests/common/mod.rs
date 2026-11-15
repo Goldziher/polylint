@@ -7,9 +7,9 @@ use std::sync::{Arc, Mutex};
 
 use poly_component_host::{ComponentTransport, InitParams};
 use poly_component_protocol::{
-    Describe, PROTOCOL_VERSION, Payload, Request, Response, WireCapabilities, WireDiagnostic, WireEngineDesc,
-    WireError, WireErrorKind, WireFormatOutput, WireLog, WireLogLevel, WireSeverity, decode_request, encode_describe,
-    encode_response,
+    Describe, PROTOCOL_VERSION, Payload, Request, Response, WireBatchSupport, WireCapabilities, WireDiagnostic,
+    WireEngineDesc, WireError, WireErrorKind, WireFormatItem, WireFormatOutput, WireLog, WireLogLevel, WireSeverity,
+    decode_request, encode_describe, encode_response,
 };
 use poly_engine_api::config::{EngineConfig, GlobalDefaults};
 use poly_engine_api::engine::SourceFile;
@@ -74,8 +74,9 @@ struct State {
     registered: HashSet<u32>,
 }
 
-/// Behaviour by body: `panic` panics, `error` fails with a chain, anything else lints to one
-/// diagnostic titled with the body length and formats to upper case.
+/// Behaviour by body: `panic` panics, `error` fails with a chain, a body starting `{{` is declined
+/// by `Format` / `FormatBatch` (`templated input`), anything else lints to one diagnostic titled
+/// with the body length and formats to upper case. `BatchSupport` answers format-only.
 pub struct FakeComponent {
     describe: Describe,
     state: Mutex<State>,
@@ -148,7 +149,7 @@ impl FakeComponent {
                 }];
                 let payload = if matches!(request, Request::Lint { .. }) {
                     Payload::Diagnostics(vec![WireDiagnostic {
-                        engine: "demo".into(),
+                        engine: None,
                         code: Some("D001".into()),
                         severity: WireSeverity::Warning,
                         title: format!("{} bytes", body.len()),
@@ -159,22 +160,53 @@ impl FakeComponent {
                         metadata: Default::default(),
                     }])
                 } else {
-                    let text = String::from_utf8_lossy(body).to_uppercase();
-                    if text.as_bytes() == body {
-                        Payload::Formatted(WireFormatOutput::Unchanged)
-                    } else {
-                        Payload::Formatted(WireFormatOutput::Formatted(text))
-                    }
+                    Payload::Formatted(format_body(body))
                 };
                 Response {
                     result: Ok(payload),
                     logs,
                 }
             }
-            Request::SkipReason { .. } => ok(Payload::OptString(Some("generated file".into()))),
+            Request::FormatBatch { config, .. } | Request::BatchSupport { config, .. } => {
+                if !state.registered.contains(config) {
+                    return fail(WireErrorKind::UnknownConfig, "no such config", &[]);
+                }
+                ok(batch_payload(request, body))
+            }
             Request::ProvidesLanguage { language, .. } => ok(Payload::Bool(language == "sql")),
             other => fail(WireErrorKind::Protocol, other.variant_name(), &[]),
         }
+    }
+}
+
+/// The answer to `FormatBatch` (each member formatted like a `Format` body) or `BatchSupport`.
+fn batch_payload(request: &Request, body: &[u8]) -> Payload {
+    match request {
+        Request::FormatBatch { files, .. } => Payload::FormatBatch(
+            files
+                .iter()
+                .map(|file| {
+                    let start = file.offset as usize;
+                    WireFormatItem::Ok(format_body(&body[start..start + file.len as usize]))
+                })
+                .collect(),
+        ),
+        _ => Payload::BatchSupport(WireBatchSupport {
+            format: true,
+            lint: false,
+        }),
+    }
+}
+
+fn format_body(body: &[u8]) -> WireFormatOutput {
+    if body.starts_with(b"{{") {
+        return WireFormatOutput::Declined("templated input".into());
+    }
+    let text = String::from_utf8_lossy(body).to_uppercase();
+    if text.as_bytes() == body {
+        WireFormatOutput::Unchanged
+    } else {
+        WireFormatOutput::Formatted(text)
     }
 }
 

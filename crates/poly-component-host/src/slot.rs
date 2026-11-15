@@ -5,8 +5,8 @@ use std::sync::{Arc, Mutex, PoisonError, RwLock};
 
 use anyhow::Context;
 use poly_component_protocol::{
-    ConfigId, Describe, PROTOCOL_VERSION, Payload, Request, Response, WireError, WireErrorKind, WireLog, WireLogLevel,
-    decode_describe, decode_response, encode_request,
+    ConfigId, Describe, PROTOCOL_VERSION, Payload, Request, Response, WireBatchSupport, WireError, WireErrorKind,
+    WireLog, WireLogLevel, decode_describe, decode_response, encode_request,
 };
 use poly_engine_api::component_wire::engine_config_to_wire;
 use poly_engine_api::config::EngineConfig;
@@ -211,6 +211,8 @@ impl ComponentSlot {
 pub struct Connection {
     transport: Arc<dyn ComponentTransport>,
     configs: RwLock<Configs>,
+    /// `BatchSupport` answers per engine and config fingerprint (see [`Connection::batch_support`]).
+    batch_support: RwLock<HashMap<(&'static str, [u8; 32]), WireBatchSupport>>,
 }
 
 struct Configs {
@@ -231,6 +233,7 @@ impl Connection {
                 next: 1,
                 ids: HashMap::new(),
             }),
+            batch_support: RwLock::new(HashMap::new()),
         }
     }
 
@@ -296,25 +299,29 @@ impl Connection {
 
     /// A request that names a registered config.
     ///
-    /// `cfg` is registered on first use (once per [`EngineConfig::fingerprint`]) and `build`
-    /// receives its id. If the component reports the id as unknown, the config is registered
-    /// again and the request retried once.
+    /// `cfg` is registered on first use (once per [`EngineConfig::fingerprint`]) and its id is
+    /// written into `request` ([`Request::config_mut`]; whatever id the caller put there is
+    /// replaced). If the component reports the id as unknown, the config is registered again and
+    /// the request retried once with the new id. The request is built once and re-pointed rather than
+    /// rebuilt per attempt, so its file descriptors are never cloned.
     ///
     /// # Errors
     ///
     /// The component's error with `engine`'s panic wording, or the transport failure.
-    pub fn call(
-        &self,
-        engine: &str,
-        cfg: &EngineConfig,
-        build: impl Fn(ConfigId) -> Request,
-        body: &[u8],
-    ) -> anyhow::Result<Payload> {
+    pub fn call(&self, engine: &str, cfg: &EngineConfig, mut request: Request, body: &[u8]) -> anyhow::Result<Payload> {
+        anyhow::ensure!(
+            request.config_mut().is_some(),
+            "{} names no registered config",
+            request.variant_name()
+        );
         let fingerprint = cfg.fingerprint();
         let mut retried = false;
         loop {
             let id = self.config_id(fingerprint, cfg)?;
-            match self.send(&build(id), body) {
+            if let Some(slot) = request.config_mut() {
+                *slot = id;
+            }
+            match self.send(&request, body) {
                 Ok(payload) => return Ok(payload),
                 Err(CallFailure::Wire(error)) if error.kind == WireErrorKind::UnknownConfig && !retried => {
                     retried = true;
@@ -326,7 +333,42 @@ impl Connection {
         }
     }
 
-    /// A request that names no config (`SkipReason`, `LintCacheSalt`).
+    /// `Engine::batch_support` of `engine` under `cfg`, asked once per engine and config for the life
+    /// of the connection.
+    ///
+    /// The answer depends on the config alone, and the runner asks it for every file it considers
+    /// batching; asking the component each time cost a round trip per file. A failure is not
+    /// remembered: it is not an answer about the config.
+    ///
+    /// # Errors
+    ///
+    /// The component's error, an unexpected payload, or the transport failure.
+    pub fn batch_support(&self, engine: &'static str, cfg: &EngineConfig) -> anyhow::Result<WireBatchSupport> {
+        let key = (engine, cfg.fingerprint());
+        if let Some(known) = self
+            .batch_support
+            .read()
+            .unwrap_or_else(PoisonError::into_inner)
+            .get(&key)
+        {
+            return Ok(*known);
+        }
+        let request = Request::BatchSupport {
+            engine: engine.to_owned(),
+            config: 0,
+        };
+        let Payload::BatchSupport(support) = self.call(engine, cfg, request, &[])? else {
+            anyhow::bail!("component answered BatchSupport for '{engine}' with an unexpected payload");
+        };
+        // Two workers that both missed asked the same question and got the same answer.
+        self.batch_support
+            .write()
+            .unwrap_or_else(PoisonError::into_inner)
+            .insert(key, support);
+        Ok(support)
+    }
+
+    /// A request that names no config (`LintCacheSalt`).
     ///
     /// # Errors
     ///

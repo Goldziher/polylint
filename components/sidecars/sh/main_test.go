@@ -125,8 +125,8 @@ func callFrame(t *testing.T, id uint32, src string) string {
 
 func registerFrame(t *testing.T, id uint32) string {
 	t.Helper()
-	header := mustPack(t, map[string]any{"RegisterConfig": map[string]any{
-		"id": id, "config": wireTab("indent_width", wireInt(2), "options", wireTab()),
+	header := mustPack(t, map[string]any{"RegisterConfig": []any{
+		id, wireTab("indent_width", wireInt(2), "options", wireTab()),
 	}})
 	payload := binary.LittleEndian.AppendUint32(nil, uint32(len(header))) //nolint:gosec // a test header is small
 	body, err := json.Marshal(envelope{Op: "call", Contract: "poly", Method: "call", Payload: append(payload, header...)})

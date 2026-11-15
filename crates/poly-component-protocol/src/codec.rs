@@ -1,4 +1,8 @@
-//! MessagePack encoding of the protocol: named fields (structs as maps), enums externally tagged.
+//! MessagePack encoding of the protocol, enums externally tagged by variant name.
+//!
+//! [`Request`] and [`Response`] cross the wire once per file, so their structs are positional arrays:
+//! no field name is repeated on every message. [`Describe`](crate::Describe) is read once per load and
+//! keeps named fields (structs as maps), so it can grow `#[serde(default)]` fields compatibly.
 
 use std::io::Cursor;
 
@@ -24,7 +28,11 @@ pub enum ProtocolError {
     },
 }
 
-fn encode<T: Serialize>(value: &T) -> Result<Vec<u8>, ProtocolError> {
+fn encode_positional<T: Serialize>(value: &T) -> Result<Vec<u8>, ProtocolError> {
+    Ok(rmp_serde::to_vec(value)?)
+}
+
+fn encode_named<T: Serialize>(value: &T) -> Result<Vec<u8>, ProtocolError> {
     Ok(rmp_serde::to_vec_named(value)?)
 }
 
@@ -45,7 +53,7 @@ fn decode<T: DeserializeOwned>(bytes: &[u8]) -> Result<T, ProtocolError> {
 
 /// Encode a request header.
 pub fn encode_request(request: &Request) -> Result<Vec<u8>, ProtocolError> {
-    encode(request)
+    encode_positional(request)
 }
 
 /// Decode a request header. Rejects truncated input and trailing bytes.
@@ -55,7 +63,7 @@ pub fn decode_request(bytes: &[u8]) -> Result<Request, ProtocolError> {
 
 /// Encode a response.
 pub fn encode_response(response: &Response) -> Result<Vec<u8>, ProtocolError> {
-    encode(response)
+    encode_positional(response)
 }
 
 /// Decode a response. Rejects truncated input and trailing bytes.
@@ -65,7 +73,7 @@ pub fn decode_response(bytes: &[u8]) -> Result<Response, ProtocolError> {
 
 /// Encode the `describe()` payload.
 pub fn encode_describe(describe: &crate::Describe) -> Result<Vec<u8>, ProtocolError> {
-    encode(describe)
+    encode_named(describe)
 }
 
 /// Decode the `describe()` payload.

@@ -105,7 +105,7 @@ impl ComponentTransport for Checker {
                 Payload::Project(vec![WireFileDiagnostics {
                     path: files[0].path.clone(),
                     diagnostics: vec![WireDiagnostic {
-                        engine: "checker".into(),
+                        engine: None,
                         code: Some("C001".into()),
                         severity: WireSeverity::Error,
                         title: "type error".into(),

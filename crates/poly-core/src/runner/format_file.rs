@@ -7,6 +7,7 @@ use std::sync::Arc;
 
 use anyhow::Context;
 use poly_cache::{CacheKey, Namespace, ResultCache, Verdict};
+use poly_engine_api::declined::Declined;
 
 use super::ctx::FormatCtx;
 use super::debug_record::{DebugSource, push_engine_debug};
@@ -66,16 +67,25 @@ pub(super) fn format_one<'f>(
     }
     let initial = Arc::clone(&src.content);
 
+    // A component engine's decline arrives in its `Format` reply ([`Declined`]) instead of from
+    // `skip_reason`, which would have cost a round trip carrying the file; it is recorded here per
+    // engine and settled after the chain the same way `skip_reason_for` settles an up-front decline.
+    let mut declined: Vec<Option<String>> = vec![None; engine_plans.len()];
     let (current, settled) = format_to_fixed_point(initial, |input, record_debug| {
         let mut state = PassState {
             src: &mut src,
             debug: &mut debug,
             record_debug,
+            declined: &mut declined,
+            engine_index: 0,
         };
         format_pass(ctx, f, engine_plans, &mut state, input)
     })?;
 
     let changed = *current != *original;
+    if !changed && let Some(reason) = declined_by_every_engine(engine_plans, &declined, &src) {
+        return Ok(format_skip_result(f, Some(reason)));
+    }
     write_and_settle(ctx, f, &original, &current, changed, settled)?;
     if !changed {
         let clean = Outcome {
@@ -218,12 +228,16 @@ fn write_and_settle(
     Ok(())
 }
 
-/// What one pass over the engine chain mutates: the source the engines see and
-/// the debug records, which are collected on the first pass only.
+/// What one pass over the engine chain mutates: the source the engines see,
+/// the debug records, which are collected on the first pass only, and the
+/// declines engines answered from their format call, per plan index.
 struct PassState<'a> {
     src: &'a mut SourceFile,
     debug: &'a mut Option<RunDebug>,
     record_debug: bool,
+    declined: &'a mut [Option<String>],
+    /// Plan index of the engine being run.
+    engine_index: usize,
 }
 
 /// Run every format engine once over `input`, returning the chained output.
@@ -237,10 +251,11 @@ fn format_pass(
     input: &Arc<str>,
 ) -> anyhow::Result<Arc<str>> {
     let mut current = Arc::clone(input);
-    for plan in engine_plans {
+    for (index, plan) in engine_plans.iter().enumerate() {
         if plan.ignores_format(&f.path) {
             continue;
         }
+        state.engine_index = index;
         current = format_with_engine(ctx, f, plan, state, &current)?;
     }
     Ok(current)
@@ -318,7 +333,24 @@ fn run_engine(
     let clock = EngineClock::start();
     let started = clock.started();
     let config = plan.engine.format_config(src, &plan.config);
-    let formatted = guard_engine_panic(plan.engine.name(), &f.path, || plan.engine.format(src, &config))?;
+    let formatted = match guard_engine_panic(plan.engine.name(), &f.path, || plan.engine.format(src, &config)) {
+        Ok(formatted) => formatted,
+        Err(error) => {
+            let Some(reason) = Declined::reason(&error).map(str::to_owned) else {
+                return Err(error);
+            };
+            // A declining engine leaves the content as it is. The decline is not cached: a cache hit
+            // replays output, not a decline, and would count the file as checked on the next run.
+            note_slow_engine(&f.path, src.content.len(), plan.engine.name(), clock.stop());
+            if record_debug {
+                push_engine_debug(debug.as_mut(), plan, DebugSource::Ran(started));
+            }
+            if let Some(slot) = state.declined.get_mut(state.engine_index) {
+                slot.get_or_insert(reason);
+            }
+            return Ok(Arc::clone(current));
+        }
+    };
     let out: Arc<str> = match formatted {
         FormatOutput::Unchanged => Arc::clone(current),
         FormatOutput::Formatted(s) => Arc::from(s),
@@ -339,6 +371,28 @@ fn run_engine(
         );
     }
     Ok(out)
+}
+
+/// The reason no backend inspected `src`, when every engine routed to it
+/// declined it, after the chain ran: each either declined from its format call
+/// (`declined`, by plan index) or declines up front. The first reason in plan
+/// order wins, as in [`skip_reason_for`].
+///
+/// Asked only when some engine declined from its format call, so the common
+/// path never re-asks the up-front engines.
+fn declined_by_every_engine(plans: &[EnginePlan], declined: &[Option<String>], src: &SourceFile) -> Option<String> {
+    if declined.iter().all(Option::is_none) {
+        return None;
+    }
+    let mut reason = None;
+    for (plan, from_call) in plans.iter().zip(declined) {
+        let why = match from_call {
+            Some(why) => why.clone(),
+            None => plan.engine.skip_reason(src)?.into_owned(),
+        };
+        reason.get_or_insert(why);
+    }
+    reason
 }
 
 /// The reason no backend inspected `src`, when every engine routed to it

@@ -75,7 +75,7 @@ func (s *server) handleInit(fields msgpack.RawMessage) (any, *wireError) {
 		return nil, newWireError(errKindProtocol, "host speaks protocol %d, this component speaks %d", init.Protocol, protocolVersion)
 	}
 	s.initialized = true
-	return map[string]any{"Init": map[string]any{"protocol": uint32(protocolVersion), "component_version": s.componentVersion}}, nil
+	return map[string]any{"Init": []any{uint32(protocolVersion), s.componentVersion}}, nil
 }
 
 func (s *server) handleRegisterConfig(fields msgpack.RawMessage) (any, *wireError) {

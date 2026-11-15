@@ -99,7 +99,7 @@ fn slice(offset: u64) -> WireFileSlice {
 
 fn diagnostic(full: bool) -> WireDiagnostic {
     WireDiagnostic {
-        engine: "ruff".into(),
+        engine: full.then(|| "ruff-sub".to_string()),
         code: full.then(|| "E501".to_string()),
         severity: WireSeverity::Warning,
         title: "line too long".into(),
@@ -204,9 +204,13 @@ fn sample_requests() -> Vec<Request> {
             environment: vec![("K".into(), "V".into())],
             threads: Some(4),
         },
-        Request::SkipReason {
-            engine: "yaml".into(),
-            file: file(),
+        Request::ProjectCheck {
+            engine: "ty".into(),
+            root: "/r".into(),
+            files: vec![],
+            config: 3,
+            environment: vec![],
+            threads: None,
         },
         Request::LintCacheSalt {
             engine: "helm".into(),
@@ -264,12 +268,14 @@ fn sample_payloads() -> Vec<Payload> {
         Payload::Diagnostics(vec![diagnostic(true), diagnostic(false)]),
         Payload::Formatted(WireFormatOutput::Unchanged),
         Payload::Formatted(WireFormatOutput::Formatted("x\n".into())),
+        Payload::Formatted(WireFormatOutput::Declined("templated YAML".into())),
         Payload::LintBatch(vec![
             WireLintItem::Ok(vec![diagnostic(true)]),
             WireLintItem::Err(error()),
         ]),
         Payload::FormatBatch(vec![
             WireFormatItem::Ok(WireFormatOutput::Unchanged),
+            WireFormatItem::Ok(WireFormatOutput::Declined("generated".into())),
             WireFormatItem::Err(error()),
         ]),
         Payload::Project(vec![WireFileDiagnostics {
@@ -294,7 +300,8 @@ fn sample_payloads() -> Vec<Payload> {
 #[test]
 fn every_request_variant_round_trips() {
     let requests = sample_requests();
-    let names: Vec<&str> = requests.iter().map(Request::variant_name).collect();
+    let mut names: Vec<&str> = requests.iter().map(Request::variant_name).collect();
+    names.dedup();
     assert_eq!(
         names, REQUEST_VARIANTS,
         "samples must cover every variant in declaration order"
@@ -477,15 +484,106 @@ fn describe_carries_the_selection_an_engine_declares() {
     assert_eq!(decode_describe(&encode_describe(&chosen).unwrap()).unwrap(), chosen);
 }
 
+/// v3 encodes requests and responses positionally: no field name is on the wire, only the variant
+/// tag. `{"BatchSupport": ["e", 1]}` is `0x81 0xac "BatchSupport" 0x92 0xa1 "e" 0x01`.
 #[test]
-fn header_uses_named_fields() {
+fn header_is_positional() {
     let bytes = encode_request(&Request::BatchSupport {
         engine: "e".into(),
         config: 1,
     })
     .unwrap();
+    let mut expected = vec![0x81, 0xac];
+    expected.extend_from_slice(b"BatchSupport");
+    expected.extend_from_slice(&[0x92, 0xa1, b'e', 0x01]);
+    assert_eq!(bytes, expected);
+}
+
+#[test]
+fn a_response_carries_no_field_names() {
+    let response = Response {
+        result: Ok(Payload::Diagnostics(vec![diagnostic(true), diagnostic(false)])),
+        logs: vec![WireLog {
+            level: WireLogLevel::Info,
+            target: "t".into(),
+            message: "m".into(),
+        }],
+    };
+    let bytes = encode_response(&response).unwrap();
     let text = String::from_utf8_lossy(&bytes);
-    assert!(text.contains("engine") && text.contains("config"), "{text:?}");
+    for name in [
+        "result",
+        "logs",
+        "severity",
+        "title",
+        "start_line",
+        "replacement",
+        "metadata",
+        "target",
+    ] {
+        assert!(!text.contains(name), "field name `{name}` on the wire: {text:?}");
+    }
+    assert!(text.contains("line too long"), "the values still travel: {text:?}");
+    assert_eq!(decode_response(&bytes).unwrap(), response);
+}
+
+/// The engine id is repeated per finding only when it is not the requested engine.
+#[test]
+fn a_diagnostic_of_the_requested_engine_costs_no_engine_id() {
+    let own = diagnostic(false);
+    assert_eq!(own.engine, None);
+    let own_bytes = encode_response(&Response {
+        result: Ok(Payload::Diagnostics(vec![own])),
+        logs: vec![],
+    })
+    .unwrap();
+    assert!(!String::from_utf8_lossy(&own_bytes).contains("ruff"));
+    let foreign = WireDiagnostic {
+        engine: Some("ruff-sub".into()),
+        ..diagnostic(false)
+    };
+    let response = Response {
+        result: Ok(Payload::Diagnostics(vec![foreign])),
+        logs: vec![],
+    };
+    let bytes = encode_response(&response).unwrap();
+    assert!(String::from_utf8_lossy(&bytes).contains("ruff-sub"));
+    assert_eq!(decode_response(&bytes).unwrap(), response);
+}
+
+/// The description keeps named fields: it is read once per load and grows defaulted fields.
+#[test]
+fn describe_keeps_named_fields() {
+    let describe = Describe {
+        protocol: PROTOCOL_VERSION,
+        component_version: "1".into(),
+        engines: vec![],
+    };
+    let text = String::from_utf8_lossy(&encode_describe(&describe).unwrap()).into_owned();
+    assert!(
+        text.contains("component_version") && text.contains("engines"),
+        "{text:?}"
+    );
+}
+
+#[test]
+fn config_mut_names_the_registered_config_of_every_request_that_has_one() {
+    for mut request in sample_requests() {
+        let expected = match &request {
+            Request::Init { .. }
+            | Request::RegisterConfig { .. }
+            | Request::LintCacheSalt { .. }
+            | Request::DerivedOptionKeys { .. }
+            | Request::Rules { .. } => None,
+            _ => Some(3),
+        };
+        let name = request.variant_name();
+        assert_eq!(request.config_mut().as_deref().copied(), expected, "{name}");
+        if let Some(id) = request.config_mut() {
+            *id = 9;
+            assert_eq!(request.config_mut().as_deref().copied(), Some(9), "{name}");
+        }
+    }
 }
 
 #[test]

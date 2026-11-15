@@ -1,7 +1,8 @@
 //! Conversions between the engine report types and the component wire DTOs.
 //!
 //! The wire types carry every field explicitly (no `skip_serializing_if`), so a round trip through
-//! [`WireDiagnostic`] is lossless.
+//! [`WireDiagnostic`] is lossless. The one field elided is a diagnostic's engine id when it is the
+//! engine the request named ([`wire_diagnostic`] / [`diagnostic_from_wire`] take that name).
 
 mod config;
 
@@ -90,36 +91,39 @@ impl TryFrom<WireEdit> for Edit {
     }
 }
 
-impl From<&Diagnostic> for WireDiagnostic {
-    fn from(d: &Diagnostic) -> Self {
-        WireDiagnostic {
-            engine: d.engine.clone(),
-            code: d.code.clone(),
-            severity: d.severity.into(),
-            title: d.title.clone(),
-            description: d.description.clone(),
-            span: d.span.map(Into::into),
-            url: d.url.clone(),
-            fix: d.fix.iter().map(WireEdit::from).collect(),
-            metadata: d.metadata.clone(),
-        }
+/// `d` as a finding of a reply to a request naming `engine`: its engine id travels only when it
+/// differs from `engine`.
+#[must_use]
+pub fn wire_diagnostic(d: &Diagnostic, engine: &str) -> WireDiagnostic {
+    WireDiagnostic {
+        engine: (d.engine != engine).then(|| d.engine.clone()),
+        code: d.code.clone(),
+        severity: d.severity.into(),
+        title: d.title.clone(),
+        description: d.description.clone(),
+        span: d.span.map(Into::into),
+        url: d.url.clone(),
+        fix: d.fix.iter().map(WireEdit::from).collect(),
+        metadata: d.metadata.clone(),
     }
 }
 
-impl TryFrom<WireDiagnostic> for Diagnostic {
-    type Error = OffsetOutOfRange;
-
-    fn try_from(d: WireDiagnostic) -> Result<Self, Self::Error> {
-        Ok(Diagnostic {
-            engine: d.engine,
-            code: d.code,
-            severity: d.severity.into(),
-            title: d.title,
-            description: d.description,
-            span: d.span.map(Into::into),
-            url: d.url,
-            fix: d.fix.into_iter().map(Edit::try_from).collect::<Result<_, _>>()?,
-            metadata: d.metadata,
-        })
-    }
+/// A finding of a reply to a request naming `engine`, back as a [`Diagnostic`]; the inverse of
+/// [`wire_diagnostic`].
+///
+/// # Errors
+///
+/// [`OffsetOutOfRange`] when a fix offset does not fit this platform's `usize`.
+pub fn diagnostic_from_wire(d: WireDiagnostic, engine: &str) -> Result<Diagnostic, OffsetOutOfRange> {
+    Ok(Diagnostic {
+        engine: d.engine.unwrap_or_else(|| engine.to_owned()),
+        code: d.code,
+        severity: d.severity.into(),
+        title: d.title,
+        description: d.description,
+        span: d.span.map(Into::into),
+        url: d.url,
+        fix: d.fix.into_iter().map(Edit::try_from).collect::<Result<_, _>>()?,
+        metadata: d.metadata,
+    })
 }

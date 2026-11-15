@@ -1,10 +1,11 @@
 //! Every `Engine` trait method must have a wire mapping, and every `Diagnostic` must survive a trip
-//! through `WireDiagnostic`.
+//! through `WireDiagnostic`, whether or not it is the requested engine's own finding.
 
 use std::collections::BTreeSet;
 
 use poly_component_protocol::{ENGINE_METHODS, WireDiagnostic};
 use poly_core::engine::{Diagnostic, Edit, Severity, Span};
+use poly_engine_api::component_wire::{diagnostic_from_wire, wire_diagnostic};
 use proptest::prelude::*;
 
 /// Method names declared inside `pub trait Engine { ... }`, scanned from source text.
@@ -90,9 +91,12 @@ fn arb_diagnostic() -> impl Strategy<Value = Diagnostic> {
 
 proptest! {
     #[test]
-    fn diagnostic_round_trips_through_wire_diagnostic(d in arb_diagnostic()) {
-        let wire = WireDiagnostic::from(&d);
-        let back = Diagnostic::try_from(wire).unwrap();
+    fn diagnostic_round_trips_through_wire_diagnostic(d in arb_diagnostic(), own in any::<bool>()) {
+        // The requested engine is either the finding's own (its id is elided) or another one.
+        let requested = if own { d.engine.clone() } else { format!("{}-other", d.engine) };
+        let wire = wire_diagnostic(&d, &requested);
+        prop_assert_eq!(wire.engine.is_none(), own);
+        let back = diagnostic_from_wire(wire, &requested).unwrap();
         prop_assert_eq!(serde_json::to_value(&back).unwrap(), serde_json::to_value(&d).unwrap());
         // `skip_serializing_if` hides empty fix/metadata and None options in JSON; compare them directly too.
         prop_assert_eq!(back.fix.len(), d.fix.len());
@@ -102,6 +106,8 @@ proptest! {
     }
 }
 
+/// The encoding is positional (protocol v3), so a diagnostic is an array with a slot for every field:
+/// an unset optional is a `nil` in its slot, never a missing element that would shift the rest.
 #[test]
 fn unset_optionals_stay_present_on_the_wire() {
     let d = Diagnostic {
@@ -115,19 +121,29 @@ fn unset_optionals_stay_present_on_the_wire() {
         fix: vec![],
         metadata: Default::default(),
     };
-    let wire = WireDiagnostic::from(&d);
-    let bytes = rmp_serde_probe(&wire);
-    for field in ["code", "description", "span", "url", "fix", "metadata"] {
-        assert!(bytes.contains(field), "field `{field}` missing from {bytes:?}");
-    }
+    let wire = wire_diagnostic(&d, "e");
+    assert_eq!(wire.engine, None);
+    let bytes = encoded_diagnostic(&wire);
+    // `fixarray(9)`: engine, code, severity, title, description, span, url, fix, metadata.
+    let slots = [
+        0x99, 0xc0, 0xc0, 0xa4, b'H', b'i', b'n', b't', 0xa1, b't', 0xc0, 0xc0, 0xc0, 0x90, 0x80,
+    ];
+    assert_eq!(bytes, slots);
 }
 
-/// The diagnostic as a response, rendered lossily so field names can be searched for.
-fn rmp_serde_probe(wire: &WireDiagnostic) -> String {
+/// The diagnostic's own bytes: the `Diagnostics` response encoded around it, with the fixed prefix
+/// (`[{"Ok": {"Diagnostics": [`) and suffix (`], []]`) stripped.
+fn encoded_diagnostic(wire: &WireDiagnostic) -> Vec<u8> {
     use poly_component_protocol::{Payload, Response, encode_response};
     let response = Response {
         result: Ok(Payload::Diagnostics(vec![wire.clone()])),
         logs: vec![],
     };
-    String::from_utf8_lossy(&encode_response(&response).unwrap()).into_owned()
+    let bytes = encode_response(&response).unwrap();
+    let mut prefix = vec![0x92, 0x81, 0xa2, b'O', b'k', 0x81, 0xab];
+    prefix.extend_from_slice(b"Diagnostics");
+    prefix.push(0x91);
+    assert!(bytes.starts_with(&prefix), "{bytes:x?}");
+    assert!(bytes.ends_with(&[0x90]), "{bytes:x?}");
+    bytes[prefix.len()..bytes.len() - 1].to_vec()
 }

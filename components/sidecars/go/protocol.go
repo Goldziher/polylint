@@ -10,7 +10,13 @@ import (
 
 // protocolVersion is poly's component protocol version
 // (poly_component_protocol::PROTOCOL_VERSION).
-const protocolVersion = 2
+//
+// Version 3 encodes requests and responses positionally: a struct is a
+// MessagePack array of its fields in declaration order, every field present.
+// Enums stay externally tagged by variant name. The decoder reads an array
+// into a Go struct field by field, so every request struct below declares
+// every field of its Rust counterpart, in order. `describe` keeps named fields.
+const protocolVersion = 3
 
 // Wire error kinds (WireErrorKind).
 const (
@@ -67,7 +73,7 @@ type request struct {
 }
 
 // decodeRequest splits an externally tagged request header
-// (`{"Variant": {fields}}`) into its variant and raw fields.
+// (`{"Variant": [fields]}`) into its variant and raw fields.
 func decodeRequest(header []byte) (request, error) {
 	var tagged map[string]msgpack.RawMessage
 	if err := msgpack.Unmarshal(header, &tagged); err != nil {
@@ -84,7 +90,11 @@ func decodeRequest(header []byte) (request, error) {
 
 // initRequest mirrors Request::Init.
 type initRequest struct {
-	Protocol uint32 `msgpack:"protocol"`
+	Protocol    uint32 `msgpack:"protocol"`
+	HostVersion string `msgpack:"host_version"`
+	Threads     uint32 `msgpack:"threads"`
+	StackSize   uint64 `msgpack:"stack_size"`
+	MaxLogLevel string `msgpack:"max_log_level"`
 }
 
 // registerConfigRequest mirrors Request::RegisterConfig; Config is a WireValue
@@ -227,8 +237,9 @@ func wireVariant(value any, tag string) (any, error) {
 	return inner, nil
 }
 
-// encodeResponse encodes `Response { result, logs }`: `ok` is the payload of a
-// success, or errValue the failure.
+// encodeResponse encodes `Response { result, logs }` positionally, as
+// `[result, logs]` with every struct inside an array: `ok` is the payload of a
+// success, or failure the error.
 func encodeResponse(ok any, failure *wireError, logs []wireLog) ([]byte, error) {
 	var result map[string]any
 	if failure != nil {
@@ -242,7 +253,8 @@ func encodeResponse(ok any, failure *wireError, logs []wireLog) ([]byte, error) 
 	var buf bytes.Buffer
 	enc := msgpack.NewEncoder(&buf)
 	enc.SetCustomStructTag("msgpack")
-	if err := enc.Encode(map[string]any{"result": result, "logs": logs}); err != nil {
+	enc.UseArrayEncodedStructs(true)
+	if err := enc.Encode([]any{result, logs}); err != nil {
 		return nil, fmt.Errorf("encode response: %w", err)
 	}
 	return buf.Bytes(), nil

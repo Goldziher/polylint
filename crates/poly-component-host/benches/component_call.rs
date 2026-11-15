@@ -68,9 +68,9 @@ fn format_call(connection: &Connection, cfg: &EngineConfig, body: &[u8]) {
         .call(
             "echo",
             cfg,
-            |config| Request::Format {
+            Request::Format {
                 engine: "echo".to_owned(),
-                config,
+                config: 0,
                 file: WireFile {
                     path: "a.txt".to_owned(),
                     language: "text".to_owned(),

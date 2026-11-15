@@ -7,6 +7,7 @@ use poly_component_protocol::{
     WireFormatItem, WireFormatOutput, WireKind, WireLintItem, WireLogLevel, decode_describe, decode_response,
     encode_request, hooks,
 };
+use poly_engine_api::component_wire::wire_diagnostic;
 use poly_engine_api::config::EngineConfig;
 use poly_engine_api::engine::{
     BatchSupport, Capabilities, Diagnostic, Engine, FormatOutput, OptionKeys, OptionTable, OptionType, Severity,
@@ -222,7 +223,7 @@ fn lint_round_trips_diagnostics_equal_to_a_direct_call() {
         .lint(&direct_source("select 1"), &cfg())
         .unwrap()
         .iter()
-        .map(WireDiagnostic::from)
+        .map(|d| wire_diagnostic(d, "fake-ok"))
         .collect();
     assert_eq!(response.result, Ok(Payload::Diagnostics(direct)));
 }
@@ -246,6 +247,10 @@ fn registered_config_reaches_the_engine() {
         panic!("expected diagnostics");
     };
     assert_eq!(found[0].title, "1 bytes, indent 2");
+    assert_eq!(
+        found[0].engine, None,
+        "the requested engine's id is not repeated per finding"
+    );
 }
 
 #[test]
@@ -270,6 +275,12 @@ fn format_returns_formatted_and_unchanged() {
     assert_eq!(
         format(b"FORMATTED"),
         Ok(Payload::Formatted(WireFormatOutput::Unchanged))
+    );
+    // `skip_reason` is answered inside the Format reply (protocol v3), and the engine's `format` is
+    // not run on a file it declines (it would uppercase nothing here, but must not be asked).
+    assert_eq!(
+        format(b""),
+        Ok(Payload::Formatted(WireFormatOutput::Declined("empty".into())))
     );
 }
 
@@ -454,7 +465,15 @@ fn batches_slice_the_body_and_report_per_member_failures() {
     let Ok(Payload::FormatBatch(items)) = response.result else {
         panic!("expected a format batch");
     };
-    assert_eq!(items[0], WireFormatItem::Ok(WireFormatOutput::Formatted("ABC".into())));
+    assert_eq!(
+        items,
+        [
+            WireFormatItem::Ok(WireFormatOutput::Formatted("ABC".into())),
+            WireFormatItem::Ok(WireFormatOutput::Declined("empty".into())),
+            WireFormatItem::Ok(WireFormatOutput::Formatted("DEF".into())),
+        ],
+        "the declined member keeps its place between the formatted ones"
+    );
 
     let out_of_range = send(
         &producer,
@@ -471,19 +490,6 @@ fn batches_slice_the_body_and_report_per_member_failures() {
 #[test]
 fn hooks_and_predicates_dispatch_to_the_engine() {
     let producer = ready();
-    let skip = |body: &[u8]| {
-        send(
-            &producer,
-            &Request::SkipReason {
-                engine: "fake-ok".into(),
-                file: wire_file(body.len()),
-            },
-            body,
-        )
-        .result
-    };
-    assert_eq!(skip(b""), Ok(Payload::OptString(Some("empty".into()))));
-    assert_eq!(skip(b"x"), Ok(Payload::OptString(None)));
     let provides = send(
         &producer,
         &Request::ProvidesLanguage {
@@ -587,7 +593,7 @@ fn sqruff_through_the_producer_matches_a_direct_call() {
         .lint(&direct_source(sql), &config)
         .unwrap()
         .iter()
-        .map(WireDiagnostic::from)
+        .map(|d| wire_diagnostic(d, SqruffEngine.name()))
         .collect();
     assert!(!direct.is_empty(), "the fixture must produce findings");
 

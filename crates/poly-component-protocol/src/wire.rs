@@ -53,8 +53,9 @@ pub struct WireEdit {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 pub struct WireDiagnostic {
-    /// Id of the engine that produced the finding.
-    pub engine: String,
+    /// Id of the engine that produced the finding, when it is not the engine the request named.
+    /// `None` (the common case) means the requested engine, so the id is not repeated per finding.
+    pub engine: Option<String>,
     /// Tool-specific rule code.
     pub code: Option<String>,
     /// Severity.
@@ -182,7 +183,9 @@ pub mod hooks {
     pub const FILE_CONTEXT: u32 = 1 << 1;
     /// [`Request::ProvidesLanguage`](crate::Request::ProvidesLanguage).
     pub const PROVIDES_LANGUAGE: u32 = 1 << 2;
-    /// [`Request::SkipReason`](crate::Request::SkipReason).
+    /// `Engine::skip_reason`. No request carries it: the component answers it inside `Format` and
+    /// `FormatBatch` with [`WireFormatOutput::Declined`](crate::WireFormatOutput::Declined), so the
+    /// host never asks. The bit only records that the engine overrides the method.
     pub const SKIP_REASON: u32 = 1 << 3;
     /// [`Request::LintInputSalt`](crate::Request::LintInputSalt).
     pub const LINT_INPUT_SALT: u32 = 1 << 4;
@@ -446,17 +449,8 @@ pub enum Request {
         /// The host-resolved environment as flat pairs (`python.interpreter`,
         /// `python.site_packages`, `python.version`); the component never probes the system.
         environment: Vec<(String, String)>,
-        /// The worker threads the host's run budgets for the check. Absent from an older host, which reads as
-        /// "the component's choice".
-        #[serde(default, skip_serializing_if = "Option::is_none")]
+        /// The worker threads the host's run budgets for the check; `None` is the component's choice.
         threads: Option<u32>,
-    },
-    /// `Engine::skip_reason` for one file (content in `body`).
-    SkipReason {
-        /// Engine name.
-        engine: String,
-        /// The file.
-        file: WireFile,
     },
     /// `Engine::lint_cache_salt` for one file (content in `body`).
     LintCacheSalt {
@@ -548,7 +542,6 @@ pub const REQUEST_VARIANTS: &[&str] = &[
     "LintBatch",
     "FormatBatch",
     "ProjectCheck",
-    "SkipReason",
     "LintCacheSalt",
     "ProvidesLanguage",
     "BatchSupport",
@@ -571,7 +564,6 @@ impl Request {
             Request::LintBatch { .. } => "LintBatch",
             Request::FormatBatch { .. } => "FormatBatch",
             Request::ProjectCheck { .. } => "ProjectCheck",
-            Request::SkipReason { .. } => "SkipReason",
             Request::LintCacheSalt { .. } => "LintCacheSalt",
             Request::ProvidesLanguage { .. } => "ProvidesLanguage",
             Request::BatchSupport { .. } => "BatchSupport",
@@ -581,6 +573,28 @@ impl Request {
             Request::LintInputSalt { .. } => "LintInputSalt",
             Request::FormatInputSalt { .. } => "FormatInputSalt",
             Request::Rules { .. } => "Rules",
+        }
+    }
+
+    /// The registered config the request names, for the host to re-point after re-registering it.
+    pub fn config_mut(&mut self) -> Option<&mut ConfigId> {
+        match self {
+            Request::Lint { config, .. }
+            | Request::Format { config, .. }
+            | Request::LintBatch { config, .. }
+            | Request::FormatBatch { config, .. }
+            | Request::ProjectCheck { config, .. }
+            | Request::ProvidesLanguage { config, .. }
+            | Request::BatchSupport { config, .. }
+            | Request::RunContext { config, .. }
+            | Request::FileContext { config, .. }
+            | Request::LintInputSalt { config, .. }
+            | Request::FormatInputSalt { config, .. } => Some(config),
+            Request::Init { .. }
+            | Request::RegisterConfig { .. }
+            | Request::LintCacheSalt { .. }
+            | Request::DerivedOptionKeys { .. }
+            | Request::Rules { .. } => None,
         }
     }
 }
@@ -593,6 +607,9 @@ pub enum WireFormatOutput {
     Unchanged,
     /// The formatted source.
     Formatted(String),
+    /// The engine declines the file (`Engine::skip_reason`) and did not format it; the reason is
+    /// reported as the file's skip.
+    Declined(String),
 }
 
 /// Per-member result of a batch lint.
@@ -710,7 +727,7 @@ pub enum Payload {
     Project(Vec<WireFileDiagnostics>),
     /// Answer to `ProvidesLanguage`.
     Bool(bool),
-    /// Answer to `SkipReason`, the salts and the contexts; `None` is the trait default.
+    /// Answer to the salts and `FileContext`; `None` is the trait default.
     OptString(Option<String>),
     /// Answer to `RunContext`.
     Text(String),
@@ -733,6 +750,11 @@ pub struct Response {
 }
 
 /// Root type used to emit one JSON Schema covering every top-level message.
+///
+/// `request` and `response` are encoded positionally: a struct (or struct variant) is a MessagePack
+/// array of its fields in declaration order, every field present (`null` for `None`). Enums are
+/// externally tagged by variant name (`{"Variant": value}`, a unit variant as its bare name).
+/// `describe` keeps named fields (structs as maps), so a description can grow defaulted fields.
 ///
 /// Transport framing is not part of the messages. A dylib component receives `call(header, body)`
 /// directly. A sidecar executable (alef stdio transport) receives one `invoke_bytes(method, payload)`
