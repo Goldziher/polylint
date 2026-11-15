@@ -620,12 +620,18 @@ fn warn_mutating_catalog_linter_once(name: &str, language: &Language, refusal: &
 /// A tool built here may still be dropped by [`merge_catalog_engines`] when
 /// poly's own backend of the same name already covers the language.
 fn catalog_engines_for(language: &Language, config: &Config, kind: Kind) -> Vec<Box<dyn Engine>> {
+    let mut enabled = config
+        .tools
+        .iter()
+        .filter(|(_, tool_config)| tool_config.enabled)
+        .peekable();
+    // Parsing the embedded catalog is the cost; a config that enables no tool never reaches it.
+    if enabled.peek().is_none() {
+        return Vec::new();
+    }
     let catalog = poly_catalog::Catalog::get();
     let mut engines: Vec<Box<dyn Engine>> = Vec::new();
-    for (name, tool_config) in config.tools.iter() {
-        if !tool_config.enabled {
-            continue;
-        }
+    for (name, tool_config) in enabled {
         let Some(tool) = catalog.tool(name) else {
             continue;
         };

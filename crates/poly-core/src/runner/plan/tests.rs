@@ -71,6 +71,21 @@ fn no_catalog_engines_leaves_the_generic_formatter_in_place() {
     assert!(!generic_formatter_superseded(Kind::Format, &[]));
 }
 
+/// Without an enabled `[tools]` entry the plan has no catalog engines, whatever the catalog holds.
+#[test]
+fn a_config_without_enabled_tools_plans_no_catalog_engines() {
+    let none = Config::default();
+    let declared_off = Config {
+        tools: toml::from_str("[shfmt]\nenabled = false\n").expect("valid tool config"),
+        ..Config::default()
+    };
+    for config in [&none, &declared_off] {
+        for kind in [Kind::Format, Kind::Lint] {
+            assert!(catalog_engines_for(&Language::Python, config, kind).is_empty());
+        }
+    }
+}
+
 #[test]
 fn tier_one_formatter_prevents_catalog_formatter_chaining() {
     let config = Config {
