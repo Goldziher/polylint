@@ -77,9 +77,12 @@ fn links_through_a_sibling_directory_are_judged_physically() {
         "a plain in-tree directory link is kept"
     );
     assert!(std::fs::symlink_metadata(snap.path().join("bad")).is_err());
+    // `good` resolves physically to `top.toml` inside the snapshot, but the lexical prefilter
+    // (`resolves_inside_tree`) reads `alias/../..` as climbing past the root and removes it first:
+    // a deliberate conservative false positive, not a dangling-link decision.
     assert!(
         std::fs::symlink_metadata(snap.path().join("good")).is_err(),
-        "a dangling link with `..` after a named component is not trusted"
+        "a link whose lexical reading climbs past the root is removed even if it resolves inside"
     );
 }
 
@@ -99,4 +102,28 @@ fn link_stays_inside_judges_physical_resolution() {
     assert!(check("ok", "f.txt"));
     assert!(!check("abs", "/etc/passwd"));
     assert!(!check("t", "d/e/d/e/../../../.."));
+}
+
+#[cfg(unix)]
+#[test]
+fn link_stays_inside_judges_dangling_links_by_their_lexical_reading() {
+    let dir = TempDir::new().expect("snapshot");
+    let canonical = std::fs::canonicalize(dir.path()).unwrap();
+    std::fs::create_dir_all(dir.path().join("d")).unwrap();
+    std::fs::write(dir.path().join("f.txt"), "x").unwrap();
+    std::os::unix::fs::symlink("d", dir.path().join("alias")).unwrap();
+    let check = |link: &str, target: &str| {
+        std::os::unix::fs::symlink(target, dir.path().join(link)).unwrap();
+        link_stays_inside(dir.path(), &canonical, Path::new(link), Path::new(target))
+    };
+
+    assert!(check("dangling", "missing/file"), "a plain dangling link is kept");
+    assert!(
+        !check("dotdot", "missing/../f.txt"),
+        "`..` after a named component cannot be trusted when the target does not resolve"
+    );
+    assert!(
+        !check("alias/dangling", "missing"),
+        "a dangling link under a symlinked directory is removed"
+    );
 }
