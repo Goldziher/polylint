@@ -24,17 +24,21 @@
 
 mod db;
 mod diagnostics;
+mod order;
 mod settings;
 mod system;
 
+use std::panic::AssertUnwindSafe;
 use std::path::PathBuf;
 
 use anyhow::{Context, anyhow, bail};
+use order::merge_by_index;
 use poly_engine_api::engine::{
     Capabilities, Diagnostic, Engine, OptionKeys, OptionTable, OptionType, ProjectFile, ProjectInputs, ProjectRequest,
     WireSelection,
 };
 use poly_engine_api::language::Language;
+use rayon::prelude::*;
 use ruff_db::Db as SourceDb;
 use ruff_db::files::{File, system_path_to_file};
 use ruff_db::system::SystemPathBuf;
@@ -156,7 +160,7 @@ fn check(req: &ProjectRequest<'_>, files: &[&ProjectFile]) -> anyhow::Result<Vec
     db.configure(program, &root);
 
     let mut by_file: FxHashMap<File, PathBuf> = FxHashMap::default();
-    let mut order = Vec::with_capacity(targets.len());
+    let mut order: Vec<File> = Vec::with_capacity(targets.len());
     for (path, original) in &targets {
         match system_path_to_file(&db, path) {
             Ok(file) => {
@@ -168,26 +172,73 @@ fn check(req: &ProjectRequest<'_>, files: &[&ProjectFile]) -> anyhow::Result<Vec
     }
 
     let mut seen = FxHashSet::default();
-    let mut reported: Vec<(PathBuf, Vec<Diagnostic>)> = Vec::new();
-    for file in order {
-        if !seen.insert(file) {
-            continue;
-        }
-        let mut diagnostics = Vec::new();
-        for diagnostic in db.check_file(file) {
-            match diagnostics::convert(&db, &diagnostic) {
-                Some((anchor, converted)) if anchor == file => diagnostics.push(converted),
-                Some((anchor, converted)) => match by_file.get(&anchor) {
-                    Some(path) => reported.push((path.clone(), vec![converted])),
-                    None => tracing::debug!(code = ?converted.code, "ty: diagnostic anchored outside the project"),
-                },
-                None => tracing::debug!(message = %diagnostic.concise_message(), "ty: diagnostic without a file"),
-            }
-        }
-        if !diagnostics.is_empty() {
-            let path = by_file.get(&file).ok_or_else(|| anyhow!("ty: unknown file"))?;
-            reported.push((path.clone(), diagnostics));
+    order.retain(|file| seen.insert(*file));
+
+    let threads = req.threads.unwrap_or(1).min(order.len());
+    let per_file: Vec<Vec<Reported>> = if threads <= 1 {
+        order
+            .iter()
+            .map(|file| check_one(&db, *file, &by_file))
+            .collect::<anyhow::Result<_>>()?
+    } else {
+        check_parallel(&db, &order, &by_file, threads)?
+    };
+    Ok(per_file.into_iter().flatten().collect())
+}
+
+/// One reported entry: the host's path for a file and the findings anchored there.
+type Reported = (PathBuf, Vec<Diagnostic>);
+
+/// Check `file` and report its findings, preceded by any anchored in another project file.
+fn check_one(db: &TyDb, file: File, by_file: &FxHashMap<File, PathBuf>) -> anyhow::Result<Vec<Reported>> {
+    let mut reported = Vec::new();
+    let mut diagnostics = Vec::new();
+    for diagnostic in db.check_file(file) {
+        match diagnostics::convert(db, &diagnostic) {
+            Some((anchor, converted)) if anchor == file => diagnostics.push(converted),
+            Some((anchor, converted)) => match by_file.get(&anchor) {
+                Some(path) => reported.push((path.clone(), vec![converted])),
+                None => tracing::debug!(code = ?converted.code, "ty: diagnostic anchored outside the project"),
+            },
+            None => tracing::debug!(message = %diagnostic.concise_message(), "ty: diagnostic without a file"),
         }
     }
+    if !diagnostics.is_empty() {
+        let path = by_file.get(&file).ok_or_else(|| anyhow!("ty: unknown file"))?;
+        reported.push((path.clone(), diagnostics));
+    }
     Ok(reported)
+}
+
+/// Check `order` on a pool of `threads` workers, each over its own salsa clone of `db`.
+///
+/// Like `ty_project`, every task runs under `Cancelled::catch`. Nothing in a one-shot check writes
+/// an input, so a cancellation is not expected; it is reported as an error rather than a panic.
+fn check_parallel(
+    db: &TyDb,
+    order: &[File],
+    by_file: &FxHashMap<File, PathBuf>,
+    threads: usize,
+) -> anyhow::Result<Vec<Vec<Reported>>> {
+    let pool = rayon::ThreadPoolBuilder::new()
+        .num_threads(threads)
+        .thread_name(|index| format!("poly-ty-{index}"))
+        .stack_size(ruff_db::STACK_SIZE)
+        .build()
+        .context("cannot start the ty worker pool")?;
+    let results: Vec<(usize, anyhow::Result<Vec<Reported>>)> = pool.install(|| {
+        order
+            .par_iter()
+            .enumerate()
+            .map_init(
+                || db.clone(),
+                |db, (index, file)| {
+                    let checked = salsa::Cancelled::catch(AssertUnwindSafe(|| check_one(db, *file, by_file)))
+                        .unwrap_or_else(|cancelled| Err(anyhow!("ty: the check was cancelled: {cancelled}")));
+                    (index, checked)
+                },
+            )
+            .collect()
+    });
+    merge_by_index(results).into_iter().collect::<anyhow::Result<Vec<_>>>()
 }

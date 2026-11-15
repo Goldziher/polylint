@@ -19,6 +19,7 @@ default = ["ty"]
 # The `python-types` project-check engine, backed by the published ty crates.
 ty = [
   "ruff_db/os",
+  "dep:rayon",
   "dep:ruff_notebook",
   "dep:salsa",
   "dep:ty_module_resolver",
@@ -32,6 +33,7 @@ ty = [
 anyhow.workspace = true
 globset.workspace = true
 poly-engine-api.workspace = true
+rayon = { workspace = true, optional = true }
 regex.workspace = true
 ruff_db.workspace = true
 ruff_formatter.workspace = true

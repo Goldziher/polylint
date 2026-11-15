@@ -233,3 +233,31 @@ fn python_version_option_drives_version_dependent_checks() {
 fn version_names_the_ty_crate() {
     assert!(TyEngine.version().contains("0.0.21"));
 }
+
+#[test]
+fn parallel_check_reports_exactly_as_the_serial_one() {
+    let dir = tempfile::tempdir().unwrap();
+    let sources: Vec<(String, String)> = (0..20)
+        .map(|n| {
+            let source = format!("def f{n}(a: int) -> int:\n    return a\n\n\nf{n}(\"x\")\nvalue{n}: int = \"s\"\n");
+            (format!("pkg/mod{n}.py"), source)
+        })
+        .collect();
+    let named: Vec<(&str, &str)> = sources.iter().map(|(n, c)| (n.as_str(), c.as_str())).collect();
+    let files = project(dir.path(), &named);
+    let check = |threads: usize| {
+        let config = ty_config();
+        TyEngine
+            .project_check(&ProjectRequest {
+                root: dir.path(),
+                files: &files,
+                config: &config,
+                environment: &ProjectEnvironment::default(),
+                threads: Some(threads),
+            })
+            .unwrap()
+    };
+    let serial = summarize(dir.path(), &check(1));
+    assert_eq!(serial.len(), 40, "two findings in each of 20 files: {serial:?}");
+    assert_eq!(summarize(dir.path(), &check(4)), serial);
+}
