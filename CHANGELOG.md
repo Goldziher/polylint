@@ -24,6 +24,12 @@ binary drives lint, format, hooks, and commit checks from one `poly.toml`.
 - **Dockerfiles, `.env` and INI files format the same in every build.** The bundled build left them with no formatter,
   while the core build normalised them through the generic tier; both now use the generic tier.
 - **Language-agnostic catalog tools now run when enabled.** A catalog tool that names no language (codespell, typos, proselint, dprint, editorconfig-checker and similar) matched no file, so `[tools.<name>] enabled = true` did nothing. It now applies to every discovered file.
+- **A project check no longer depends on how a path is spelled.** `poly lint docs/adr`, `poly lint docs/adr/0003-x.md`
+  and a relative path named from a subdirectory skipped the adrlint tree-wide and lock rules (`MADR41`-`MADR44`,
+  `ADR50`, `ADR51`) that `poly lint ./docs/adr` ran, and `poly lint README.md docs/adr` with an `adrlint.lock` reported
+  every locked record as `ADR51` missing from disk. The config governing a file is now chosen by the directory's
+  identity, not by comparing the paths as written, so a project check gets the same project root for every spelling
+  and argument order. A project finding under a named directory is reported under the run's own spelling of the file.
 
 ## [0.35.0] - 2026-11-15
 

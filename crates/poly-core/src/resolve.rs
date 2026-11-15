@@ -29,9 +29,11 @@ use crate::config::Config;
 use crate::discover::{TrackedDirs, TrackedDirsCache};
 
 mod canon;
+mod holder;
 mod scan;
 
 use canon::Canon;
+use holder::Holders;
 pub(crate) use scan::RootSnapshot;
 use scan::{WalkSnapshot, scan_config_dirs};
 
@@ -92,6 +94,9 @@ pub struct ConfigSet {
     /// `(config_dir, config_id)` for every directory-backed config, sorted by
     /// path depth descending so the first ancestor match is the nearest config.
     lookup: Vec<(PathBuf, usize)>,
+    /// The directories of `lookup` by identity, which is what decides the config governing a file:
+    /// the same file must get the same config however the run spelled the path to it.
+    holders: Holders,
     /// Absolute, canonicalized directory where the run's root config
     /// (`configs[0]`) file lives, when known. This may be an *ancestor* of the
     /// walk root — running `poly` from a repo subdirectory (`frontend/`) while
@@ -122,6 +127,7 @@ impl ConfigSet {
             configs: vec![config],
             dirs: vec![None],
             lookup: Vec::new(),
+            holders: Holders::default(),
             root_config_dir: None,
             root_config_registered: false,
             canon: Canon::default(),
@@ -178,10 +184,12 @@ impl ConfigSet {
             let key = canonical_key(root_config_dir, &canon);
             lookup.iter().any(|(dir, _)| canonical_key(dir, &canon) == key)
         });
+        let holders = Holders::new(&lookup, &canon);
         Ok(Self {
             configs,
             dirs,
             lookup,
+            holders,
             root_config_dir,
             root_config_registered,
             canon,
@@ -220,11 +228,7 @@ impl ConfigSet {
     /// The id of the nearest nested config directory holding `file`, or `None` when no registered
     /// config directory does (the file then belongs to the root config only if it sits under the root).
     pub fn config_id_containing(&self, file: &Path) -> Option<usize> {
-        let dir = file.parent().unwrap_or(file);
-        self.lookup
-            .iter()
-            .find(|(config_dir, _)| dir.starts_with(config_dir))
-            .map(|(_, id)| *id)
+        self.holders.holding(file.parent().unwrap_or(file), &self.canon)
     }
 
     /// Borrow the config with the given id.

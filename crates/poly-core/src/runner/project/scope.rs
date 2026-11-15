@@ -15,7 +15,8 @@ use crate::engine::Diagnostic;
 
 /// The paths a run named: directories (everything beneath them is in scope) and files.
 pub(super) struct RunScope {
-    dirs: Vec<PathBuf>,
+    /// Canonical path and the path as the run spelled it, in the order the run named them.
+    dirs: Vec<(PathBuf, PathBuf)>,
     /// Canonical path to the path as the run spelled it, which is how the per-file results key it.
     files: FxHashMap<PathBuf, PathBuf>,
 }
@@ -61,7 +62,7 @@ impl RunScope {
         for path in paths {
             let resolved = canonical(path);
             if path.is_dir() {
-                scope.dirs.push(resolved);
+                scope.dirs.push((resolved, path.clone()));
             } else {
                 scope.files.insert(resolved, path.clone());
             }
@@ -74,12 +75,14 @@ impl RunScope {
         let dir = canonical(dir);
         self.dirs
             .iter()
-            .any(|named| named.starts_with(&dir) || dir.starts_with(named))
+            .any(|(named, _)| named.starts_with(&dir) || dir.starts_with(named))
             || self.files.keys().any(|file| file.starts_with(&dir))
     }
 
     /// The path to report `finding` under, or `None` when the run did not name it or a directory
-    /// above it.
+    /// above it. It is spelled as the run spelled it: the named file, or the named directory joined
+    /// with the rest, which is how discovery spells a file it walked to, so the finding joins that
+    /// file's per-file result instead of standing beside it under another spelling.
     pub(super) fn admit(&self, finding: &Path) -> Option<PathBuf> {
         let resolved = canonical(finding);
         if let Some(spelled) = self.files.get(&resolved) {
@@ -87,8 +90,7 @@ impl RunScope {
         }
         self.dirs
             .iter()
-            .any(|named| resolved.starts_with(named))
-            .then(|| finding.to_path_buf())
+            .find_map(|(named, spelled)| resolved.strip_prefix(named).ok().map(|rest| spelled.join(rest)))
     }
 }
 
@@ -118,6 +120,19 @@ mod tests {
         let gone = dir.path().join("log/0009-gone.md");
         assert_eq!(scope.admit(&gone), Some(gone.clone()));
         assert_eq!(scope.admit(&dir.path().join("elsewhere/x.md")), None);
+    }
+
+    #[test]
+    fn a_finding_under_a_named_directory_takes_the_spelling_the_run_gave_the_directory() {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::create_dir_all(dir.path().join("log")).unwrap();
+        std::fs::write(dir.path().join("log/0001.md"), "x").unwrap();
+        let roundabout = dir.path().join("log/../log");
+        let scope = RunScope::new(std::slice::from_ref(&roundabout));
+        assert_eq!(
+            scope.admit(&dir.path().join("./log/0001.md")),
+            Some(roundabout.join("0001.md"))
+        );
     }
 
     #[test]

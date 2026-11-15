@@ -511,13 +511,21 @@ fn ignored_options_note(plans: &[ProjectPlan], roots: &[PathBuf], at: usize, out
 /// Rule code of the warning a nested config gets when its options are overridden by the covering plan.
 const NESTED_OPTIONS_CODE: &str = "nested-options-ignored";
 
-/// The project root for a config scope: the directory holding its `poly.toml`, else the run root,
-/// else the working directory.
+/// The project root for a config scope: the directory holding its `poly.toml`, else the first path
+/// the run named, else the working directory.
+///
+/// Config 0 is the run's own config, and the directory recorded for it is the first path the run
+/// named, not where its `poly.toml` lives. A file reaches config 0 only when no registered config
+/// directory holds it, as in a run from a subdirectory that spells its paths relatively, whose
+/// ancestor chain stops at the working directory. Its project root is then the directory the
+/// governing `poly.toml` was found in, so the root does not move with the path named first.
 fn root_for(configs: &ConfigSet, config_id: usize) -> PathBuf {
-    configs
-        .config_dir(config_id)
-        .or_else(|| configs.root_dir())
-        .map(Path::to_path_buf)
+    let own = if config_id == 0 {
+        configs.root_dir().or_else(|| configs.config_dir(0))
+    } else {
+        configs.config_dir(config_id).or_else(|| configs.root_dir())
+    };
+    own.map(Path::to_path_buf)
         .or_else(|| std::env::current_dir().ok())
         .unwrap_or_else(|| PathBuf::from("."))
 }

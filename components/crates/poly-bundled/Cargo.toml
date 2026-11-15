@@ -22,6 +22,7 @@ poly-engines-ruby.workspace = true
 poly-engines-web.workspace = true
 
 [dev-dependencies]
+adrlint.workspace = true
 serde_json.workspace = true
 tempfile.workspace = true
 

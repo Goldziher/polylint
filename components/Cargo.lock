@@ -5458,6 +5458,7 @@ version = "0.35.0"
 name = "poly-bundled"
 version = "0.35.0"
 dependencies = [
+ "adrlint",
  "poly-cli",
  "poly-core",
  "poly-engines-biome",
