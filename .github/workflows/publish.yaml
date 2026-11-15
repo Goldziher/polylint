@@ -31,9 +31,10 @@ on:
 # fresh runner in the `release` environment, checks the payloads against the build job's digest
 # manifest and signs each archive with the Ed25519 private key in the environment secret
 # POLY_COMPONENT_SIGNING_KEY (PKCS#8 PEM, or base64 of the PKCS#8 DER or a raw 32-byte seed). Its
-# public half is `poly-release-1` in alef.toml ([crates.component_distribution.public_keys]); the
+# public half is `poly-release-2` in alef.toml ([crates.component_distribution.public_keys]); the
 # rotation procedure is in the ADR and docs/release-runbook.md. A missing secret fails the release.
-# HOMEBREW_TOKEN and RELEASE_TAG_TOKEN are `release` environment secrets too.
+# HOMEBREW_TOKEN and RELEASE_TAG_TOKEN stay repository secrets; the jobs using them run in the
+# `release` environment, which still sees repository secrets.
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}

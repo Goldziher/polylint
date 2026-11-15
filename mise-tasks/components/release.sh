@@ -57,7 +57,7 @@ set -euo pipefail
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 cd "${ROOT_DIR}"
 
-KEY_ID="poly-release-1"
+KEY_ID="poly-release-2"
 LOCK_ASSET="poly-components.lock.json"
 # Stripped at link time. A dylib must never be stripped after linking: that removes the exported
 # symbols the host looks up.
@@ -329,16 +329,19 @@ verify_previous_lock() {
   else
     echo "::warning::${tag}'s ${LOCK_ASSET} has no build-provenance attestation (released before attestations); checked against its sha256sums.txt only"
   fi
+}
+
+# Whether every entry of a verified previous lock is signed by a key alef.toml still trusts, by id and
+# value. After a key rotation it is not, and its entries must not be reused: the caller rebuilds every
+# component instead of failing, since the lock itself passed the integrity checks above.
+previous_lock_keys_trusted() {
+  local lock="$1" keys
   keys="$(public_keys)"
   jq -e --argjson keys "${keys}" '
     . as $lock
     | ($lock.artifacts | length) > 0
     and all($lock.artifacts[]; .key_id as $k | ($keys[$k] // null) != null and $lock.public_keys[$k] == $keys[$k])
-  ' "${lock}" >/dev/null || {
-    echo "components-release: ${tag}'s lock signs entries with a key alef.toml does not trust (by id and value)" >&2
-    jq '{public_keys, key_ids: ([.artifacts[].key_id] | unique)}' "${lock}" >&2
-    exit 1
-  }
+  ' "${lock}" >/dev/null
 }
 
 # The newest other published release that shipped a lock decides: an older one says nothing about
@@ -363,8 +366,13 @@ previous_lock() {
     if grep -qx "${LOCK_ASSET}" <<<"${assets}"; then
       gh release download "${tag}" --repo "${GITHUB_REPOSITORY}" --pattern "${LOCK_ASSET}" --dir "${scratch}"
       verify_previous_lock "${tag}" "${scratch}/${LOCK_ASSET}"
-      mv "${scratch}/${LOCK_ASSET}" "${PREVIOUS_LOCK}"
-      echo "previous lock: ${tag}"
+      if previous_lock_keys_trusted "${scratch}/${LOCK_ASSET}"; then
+        mv "${scratch}/${LOCK_ASSET}" "${PREVIOUS_LOCK}"
+        echo "previous lock: ${tag}"
+      else
+        echo "::warning::${tag}'s lock is signed with a key alef.toml no longer trusts (rotated); rebuilding every component"
+        jq '{public_keys, key_ids: ([.artifacts[].key_id] | unique)}' "${scratch}/${LOCK_ASSET}" >&2
+      fi
       break
     fi
   done <<<"${tags}"
@@ -373,7 +381,7 @@ previous_lock() {
     echo "components-release: ${PREVIOUS_LOCK} is neither a component lock nor the empty marker" >&2
     exit 1
   }
-  has_previous_lock || echo "no earlier release carries ${LOCK_ASSET}: building every component"
+  has_previous_lock || echo "no reusable ${LOCK_ASSET} from an earlier release: building every component"
 }
 
 has_previous_lock() {

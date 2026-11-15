@@ -214,7 +214,7 @@ url_template = "https://github.com/Goldziher/polylint/releases/download/v{versio
 artifact_name_template = "poly-component-{component}-{version}-{target}-{fh16}-{ch16}.tar.gz"
 
 [crates.component_distribution.public_keys]
-poly-release-1 = "MCowBQYDK2VwAyEAmv5BXWnmk2dddU9Uv74gMjlYP5urPfJVFbm3thZB/xk="
+poly-release-2 = "MCowBQYDK2VwAyEAV4wGoWWtGnKnx9ap6dSK7iYkw/su7cbeuBXfmE7oXi4="
 
 [crates.component_host]
 output = "crates/poly-component-host/src/components_gen.rs"
