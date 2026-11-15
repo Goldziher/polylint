@@ -463,3 +463,22 @@ fn code_only_judges_a_trailing_comment_on_its_own() {
         "a trailing prose note mentioning a path is not commented-out code"
     );
 }
+
+#[test]
+fn span_columns_count_characters() {
+    let content = "let s = \"é日😀\"; // removable\n";
+    let diagnostics = UncommentEngine
+        .lint(
+            &src("main.rs", Language::Rust, content),
+            &cfg("enabled = true\ncode_only = false"),
+        )
+        .unwrap();
+    let span = diagnostics[0].span.unwrap();
+    let prefix_chars = content.find("//").map(|b| content[..b].chars().count()).unwrap();
+    assert!(
+        content.len() > prefix_chars + 1,
+        "fixture must be non-ASCII before the comment"
+    );
+    assert_eq!((span.start_line, span.start_col as usize), (1, prefix_chars + 1));
+    assert_eq!(span.end_col as usize, content.trim_end().chars().count() + 1);
+}

@@ -68,6 +68,7 @@ use poly_engine_api::engine::{
     Capabilities, Diagnostic, Edit, Engine, OptionKeys, OptionTable, OptionType, Severity, SourceFile, Span,
 };
 use poly_engine_api::language::Language;
+use poly_engine_api::line_index::LineIndex;
 
 /// Cache-key version: the wrapped crate version plus a marker for this backend's
 /// own mapping logic. Bump whenever `uncomment` is updated OR the diagnostic/edit
@@ -145,6 +146,7 @@ impl Engine for UncommentEngine {
             removals
         };
 
+        let index = LineIndex::new(&src.content);
         let diagnostics = removals
             .into_iter()
             .map(|removal| {
@@ -159,7 +161,7 @@ impl Engine for UncommentEngine {
                     severity: Severity::Warning,
                     title: "comment can be removed".to_owned(),
                     description: (!removal.preview.is_empty()).then(|| removal.preview.clone()),
-                    span: Some(span_of(&src.content, removal.comment_start, removal.comment_end)),
+                    span: Some(span_of(&index, removal.comment_start, removal.comment_end)),
                     url: None,
                     fix: vec![Edit {
                         start_byte: removal.remove_start,
@@ -632,33 +634,17 @@ fn resolved_config(cfg: &EngineConfig) -> ResolvedConfig {
     }
 }
 
-/// Build a 1-based [`Span`] covering the byte range `[start, end)` of `content`.
-fn span_of(content: &str, start: usize, end: usize) -> Span {
-    let (start_line, start_col) = line_col(content, start);
-    let (end_line, end_col) = line_col(content, end);
+/// Build a 1-based [`Span`] covering the byte range `[start, end)` of `index`'s
+/// text, with columns counted in characters.
+fn span_of(index: &LineIndex<'_>, start: usize, end: usize) -> Span {
+    let (start_line, start_col) = index.line_col(start);
+    let (end_line, end_col) = index.line_col(end);
     Span {
         start_line,
         start_col,
         end_line,
         end_col,
     }
-}
-
-/// Convert a byte offset into `content` to a 1-based (line, column) pair. Columns
-/// are counted in bytes, matching the convention used elsewhere in poly.
-fn line_col(content: &str, offset: usize) -> (u32, u32) {
-    let offset = offset.min(content.len());
-    let mut line: u32 = 1;
-    let mut col: u32 = 1;
-    for &byte in &content.as_bytes()[..offset] {
-        if byte == b'\n' {
-            line = line.saturating_add(1);
-            col = 1;
-        } else {
-            col = col.saturating_add(1);
-        }
-    }
-    (line, col)
 }
 
 #[cfg(test)]
