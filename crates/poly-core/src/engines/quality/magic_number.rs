@@ -20,6 +20,7 @@
 
 use tree_sitter::Node;
 
+use super::walk::walk;
 use crate::engine::{Diagnostic, Severity, Span};
 
 /// Node-kind substrings (checked case-insensitively) that identify a numeric
@@ -33,26 +34,19 @@ const EXCLUDED_KINDS: &[&str] = &["predefined_type", "type_identifier", "integra
 /// Walk `root` and report every magic number not in `allow`.
 pub fn scan(root: Node, source: &[u8], allow: &[i64]) -> Vec<Diagnostic> {
     let mut out = Vec::new();
-    walk(root, source, allow, &mut out);
-    out
-}
-
-fn walk(node: Node, source: &[u8], allow: &[i64], out: &mut Vec<Diagnostic>) {
-    if node.child_count() == 0 && is_numeric_literal_kind(node.kind()) {
-        if let Some(finding) = check(node, source, allow) {
-            out.push(finding);
-        }
-        return;
-    }
-    let mut cursor = node.walk();
-    if cursor.goto_first_child() {
-        loop {
-            walk(cursor.node(), source, allow, out);
-            if !cursor.goto_next_sibling() {
-                break;
+    walk(
+        root,
+        |node, _| {
+            if node.child_count() == 0
+                && is_numeric_literal_kind(node.kind())
+                && let Some(finding) = check(node, source, allow)
+            {
+                out.push(finding);
             }
-        }
-    }
+        },
+        |_, _| {},
+    );
+    out
 }
 
 fn is_numeric_literal_kind(kind: &str) -> bool {

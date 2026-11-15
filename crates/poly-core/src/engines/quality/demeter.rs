@@ -17,6 +17,7 @@
 
 use tree_sitter::Node;
 
+use super::walk::walk;
 use crate::engine::{Diagnostic, Severity, Span};
 
 const CHAIN_KIND_MARKERS: &[&str] = &[
@@ -27,60 +28,25 @@ const CHAIN_KIND_MARKERS: &[&str] = &[
 ];
 
 /// Walk `root` and report every access chain deeper than `max_depth`.
+///
+/// Reported at the outermost chain node only: a chain-kind node whose parent is also chain-kind is
+/// a link in a longer chain. Call arguments and index expressions are still searched for chains of
+/// their own, since their parent is not a chain-kind node.
 pub fn scan(root: Node, max_depth: usize) -> Vec<Diagnostic> {
     let mut out = Vec::new();
-    walk(root, max_depth, &mut out);
+    walk(
+        root,
+        |node, ancestors| {
+            if is_chain_kind(node.kind()) && !ancestors.last().is_some_and(|parent| is_chain_kind(parent.kind())) {
+                let depth = chain_depth(node);
+                if depth > max_depth {
+                    out.push(diagnostic(node, depth));
+                }
+            }
+        },
+        |_, _| {},
+    );
     out
-}
-
-fn walk(node: Node, max_depth: usize, out: &mut Vec<Diagnostic>) {
-    if is_chain_kind(node.kind()) && !is_chain_link(node) {
-        // The outermost node of a chain: not itself part of a longer chain
-        // (its parent is not also a chain-kind node).
-        let depth = chain_depth(node);
-        if depth > max_depth {
-            out.push(diagnostic(node, depth));
-        }
-        // Do not descend further into this chain's own object expression —
-        // an inner sub-chain of the same access would otherwise be reported
-        // a second time. Still walk into non-chain children (call arguments,
-        // index expressions) for chains elsewhere in the file.
-        walk_non_chain_children(node, max_depth, out);
-        return;
-    }
-    let mut cursor = node.walk();
-    if cursor.goto_first_child() {
-        loop {
-            walk(cursor.node(), max_depth, out);
-            if !cursor.goto_next_sibling() {
-                break;
-            }
-        }
-    }
-}
-
-fn walk_non_chain_children(node: Node, max_depth: usize, out: &mut Vec<Diagnostic>) {
-    let mut cursor = node.walk();
-    if cursor.goto_first_child() {
-        loop {
-            let child = cursor.node();
-            if !is_chain_kind(child.kind()) {
-                walk(child, max_depth, out);
-            } else {
-                walk_non_chain_children(child, max_depth, out);
-            }
-            if !cursor.goto_next_sibling() {
-                break;
-            }
-        }
-    }
-}
-
-/// Whether `node`'s parent is itself a chain-kind node with `node` as its
-/// object/receiver — i.e. `node` is a link in a longer chain, not the
-/// outermost access.
-fn is_chain_link(node: Node) -> bool {
-    node.parent().is_some_and(|parent| is_chain_kind(parent.kind()))
 }
 
 fn is_chain_kind(kind: &str) -> bool {

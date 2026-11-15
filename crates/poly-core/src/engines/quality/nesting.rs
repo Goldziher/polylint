@@ -4,7 +4,7 @@
 //!
 //! # Algorithm
 //!
-//! One recursive walk of the **whole file's parse tree** (not scoped to Tags
+//! One explicit-stack walk ([`super::walk`]) of the **whole file's parse tree** (not scoped to Tags
 //! definitions — an anonymous closure resets nesting exactly like a named
 //! function, and no Tags query ever names a closure). A running `depth`
 //! counter is threaded through the walk, reset to 0 whenever a
@@ -14,9 +14,12 @@
 //! a chain that reaches depth 5 with a threshold of 4 yields exactly one
 //! finding, at the depth-5 node, because depths 1-4 do not exceed 4.
 
+use std::cell::RefCell;
+
 use tree_sitter::Node;
 
 use super::kinds::{self, NestRole};
+use super::walk::walk;
 
 /// One nesting-too-deep finding: a construct whose depth exceeds the
 /// configured threshold.
@@ -37,8 +40,43 @@ pub fn analyze(grammar: &str, root: Node, threshold: usize) -> Vec<NestingFindin
     if !kinds::has_table(grammar) {
         return findings;
     }
-    walk(root, grammar, 0, threshold, &mut findings);
+    let depths = RefCell::new(Vec::<usize>::new());
+    walk(
+        root,
+        |node, ancestors| {
+            let mut depths = depths.borrow_mut();
+            let depth = depths.last().copied().unwrap_or(0);
+            let next_depth = next_depth(node, ancestors, grammar, depth);
+            depths.push(next_depth);
+            if next_depth > threshold && next_depth > depth {
+                findings.push(NestingFinding {
+                    depth: next_depth,
+                    start_byte: node.start_byte(),
+                    end_byte: node.end_byte(),
+                });
+            }
+        },
+        |_, _| {
+            depths.borrow_mut().pop();
+        },
+    );
     findings
+}
+
+/// The depth `node` itself sits at, given its parent's `depth`.
+fn next_depth(node: Node, ancestors: &[Node], grammar: &str, depth: usize) -> usize {
+    match kinds::classify(grammar, node.kind()).nest {
+        NestRole::Increment => depth + 1,
+        NestRole::IncrementUnlessChained => {
+            if is_chained_else_if(node, ancestors, grammar) {
+                depth
+            } else {
+                depth + 1
+            }
+        }
+        NestRole::Same | NestRole::Ignore => depth,
+        NestRole::Reset => 0,
+    }
 }
 
 /// Compute the maximum depth reached anywhere in `root`'s tree, for
@@ -47,70 +85,22 @@ pub fn analyze(grammar: &str, root: Node, threshold: usize) -> Vec<NestingFindin
 /// (see module docs), but the 4-language fixture asserts the exact number.
 #[cfg(test)]
 pub fn max_depth(grammar: &str, root: Node) -> usize {
-    let mut max = 0usize;
-    max_depth_walk(root, grammar, 0, &mut max);
-    max
-}
-
-#[cfg(test)]
-fn max_depth_walk(node: Node, grammar: &str, depth: usize, max: &mut usize) {
-    let construct = kinds::classify(grammar, node.kind());
-    let next_depth = match construct.nest {
-        NestRole::Increment => depth + 1,
-        NestRole::IncrementUnlessChained => {
-            if is_chained_else_if(node, grammar) {
-                depth
-            } else {
-                depth + 1
-            }
-        }
-        NestRole::Same | NestRole::Ignore => depth,
-        NestRole::Reset => 0,
-    };
-    *max = (*max).max(next_depth);
-    let mut cursor = node.walk();
-    if cursor.goto_first_child() {
-        loop {
-            max_depth_walk(cursor.node(), grammar, next_depth, max);
-            if !cursor.goto_next_sibling() {
-                break;
-            }
-        }
-    }
-}
-
-fn walk(node: Node, grammar: &str, depth: usize, threshold: usize, findings: &mut Vec<NestingFinding>) {
-    let construct = kinds::classify(grammar, node.kind());
-    let next_depth = match construct.nest {
-        NestRole::Increment => depth + 1,
-        NestRole::IncrementUnlessChained => {
-            if is_chained_else_if(node, grammar) {
-                depth
-            } else {
-                depth + 1
-            }
-        }
-        NestRole::Same | NestRole::Ignore => depth,
-        NestRole::Reset => 0,
-    };
-
-    if next_depth > threshold && next_depth > depth {
-        findings.push(NestingFinding {
-            depth: next_depth,
-            start_byte: node.start_byte(),
-            end_byte: node.end_byte(),
-        });
-    }
-
-    let mut cursor = node.walk();
-    if cursor.goto_first_child() {
-        loop {
-            walk(cursor.node(), grammar, next_depth, threshold, findings);
-            if !cursor.goto_next_sibling() {
-                break;
-            }
-        }
-    }
+    let max = RefCell::new(0usize);
+    let depths = RefCell::new(Vec::<usize>::new());
+    walk(
+        root,
+        |node, ancestors| {
+            let mut depths = depths.borrow_mut();
+            let depth = next_depth(node, ancestors, grammar, depths.last().copied().unwrap_or(0));
+            depths.push(depth);
+            let mut max = max.borrow_mut();
+            *max = (*max).max(depth);
+        },
+        |_, _| {
+            depths.borrow_mut().pop();
+        },
+    );
+    max.into_inner()
 }
 
 /// Whether `node` (already classified as `IncrementUnlessChained`, i.e. an
@@ -130,17 +120,18 @@ fn walk(node: Node, grammar: &str, depth: usize, threshold: usize, findings: &mu
 /// - Python and Ruby never reach this function at all (`elif_clause`/`elsif`
 ///   are distinct sibling node kinds classified directly in the construct
 ///   table, with no nested if-node to disambiguate).
-fn is_chained_else_if(node: Node, grammar: &str) -> bool {
-    let Some(parent) = node.parent() else {
+fn is_chained_else_if(node: Node, ancestors: &[Node], grammar: &str) -> bool {
+    let Some(&parent) = ancestors.last() else {
         return false;
     };
     match grammar {
         "c" | "cpp" | "rust" | "javascript" | "typescript" | "tsx" => parent.kind() == "else_clause",
         "kotlin" => {
             parent.kind() == "control_structure_body"
-                && parent
-                    .parent()
-                    .is_some_and(|grandparent| is_alternative_of(&grandparent, &parent))
+                && ancestors
+                    .len()
+                    .checked_sub(2)
+                    .is_some_and(|i| is_alternative_of(&ancestors[i], &parent))
         }
         "java" | "csharp" | "go" => is_alternative_of(&parent, &node),
         _ => false,

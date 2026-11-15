@@ -3,7 +3,7 @@
 //!
 //! # Algorithm
 //!
-//! One recursive walk of the whole file. A stack of `(count, span)` tracks
+//! One explicit-stack walk of the whole file (see [`super::walk`]). A stack of `(count, span)` tracks
 //! the currently open function-like scopes (McCabe base complexity 1 per
 //! scope). Entering a [`NestRole::Reset`] boundary pushes a new scope;
 //! `construct.decision` nodes increment the innermost open scope's count
@@ -23,9 +23,12 @@
 //! own anonymous node) rather than through the per-grammar table — this is
 //! the same check for every language.
 
+use std::cell::RefCell;
+
 use tree_sitter::Node;
 
 use super::kinds::{self, NestRole};
+use super::walk::walk;
 
 /// One cyclomatic-complexity finding for a single function-like scope.
 pub struct ComplexityFinding {
@@ -40,13 +43,10 @@ pub struct ComplexityFinding {
 /// Walk `root` and collect every cyclomatic-complexity finding for `grammar`.
 /// Returns an empty vec when `grammar` has no construct table.
 pub fn analyze(grammar: &str, root: Node, threshold: usize) -> Vec<ComplexityFinding> {
-    let mut findings = Vec::new();
     if !kinds::has_table(grammar) {
-        return findings;
+        return Vec::new();
     }
-    let mut scopes: Vec<Scope> = Vec::new();
-    walk(root, grammar, &mut scopes, threshold, &mut findings);
-    findings
+    collect(grammar, root, threshold)
 }
 
 struct Scope {
@@ -55,44 +55,43 @@ struct Scope {
     end_byte: usize,
 }
 
-fn walk(node: Node, grammar: &str, scopes: &mut Vec<Scope>, threshold: usize, findings: &mut Vec<ComplexityFinding>) {
-    let construct = kinds::classify(grammar, node.kind());
-    let opened_scope = construct.nest == NestRole::Reset;
-    if opened_scope {
-        scopes.push(Scope {
-            count: 1,
-            start_byte: node.start_byte(),
-            end_byte: node.end_byte(),
-        });
-    }
-
-    if construct.decision {
-        bump(scopes);
-    }
-    if has_bool_operator_child(node) {
-        bump(scopes);
-    }
-
-    let mut cursor = node.walk();
-    if cursor.goto_first_child() {
-        loop {
-            walk(cursor.node(), grammar, scopes, threshold, findings);
-            if !cursor.goto_next_sibling() {
-                break;
+fn collect(grammar: &str, root: Node, threshold: usize) -> Vec<ComplexityFinding> {
+    let scopes = RefCell::new(Vec::<Scope>::new());
+    let findings = RefCell::new(Vec::new());
+    walk(
+        root,
+        |node, _| {
+            let mut scopes = scopes.borrow_mut();
+            let construct = kinds::classify(grammar, node.kind());
+            if construct.nest == NestRole::Reset {
+                scopes.push(Scope {
+                    count: 1,
+                    start_byte: node.start_byte(),
+                    end_byte: node.end_byte(),
+                });
             }
-        }
-    }
-
-    if opened_scope {
-        let scope = scopes.pop().expect("scope pushed above");
-        if scope.count > threshold {
-            findings.push(ComplexityFinding {
-                complexity: scope.count,
-                start_byte: scope.start_byte,
-                end_byte: scope.end_byte,
-            });
-        }
-    }
+            if construct.decision {
+                bump(&mut scopes);
+            }
+            if has_bool_operator_child(node) {
+                bump(&mut scopes);
+            }
+        },
+        |node, _| {
+            if kinds::classify(grammar, node.kind()).nest != NestRole::Reset {
+                return;
+            }
+            let scope = scopes.borrow_mut().pop().expect("scope pushed on enter");
+            if scope.count > threshold {
+                findings.borrow_mut().push(ComplexityFinding {
+                    complexity: scope.count,
+                    start_byte: scope.start_byte,
+                    end_byte: scope.end_byte,
+                });
+            }
+        },
+    );
+    findings.into_inner()
 }
 
 fn bump(scopes: &mut [Scope]) {

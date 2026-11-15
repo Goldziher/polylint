@@ -285,3 +285,88 @@ fn grammar_without_a_rule_model_is_not_parsed_unless_a_generic_rule_needs_it() {
     options.insert("magic_number".to_owned(), toml::Value::Boolean(true));
     assert!(needs_parse_tree("xml", &Settings::from_config(&cfg(options))));
 }
+
+const DEEP_OPERANDS: usize = 200_000;
+
+/// Runs `body` on an 8 MiB stack, smaller than the 16 MiB rayon worker stack, so a recursive walk
+/// over a tree this deep overflows (aborting the test process) instead of passing by luck.
+fn on_small_stack(body: impl FnOnce() + Send + 'static) {
+    std::thread::Builder::new()
+        .stack_size(8 << 20)
+        .spawn(body)
+        .unwrap()
+        .join()
+        .unwrap();
+}
+
+fn parse(grammar: &str, source: &str) -> tree_sitter::Tree {
+    let language = tree_sitter_language_pack::get_language(grammar).expect("grammar available");
+    let mut parser = tree_sitter::Parser::new();
+    parser.set_language(&language).expect("set_language");
+    parser.parse(source, None).expect("parse")
+}
+
+fn chain(operand: &str, operator: &str) -> String {
+    vec![operand; DEEP_OPERANDS].join(operator)
+}
+
+#[test]
+fn deep_operator_chain_does_not_overflow_the_structural_walks() {
+    on_small_stack(|| {
+        let cases = [
+            ("python", format!("x = {}\n", chain("a", " + "))),
+            (
+                "javascript",
+                format!("function f(a) {{ return {}; }}\n", chain("a", " && ")),
+            ),
+            ("rust", format!("fn f(a: bool) -> bool {{ {} }}\n", chain("a", " || "))),
+            ("python", format!("x = a{}\n", ".b".repeat(DEEP_OPERANDS))),
+            ("rust", format!("fn f() -> u32 {{ {} }}\n", chain("7", " + "))),
+        ];
+        for (grammar, source) in &cases {
+            let tree = parse(grammar, source);
+            let root = tree.root_node();
+            let _ = super::nesting::analyze(grammar, root, 4);
+            let _ = super::complexity::analyze(grammar, root, 20);
+            let _ = super::demeter::scan(root, 3);
+            let _ = super::magic_number::scan(root, source.as_bytes(), &[0, 1]);
+        }
+    });
+}
+
+#[test]
+fn deep_operator_chain_findings_are_still_reported() {
+    on_small_stack(|| {
+        let source = format!("function f(a) {{ return {}; }}\n", chain("a", " && "));
+        let tree = parse("javascript", &source);
+        let findings = super::complexity::analyze("javascript", tree.root_node(), 20);
+        assert_eq!(findings.len(), 1);
+        assert_eq!(findings[0].complexity, DEEP_OPERANDS);
+
+        let source = format!("x = a{}\n", ".b".repeat(DEEP_OPERANDS));
+        let tree = parse("python", &source);
+        let findings = super::demeter::scan(tree.root_node(), 3);
+        assert_eq!(findings.len(), 1, "one finding for the outermost chain");
+    });
+}
+
+#[test]
+fn deep_operator_chain_runs_through_the_engine_on_a_small_stack() {
+    on_small_stack(|| {
+        let mut options = toml::Table::new();
+        options.insert("magic_number".to_owned(), toml::Value::Boolean(true));
+        options.insert("law_of_demeter".to_owned(), toml::Value::Boolean(true));
+        let engine_cfg = cfg(options);
+        for (path, language, source) in [
+            ("f.py", Language::Python, format!("x = {}\n", chain("a", " + "))),
+            (
+                "f.rs",
+                Language::Rust,
+                format!("fn f() -> u32 {{ {} }}\n", chain("7", " + ")),
+            ),
+        ] {
+            let file = src(path, language, &source);
+            QualityEngine.lint(&file, &engine_cfg).unwrap();
+        }
+    });
+}

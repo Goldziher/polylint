@@ -61,6 +61,7 @@ mod metrics;
 pub mod nesting;
 pub mod settings;
 pub mod test_files;
+mod walk;
 
 use std::cell::RefCell;
 use std::collections::HashMap;
