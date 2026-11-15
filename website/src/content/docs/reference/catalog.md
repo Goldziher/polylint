@@ -51,6 +51,17 @@ pre-commit gate typically runs, and `poly migrate` maps those jobs onto them.
 | `rbcop` | lint, fix | Ruby files | RuboCop JSON (cop, severity, fixable) |
 | `swiftlint` | lint | Swift files | SARIF (rule, URL) |
 | `scalafmt` | format | Scala files, in place on a scratch copy | -- |
+| `shellcheck` | lint | shell files | JSON (rule, line, column) |
+| `clang-format` | format | C, C++, Objective-C, Java, JavaScript, JSON and protobuf files, in place on a scratch copy | -- |
+| `zizmor` | lint | all workflow files | SARIF (rule, URL) |
+| `kubeconform` | lint | Kubernetes manifests, all files | JSON (kind, name; line from the resource's document) |
+| `ktlint` | lint, fix | Kotlin files, one JVM per shard | JSON (rule, line, column) |
+| `detekt` | lint | Kotlin files, one JVM per shard | SARIF (rule, URL, line, column) |
+| `pmd` | lint | Java files, one JVM per shard | JSON (rule, URL, line, column) |
+| `google-java-format` | format | Java files, in place on a scratch copy | -- |
+| `ktfmt` | format | Kotlin files, in place on a scratch copy | -- |
+| `mix` | format | one run per `mix.exs` project | -- |
+| `credo` | lint | one run per `mix.exs` project | JSON (check, line, column) |
 
 ```toml
 [tools.checkstyle]
@@ -99,6 +110,17 @@ How they differ from the breadth tier above:
   tag), and honours `# gau: ignore` on a `uses:` line. A file it cannot parse is reported as
   `scan_failure`. It is off until `[tools.gau] enabled = true`; no release is pinned yet, so install
   it yourself or point `bin` at it.
+- **Host runtimes.** `checkstyle`, `ktlint`, `detekt` and `pmd` run on the host's JRE (`bin`, then `JAVA_HOME`, then
+  `PATH`); poly bundles no JVM. A missing `java` makes the tool unavailable with a message naming it.
+  The tool itself is a pinned, checksummed download: a jar for `checkstyle`, `ktlint` and `detekt`, and for `pmd` the
+  whole distribution zip, extracted into poly's cache and launched by class with every jar beside its CLI jar on the
+  classpath. `pmd` needs a ruleset (`extra_args = ["-R", "ruleset.xml"]`; the quickstart set is always included) and
+  `detekt` takes its config the same way (`extra_args = ["--config", "detekt.yml"]`). `detekt` writes its SARIF report
+  to a file poly names and reads back after the run.
+- **kubeconform.** The tool prints no line numbers, so poly finds the manifest document by `kind` and
+  `metadata.name`, then follows the schema error's path (`/spec/template/spec/containers/0/image`) to its line. A
+  path it cannot follow (flow-style YAML) reports the deepest line reached, else the document's first line. Pass
+  `-schema-location` through `extra_args` to keep runs from fetching schemas.
 - **Fixes.** `buildifier`'s auto-fixable warnings are applied by `poly lint --fix`; the tool's own
   rewrite is attached as the fix. `golangci-lint` findings that carry a suggested fix are fixed by
   `golangci-lint run --fix` on a scratch copy of the Go module, and only the run's files are read
@@ -113,8 +135,9 @@ How they differ from the breadth tier above:
   before extracting only the binary). `version` is `"latest"` (the default) or any exact upstream
   version, such as `"2.14.1"`; poly does not need to know it in advance. Downloads are available for
   `checkstyle`, `palantir-java-format`, `buildifier`, `buf`, `actionlint`, `hadolint`, `golangci-lint`,
-  `helm`, `helm-template`, `tflint` and `tofu`, on macOS and Linux (arm64 and x86_64; `checkstyle` is a
-  platform-independent jar). A version poly cannot provision makes the tool unavailable with a message
+  `helm`, `helm-template`, `tflint`, `tofu`, `shellcheck`, `clang-format`, `zizmor`, `kubeconform`, `ktlint`,
+  `detekt`, `pmd`, `google-java-format` and `ktfmt`, on the platforms each project publishes (`checkstyle`,
+  `ktlint`, `detekt` and `pmd` are platform-independent). A version poly cannot provision makes the tool unavailable with a message
   naming the cause — poly never runs a different version from `PATH`. Without `install = "auto"` a
   missing tool produces a warning naming the command that installs it.
 - **Releases and `poly.lock`.** `latest` is the newest upstream release, from the GitHub releases API

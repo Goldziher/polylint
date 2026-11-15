@@ -18,7 +18,7 @@ tree-sitter generic tier for the long tail. Two cross-cutting lint tiers run on 
 `quality` metric engine and ast-grep with a built-in rule pack. Canonical first-party CLIs are
 used when found on `PATH` (`rustfmt`, `gofmt`, `shfmt` and `shellcheck` are default-on;
 `zig fmt`, `google-java-format`, `ktfmt`, `swift-format`, `dartfmt`, `styler`, `gleamfmt` are
-opt-in). Opt-in catalog tools run in the per-file tier; fourteen (`golangci-lint`, `helm`,
+opt-in). Opt-in catalog tools run in the per-file tier; thirty-three (`golangci-lint`, `helm`,
 `buf`, …) carry recipes: batched runs, parsed reports, pinned downloads. Whole-project tools (`cargo clippy` / `cargo-sort` / `cargo-machete` /
 `cargo-deny` and `workspace = true` hook jobs) run in the whole-project phase, not the per-file
 tier.

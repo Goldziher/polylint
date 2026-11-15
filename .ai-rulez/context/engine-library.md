@@ -110,7 +110,7 @@ x-ai-rulez:
   - `catalog_tool/` — the opt-in **catalog tier** (ADR 0013): runs any `poly-catalog` tool a
     user enables with `[tools.<name>] enabled = true`, over stdin or a temp file. Capability-
     probed, so a missing binary is a warning rather than an error. `catalog_tool/recipe/` is
-    the **recipe tier** (ADR 0035): fourteen tools (`golangci-lint`, `helm`, `buf`, `hadolint`,
+    the **recipe tier** (ADR 0035): thirty-three tools (`golangci-lint`, `helm`, `buf`, `hadolint`,
     `tflint`, `checkstyle`, …) whose overlay entry in `poly-catalog`'s `overlay.json` carries a
     recipe run batched per unit (module, chart, directory), with their report parsed into
     per-line diagnostics and an optional pinned, checksummed download (`install = "auto"`).

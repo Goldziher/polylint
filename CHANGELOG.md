@@ -26,6 +26,12 @@ binary drives lint, format, hooks, and commit checks from one `poly.toml`.
   `tex-fmt`, both in-process engines in the `misc` component. (#171, #172)
 - **`[discovery] max_file_size`.** A file larger than this many bytes (default 32 MiB, `0` for no limit) is not read and
   is reported as skipped (`file too large`), which counts toward `--deny-skips`. (#207)
+- **PMD and detekt recipes** for Java and Kotlin, on the host JRE with pinned, checksummed downloads
+  (`install = "auto"`). PMD is installed as its whole distribution (a new `dist` release kind, extracted with the same
+  path, link and size checks as a single archive member); detekt's SARIF report is written to a per-run file through a
+  new `$OUTPUT` argument placeholder, and a new `$FILES_COMMA:<flag>` placeholder passes its inputs as one list. (#133)
+- **kubeconform findings carry a line.** The offending resource is located in a multi-document manifest by `kind` and
+  `metadata.name`, and a schema error's path is followed to its line. (#128)
 
 ### Fixed
 
