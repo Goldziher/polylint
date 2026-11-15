@@ -71,6 +71,7 @@ use tree_sitter_language_pack::detect_language;
 
 use crate::config::EngineConfig;
 use crate::engine::{Capabilities, Diagnostic, Engine, OptionKeys, OptionTable, SourceFile};
+use crate::engines::line_index::LineIndex;
 use crate::language::Language;
 use family::Rule;
 use settings::Settings;
@@ -218,20 +219,22 @@ fn run_structural_rules(grammar: &str, src: &SourceFile, settings: &Settings, di
         metrics::check_definitions(grammar, root, source, &src.language, settings, diagnostics);
 
         if settings.nesting_too_deep.enabled && !family::is_deferred(Rule::NestingTooDeep, &src.language) {
+            let index = LineIndex::new(&src.content);
             for finding in nesting::analyze(grammar, root, usize_threshold(settings.nesting_too_deep.threshold)) {
                 diagnostics.push(metrics::nesting_diagnostic(
                     &finding,
-                    &src.content,
+                    &index,
                     settings.nesting_too_deep.threshold,
                 ));
             }
         }
         if settings.cyclomatic_complexity.enabled && !family::is_deferred(Rule::CyclomaticComplexity, &src.language) {
+            let index = LineIndex::new(&src.content);
             for finding in complexity::analyze(grammar, root, usize_threshold(settings.cyclomatic_complexity.threshold))
             {
                 diagnostics.push(metrics::complexity_diagnostic(
                     &finding,
-                    &src.content,
+                    &index,
                     settings.cyclomatic_complexity.threshold,
                 ));
             }

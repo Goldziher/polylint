@@ -7,6 +7,7 @@ use tree_sitter::Node;
 use super::definitions::{self, DefKind};
 use super::settings::Settings;
 use crate::engine::{Diagnostic, SourceFile};
+use crate::engines::line_index::LineIndex;
 use crate::language::Language;
 
 /// Whether a file's length is a code-quality signal. Prose and data formats grow by design (a
@@ -133,18 +134,18 @@ pub fn check_definitions(
 
 /// `nesting::NestingFinding` only carries byte offsets (a whole-tree walk has
 /// no reason to track rows), so this converts to a 1-based [`Span`] against
-/// `content` the same way `engines/uncomment.rs::span_of` does.
+/// `index`'s text the same way `engines/uncomment.rs::span_of` does.
 ///
 /// `max` is the configured ceiling, reported alongside the measured depth so
 /// the message names the threshold a reader would have to change.
-pub fn nesting_diagnostic(finding: &super::nesting::NestingFinding, content: &str, max: i64) -> Diagnostic {
+pub fn nesting_diagnostic(finding: &super::nesting::NestingFinding, index: &LineIndex<'_>, max: i64) -> Diagnostic {
     Diagnostic {
         engine: "quality".to_owned(),
         code: Some("nesting-too-deep".to_owned()),
         severity: crate::engine::Severity::Warning,
         title: format!("nesting depth is {} (max {max})", finding.depth),
         description: Some("extract a helper function to flatten this branch".to_owned()),
-        span: Some(span_of(content, finding.start_byte, finding.end_byte)),
+        span: Some(span_of(index, finding.start_byte, finding.end_byte)),
         url: None,
         fix: Vec::new(),
         metadata: std::collections::BTreeMap::new(),
@@ -155,14 +156,18 @@ pub fn nesting_diagnostic(finding: &super::nesting::NestingFinding, content: &st
 /// title. Every other rule in this tier reports `is N (max M)`; without `M` a
 /// reader is told their function is too complex but not what number to write
 /// in `poly.toml`, nor how far over it they are.
-pub fn complexity_diagnostic(finding: &super::complexity::ComplexityFinding, content: &str, max: i64) -> Diagnostic {
+pub fn complexity_diagnostic(
+    finding: &super::complexity::ComplexityFinding,
+    index: &LineIndex<'_>,
+    max: i64,
+) -> Diagnostic {
     Diagnostic {
         engine: "quality".to_owned(),
         code: Some("cyclomatic-complexity".to_owned()),
         severity: crate::engine::Severity::Warning,
         title: format!("cyclomatic complexity is {} (max {max})", finding.complexity),
         description: Some("split this function into smaller pieces".to_owned()),
-        span: Some(span_of(content, finding.start_byte, finding.end_byte)),
+        span: Some(span_of(index, finding.start_byte, finding.end_byte)),
         url: None,
         fix: Vec::new(),
         metadata: std::collections::BTreeMap::new(),
@@ -170,33 +175,17 @@ pub fn complexity_diagnostic(finding: &super::complexity::ComplexityFinding, con
 }
 
 /// Build a 1-based [`crate::engine::Span`] covering the byte range
-/// `[start, end)` of `content`. Mirrors `engines/uncomment.rs::span_of`.
-fn span_of(content: &str, start: usize, end: usize) -> crate::engine::Span {
-    let (start_line, start_col) = line_col(content, start);
-    let (end_line, end_col) = line_col(content, end);
+/// `[start, end)` of `index`'s text, with character columns. Mirrors
+/// `engines/uncomment.rs::span_of`.
+fn span_of(index: &LineIndex<'_>, start: usize, end: usize) -> crate::engine::Span {
+    let (start_line, start_col) = index.line_col(start);
+    let (end_line, end_col) = index.line_col(end);
     crate::engine::Span {
         start_line,
         start_col,
         end_line,
         end_col,
     }
-}
-
-/// Convert a byte offset into `content` to a 1-based (line, column) pair,
-/// counted in bytes. Mirrors `engines/uncomment.rs::line_col`.
-fn line_col(content: &str, offset: usize) -> (u32, u32) {
-    let offset = offset.min(content.len());
-    let mut line: u32 = 1;
-    let mut col: u32 = 1;
-    for &byte in &content.as_bytes()[..offset] {
-        if byte == b'\n' {
-            line = line.saturating_add(1);
-            col = 1;
-        } else {
-            col = col.saturating_add(1);
-        }
-    }
-    (line, col)
 }
 
 fn diagnostic(code: &str, title: String, start_line: u32, start_col: u32, end_line: u32, end_col: u32) -> Diagnostic {
@@ -260,5 +249,15 @@ mod tests {
             out.is_empty(),
             "strict > threshold, so exactly-at-threshold must not fire"
         );
+    }
+
+    #[test]
+    fn span_columns_count_characters() {
+        let src = "é = 1\n日本 = 2";
+        let index = LineIndex::new(src);
+        let start = src.find('=').unwrap();
+        let span = span_of(&index, start, src.len());
+        assert_eq!((span.start_line, span.start_col), (1, 3));
+        assert_eq!((span.end_line, span.end_col), (2, 7));
     }
 }
