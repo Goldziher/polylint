@@ -11,6 +11,8 @@ concurrency:
   group: ci-${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
 
+# RUST_TOOLCHAIN is pinned in the `RUST_TOOLCHAIN:` envs of the bundled-build jobs below and in
+# publish.yaml; bump them together with Cargo.toml's rust-version and rust-toolchain.toml.
 permissions:
   contents: read
 
@@ -158,9 +160,21 @@ jobs:
         uses: xberg-io/actions/setup-mise@v1
         with:
           tools: go shfmt
-        # --no-fail-fast is not optional: cargo stops at the first failing test
-        # binary, so a run with failures in three crates reports only the first
-        # and the rest are rediscovered one CI round at a time.
+      - name: Put the mise-managed go and shfmt on PATH and require the native tools
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          set -euo pipefail
+          for tool in go shfmt; do
+            path="$(mise which "$tool")" || { echo "::error::mise has no $tool installed"; exit 1; }
+            dirname "$path" >> "$GITHUB_PATH"
+            PATH="$(dirname "$path"):$PATH"
+          done
+          missing=0
+          for tool in gofmt shfmt rustfmt shellcheck; do
+            command -v "$tool" >/dev/null || { echo "::error::$tool is not on PATH"; missing=1; }
+          done
+          exit "$missing"
       - name: Setup managed Python for native CMD regressions
         if: runner.os == 'Windows'
         uses: xberg-io/actions/setup-mise@v1
@@ -179,6 +193,8 @@ jobs:
           ' cmd-transport-tests.txt)"
           echo "Native CMD regression tests collected: $count/8"
           test "$count" -eq 8
+      # --no-fail-fast is not optional: cargo stops at the first failing test binary, so a run with
+      # failures in three crates reports only the first and the rest are rediscovered one CI round at a time.
       - run: cargo test --workspace --exclude conformance --no-fail-fast
         env:
           POLY_REQUIRE_NATIVE_TOOLS: ${{ runner.os == 'Linux' && 'gofmt,rustfmt,shfmt,shellcheck' || '' }}
