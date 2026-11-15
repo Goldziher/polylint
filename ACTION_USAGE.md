@@ -11,7 +11,8 @@ repository's [`install.sh`](install.sh), so there is one source of truth for ins
 | `version` | Release version to install (e.g. `v0.1.0` or `0.1.0`). Omit or pass `latest` to resolve the latest release dynamically, or `from-config` to use the version `required_version` in `config-file` names (an exact `X.Y.Z`, or lower and upper bounds such as `>=2.0, <3`, resolved to the newest stable release inside them; see below). | `` (latest) |
 | `config-file` | The `poly.toml` that `version: from-config` reads. | `poly.toml` |
 | `components` | Engine components to download before the first run: `auto` (`poly components sync`: what the repository needs), `all`, `none`, or a comma-separated list of names or presets. Cached in `$RUNNER_TEMP/poly-components` (exported as `POLY_COMPONENT_CACHE`), keyed by version, the release's `poly-components.lock.json` hash and, for `auto`, the repository's `poly.toml` files. | `auto` |
-| `cache` | Cache the installed binaries with `actions/cache`. | `true` |
+| `cache` | Cache the downloaded release archive with `actions/cache`. A restored archive is checked against the release's `sha256sums.txt` on every run and downloaded again when it does not match. | `true` |
+| `verify-attestation` | Also verify the archive's build provenance attestation (`gh attestation verify`); the run fails when it does not verify. Releases published before attestations have none. | `false` |
 | `github-token` | Token used to query the GitHub API when resolving the latest release. | `${{ github.token }}` |
 
 ## Outputs
@@ -36,6 +37,11 @@ repository's [`install.sh`](install.sh), so there is one source of truth for ins
 - uses: Goldziher/polylint@v0
   with:
     cache: false
+
+# Require a verified build provenance attestation:
+- uses: Goldziher/polylint@v0
+  with:
+    verify-attestation: true
 ```
 
 Full example:
@@ -74,10 +80,14 @@ Two independent things can be pinned, and both matter for reproducibility:
 
 ## Caching & version invalidation
 
-When `cache: true` (default), the cache key is `poly-v<version>-<os>-<arch>` with the **resolved**
-version embedded. A version bump therefore produces a new key — the previous version's cache is not
-restored (invalidated), and the new version runs the full download → checksum → install flow once,
-then populates the cache for subsequent runs.
+When `cache: true` (default), the release archive is cached under the key
+`poly-archive-v<version>-<os>-<arch>` with the **resolved** version embedded. A version bump therefore
+produces a new key — the previous version's cache is not restored (invalidated), and the new version
+runs the full download → checksum → install flow once, then populates the cache for subsequent runs.
+
+A cache hit is not trusted: `install.sh` downloads the release's `sha256sums.txt` on every run and
+re-hashes the restored archive against it before extracting the binary, and downloads the archive again
+when it does not match. A poisoned cache entry is therefore replaced, never executed.
 
 ## Cross-platform
 

@@ -11,6 +11,10 @@
         $env:POLY_VERSION = "v0.1.5"
         $env:POLY_INSTALL_DIR = "C:\tools\poly"
         $env:POLY_NO_MODIFY_PATH = "1"
+
+    Also verify the archive's build provenance attestation with the GitHub CLI (gh), failing
+    when it does not verify:
+        $env:POLY_VERIFY_ATTESTATION = "1"
 #>
 
 $ErrorActionPreference = "Stop"
@@ -24,6 +28,26 @@ $InstallDir = if ($env:POLY_INSTALL_DIR) { $env:POLY_INSTALL_DIR } else { "$env:
 function Info($msg) { Write-Host "✓ $msg" -ForegroundColor Green }
 function Warn($msg) { Write-Host "⚠ $msg" -ForegroundColor Yellow }
 function Die($msg) { Write-Host "✗ $msg" -ForegroundColor Red; exit 1 }
+
+# TLS 1.2 or newer on every request. Windows PowerShell 5.1 still offers TLS 1.0 by default, so pin
+# its process-wide setting; PowerShell 6+ takes -SslProtocol per request.
+$Web = @{ UseBasicParsing = $true }
+if ($PSVersionTable.PSVersion.Major -lt 6) {
+    [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
+} elseif ($PSVersionTable.PSVersion -ge [version]"7.1") {
+    $Web.SslProtocol = "Tls12, Tls13"
+} else {
+    $Web.SslProtocol = "Tls12"
+}
+
+$VerifyAttestation = switch ($env:POLY_VERIFY_ATTESTATION) {
+    { -not $_ -or $_ -eq "0" } { $false }
+    "1" { $true }
+    default { Die "POLY_VERIFY_ATTESTATION must be 1 or unset" }
+}
+if ($VerifyAttestation -and -not (Get-Command gh -ErrorAction SilentlyContinue)) {
+    Die "Attestation verification needs the GitHub CLI (gh) on PATH"
+}
 
 # Install $Source at $Destination without ever leaving $Destination absent or
 # half-written: copy into a staging file beside it (same volume), then replace the
@@ -108,13 +132,13 @@ Info "Platform: $target"
 
 if ($Version -eq "latest") {
     Info "Resolving latest release..."
-    $resp = Invoke-WebRequest -Uri "https://github.com/$Repo/releases/latest" `
+    $resp = Invoke-WebRequest @Web -Uri "https://github.com/$Repo/releases/latest" `
         -MaximumRedirection 0 -ErrorAction SilentlyContinue
     $loc = $resp.Headers.Location
     if ($loc -and $loc -match "/tag/(?<tag>[^/]+)$") {
         $Version = $Matches.tag
     } else {
-        $api = Invoke-RestMethod -Uri "https://api.github.com/repos/$Repo/releases/latest"
+        $api = Invoke-RestMethod @Web -Uri "https://api.github.com/repos/$Repo/releases/latest"
         $Version = $api.tag_name
     }
     if (-not $Version) { Die "Could not resolve the latest release" }
@@ -149,14 +173,14 @@ try {
     $archive = Join-Path $tmp $asset
     Info "Downloading $base/$asset"
     try {
-        Invoke-WebRequest -Uri "$base/$asset" -OutFile $archive
+        Invoke-WebRequest @Web -Uri "$base/$asset" -OutFile $archive
     } catch {
         Die "Failed to download $base/${asset}: check the version and your network (does release $tag ship $target?)"
     }
 
     $sumsPath = Join-Path $tmp "sha256sums.txt"
     try {
-        Invoke-WebRequest -Uri "$base/sha256sums.txt" -OutFile $sumsPath
+        Invoke-WebRequest @Web -Uri "$base/sha256sums.txt" -OutFile $sumsPath
     } catch {
         Die "Could not download $base/sha256sums.txt - refusing to install unverified binaries"
     }
@@ -172,6 +196,14 @@ try {
     $actual = (Get-FileHash -Algorithm SHA256 -Path $archive).Hash.ToLower()
     if ($actual -ne $expected) { Die "Checksum mismatch for $asset (expected $expected, got $actual)" }
     Info "Checksum verified"
+
+    # The build provenance attestation ties the archive to this repository's release workflow
+    # (releases before the attestations began have none, so this fails for them).
+    if ($VerifyAttestation) {
+        & gh attestation verify $archive --repo $Repo --signer-workflow "$Repo/.github/workflows/publish.yaml" | Out-Null
+        if ($LASTEXITCODE -ne 0) { Die "The build provenance attestation of $asset did not verify - refusing to install" }
+        Info "Build provenance attestation verified"
+    }
 
     Expand-Archive -Path $archive -DestinationPath $tmp -Force
     New-Item -ItemType Directory -Path $InstallDir -Force | Out-Null

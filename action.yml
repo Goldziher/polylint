@@ -30,9 +30,17 @@ inputs:
     required: false
     default: "auto"
   cache:
-    description: "Cache the installed binaries locally with actions/cache."
+    description: >-
+      Cache the downloaded release archive with actions/cache. A restored archive is checked against the
+      release's sha256sums.txt on every run, like a download, and fetched again when it does not match.
     required: false
     default: "true"
+  verify-attestation:
+    description: >-
+      Also verify the archive's build provenance attestation with `gh attestation verify`, and fail when it
+      does not verify (releases published before attestations have none).
+    required: false
+    default: "false"
   github-token:
     description: "Token used to query the GitHub API when resolving the latest release."
     required: false
@@ -136,28 +144,40 @@ runs:
           exit 1
         fi
         install_dir="${RUNNER_TEMP}/poly-install"
-        mkdir -p "$install_dir"
+        archive_dir="${RUNNER_TEMP}/poly-archive"
+        mkdir -p "$install_dir" "$archive_dir"
         {
           echo "version=$version"
           echo "install-dir=$install_dir"
-          echo "cache-key=poly-v${version}-${RUNNER_OS}-${RUNNER_ARCH}"
+          echo "archive-dir=$archive_dir"
+          echo "cache-key=poly-archive-v${version}-${RUNNER_OS}-${RUNNER_ARCH}"
         } >> "$GITHUB_OUTPUT"
         echo "Resolved poly $version -> $install_dir"
 
+    # The archive is cached, not the installed binary: install.sh re-hashes a restored archive
+    # against the release's sha256sums.txt before installing from it, so a poisoned cache entry is
+    # replaced by a fresh download instead of being run.
     - id: cache
       if: inputs.cache == 'true'
       uses: actions/cache@v6
       with:
-        path: ${{ steps.resolve.outputs.install-dir }}
+        path: ${{ steps.resolve.outputs.archive-dir }}
         key: ${{ steps.resolve.outputs.cache-key }}
 
-    - if: steps.cache.outputs.cache-hit != 'true'
-      shell: bash
+    - shell: bash
       env:
+        GH_TOKEN: ${{ inputs.github-token }}
         POLY_INSTALL_DIR: ${{ steps.resolve.outputs.install-dir }}
+        POLY_ARCHIVE_CACHE: ${{ steps.resolve.outputs.archive-dir }}
         POLY_RESOLVED_VERSION: ${{ steps.resolve.outputs.version }}
+        VERIFY_ATTESTATION: ${{ inputs.verify-attestation }}
       run: |
         set -euo pipefail
+        case "$VERIFY_ATTESTATION" in
+          true) export POLY_VERIFY_ATTESTATION=1 ;;
+          false) ;;
+          *) echo "::error::verify-attestation must be true or false" >&2; exit 1 ;;
+        esac
         # --no-modify-path: this action wires PATH via $GITHUB_PATH below, so the
         # installer must not also edit the runner's shell profiles.
         bash "${GITHUB_ACTION_PATH}/install.sh" --no-modify-path "$POLY_RESOLVED_VERSION"

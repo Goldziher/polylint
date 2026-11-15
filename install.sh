@@ -11,6 +11,8 @@ BINARIES="poly"
 VERSION="${POLY_VERSION:-latest}"
 INSTALL_DIR="${POLY_INSTALL_DIR:-${HOME}/.local/bin}"
 NO_MODIFY_PATH="${POLY_NO_MODIFY_PATH:-}"
+VERIFY_ATTESTATION="${POLY_VERIFY_ATTESTATION:-}"
+ARCHIVE_CACHE="${POLY_ARCHIVE_CACHE:-}"
 
 if [ -t 1 ]; then
   C_GREEN=$(printf '\033[0;32m')
@@ -39,12 +41,18 @@ Options:
   --version VERSION   Release to install, e.g. 0.35.0 or v0.35.0 (default: latest)
   --bin-dir DIR       Install directory (default: $HOME/.local/bin)
   --no-modify-path    Do not edit shell startup files; print the PATH line instead
+  --verify-attestation
+                      Also verify the archive's build provenance attestation with
+                      `gh attestation verify` (needs the GitHub CLI); fail if it does not verify
   -h, --help          Show this help
 
 Environment:
-  POLY_VERSION          Same as --version
-  POLY_INSTALL_DIR      Same as --bin-dir
-  POLY_NO_MODIFY_PATH   Any non-empty value: same as --no-modify-path
+  POLY_VERSION              Same as --version
+  POLY_INSTALL_DIR          Same as --bin-dir
+  POLY_NO_MODIFY_PATH       Any non-empty value: same as --no-modify-path
+  POLY_VERIFY_ATTESTATION   1: same as --verify-attestation
+  POLY_ARCHIVE_CACHE        Directory to reuse a downloaded archive from and keep it in; a
+                            cached archive is checked against sha256sums.txt like a download
 
 A bare positional argument is also taken as the version.
 EOF
@@ -55,6 +63,7 @@ while [ $# -gt 0 ]; do
   case "$1" in
   -h | --help) usage ;;
   --no-modify-path) NO_MODIFY_PATH=1 ;;
+  --verify-attestation) VERIFY_ATTESTATION=1 ;;
   --version)
     shift
     [ $# -gt 0 ] || die "--version needs an argument"
@@ -79,6 +88,17 @@ esac
 
 command -v curl >/dev/null 2>&1 || die "curl is required"
 command -v tar >/dev/null 2>&1 || die "tar is required"
+
+case "$VERIFY_ATTESTATION" in
+"" | 0) VERIFY_ATTESTATION="" ;;
+1) command -v gh >/dev/null 2>&1 || die "attestation verification needs the GitHub CLI (gh) on PATH" ;;
+*) die "POLY_VERIFY_ATTESTATION must be 1 or unset" ;;
+esac
+
+# HTTPS only, TLS 1.2 or newer, on the first request and on every redirect.
+fetch() {
+  curl --proto '=https' --proto-redir '=https' --tlsv1.2 -fsSL "$@"
+}
 
 uname_s=$(uname -s)
 uname_m=$(uname -m)
@@ -114,12 +134,12 @@ info "Platform: ${C_DIM}${target}${C_OFF}"
 
 if [ "$VERSION" = "latest" ]; then
   info "Resolving latest release..."
-  effective=$(curl -fsSL -o /dev/null -w '%{url_effective}' \
+  effective=$(fetch -o /dev/null -w '%{url_effective}' \
     "https://github.com/${REPO}/releases/latest" 2>/dev/null || true)
   case "$effective" in
   */releases/tag/*) VERSION="${effective##*/tag/}" ;;
   *)
-    VERSION=$(curl -fsSL "https://api.github.com/repos/${REPO}/releases/latest" 2>/dev/null |
+    VERSION=$(fetch "https://api.github.com/repos/${REPO}/releases/latest" 2>/dev/null |
       grep -o '"tag_name"[^,]*' | head -1 | cut -d'"' -f4)
     ;;
   esac
@@ -173,10 +193,6 @@ tmp=$(mktemp -d)
 staged=""
 trap 'rm -rf "$tmp"; [ -z "$staged" ] || rm -f "$staged"' EXIT
 
-info "Downloading ${C_DIM}${base}/${asset}${C_OFF}"
-curl -fsSL -o "${tmp}/${asset}" "${base}/${asset}" ||
-  die "failed to download ${base}/${asset}: check the version and your network (does release ${tag} ship ${target}?)"
-
 sha256_of() {
   if command -v sha256sum >/dev/null 2>&1; then
     sha256sum "$1" | awk '{print $1}'
@@ -189,21 +205,48 @@ sha256_of() {
   fi
 }
 
-if curl -fsSL -o "${tmp}/sha256sums.txt" "${base}/sha256sums.txt" 2>/dev/null; then
-  expected=$(awk -v a="$asset" '{n=$NF; sub(/^[*]/,"",n); sub(/^\.\//,"",n); if (n==a) print $1}' \
-    "${tmp}/sha256sums.txt" | head -1)
-  actual=$(sha256_of "${tmp}/${asset}" || true)
-  if [ -z "$expected" ]; then
-    die "no checksum entry for ${asset} — refusing to install unverified binary"
-  elif [ -z "$actual" ]; then
-    die "no sha256 tool (sha256sum/shasum/openssl) found — refusing to install unverified binary"
-  elif [ "$expected" != "$actual" ]; then
-    die "checksum mismatch for ${asset} (expected ${expected}, got ${actual})"
-  else
-    info "Checksum verified"
-  fi
-else
+fetch -o "${tmp}/sha256sums.txt" "${base}/sha256sums.txt" 2>/dev/null ||
   die "could not download ${base}/sha256sums.txt — refusing to install an unverified binary"
+expected=$(awk -v a="$asset" '{n=$NF; sub(/^[*]/,"",n); sub(/^\.\//,"",n); if (n==a) print $1}' \
+  "${tmp}/sha256sums.txt" | head -1)
+[ -n "$expected" ] || die "no checksum entry for ${asset} — refusing to install unverified binary"
+sha256_of "${tmp}/sha256sums.txt" >/dev/null ||
+  die "no sha256 tool (sha256sum/shasum/openssl) found — refusing to install unverified binary"
+
+# A cached archive is used only when it still hashes to the release's checksum; anything else
+# is downloaded again.
+cached=""
+if [ -n "$ARCHIVE_CACHE" ] && [ -f "${ARCHIVE_CACHE}/${asset}" ]; then
+  if [ "$(sha256_of "${ARCHIVE_CACHE}/${asset}")" = "$expected" ]; then
+    cp "${ARCHIVE_CACHE}/${asset}" "${tmp}/${asset}"
+    cached=1
+    info "Using the cached ${C_DIM}${ARCHIVE_CACHE}/${asset}${C_OFF}"
+  else
+    warn "the cached ${ARCHIVE_CACHE}/${asset} does not match sha256sums.txt; downloading it again"
+  fi
+fi
+if [ -z "$cached" ]; then
+  info "Downloading ${C_DIM}${base}/${asset}${C_OFF}"
+  fetch -o "${tmp}/${asset}" "${base}/${asset}" ||
+    die "failed to download ${base}/${asset}: check the version and your network (does release ${tag} ship ${target}?)"
+fi
+
+actual=$(sha256_of "${tmp}/${asset}" || true)
+[ "$expected" = "$actual" ] || die "checksum mismatch for ${asset} (expected ${expected}, got ${actual})"
+info "Checksum verified"
+
+# The build provenance attestation ties the archive to this repository's release workflow
+# (releases before the attestations began have none, so this fails for them).
+if [ -n "$VERIFY_ATTESTATION" ]; then
+  gh attestation verify "${tmp}/${asset}" --repo "$REPO" \
+    --signer-workflow "${REPO}/.github/workflows/publish.yaml" >/dev/null ||
+    die "the build provenance attestation of ${asset} did not verify — refusing to install"
+  info "Build provenance attestation verified"
+fi
+
+if [ -n "$ARCHIVE_CACHE" ]; then
+  mkdir -p "$ARCHIVE_CACHE"
+  cp "${tmp}/${asset}" "${ARCHIVE_CACHE}/${asset}"
 fi
 
 tar xzf "${tmp}/${asset}" -C "$tmp"
