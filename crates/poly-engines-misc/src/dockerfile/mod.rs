@@ -67,7 +67,7 @@ const DL4001: &str = "DL4001";
 // ---------------------------------------------------------------------------
 
 /// dockerfile-parser crate version embedded into the cache key.
-const DOCKERFILE_PARSER_VERSION: &str = "0.10.0+vendored1+parse-diag-v1+extendsel2+tmplskip+hadolint-rules-v1";
+const DOCKERFILE_PARSER_VERSION: &str = "0.10.0+vendored1+parse-diag-v1+extendsel2+tmplskip+hadolint-rules-v1+spans1";
 
 /// Diagnostic code emitted when the Dockerfile cannot be parsed at all.
 const PARSE_ERROR: &str = "parse-error";
@@ -411,7 +411,12 @@ fn check_misc(
 /// rather than collapsing onto the first.
 fn span_of(df_span: dockerfile_parser::Span, index: &LineIndex<'_>) -> EngineSpan {
     let (start_line, start_col) = index.line_col(df_span.start);
-    let (end_line, end_col) = index.line_col(df_span.end);
+    let (mut end_line, mut end_col) = index.line_col(df_span.end);
+    // An end offset just past a line break would land on the next line at column 1; keep it on the
+    // line the instruction ends on (the break itself is the last position of that line).
+    if df_span.end > df_span.start && end_col == 1 && end_line > start_line {
+        (end_line, end_col) = index.line_col(df_span.end - 1);
+    }
     EngineSpan {
         start_line,
         start_col,

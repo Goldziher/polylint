@@ -73,7 +73,7 @@ use poly_engine_api::line_index::LineIndex;
 /// Cache-key version: the wrapped crate version plus a marker for this backend's
 /// own mapping logic. Bump whenever `uncomment` is updated OR the diagnostic/edit
 /// mapping below changes (either alters output and must bust the cache).
-const UNCOMMENT_VERSION: &str = "uncomment-3.10.4+map2-codeonly+prose3-blocks";
+const UNCOMMENT_VERSION: &str = "uncomment-3.10.4+map2-codeonly+prose3-blocks+cols1";
 
 thread_local! {
     /// One `Processor` per rayon worker thread. The processor owns a reusable

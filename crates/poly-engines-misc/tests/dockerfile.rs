@@ -451,6 +451,13 @@ fn multi_line_run_span_ends_on_its_last_line() {
 }
 
 #[test]
+fn span_never_ends_on_the_next_line() {
+    let content = "FROM a:1\nRUN apt-get install -y curl \\\n    wget\n\nCMD x\n";
+    let (_, _, end_line, end_col) = span_of_code(content, "DL3009");
+    assert_eq!((end_line, end_col > 1), (3, true));
+}
+
+#[test]
 fn span_columns_count_characters() {
     assert_eq!(span_of_code("FROM a:1\nWORKDIR é日\n", "DL3000"), (2, 1, 2, 10));
 }
