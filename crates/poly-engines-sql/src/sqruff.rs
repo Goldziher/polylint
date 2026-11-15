@@ -73,8 +73,10 @@ pub struct SqruffEngine;
 /// [`FORMAT_OWNED_GROUPS`] and `lint` reports only the complement, so the same input
 /// yields different output for the same sqruff-lib version.
 ///
+/// `+indent-width` marks `indent_width` being forwarded as sqruff's `tab_space_size`.
+///
 /// `+cp02-off` marks identifier capitalisation (`CP02`) being off unless asked for.
-const SQRUFF_VERSION: &str = "0.44.0+rule-configs-3-presentation-fmt+cp02-off";
+const SQRUFF_VERSION: &str = "0.44.0+rule-configs-3-presentation-fmt+cp02-off+indent-width";
 
 /// Rules that are off unless the user selects them.
 ///
@@ -165,7 +167,7 @@ static FORMAT_SUPPRESSED_GROUPS: LazyLock<Vec<&'static str>> = LazyLock::new(|| 
 ///
 /// The two sides are disjoint by construction: each suppresses exactly the
 /// groups the other owns.
-#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+#[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
 enum Mode {
     /// `poly lint` — everything except [`FORMAT_OWNED_GROUPS`].
     Lint,
@@ -230,39 +232,68 @@ impl Engine for SqruffEngine {
     }
 
     fn lint(&self, src: &SourceFile, cfg: &EngineConfig) -> anyhow::Result<Vec<Diagnostic>> {
-        let fluff_cfg = build_fluff_config(cfg, Mode::Lint)?;
-        let linter =
-            Linter::new(fluff_cfg, None, None, false).map_err(|e| anyhow::anyhow!("sqruff Linter::new failed: {e}"))?;
-        let filename = src.path.to_string_lossy().into_owned();
-        let linted = linter
-            .lint_string(&src.content, Some(filename), false)
-            .map_err(|e| anyhow::anyhow!("sqruff lint_string failed: {e}"))?;
-        Ok(linted
-            .into_violations()
-            .into_iter()
-            .map(violation_to_diagnostic)
-            .collect())
+        with_linter(cfg, Mode::Lint, |linter| {
+            let filename = src.path.to_string_lossy().into_owned();
+            let linted = linter
+                .lint_string(&src.content, Some(filename), false)
+                .map_err(|e| anyhow::anyhow!("sqruff lint_string failed: {e}"))?;
+            Ok(linted
+                .into_violations()
+                .into_iter()
+                .map(violation_to_diagnostic)
+                .collect())
+        })
     }
 
     fn format(&self, src: &SourceFile, cfg: &EngineConfig) -> anyhow::Result<FormatOutput> {
-        let fluff_cfg = build_fluff_config(cfg, Mode::Format)?;
-        let linter =
-            Linter::new(fluff_cfg, None, None, false).map_err(|e| anyhow::anyhow!("sqruff Linter::new failed: {e}"))?;
-        let filename = src.path.to_string_lossy().into_owned();
-        let linted = linter
-            .lint_string(&src.content, Some(filename), true)
-            .map_err(|e| anyhow::anyhow!("sqruff format lint_string failed: {e}"))?;
-        if linted.has_fixes() {
-            let fixed = linted.fix_string();
-            if fixed == *src.content {
-                Ok(FormatOutput::Unchanged)
+        with_linter(cfg, Mode::Format, |linter| {
+            let filename = src.path.to_string_lossy().into_owned();
+            let linted = linter
+                .lint_string(&src.content, Some(filename), true)
+                .map_err(|e| anyhow::anyhow!("sqruff format lint_string failed: {e}"))?;
+            if linted.has_fixes() {
+                let fixed = linted.fix_string();
+                if fixed == *src.content {
+                    Ok(FormatOutput::Unchanged)
+                } else {
+                    Ok(FormatOutput::Formatted(fixed))
+                }
             } else {
-                Ok(FormatOutput::Formatted(fixed))
+                Ok(FormatOutput::Unchanged)
             }
-        } else {
-            Ok(FormatOutput::Unchanged)
-        }
+        })
     }
+}
+
+/// Most distinct configurations a thread keeps a [`Linter`] for before the map is reset.
+const LINTER_CACHE_CAP: usize = 32;
+
+thread_local! {
+    /// Per-thread because sqruff's parse tree is built on `Rc`, and this crate has not shown
+    /// `Linter` to be `Sync`; each rayon worker builds one per configuration instead of one per file.
+    static LINTERS: std::cell::RefCell<std::collections::HashMap<([u8; 32], Mode), Linter>> =
+        std::cell::RefCell::new(std::collections::HashMap::new());
+}
+
+/// Run `f` with the [`Linter`] for this configuration and mode, building it on first use.
+///
+/// Constructing a `Linter` parses sqruff's embedded default config and builds its rule pack,
+/// which dominated per-file cost when done for every file.
+fn with_linter<T>(cfg: &EngineConfig, mode: Mode, f: impl FnOnce(&Linter) -> anyhow::Result<T>) -> anyhow::Result<T> {
+    let key = (cfg.fingerprint(), mode);
+    LINTERS.with(|cell| {
+        let mut map = cell.borrow_mut();
+        if !map.contains_key(&key) {
+            if map.len() >= LINTER_CACHE_CAP {
+                map.clear();
+            }
+            let fluff_cfg = build_fluff_config(cfg, mode)?;
+            let linter = Linter::new(fluff_cfg, None, None, false)
+                .map_err(|e| anyhow::anyhow!("sqruff Linter::new failed: {e}"))?;
+            map.insert(key, linter);
+        }
+        f(&map[&key])
+    })
 }
 
 /// Build a [`FluffConfig`] from a poly [`EngineConfig`], for one side of the
@@ -347,6 +378,11 @@ fn build_fluff_config(cfg: &EngineConfig, mode: Mode) -> anyhow::Result<FluffCon
             push_rule_section(&mut ini, config_section_for(id), &opts.params);
         }
     }
+
+    ini.push_str(&format!(
+        "\n[sqruff:indentation]\ntab_space_size = {}\n",
+        cfg.indent_width
+    ));
 
     Ok(FluffConfig::from_source(&ini, None))
 }

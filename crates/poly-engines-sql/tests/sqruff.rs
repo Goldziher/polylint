@@ -538,3 +538,34 @@ fn format_never_re_cases_identifiers_it_was_not_asked_to() {
         "identifier casing must be left to the author"
     );
 }
+
+#[test]
+fn repeated_runs_reuse_linter_with_identical_output() {
+    let engine = SqruffEngine;
+    let src = make_source("test.sql", KNOWN_UNFORMATTED);
+    let first = engine.format(&src, &fmt_cfg()).unwrap();
+    let second = engine.format(&src, &fmt_cfg()).unwrap();
+    assert_eq!(format!("{first:?}"), format!("{second:?}"));
+    let bad = make_source("bad.sql", "select  *   from t where a = NULL\n");
+    let l1 = engine.lint(&bad, &lint_cfg()).unwrap();
+    let l2 = engine.lint(&bad, &lint_cfg()).unwrap();
+    assert_eq!(format!("{l1:?}"), format!("{l2:?}"));
+}
+
+#[test]
+fn indent_width_changes_formatted_indentation() {
+    let engine = SqruffEngine;
+    let src = make_source("t.sql", "SELECT\n a,\n b\nFROM t\n");
+    let render = |width: usize| {
+        let mut cfg = fmt_cfg();
+        cfg.indent_width = width;
+        match engine.format(&src, &cfg).unwrap() {
+            poly_engine_api::engine::FormatOutput::Formatted(s) => s,
+            poly_engine_api::engine::FormatOutput::Unchanged => src.content.to_string(),
+        }
+    };
+    let two = render(2);
+    let four = render(4);
+    assert!(two.contains("\n  a,"), "two-space indent expected, got {two:?}");
+    assert!(four.contains("\n    a,"), "four-space indent expected, got {four:?}");
+}
