@@ -40,8 +40,26 @@ fn detect_package_root(dir: &Path) -> Option<PathBuf> {
 
 /// Directories never descended into: they hold vendored or generated trees
 /// that a project does not import as first-party packages, and walking them
-/// would dominate the cost of the digest on a JavaScript or Rust checkout.
-const SKIPPED_DIRS: [&str; 3] = ["node_modules", "target", "__pycache__"];
+/// would dominate the cost of the digest on a JavaScript, Rust or Python checkout.
+/// Dot-directories (`.venv`, `.tox`, `.nox`, `.mypy_cache`, `.ruff_cache`, `.git`) are not
+/// identifiers and are already excluded by [`is_identifier`].
+const SKIPPED_DIRS: [&str; 7] = [
+    "node_modules",
+    "target",
+    "__pycache__",
+    "site-packages",
+    "__pypackages__",
+    "build",
+    "dist",
+];
+
+/// Whether `dir` is a Python virtual environment: a `pyvenv.cfg` marks one whatever it is named,
+/// and a `site-packages` child marks the unmarked `venv`/`env` layouts.
+fn is_virtualenv(dir: &Path) -> bool {
+    dir.join("pyvenv.cfg").is_file()
+        || (matches!(dir.file_name().and_then(|n| n.to_str()), Some("venv" | "env"))
+            && dir.join("site-packages").is_dir())
+}
 
 /// `path` as the text folded into a cache key: relative to `base` (the checkout the run started
 /// in) when it lies beneath it, so two worktrees of one repository key alike; the full path
@@ -152,33 +170,52 @@ fn is_identifier(name: &str) -> bool {
         && chars.all(|c| c == '_' || c.is_alphanumeric())
 }
 
+/// Every importable directory and `.py`/`.pyi` file beneath `root`, as `d:`/`f:` entries relative
+/// to it. Directories excluded by `.gitignore` are not entered: ruff discovers files through the
+/// same ignore rules, so what they hide is outside the project's own modules.
 fn walk(root: &Path) -> Vec<String> {
     let mut found = Vec::new();
-    let mut pending = vec![(root.to_path_buf(), String::new())];
-    while let Some((dir, prefix)) = pending.pop() {
-        let Ok(read) = std::fs::read_dir(&dir) else {
+    let walker = ignore::WalkBuilder::new(root)
+        .hidden(false)
+        .ignore(false)
+        .git_global(false)
+        .git_exclude(false)
+        .require_git(false)
+        .follow_links(false)
+        .filter_entry(|entry| {
+            entry.depth() == 0
+                || !entry.file_type().is_some_and(|t| t.is_dir())
+                || entry
+                    .file_name()
+                    .to_str()
+                    .is_some_and(|name| is_identifier(name) && !SKIPPED_DIRS.contains(&name) && !is_virtualenv(entry.path()))
+        })
+        .build();
+    for entry in walker.flatten() {
+        if entry.depth() == 0 {
+            continue;
+        }
+        let Some(name) = entry.file_name().to_str() else {
             continue;
         };
-        for entry in read.flatten() {
-            let name = entry.file_name();
-            let Some(name) = name.to_str() else {
-                continue;
-            };
-            let Ok(file_type) = entry.file_type() else {
-                continue;
-            };
-            let is_dir = file_type.is_dir() || (file_type.is_symlink() && entry.path().is_dir());
-            let relative = format!("{prefix}{name}");
-            if is_dir {
-                if is_identifier(name) && !SKIPPED_DIRS.contains(&name) {
-                    found.push(format!("d:{relative}"));
-                    if file_type.is_dir() {
-                        pending.push((entry.path(), format!("{relative}/")));
-                    }
-                }
-            } else if name.ends_with(".py") || name.ends_with(".pyi") {
-                found.push(format!("f:{relative}"));
+        let Ok(relative) = entry.path().strip_prefix(root) else {
+            continue;
+        };
+        let relative = relative
+            .components()
+            .map(|c| c.as_os_str().to_string_lossy())
+            .collect::<Vec<_>>()
+            .join("/");
+        let Some(file_type) = entry.file_type() else {
+            continue;
+        };
+        let is_dir = file_type.is_dir() || (file_type.is_symlink() && entry.path().is_dir());
+        if is_dir {
+            if file_type.is_dir() || (is_identifier(name) && !SKIPPED_DIRS.contains(&name)) {
+                found.push(format!("d:{relative}"));
             }
+        } else if name.ends_with(".py") || name.ends_with(".pyi") {
+            found.push(format!("f:{relative}"));
         }
     }
     found

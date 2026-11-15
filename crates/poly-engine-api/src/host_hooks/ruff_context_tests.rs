@@ -182,3 +182,36 @@ fn identical_checkouts_share_a_package_root() {
         package_root(&two.path().join("pkg/m.py"), two.path()),
     );
 }
+
+#[test]
+fn the_module_tree_skips_virtualenvs_and_gitignored_directories() {
+    let dir = tempfile::tempdir().unwrap();
+    touch(&dir.path().join("pkg/__init__.py"));
+    touch(&dir.path().join("pkg/mod.py"));
+    let before = digest_of(dir.path());
+
+    touch(&dir.path().join("venv/pyvenv.cfg"));
+    touch(&dir.path().join("venv/lib/site.py"));
+    touch(&dir.path().join("myenv/pyvenv.cfg"));
+    touch(&dir.path().join("myenv/lib/site.py"));
+    touch(&dir.path().join("env/site-packages/dep/__init__.py"));
+    touch(&dir.path().join("build/gen.py"));
+    touch(&dir.path().join("generated/gen.py"));
+    fs::write(dir.path().join(".gitignore"), "generated/\n").unwrap();
+
+    assert_eq!(before, digest_of(dir.path()).replace("f:.gitignore\n", ""));
+    let digest = digest_of(dir.path());
+    assert!(digest.contains("d:pkg") && digest.contains("f:pkg/mod.py"));
+    for hidden in ["venv", "myenv", "env", "build", "generated"] {
+        assert!(!digest.contains(&format!("d:{hidden}")), "{hidden} was walked");
+    }
+}
+
+#[test]
+fn a_plain_venv_named_package_is_still_walked() {
+    let dir = tempfile::tempdir().unwrap();
+    touch(&dir.path().join("venv/__init__.py"));
+
+    let digest = digest_of(dir.path());
+    assert!(digest.contains("d:venv") && digest.contains("f:venv/__init__.py"));
+}
