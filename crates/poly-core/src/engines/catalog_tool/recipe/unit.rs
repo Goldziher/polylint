@@ -314,12 +314,18 @@ fn dependencies_of(text: &str) -> Vec<Dependency> {
     found
 }
 
-fn declared(root: &Path) -> Vec<Dependency> {
-    ["Chart.yaml", "requirements.yaml"]
-        .iter()
-        .filter_map(|name| std::fs::read_to_string(root.join(name)).ok())
-        .flat_map(|text| dependencies_of(&text))
-        .collect()
+/// The dependencies `Chart.yaml` and `requirements.yaml` declare, or `None` when one of them exists
+/// but cannot be read: an unreadable declaration must not pass for a chart with no dependencies.
+fn declared(root: &Path) -> Option<Vec<Dependency>> {
+    let mut found = Vec::new();
+    for name in ["Chart.yaml", "requirements.yaml"] {
+        match std::fs::read_to_string(root.join(name)) {
+            Ok(text) => found.extend(dependencies_of(&text)),
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+            Err(_) => return None,
+        }
+    }
+    Some(found)
 }
 
 fn vendored(charts: &Path, dependency: &Dependency) -> bool {
@@ -347,7 +353,9 @@ fn vendored(charts: &Path, dependency: &Dependency) -> bool {
 /// dependencies, or `charts/` already holds every one (at the locked version
 /// when a `Chart.lock` pins it).
 pub(super) fn dependencies_in_place(root: &Path) -> bool {
-    let wanted = declared(root);
+    let Some(wanted) = declared(root) else {
+        return false;
+    };
     if wanted.is_empty() {
         return true;
     }
@@ -411,6 +419,14 @@ mod tests {
         let dir = tempfile::tempdir().expect("tempdir");
         std::fs::write(dir.path().join("Chart.yaml"), "name: web\n").expect("chart");
         assert!(dependencies_in_place(dir.path()));
+    }
+
+    #[test]
+    fn an_unreadable_chart_file_is_not_a_chart_without_dependencies() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        // A directory in place of Chart.yaml: it exists, but reading it fails.
+        std::fs::create_dir(dir.path().join("Chart.yaml")).expect("chart dir");
+        assert!(!dependencies_in_place(dir.path()));
     }
 
     #[test]

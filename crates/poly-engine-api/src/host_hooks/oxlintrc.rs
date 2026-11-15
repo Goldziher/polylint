@@ -104,7 +104,7 @@ fn compute(root: &Path, dir: &Path) -> Governing {
     let mut ignores = Vec::new();
     for file in &chain {
         hasher.update(file.as_os_str().as_encoded_bytes());
-        hasher.update(&std::fs::read(file).unwrap_or_default());
+        hasher.update(&super::file_bytes::for_digest(file));
         if let (Some(parent), Some(patterns)) = (file.parent(), ignore_patterns(file)) {
             ignores.push((parent.to_path_buf(), patterns));
         }
@@ -179,6 +179,28 @@ mod tests {
         assert!(ignore.is_ignored(&repo.path().join("a/dist/x.js")));
         assert!(ignore.is_ignored(&nested_dir.join("gen.ts")));
         assert!(!ignore.is_ignored(&repo.path().join("other/gen.ts")));
+    }
+
+    #[test]
+    fn an_unreadable_config_digests_differently_from_an_empty_one() {
+        let readable = tempfile::tempdir().unwrap();
+        let empty = readable.path().join(".oxlintrc.json");
+        std::fs::write(&empty, "").unwrap();
+        let empty_digest = governing(&empty, readable.path()).digest;
+
+        // A directory in place of the config: the read itself fails.
+        let broken = tempfile::tempdir().unwrap();
+        let unreadable = broken.path().join(".oxlintrc.json");
+        std::fs::create_dir(&unreadable).unwrap();
+        let unreadable_digest = governing(&unreadable, broken.path()).digest;
+
+        let empty_hash = blake3::Hasher::new()
+            .update(empty.as_os_str().as_encoded_bytes())
+            .finalize()
+            .to_hex()
+            .to_string();
+        assert_ne!(empty_digest, unreadable_digest);
+        assert_ne!(unreadable_digest, empty_hash);
     }
 
     #[test]

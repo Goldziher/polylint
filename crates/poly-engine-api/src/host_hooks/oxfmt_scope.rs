@@ -34,8 +34,7 @@ impl Scope {
         let digest = native
             .file
             .as_ref()
-            .and_then(|file| std::fs::read(file).ok())
-            .map(|bytes| blake3::hash(&bytes).to_hex().to_string())
+            .map(|file| blake3::hash(&super::file_bytes::for_digest(file)).to_hex().to_string())
             .unwrap_or_default();
         let include = native.overrides.iter().map(|entry| compile(&entry.files)).collect();
         let exclude = native

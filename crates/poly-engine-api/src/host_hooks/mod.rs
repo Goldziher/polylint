@@ -29,6 +29,7 @@ use crate::engine::SourceFile;
 
 pub mod astgrep_rules;
 pub mod editorconfig;
+pub mod file_bytes;
 pub mod go_mod;
 pub mod jsonschema_source;
 pub mod oxfmt_native;
