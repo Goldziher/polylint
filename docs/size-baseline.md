@@ -216,3 +216,23 @@ so the verified stamp (xberg-io/alef#833, shipped) must be on in poly's host.
 
 Reproduce with `mise run measure:core-size` (about 2-3 minutes per build; each feature build
 needs several GB of free disk under `CARGO_TARGET_DIR`).
+
+## Hot-path overrides (unmeasured)
+
+`[profile.core.package.*]` in the root `Cargo.toml` raises `poly-core`, `poly-cache`, `blake3`,
+`tree-sitter`, `rmp-serde`, `rayon`, `rayon-core`, `crossbeam-deque`, `ignore`, `globset`,
+`regex-automata`, `regex-syntax` and `memchr` to `opt-level = 3` while the base stays `"s"` (#192).
+They are expected to recover warm-lint speed (the fat `s` build measured 102 ms against 72 ms for
+thin LTO at 3 above). Nothing here is measured yet.
+
+Verify speed on the same corpus and flags as the table above, once per profile (`core` before and
+after the override):
+
+```sh
+hyperfine -N --warmup 3 --runs 20 'poly lint --workspace never --skip astgrep .'
+hyperfine -N --runs 15 'poly lint --no-cache --workspace never --skip astgrep .'
+hyperfine -N --warmup 3 --runs 20 'poly fmt .'
+```
+
+The size delta must be measured with the existing procedure (`mise run measure:core-size`); the
+ceiling stays 14 MiB.

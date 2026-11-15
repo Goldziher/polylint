@@ -227,3 +227,43 @@ lto = "fat"
 codegen-units = 1
 strip = true
 opt-level = "s"
+
+# Hot-path packages stay at opt-level 3 (#192); the rest of the binary keeps "s" for size.
+[profile.core.package.poly-core]
+opt-level = 3
+
+[profile.core.package.poly-cache]
+opt-level = 3
+
+[profile.core.package.blake3]
+opt-level = 3
+
+[profile.core.package.tree-sitter]
+opt-level = 3
+
+[profile.core.package.rmp-serde]
+opt-level = 3
+
+[profile.core.package.rayon]
+opt-level = 3
+
+[profile.core.package.rayon-core]
+opt-level = 3
+
+[profile.core.package.crossbeam-deque]
+opt-level = 3
+
+[profile.core.package.ignore]
+opt-level = 3
+
+[profile.core.package.globset]
+opt-level = 3
+
+[profile.core.package.regex-automata]
+opt-level = 3
+
+[profile.core.package.regex-syntax]
+opt-level = 3
+
+[profile.core.package.memchr]
+opt-level = 3
