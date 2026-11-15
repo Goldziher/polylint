@@ -48,6 +48,9 @@ pub struct HostOptions {
     pub sidecars: Vec<String>,
     /// Deadline for one call to a sidecar; `None` keeps alef's default of 30 seconds.
     pub sidecar_timeout: Option<Duration>,
+    /// Accept a lock with no public keys although it lists components (tests and tools that
+    /// install unsigned archives). The unsigned development lock is accepted without this.
+    pub allow_unsigned: bool,
 }
 
 impl HostOptions {
@@ -65,6 +68,7 @@ impl HostOptions {
             services: None,
             sidecars: Vec::new(),
             sidecar_timeout: None,
+            allow_unsigned: false,
         }
     }
 }
@@ -89,12 +93,15 @@ impl ComponentHost {
     ///
     /// Downloads honour `POLY_COMPONENT_MIRROR` (the origin of each lock URL is replaced, the
     /// path kept; integrity is still checked against the lock) and `POLY_COMPONENT_CACHE`.
-    /// Installed libraries are trusted through their verified stamp.
+    /// Installed libraries are trusted through their verified stamp, except under a
+    /// `POLY_COMPONENT_CACHE` override or a cache directory others can write.
     ///
     /// # Errors
     ///
-    /// When the lock is not valid JSON, has an unsupported schema or repeats an entry, or when
-    /// no target is given and the host has none.
+    /// When the lock is not valid JSON, has an unsupported schema or repeats an entry, lists
+    /// components it embeds no signing key for, or when no target is given and the host has none;
+    /// on unix, when `POLY_COMPONENT_CACHE` names a directory that is not owned by the current user
+    /// or is writable by group or others.
     pub fn new(options: HostOptions) -> anyhow::Result<Self> {
         let lock: ComponentLock =
             serde_json::from_str(&options.lock_json).context("the embedded component lock is not valid")?;
@@ -104,8 +111,10 @@ impl ComponentHost {
                 .context("no components are published for this platform")?
                 .to_owned(),
         };
-        let cache_root = component_cache_dir().unwrap_or(options.cache_root);
-        let verifier = crate::integrity::verifier(&lock, cache_root.clone());
+        crate::trust::check_lock(&lock, options.allow_unsigned)?;
+        let cache = crate::cache_dir::resolve(options.cache_root, component_cache_dir())?;
+        let cache_root = cache.path.clone();
+        let verifier = crate::integrity::verifier(&lock, cache_root.clone(), cache.stamp);
         let mut downloads = DownloadOptions::default();
         if let Some(progress) = options.progress {
             downloads = downloads.with_progress(move |done, total| progress(done, total));
@@ -115,7 +124,7 @@ impl ComponentHost {
             .offline(options.offline)
             .with_download_options(downloads)
             .with_url_override(|entry| component_url(&entry.url))
-            .with_verified_stamp(true);
+            .with_verified_stamp(cache.stamp);
         if let Some(services) = options.services {
             manager = manager.with_host_services(services);
         }

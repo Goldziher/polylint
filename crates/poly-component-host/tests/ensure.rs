@@ -82,6 +82,7 @@ fn fixture(mode: Mode, offline: bool, gate: bool) -> Fixture {
     let mut options = HostOptions::new(lock(), PathBuf::from(dir.path()));
     options.target = Some(TARGET.into());
     options.offline = offline;
+    options.allow_unsigned = true;
     options.gate_loads = gate;
     let connector = Arc::new(Connector {
         connects: AtomicUsize::new(0),

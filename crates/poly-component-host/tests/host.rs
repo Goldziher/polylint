@@ -46,6 +46,7 @@ fn host(sha: &str, fail: bool) -> (ComponentHost, Arc<Connector>, tempfile::Temp
     let mut options = HostOptions::new(lock(sha), PathBuf::from(dir.path()));
     options.target = Some(TARGET.into());
     options.offline = true;
+    options.allow_unsigned = true;
     let connector = Arc::new(Connector {
         connects: AtomicUsize::new(0),
         fail,
@@ -102,4 +103,27 @@ fn unknown_component_is_an_error_and_unavailable_engines_still_build() {
         .unwrap();
     assert_eq!(engine.version(), "1.2.3+c0000000000000000+unavailable");
     assert_eq!(engine.unavailable_reason(), Some("no artifact for this target"));
+}
+
+#[test]
+fn a_keyless_lock_is_refused_unless_unsigned_is_allowed() {
+    let dir = tempfile::tempdir().unwrap();
+    let mut options = HostOptions::new(lock(&"ab".repeat(32)), PathBuf::from(dir.path()));
+    options.target = Some(TARGET.into());
+    options.offline = true;
+    let error = ComponentHost::new(options)
+        .err()
+        .expect("a lock with no keys is refused");
+    assert!(error.to_string().contains("no public keys"), "{error:#}");
+}
+
+#[test]
+fn a_signed_lock_with_a_key_id_missing_from_the_keys_is_refused() {
+    let dir = tempfile::tempdir().unwrap();
+    let lock = lock(&"ab".repeat(32)).replace(r#""public_keys":{}"#, r#""public_keys":{"release":"AAAA"}"#);
+    let mut options = HostOptions::new(lock, PathBuf::from(dir.path()));
+    options.target = Some(TARGET.into());
+    options.offline = true;
+    let error = ComponentHost::new(options).err().expect("an unknown key id is refused");
+    assert!(error.to_string().contains("does not embed"), "{error:#}");
 }

@@ -24,8 +24,8 @@ pub enum CacheCheck {
 }
 
 /// A cache over `root` that checks objects exactly as a load would.
-pub(crate) fn verifier(lock: &ComponentLock, root: std::path::PathBuf) -> ArtifactCache {
-    ArtifactCache::new(root, TrustPolicy::EmbeddedKeys(lock.public_keys.clone())).with_verified_stamp(true)
+pub(crate) fn verifier(lock: &ComponentLock, root: std::path::PathBuf, stamp: bool) -> ArtifactCache {
+    ArtifactCache::new(root, TrustPolicy::EmbeddedKeys(lock.public_keys.clone())).with_verified_stamp(stamp)
 }
 
 /// How long to wait before believing a failed verification. alef repairs an object under its

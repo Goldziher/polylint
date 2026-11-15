@@ -177,7 +177,7 @@ The archive is verified against the lock the binary carries before it is install
 | Variable | Effect |
 | --- | --- |
 | `POLY_COMPONENT_MIRROR` | Base URL that replaces the origin (`scheme://host[:port]`) of each component download. The original path is kept, so mirror the release's directory layout. Integrity never depends on the URL, because the lock pins each archive's SHA-256. |
-| `POLY_COMPONENT_CACHE` | Component cache root. Default: `components/` inside poly's cache home (`POLY_CACHE_HOME`, else the per-user cache directory). |
+| `POLY_COMPONENT_CACHE` | Component cache root. Default: `components/` inside poly's cache home (`POLY_CACHE_HOME`, else the per-user cache directory). On Unix an override must be owned by you and not group- or world-writable (`chmod 700`), or poly refuses it; an override also drops the fast stamp check, so each load re-verifies the component's digest. |
 | `POLY_OFFLINE` | Same as `--offline`. |
 
 ```sh
