@@ -53,10 +53,23 @@ pub(super) struct FastPath<'a> {
     cache: &'a ResultCache,
     index: &'a StatIndex,
     tally: Tally,
-    plan: &'a RunPlan,
-    scopes: FxHashMap<(usize, Language), PlanKey>,
-    engine_keys: FxHashMap<(usize, Language), Vec<PlanKey>>,
+    /// Per config id, each planned language's scope and engines. Nested so a
+    /// file is looked up by borrowed `&Language`: a `(usize, Language)` key
+    /// would clone the language, and so allocate for `Language::Other`, per file.
+    slots: Vec<FxHashMap<Language, Slot<'a>>>,
     replay: Replay,
+}
+
+/// What is fixed for one `(config, language)` pair across the run.
+struct Slot<'a> {
+    scope: PlanKey,
+    engines: &'a [EnginePlan],
+    bases: Vec<PlanKey>,
+}
+
+thread_local! {
+    /// Scratch for the per-file engine keys, so a stat hit allocates none.
+    static KEY_SCRATCH: std::cell::RefCell<Vec<PlanKey>> = const { std::cell::RefCell::new(Vec::new()) };
 }
 
 /// What a stat hit may replay without opening the file.
@@ -101,8 +114,7 @@ impl<'a> FastPath<'a> {
         if !cache.enabled() {
             return None;
         }
-        let mut scopes = FxHashMap::default();
-        let mut engine_keys = FxHashMap::default();
+        let mut slots: Vec<FxHashMap<Language, Slot<'a>>> = Vec::new();
         for ((config_id, language), engines) in plan.iter() {
             let mut scope = PlanKey::builder(namespace);
             scope.part([flags(*config_id)]);
@@ -112,45 +124,55 @@ impl<'a> FastPath<'a> {
                     .map(|withdrawal| withdrawal.reason())
                     .unwrap_or_default(),
             );
-            let key = (*config_id, language.clone());
-            scopes.insert(key.clone(), scope.finish());
-            engine_keys.insert(key, engines.iter().map(|engine| base_key(namespace, engine)).collect());
+            if slots.len() <= *config_id {
+                slots.resize_with(*config_id + 1, FxHashMap::default);
+            }
+            slots[*config_id].insert(
+                language.clone(),
+                Slot {
+                    scope: scope.finish(),
+                    engines: engines.as_slice(),
+                    bases: engines.iter().map(|engine| base_key(namespace, engine)).collect(),
+                },
+            );
         }
         Some(Self {
             cache,
             index: cache.stat_index(namespace),
             tally: Tally::default(),
-            plan,
-            scopes,
-            engine_keys,
+            slots,
             replay,
         })
+    }
+
+    fn slot(&self, file: &DiscoveredFile) -> Option<&Slot<'a>> {
+        self.slots.get(file.config_id)?.get(&file.language)
+    }
+
+    /// Fill `out` with each engine's key for `file`: the run-wide base, extended
+    /// by the engine's per-file context when it has one.
+    fn engine_keys(slot: &Slot<'_>, file: &DiscoveredFile, out: &mut Vec<PlanKey>) {
+        out.clear();
+        out.extend(slot.bases.iter().zip(slot.engines).map(|(base, engine)| {
+            match engine.engine.file_context(&file.path, &engine.config) {
+                Some(context) => base.extended([context.as_str()]),
+                None => *base,
+            }
+        }));
     }
 
     /// The stat and keys for `file`, without consulting the index.
     pub(super) fn probe(&self, file: &DiscoveredFile) -> Option<Probe<'a>> {
         let stat = self.cache.file_stat(&file.path).ok()?;
-        let pair = (file.config_id, file.language.clone());
-        let scope = *self.scopes.get(&pair)?;
-        let engines = self.plan.engines(file.config_id, &file.language);
-        let keys = self
-            .engine_keys
-            .get(&pair)?
-            .iter()
-            .zip(engines)
-            .map(
-                |(base, engine)| match engine.engine.file_context(&file.path, &engine.config) {
-                    Some(context) => base.extended([context.as_str()]),
-                    None => *base,
-                },
-            )
-            .collect();
+        let slot = self.slot(file)?;
+        let mut keys = Vec::with_capacity(slot.bases.len());
+        Self::engine_keys(slot, file, &mut keys);
         let path = self.cache.path_key(&file.path);
-        let prior = self.index.get(&path).filter(|record| record.scope == scope);
+        let prior = self.index.get(&path).filter(|record| record.scope == slot.scope);
         Some(Probe {
             path,
             stat,
-            scope,
+            scope: slot.scope,
             keys,
             prior,
         })
@@ -166,11 +188,21 @@ impl<'a> FastPath<'a> {
     }
 
     pub(super) fn resolve(&self, file: &DiscoveredFile) -> Resolution<'a> {
-        let Some(probe) = self.probe(file) else {
+        let Ok(stat) = self.cache.file_stat(&file.path) else {
             return Resolution::Unavailable;
         };
-        match self.vouched_for(file, &probe) {
-            Some((record, how)) => {
+        let Some(slot) = self.slot(file) else {
+            return Resolution::Unavailable;
+        };
+        let path = self.cache.path_key(&file.path);
+        let prior = self.index.get(&path).filter(|record| record.scope == slot.scope);
+        let vouched = KEY_SCRATCH.with_borrow_mut(|keys| {
+            Self::engine_keys(slot, file, keys);
+            self.vouched_for(file, path, &stat, prior, keys)
+                .ok_or_else(|| keys.clone())
+        });
+        match vouched {
+            Ok((record, how)) => {
                 let counter = match how {
                     VouchedBy::Stat => &self.tally.stat_hits,
                     VouchedBy::Content => &self.tally.content_hits,
@@ -178,28 +210,41 @@ impl<'a> FastPath<'a> {
                 counter.fetch_add(1, Ordering::Relaxed);
                 Resolution::Hit(record)
             }
-            None => {
+            Err(keys) => {
                 self.tally.misses.fetch_add(1, Ordering::Relaxed);
-                Resolution::Miss(probe)
+                Resolution::Miss(Probe {
+                    path,
+                    stat,
+                    scope: slot.scope,
+                    keys,
+                    prior,
+                })
             }
         }
     }
 
     /// The record that lets `file` be answered without a lint pass, and which
     /// tally line to count it on.
-    fn vouched_for(&self, file: &DiscoveredFile, probe: &Probe<'a>) -> Option<(&'a Record, VouchedBy)> {
-        let record = probe.prior?;
-        if !record.has_keys(&probe.keys) || !self.may_replay(record) {
+    fn vouched_for(
+        &self,
+        file: &DiscoveredFile,
+        path: PathKey,
+        stat: &FileStat,
+        prior: Option<&'a Record>,
+        keys: &[PlanKey],
+    ) -> Option<(&'a Record, VouchedBy)> {
+        let record = prior?;
+        if !record.has_keys(keys) || !self.may_replay(record) {
             return None;
         }
-        if record.trusts(&probe.stat) {
+        if record.trusts(stat) {
             return Some((record, VouchedBy::Stat));
         }
         let bytes = std::fs::read(&file.path).ok()?;
         if record.digest != ContentDigest::of(&bytes) {
             return None;
         }
-        self.index.vouch(probe.path, probe.stat, record.digest);
+        self.index.vouch(path, *stat, record.digest);
         Some((record, VouchedBy::Content))
     }
 
@@ -217,7 +262,7 @@ impl<'a> FastPath<'a> {
     /// The diagnostics a recorded file produced, severity overrides applied, or
     /// `None` if a payload no longer decodes.
     pub(super) fn decode(&self, file: &DiscoveredFile, record: &Record) -> Option<Vec<Diagnostic>> {
-        let engines = self.plan.engines(file.config_id, &file.language);
+        let engines = self.slot(file).map_or(&[][..], |slot| slot.engines);
         let mut all = Vec::new();
         for (engine, segment) in engines.iter().zip(&record.segments) {
             let mut diagnostics = decode_payload(&segment.payload)?;
