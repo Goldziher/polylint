@@ -10,6 +10,10 @@
 //! discarded; only scanner and parser errors matter. A failure becomes a single [`Diagnostic`]
 //! with code `"syntax"` and [`Severity::Error`] carrying the 1-based line/column.
 //!
+//! A Helm-style Go-templated file (`name: {{ .Release.Name }}`, a line starting with `{{- if … }}`) is
+//! skipped by lint and format alike; template text that is inert YAML (quoted, in a block scalar, in a
+//! comment, or inside a plain scalar that starts with other text) is not.
+//!
 //! # Format
 //! Delegates to the formatter oxfmt itself uses (`oxc_formatter_yaml`), so a repository
 //! formatted by oxfmt is a fixed point and the two tools agree byte for byte.
@@ -21,7 +25,7 @@
 //! `trailing_commas` (`"always"` / `"never"`) and `prose_wrap` (`"preserve"` / `"always"` /
 //! `"never"`).
 //!
-//! Returns [`FormatOutput::Unchanged`] when the output equals the input.
+//! Returns [`FormatOutput::Unchanged`] when the output equals the input or the formatter declines the file.
 
 use oxc_allocator::Allocator;
 use oxc_formatter_core::FormatOptions;
@@ -107,7 +111,7 @@ impl Engine for YamlEngine {
     }
 
     fn version(&self) -> &str {
-        "0.1.0+serde_yaml-0.9.34+oxc_formatter_yaml-74e5e66+tmplskip+oxfmtrc-scope-1+tmpl-parse-1"
+        "0.1.0+serde_yaml-0.9.34+oxc_formatter_yaml-74e5e66+tmplskip+oxfmtrc-scope-1+tmpl-parse-2"
     }
 
     /// The path-scoped oxfmt config (`overrides`, nested configs) shapes the output and the cache key.
@@ -116,11 +120,11 @@ impl Engine for YamlEngine {
     }
 
     fn skip_reason(&self, src: &SourceFile) -> Option<Cow<'static, str>> {
-        is_unparseable_template(&src.content).then_some(Cow::Borrowed(GO_TEMPLATE_SKIP))
+        is_helm_template(&src.content).then_some(Cow::Borrowed(GO_TEMPLATE_SKIP))
     }
 
     fn lint(&self, src: &SourceFile, _cfg: &EngineConfig) -> anyhow::Result<Vec<Diagnostic>> {
-        if is_unparseable_template(&src.content) {
+        if is_helm_template(&src.content) {
             return Ok(Vec::new());
         }
         match first_syntax_error(&src.content) {
@@ -150,7 +154,7 @@ impl Engine for YamlEngine {
     }
 
     fn format(&self, src: &SourceFile, cfg: &EngineConfig) -> anyhow::Result<FormatOutput> {
-        if is_unparseable_template(&src.content) {
+        if is_helm_template(&src.content) {
             return Ok(FormatOutput::Unchanged);
         }
         // Deeply nested unclosed flow collections make YAML parsers backtrack
@@ -166,10 +170,10 @@ impl Engine for YamlEngine {
             .and_then(|formatted| formatted.print().map_err(|_| ()))
         {
             Ok(printed) => printed.into_code(),
-            // Lint already reports the syntax error for an invalid document, so leaving it
-            // untouched is visible to the user; a valid one the formatter rejects is a failure.
-            Err(()) if first_syntax_error(&src.content).is_some() => return Ok(FormatOutput::Unchanged),
-            Err(()) => anyhow::bail!("the YAML formatter could not process a document the parser accepts"),
+            Err(()) => {
+                tracing::debug!(path = %src.path.display(), "the YAML formatter declined the file");
+                return Ok(FormatOutput::Unchanged);
+            }
         };
         if formatted == *src.content {
             Ok(FormatOutput::Unchanged)
@@ -179,10 +183,102 @@ impl Engine for YamlEngine {
     }
 }
 
-/// Go/Helm template syntax that also breaks YAML parsing. Template-looking text in a document
-/// that parses (Prometheus rules, Taskfiles, Grafana provisioning) is ordinary YAML.
-fn is_unparseable_template(content: &str) -> bool {
-    contains_go_template(content) && first_syntax_error(content).is_some()
+/// Whether the document is Helm-style Go-templated YAML, which poly neither lints nor formats.
+///
+/// Template actions often *parse* as YAML flow mappings (`image: {{ .Values.image }}`), and the formatter
+/// would rewrite them to `{ { .Values.image } }`, so a successful parse is no evidence the file is plain YAML.
+/// A file is treated as ordinary YAML (Prometheus rules, Taskfiles) only when every `{{` is provably not
+/// the start of a flow mapping; see [`only_inert_braces`].
+fn is_helm_template(content: &str) -> bool {
+    contains_go_template(content) && !only_inert_braces(content)
+}
+
+/// Whether every `{{` in `content` is inert text rather than the start of a flow mapping: inside a quoted
+/// scalar, a block scalar or a comment, directly after a `$` (GitHub Actions), or inside a plain scalar that
+/// starts with other text (`- echo {{.FOO}}`). Line-based and deliberately conservative: a `{{` at the start
+/// of a line or of a value (after `:`, `-`, `?`, `[`, `{` or `,`) is not inert.
+fn only_inert_braces(content: &str) -> bool {
+    let mut quote: Option<u8> = None;
+    let mut block_parent: Option<usize> = None;
+    for line in content.lines() {
+        let indent = line.len() - line.trim_start().len();
+        if quote.is_none()
+            && let Some(parent) = block_parent
+        {
+            if line.trim().is_empty() || indent > parent {
+                continue;
+            }
+            block_parent = None;
+        }
+        let bytes = line.as_bytes();
+        let mut end = line.len();
+        let mut i = 0;
+        while i < bytes.len() {
+            let byte = bytes[i];
+            if let Some(open) = quote {
+                if open == b'"' && byte == b'\\' {
+                    i += 2;
+                    continue;
+                }
+                if byte == open {
+                    if open == b'\'' && bytes.get(i + 1) == Some(&open) {
+                        i += 2;
+                        continue;
+                    }
+                    quote = None;
+                }
+            } else if byte == b'#' && (i == 0 || bytes[i - 1].is_ascii_whitespace()) {
+                end = i;
+                break;
+            } else if (byte == b'"' || byte == b'\'') && starts_value(&line[..i]) {
+                quote = Some(byte);
+            } else if byte == b'{' && bytes.get(i + 1) == Some(&b'{') {
+                if !(i > 0 && bytes[i - 1] == b'$') && starts_value(&line[..i]) {
+                    return false;
+                }
+                i += 2;
+                continue;
+            }
+            i += 1;
+        }
+        if quote.is_none() {
+            block_parent = block_scalar_parent(&line[..end], indent);
+        }
+    }
+    true
+}
+
+/// Whether `before`, the text of a line ahead of some position, leaves that position at the start of a
+/// value, key or flow entry.
+fn starts_value(before: &str) -> bool {
+    let before = before.trim_end();
+    before.is_empty() || before.ends_with([':', '-', '?', '[', '{', ','])
+}
+
+/// The indent content must exceed to belong to the block scalar that `code` (a line without its comment)
+/// opens, or `None` when it opens none.
+fn block_scalar_parent(code: &str, indent: usize) -> Option<usize> {
+    let code = code.trim_end();
+    let (head, token) = code.rsplit_once(char::is_whitespace)?;
+    let mut chars = token.chars();
+    if !matches!(chars.next(), Some('|' | '>')) || !chars.all(|c| c.is_ascii_digit() || c == '+' || c == '-') {
+        return None;
+    }
+    if !head.trim_end().ends_with([':', '-']) {
+        return None;
+    }
+    // `- key: |` is parented by the key's column, not the dash's; a bare `- |` by the dash.
+    let mut parent = indent;
+    let mut rest = &code[indent..];
+    while let Some(after) = rest.strip_prefix("- ") {
+        let trimmed = after.trim_start();
+        if trimmed == token {
+            break;
+        }
+        parent += rest.len() - trimmed.len();
+        rest = trimmed;
+    }
+    Some(parent)
 }
 
 /// The first scanner or parser error in any document of `content`.
@@ -284,6 +380,56 @@ mod tests {
             ),
             "validity, not depth, decides whether a document is formatted"
         );
+    }
+
+    #[test]
+    fn helm_actions_that_parse_as_flow_mappings_are_still_skipped() {
+        let engine = YamlEngine;
+        for content in [
+            "name: {{ .Release.Name }}\n",
+            "image: {{ .Values.image }}\n",
+            "x: {{ include \"a\" . | nindent 4 }}\n",
+            "list:\n  - {{ .Values.a }}\n",
+            "{{- if .Values.x }}\nkind: ConfigMap\n{{- end }}\n",
+        ] {
+            let src = source(content);
+            assert_eq!(
+                engine.skip_reason(&src).as_deref(),
+                Some(GO_TEMPLATE_SKIP),
+                "{content:?}"
+            );
+            assert!(
+                matches!(
+                    engine.format(&src, &default_cfg()).expect("format succeeded"),
+                    FormatOutput::Unchanged
+                ),
+                "{content:?} must stay untouched"
+            );
+        }
+    }
+
+    #[test]
+    fn inert_template_text_is_not_skipped() {
+        let engine = YamlEngine;
+        for content in [
+            "summary: \"{{ $labels.instance }} down\"\n",
+            "summary: '{{ $labels.instance }} down'\n",
+            "cmds:\n  - echo {{.FOO}}\n",
+            "cmd: echo {{.FOO}}\n",
+            "n: |\n  image: {{ .Values.image }}\nk: v\n",
+            "- k: |\n    {{ .Values.a }}\n  o: 1\n",
+            "# {{ .Values.a }}\nk: v\n",
+            "k: v # {{ .Values.a }}\n",
+            "a: \"x \\\" y\" # c\nb: \"multi\n  {{ .Values.a }}\"\n",
+        ] {
+            assert_eq!(engine.skip_reason(&source(content)).as_deref(), None, "{content:?}");
+        }
+    }
+
+    #[test]
+    fn a_block_scalar_ends_where_the_indent_returns() {
+        assert!(!only_inert_braces("n: |\n  a\nk: {{ .Values.a }}\n"));
+        assert!(!only_inert_braces("- k: |\n    a\n  o: {{ .Values.a }}\n"));
     }
 
     #[test]
