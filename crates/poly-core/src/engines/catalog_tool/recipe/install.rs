@@ -12,7 +12,7 @@
 
 use std::path::{Path, PathBuf};
 
-use anyhow::{Context, Result, bail};
+use anyhow::{bail, Context, Result};
 use poly_catalog::{Asset, Release, ReleaseKind};
 use tempfile::NamedTempFile;
 
@@ -99,6 +99,8 @@ fn dir_is_private(directory: &Path) -> bool {
         .is_ok_and(|meta| meta.is_dir() && meta.uid() == current_uid() && meta.mode() & 0o022 == 0)
 }
 
+// Windows has no mode bits to check here, so trust in an install rests on the stamp's size, mtime and
+// digest alone.
 #[cfg(not(unix))]
 fn dir_is_private(_directory: &Path) -> bool {
     true
@@ -167,8 +169,51 @@ fn ensure_when(offline: bool, path: &Path, asset: &Asset, kind: ReleaseKind) -> 
     ensure_with(&Http::production(), offline, path, asset, kind)
 }
 
+/// Accept an existing file whose content is exactly the pinned digest but whose stamp is missing,
+/// in an older format, or whose directory is group- or world-writable.
+///
+/// The digest is the trust root, so a file that hashes to it is the right one whatever its stamp
+/// says: the directory is tightened first, the file hashed once, and the stamp rewritten in the
+/// current format. Nothing is downloaded; a different hash, or a directory owned by someone else,
+/// leaves the install to the normal path.
+fn adopt_existing(path: &Path, asset: &Asset) -> bool {
+    let Some(directory) = path.parent() else {
+        return false;
+    };
+    if !std::fs::metadata(path).is_ok_and(|meta| meta.is_file()) || !owned_dir(directory) {
+        return false;
+    }
+    #[cfg(unix)]
+    if !dir_is_private(directory) {
+        use std::os::unix::fs::PermissionsExt;
+        if std::fs::set_permissions(directory, std::fs::Permissions::from_mode(0o700)).is_err() {
+            return false;
+        }
+    }
+    file_digest(path).is_some_and(|digest| digest == asset.sha256) && record_stamp(path, &asset.sha256).is_ok()
+}
+
+fn file_digest(path: &Path) -> Option<String> {
+    use sha2::{Digest, Sha256};
+    let mut file = std::fs::File::open(path).ok()?;
+    let mut hasher = Sha256::new();
+    std::io::copy(&mut file, &mut hasher).ok()?;
+    Some(super::net::hex(&hasher.finalize()))
+}
+
+#[cfg(unix)]
+fn owned_dir(directory: &Path) -> bool {
+    use std::os::unix::fs::MetadataExt;
+    std::fs::symlink_metadata(directory).is_ok_and(|meta| meta.is_dir() && meta.uid() == current_uid())
+}
+
+#[cfg(not(unix))]
+fn owned_dir(directory: &Path) -> bool {
+    directory.is_dir()
+}
+
 fn ensure_with(http: &Http, offline: bool, path: &Path, asset: &Asset, kind: ReleaseKind) -> Result<()> {
-    if is_installed(path, asset) {
+    if is_installed(path, asset) || adopt_existing(path, asset) {
         return Ok(());
     }
     if offline {
@@ -423,6 +468,79 @@ mod tests {
         std::fs::write(&path, body).expect("write");
         record_stamp(&path, &asset.sha256).expect("stamp");
         ensure(&path, &asset, ReleaseKind::Binary).expect("already installed, so no network is needed");
+    }
+
+    #[test]
+    fn a_legacy_bare_digest_stamp_is_upgraded_in_place_without_a_download() {
+        let body: &'static [u8] = b"payload";
+        let asset = Asset {
+            url: "http://127.0.0.1:1/unreachable".to_owned(),
+            sha256: sha(body),
+            member: None,
+        };
+        let dir = tempfile::tempdir().expect("tempdir");
+        let path = dir.path().join("tool");
+        std::fs::write(&path, body).expect("write");
+        std::fs::write(stamp(&path), &asset.sha256).expect("legacy stamp");
+        assert!(!is_installed(&path, &asset));
+        ensure_when(true, &path, &asset, ReleaseKind::Binary).expect("upgraded, so no network is needed");
+        assert!(is_installed(&path, &asset));
+        assert!(std::fs::read_to_string(stamp(&path))
+            .expect("stamp")
+            .starts_with("sha256="));
+    }
+
+    #[test]
+    fn a_legacy_stamp_over_different_bytes_is_not_an_install() {
+        let asset = Asset {
+            url: "http://127.0.0.1:1/unreachable".to_owned(),
+            sha256: sha(b"pinned"),
+            member: None,
+        };
+        let dir = tempfile::tempdir().expect("tempdir");
+        let path = dir.path().join("tool");
+        std::fs::write(&path, b"swapped").expect("write");
+        std::fs::write(stamp(&path), &asset.sha256).expect("legacy stamp");
+        let error = ensure_when(true, &path, &asset, ReleaseKind::Binary).expect_err("hash differs");
+        assert!(error.to_string().contains("offline mode"), "{error:#}");
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn a_group_writable_directory_is_repaired_in_place_when_the_contents_verify() {
+        use std::os::unix::fs::PermissionsExt;
+        let body: &'static [u8] = b"payload";
+        let asset = Asset {
+            url: "http://127.0.0.1:1/unreachable".to_owned(),
+            sha256: sha(body),
+            member: None,
+        };
+        let dir = tempfile::tempdir().expect("tempdir");
+        let path = dir.path().join("tool");
+        std::fs::write(&path, body).expect("write");
+        record_stamp(&path, &asset.sha256).expect("stamp");
+        std::fs::set_permissions(dir.path(), std::fs::Permissions::from_mode(0o775)).expect("chmod");
+        assert!(!is_installed(&path, &asset));
+        ensure_when(true, &path, &asset, ReleaseKind::Binary).expect("repaired without a download");
+        let mode = std::fs::metadata(dir.path()).expect("meta").permissions().mode();
+        assert_eq!(mode & 0o022, 0, "{mode:o}");
+        assert!(is_installed(&path, &asset));
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn a_group_writable_directory_with_swapped_contents_is_not_trusted() {
+        use std::os::unix::fs::PermissionsExt;
+        let asset = Asset {
+            url: "http://127.0.0.1:1/unreachable".to_owned(),
+            sha256: sha(b"pinned"),
+            member: None,
+        };
+        let dir = tempfile::tempdir().expect("tempdir");
+        let path = dir.path().join("tool");
+        std::fs::write(&path, b"swapped").expect("write");
+        std::fs::set_permissions(dir.path(), std::fs::Permissions::from_mode(0o775)).expect("chmod");
+        assert!(ensure_when(true, &path, &asset, ReleaseKind::Binary).is_err());
     }
 
     #[test]
