@@ -183,7 +183,24 @@ thread_local! {
 pub fn try_reindent_builtin(name: &str, src: &SourceFile, cfg: &EngineConfig) -> Option<String> {
     let query_src = BUILTIN_QUERIES.iter().find(|(n, _)| *n == name).map(|(_, q)| *q)?;
 
-    let (adjustments, protected) = BUILTIN_STATE.with(|cell| {
+    let (adjustments, protected) = builtin_facts(name, query_src, src)?;
+
+    // ~keep A query that captured nothing means poly has no structural model of this file, and
+    // `emit_reindented` trims every line and re-emits it at the computed level — which is 0 when
+    // there are no openers. Falling through to whitespace normalization keeps an unmodeled file
+    // intact instead of flattening it to column 0.
+    if adjustments.is_empty() {
+        return None;
+    }
+
+    Some(emit_reindented(src, cfg, name, &adjustments, &protected))
+}
+
+/// Parse `src` with the pooled `name` parser and run the built-in query over it.
+/// `None` when the grammar cannot load, the source fails to parse, or the tree
+/// carries error nodes.
+fn builtin_facts(name: &str, query_src: &str, src: &SourceFile) -> Option<(Adjustments, Vec<(usize, usize)>)> {
+    BUILTIN_STATE.with(|cell| {
         let mut pool = cell.borrow_mut();
         if !pool.contains_key(name) {
             let language = crate::engines::grammar::language(name)?;
@@ -204,17 +221,7 @@ pub fn try_reindent_builtin(name: &str, src: &SourceFile, cfg: &EngineConfig) ->
         let adjustments = collect_adjustments(&entry.2, &mut entry.1, &tree, src.content.as_bytes());
         let protected = collect_protected_ranges(&tree, src.content.as_bytes());
         Some((adjustments, protected))
-    })?;
-
-    // ~keep A query that captured nothing means poly has no structural model of this file, and
-    // `emit_reindented` trims every line and re-emits it at the computed level — which is 0 when
-    // there are no openers. Falling through to whitespace normalization keeps an unmodeled file
-    // intact instead of flattening it to column 0.
-    if adjustments.is_empty() {
-        return None;
-    }
-
-    Some(emit_reindented(src, cfg, name, &adjustments, &protected))
+    })
 }
 
 /// Attempt query-driven reindentation for the given grammar and source.
@@ -540,6 +547,63 @@ fn is_interior(protected: &[(usize, usize)], byte: usize) -> bool {
     byte < protected[pos - 1].1
 }
 
+/// Record that rows `first..=last` are covered, in a difference array whose
+/// prefix sum is the number of spans covering each row. An empty span (`last`
+/// absent or before `first`) records nothing; `last` is clamped to the table.
+fn add_row_span(diff: &mut [i32], first: usize, last: Option<usize>) {
+    let rows = diff.len() - 1;
+    let Some(last) = last.map(|l| l.min(rows.saturating_sub(1))) else {
+        return;
+    };
+    if first <= last {
+        diff[first] += 1;
+        diff[last + 1] -= 1;
+    }
+}
+
+/// Per-row views of [`Adjustments`], so the emit loop answers each membership
+/// question in O(1) instead of scanning every range for every line.
+struct RowTables {
+    /// Difference array: its prefix sum at a row is the number of openers whose
+    /// interior (start row exclusive, end row inclusive) covers that row.
+    opener_diff: Vec<i32>,
+    /// Same shape for keep ranges (start row exclusive, end row inclusive).
+    keep_diff: Vec<i32>,
+    /// Same shape for auto ranges (both ends exclusive).
+    auto_diff: Vec<i32>,
+    /// Closer tokens on each row.
+    closer_by_row: Vec<usize>,
+}
+
+impl RowTables {
+    fn new(adjustments: &Adjustments, row_count: usize) -> Self {
+        let mut opener_diff = vec![0i32; row_count + 1];
+        for o in &adjustments.openers {
+            add_row_span(&mut opener_diff, o.start_row + 1, Some(o.end_row));
+        }
+        let mut keep_diff = vec![0i32; row_count + 1];
+        for &(s, e) in &adjustments.keep_ranges {
+            add_row_span(&mut keep_diff, s + 1, Some(e));
+        }
+        let mut auto_diff = vec![0i32; row_count + 1];
+        for &(s, e) in &adjustments.auto_ranges {
+            add_row_span(&mut auto_diff, s + 1, e.checked_sub(1));
+        }
+        let mut closer_by_row = vec![0usize; row_count];
+        for &(row, _) in &adjustments.closers {
+            if let Some(slot) = closer_by_row.get_mut(row) {
+                *slot += 1;
+            }
+        }
+        Self {
+            opener_diff,
+            keep_diff,
+            auto_diff,
+            closer_by_row,
+        }
+    }
+}
+
 /// Re-emit `src.content` with each line at its computed indent level.
 fn emit_reindented(
     src: &SourceFile,
@@ -548,19 +612,17 @@ fn emit_reindented(
     adjustments: &Adjustments,
     protected: &[(usize, usize)],
 ) -> String {
-    let Adjustments {
-        openers,
-        closers,
-        auto_ranges,
-        keep_ranges,
-    } = adjustments;
     let unit = super::indent_unit(grammar, cfg.indent_width);
     let line_ending = cfg.globals.line_ending.as_str();
 
-    let mut closer_by_row: HashMap<usize, usize> = HashMap::new();
-    for &(row, _) in closers {
-        *closer_by_row.entry(row).or_insert(0) += 1;
-    }
+    let row_count = src.content.bytes().filter(|&b| b == b'\n').count() + 1;
+    let RowTables {
+        opener_diff,
+        keep_diff,
+        auto_diff,
+        closer_by_row,
+    } = RowTables::new(adjustments, row_count);
+    let (mut opener_depth, mut keep_depth, mut auto_depth) = (0i32, 0i32, 0i32);
 
     const MAX_DEPTH: usize = 64;
     let max_indent = unit.repeat(MAX_DEPTH);
@@ -574,6 +636,10 @@ fn emit_reindented(
         let line_start = byte;
         byte += raw.len() + 1;
 
+        opener_depth += opener_diff[line_idx];
+        keep_depth += keep_diff[line_idx];
+        auto_depth += auto_diff[line_idx];
+
         if !first {
             out.push_str(line_ending);
         }
@@ -584,22 +650,18 @@ fn emit_reindented(
             continue;
         }
 
-        if keep_ranges.iter().any(|&(s, e)| s < line_idx && line_idx <= e) {
+        if keep_depth > 0 {
             out.push_str(line);
             continue;
         }
 
-        if auto_ranges.iter().any(|&(s, e)| s < line_idx && line_idx < e) {
+        if auto_depth > 0 {
             out.push_str(line);
             continue;
         }
 
-        let opener_count: usize = openers
-            .iter()
-            .filter(|o| o.start_row < line_idx && line_idx <= o.end_row)
-            .count();
-
-        let close_count: usize = closer_by_row.get(&line_idx).copied().unwrap_or(0);
+        let opener_count = opener_depth as usize;
+        let close_count = closer_by_row[line_idx];
 
         let level = opener_count.saturating_sub(close_count);
 
@@ -620,3 +682,6 @@ fn emit_reindented(
     super::apply_trailing_newline(&mut out, &src.content, line_ending, cfg.globals.final_newline);
     out
 }
+
+#[cfg(test)]
+mod tests;
