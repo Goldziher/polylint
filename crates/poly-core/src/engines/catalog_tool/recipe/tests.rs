@@ -330,6 +330,7 @@ fn whole_unit_findings_in_files_outside_the_run_reach_the_files_that_are() {
     );
     assert!(values[0].title.starts_with("templates/other.yaml: "), "{values:?}");
 
+    fx.file("templates/other.yaml", "c: 3\n");
     let own = fx.tool(
         "lint $ROOT",
         serde_json::json!({"output": "helm_text", "group": {"marker": ["Chart.yaml"]}, "target": "root", "findings": "own"}),
@@ -1000,4 +1001,93 @@ fn findings_printed_relative_to_a_chdir_reach_the_files_in_that_directory() {
         assert_eq!(diagnostics[0].title, "boom");
         assert_eq!(diagnostics[0].span.map(|s| s.start_line), Some(3));
     }
+}
+
+fn own_chart_recipe(extra: serde_json::Value) -> serde_json::Value {
+    let mut recipe = serde_json::json!({
+        "output": "helm_text",
+        "group": {"marker": ["Chart.yaml"]},
+        "target": "root",
+        "findings": "own"
+    });
+    for (key, value) in extra.as_object().expect("object") {
+        recipe[key] = value.clone();
+    }
+    recipe
+}
+
+#[test]
+fn a_finding_that_names_no_file_is_reported_once_instead_of_dropped() {
+    let fx = Fixture::new();
+    let reporter = fx.script(
+        "reporter",
+        "#!/bin/sh\nprintf '[ERROR] nowhere/ghost.yaml: lost\\n[ERROR] nowhere/other.yaml: lost too\\n'\n",
+    );
+    std::fs::write(fx.dir.path().join("Chart.yaml"), "name: c\n").expect("chart");
+    let files = vec![
+        fx.file("templates/a.yaml", "a: 1\n"),
+        fx.file("templates/b.yaml", "b: 2\n"),
+    ];
+    let tool = fx.tool(
+        "lint $ROOT",
+        own_chart_recipe(serde_json::json!({})),
+        Role::Lint,
+        &fx.config(reporter),
+    );
+    let results = tool.lint_files(&refs(&files));
+    let first = results[0].as_ref().expect("ok");
+    assert_eq!(first.len(), 1, "{first:?}");
+    assert_eq!(first[0].severity, Severity::Warning);
+    assert!(
+        first[0]
+            .title
+            .starts_with("2 finding(s) from faketool could not be attributed to a file"),
+        "{first:?}"
+    );
+    assert!(results[1].as_ref().expect("ok").is_empty());
+}
+
+#[test]
+fn a_leading_directory_is_stripped_only_for_a_tool_that_prints_its_root_name() {
+    let reporter_body = "#!/bin/sh\nprintf '[ERROR] chart/templates/mine.yaml: broke\\n'\n";
+    for (root_named, attributed) in [(true, true), (false, false)] {
+        let fx = Fixture::new();
+        let reporter = fx.script("reporter", reporter_body);
+        std::fs::write(fx.dir.path().join("Chart.yaml"), "name: c\n").expect("chart");
+        let files = vec![fx.file("templates/mine.yaml", "a: 1\n")];
+        let tool = fx.tool(
+            "lint $ROOT",
+            own_chart_recipe(serde_json::json!({"root_named_paths": root_named})),
+            Role::Lint,
+            &fx.config(reporter),
+        );
+        let results = tool.lint_files(&refs(&files));
+        let diagnostics = results[0].as_ref().expect("ok");
+        assert_eq!(diagnostics.len(), 1, "root_named_paths={root_named}: {diagnostics:?}");
+        assert_eq!(
+            diagnostics[0].title == "broke",
+            attributed,
+            "root_named_paths={root_named}: {diagnostics:?}"
+        );
+    }
+}
+
+#[test]
+fn a_tool_killed_by_a_signal_is_an_error_even_with_a_partial_report() {
+    let fx = Fixture::new();
+    let reporter = fx.script(
+        "reporter",
+        "#!/bin/sh\nprintf '[ERROR] templates/a.yaml: broke\\n'\nkill -9 $$\n",
+    );
+    std::fs::write(fx.dir.path().join("Chart.yaml"), "name: c\n").expect("chart");
+    let files = vec![fx.file("templates/a.yaml", "a: 1\n")];
+    let tool = fx.tool(
+        "lint $ROOT",
+        own_chart_recipe(serde_json::json!({})),
+        Role::Lint,
+        &fx.config(reporter),
+    );
+    let results = tool.lint_files(&refs(&files));
+    let error = results[0].as_ref().expect_err("a crashed tool is not a verdict");
+    assert!(format!("{error:#}").contains("killed by a signal"), "{error:#}");
 }

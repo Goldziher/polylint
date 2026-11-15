@@ -197,6 +197,10 @@ pub struct Recipe {
     pub new_from_rev_flag: Option<String>,
     /// The tool is a JVM jar launched as `java -jar <jar>`.
     pub java: bool,
+    /// Reports may print a path with the invocation root's own directory name
+    /// in front (`helm lint` prints `chart/templates/a.yaml`); the name is
+    /// dropped when matching the path to a file.
+    pub root_named_paths: bool,
     /// Never run two invocations of this tool at once (a tool holding a global
     /// lock, or writing a shared cache).
     pub serial: bool,

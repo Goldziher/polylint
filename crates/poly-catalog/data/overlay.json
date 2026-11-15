@@ -846,7 +846,8 @@
         }
       },
       "prepare": "dependency-build",
-      "values_flag": "-f"
+      "values_flag": "-f",
+      "root_named_paths": true
     }
   },
   {
@@ -976,7 +977,8 @@
         }
       },
       "prepare": "dependency-build",
-      "values_flag": "-f"
+      "values_flag": "-f",
+      "root_named_paths": true
     }
   },
   {

@@ -235,6 +235,7 @@ fn helm_is_a_chart_wide_recipe_that_prepares_dependencies_and_takes_values_files
         assert_eq!(recipe.target, Target::Root, "{name}");
         assert_eq!(recipe.findings, Findings::All, "{name}");
         assert_eq!(recipe.values_flag.as_deref(), Some("-f"), "{name}");
+        assert!(recipe.root_named_paths, "{name}");
         let prepare = recipe.prepare.as_deref().expect("a prepare step");
         let command = Catalog::get()
             .tool(name)

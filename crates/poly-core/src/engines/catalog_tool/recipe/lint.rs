@@ -150,7 +150,7 @@ impl RecipeTool {
         }
         let mut findings: Vec<Vec<Finding>> = members.iter().map(|_| Vec::new()).collect();
         let mut failures: Vec<Option<String>> = members.iter().map(|_| None).collect();
-        let lookup = Lookup::new(base);
+        let lookup = Lookup::new(base, self.recipe.root_named_paths);
 
         let tasks: Vec<Task> = groups
             .iter()
@@ -444,6 +444,11 @@ impl RecipeTool {
     fn execute_with(&self, argv: &[String], root: &Path, env: &BTreeMap<String, String>) -> Outcome {
         let captured =
             exec::run(&self.launcher, argv, root, env, self.unset_env).map_err(|error| format!("{error:#}"))?;
+        // No exit code means a signal ended the tool: whatever it printed before is a
+        // partial report, not a verdict.
+        if captured.code.is_none() {
+            return Err(captured.explanation());
+        }
         match output::parse(self.recipe.output, &captured.stdout, &captured.stderr) {
             // A failing exit that reported nothing is a tool that did not run to
             // completion, not a clean file.
@@ -481,6 +486,7 @@ impl RecipeTool {
             .collect();
         hints.sort();
         hints.dedup();
+        let mut unattributed: Vec<&str> = Vec::new();
         for finding in batch {
             let owner = finding
                 .path
@@ -508,8 +514,24 @@ impl RecipeTool {
                         findings[index].push(finding.clone());
                     }
                 }
-                (None, Findings::Own) => {}
+                (None, Findings::Own) => {
+                    // A path that names a real file outside this run is a finding about
+                    // a file nobody asked about; one that names no file at all is lost.
+                    let raw = finding.path.as_deref().unwrap_or_default();
+                    if !lookup.names_a_file(raw, &unit.root, &hints) {
+                        unattributed.push(raw);
+                    }
+                }
             }
+        }
+        if let (Some(&first), Some(&index)) = (unattributed.first(), covered.first()) {
+            let message = format!(
+                "{} finding(s) from {} could not be attributed to a file (first: {first})",
+                unattributed.len(),
+                self.tool.name
+            );
+            tracing::warn!(tool = %self.tool.name, count = unattributed.len(), sample = first, "unattributed findings");
+            findings[index].push(Finding::new(crate::engine::Severity::Warning, message));
         }
     }
 
@@ -608,16 +630,19 @@ struct Lookup {
     /// The ways the tree's root is spelled: as given and through symlinks
     /// (`/tmp` and `/private/tmp`).
     bases: Vec<PathBuf>,
+    /// Whether a printed path may start with the invocation root's own name
+    /// (`chart/templates/a.yaml`), which is then dropped.
+    root_named: bool,
 }
 
 impl Lookup {
-    fn new(base: &Path) -> Self {
+    fn new(base: &Path, root_named: bool) -> Self {
         let mut bases = vec![paths::normalize(base)];
         let real = paths::canonical(base);
         if !bases.contains(&real) {
             bases.push(real);
         }
-        Lookup { bases }
+        Lookup { bases, root_named }
     }
 
     /// Whether `raw` names the invocation root itself (helm prints the chart
@@ -633,31 +658,47 @@ impl Lookup {
         self.bases.iter().map(|base| base.join(rel)).collect()
     }
 
-    /// The member `raw` names, trying the spellings tools use: absolute (possibly
-    /// through a symlinked prefix), relative to the invocation root, and relative
-    /// with a leading chart-name component.
-    fn resolve(&self, raw: &str, root: &Path, hints: &[PathBuf], owners: &HashMap<PathBuf, usize>) -> Option<usize> {
+    /// Every place `raw` can name: absolute (possibly through a symlinked
+    /// prefix), relative to the invocation root or to where a tool's config
+    /// lives, relative to a directory of the run, and, for a tool that prints
+    /// it, with a leading root-name component.
+    fn candidates(&self, raw: &str, root: &Path, hints: &[PathBuf]) -> Vec<PathBuf> {
         let path = Path::new(raw);
         let mut candidates: Vec<PathBuf> = Vec::new();
         if path.is_absolute() {
             candidates.push(paths::normalize(path));
-        } else {
-            candidates.push(paths::normalize(&root.join(path)));
-            // Some tools print paths relative to where their config lives
-            // (golangci-lint), not to where they ran.
-            candidates.extend(self.bases.iter().map(|base| paths::normalize(&base.join(path))));
-            for hint in hints {
-                for base in &self.bases {
-                    candidates.push(paths::normalize(&base.join(hint).join(path)));
-                }
+            return candidates;
+        }
+        candidates.push(paths::normalize(&root.join(path)));
+        // Some tools print paths relative to where their config lives
+        // (golangci-lint), not to where they ran.
+        candidates.extend(self.bases.iter().map(|base| paths::normalize(&base.join(path))));
+        for hint in hints {
+            for base in &self.bases {
+                candidates.push(paths::normalize(&base.join(hint).join(path)));
             }
+        }
+        if self.root_named {
             let mut components = path.components();
             if components.next().is_some() {
                 candidates.push(paths::normalize(&root.join(components.as_path())));
             }
         }
+        candidates
+    }
+
+    /// Whether `raw` is a file on disk, wherever the run's files are.
+    fn names_a_file(&self, raw: &str, root: &Path, hints: &[PathBuf]) -> bool {
+        self.candidates(raw, root, hints)
+            .iter()
+            .any(|candidate| candidate.is_file())
+    }
+
+    /// The member `raw` names.
+    fn resolve(&self, raw: &str, root: &Path, hints: &[PathBuf], owners: &HashMap<PathBuf, usize>) -> Option<usize> {
+        let path = Path::new(raw);
         let real_root = paths::canonical(root);
-        let found = candidates.into_iter().find_map(|candidate| {
+        let found = self.candidates(raw, root, hints).into_iter().find_map(|candidate| {
             owners
                 .get(&candidate)
                 .or_else(|| owners.get(&paths::canonical(&candidate)))
