@@ -67,7 +67,9 @@ impl RecipeTool {
             Err(error) => return members.iter().map(|_| Err(anyhow!("{error:#}"))).collect(),
         };
         for member in members {
-            mirror.copy_context(&self.cwd, &member.rel, &self.context_names);
+            if let Err(error) = mirror.copy_context(&self.cwd, &member.rel, &self.context_names) {
+                return members.iter().map(|_| Err(anyhow!("{error:#}"))).collect();
+            }
         }
         let rels: Vec<String> = members.iter().map(|m| paths::slashed(&m.rel)).collect();
         let mut run = Rewrite {

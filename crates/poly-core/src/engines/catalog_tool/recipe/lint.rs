@@ -127,7 +127,7 @@ impl RecipeTool {
         for &index in indices {
             let member = &members[index];
             mirror.write(&member.rel, &member.src.content)?;
-            mirror.copy_context(&self.cwd, &member.rel, &self.context_names);
+            mirror.copy_context(&self.cwd, &member.rel, &self.context_names)?;
         }
         let mut results: Vec<Option<anyhow::Result<Vec<Diagnostic>>>> = members.iter().map(|_| None).collect();
         self.lint_tree(mirror.root(), members, indices, &mut results);

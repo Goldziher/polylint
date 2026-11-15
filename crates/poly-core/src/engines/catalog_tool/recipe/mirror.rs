@@ -43,7 +43,7 @@ impl Mirror {
 
     /// Copy every file named in `names` found in `rel`'s directory or any
     /// ancestor under `cwd`, to the same relative place in the mirror.
-    pub(super) fn copy_context(&self, cwd: &Path, rel: &Path, names: &[String]) {
+    pub(super) fn copy_context(&self, cwd: &Path, rel: &Path, names: &[String]) -> Result<()> {
         let mut directory = rel.parent().map(Path::to_path_buf);
         while let Some(current) = directory {
             for name in names {
@@ -51,9 +51,10 @@ impl Mirror {
                 let target = self.dir.path().join(&current).join(name);
                 if source.is_file() && !target.exists() {
                     if let Some(parent) = target.parent() {
-                        let _ = std::fs::create_dir_all(parent);
+                        std::fs::create_dir_all(parent).with_context(|| format!("creating {}", parent.display()))?;
                     }
-                    let _ = std::fs::copy(&source, &target);
+                    std::fs::copy(&source, &target)
+                        .with_context(|| format!("copying project config {} for the tool run", source.display()))?;
                 }
             }
             directory = if current.as_os_str().is_empty() {
@@ -62,6 +63,7 @@ impl Mirror {
                 current.parent().map(Path::to_path_buf)
             };
         }
+        Ok(())
     }
 }
 
@@ -80,7 +82,9 @@ mod tests {
         let written = mirror
             .write(Path::new("a/b/x.proto"), "syntax = \"proto3\";\n")
             .expect("write");
-        mirror.copy_context(repo.path(), Path::new("a/b/x.proto"), &["buf.yaml".to_owned()]);
+        mirror
+            .copy_context(repo.path(), Path::new("a/b/x.proto"), &["buf.yaml".to_owned()])
+            .expect("copy context");
 
         assert_eq!(written, mirror.root().join("a/b/x.proto"));
         assert!(
@@ -91,5 +95,25 @@ mod tests {
             !mirror.root().join("a/other.txt").exists(),
             "only named context is copied"
         );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn a_failed_context_copy_is_an_error_naming_the_file() {
+        use std::os::unix::fs::PermissionsExt;
+
+        let repo = tempfile::tempdir().expect("repo");
+        let config = repo.path().join("buf.yaml");
+        std::fs::write(&config, "version: v2\n").expect("buf.yaml");
+        std::fs::set_permissions(&config, std::fs::Permissions::from_mode(0o000)).expect("chmod");
+        if std::fs::File::open(&config).is_ok() {
+            return;
+        }
+
+        let mirror = Mirror::new().expect("mirror");
+        let error = mirror
+            .copy_context(repo.path(), Path::new("x.proto"), &["buf.yaml".to_owned()])
+            .expect_err("unreadable config must not be skipped");
+        assert!(format!("{error:#}").contains("buf.yaml"));
     }
 }

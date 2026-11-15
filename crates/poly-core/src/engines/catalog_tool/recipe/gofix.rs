@@ -142,7 +142,7 @@ impl RecipeTool {
         for &index in indices {
             let placed = layout.prefix.join(&members[index].rel);
             mirror.write(&placed, &members[index].src.content)?;
-            mirror.copy_context(&layout.base, &placed, &self.context_names);
+            mirror.copy_context(&layout.base, &placed, &self.context_names)?;
         }
 
         let mut env = self.env.clone();
