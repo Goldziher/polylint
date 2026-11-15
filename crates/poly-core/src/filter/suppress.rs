@@ -22,7 +22,7 @@
 //! # Scope
 //!
 //! - `allow-file` applies to the entire file wherever it appears.
-//! - `allow` on a line that is *entirely* a comment (only a comment opener precedes the marker)
+//! - `allow` on a line that is *entirely* a comment (see `is_comment_only_prefix`)
 //!   applies to the next line that is neither blank nor itself a comment-only directive, so
 //!   stacked directives all reach the same code line.
 //! - `allow` trailing after code applies to that same line.
@@ -67,6 +67,9 @@ const WORD_OPENERS: &[&str] = &["dnl"];
 
 /// Characters a punctuation-only comment prefix (`///`, `##`, `<!--`) may consist of.
 const OPENER_PUNCTUATION: &str = "/*#-;<!%";
+
+/// Punctuation that marks code, not prose, in the text between a line-leading comment opener and the marker.
+const CODE_PUNCTUATION: &str = ";(){}=";
 
 /// Openers matched without regard to case (Batch `REM`/`rem`/`Rem`).
 const CASE_INSENSITIVE_OPENERS: &[&str] = &["rem"];
@@ -327,10 +330,14 @@ fn ends_with_comment_opener(prefix: &str) -> bool {
             .any(|opener| ends_with_word_opener(prefix, opener))
 }
 
-/// Whether the text before the marker is nothing but a comment opener (`//`, `///`, `/*`, ` *`,
-/// `<!--`, `rem`, ...), i.e. the directive sits in the line's first comment and no code precedes it.
-/// Code that merely starts with an opener character (`*p = 0;`, `--i;`, `#include <x>`) carries
-/// alphanumerics or other punctuation and so is not comment-only.
+/// Whether the line holds no code before the marker, so the directive covers the next line.
+///
+/// Comment-only when either the prefix is nothing but a comment opener (`//`, `///`, `/*`, ` *`,
+/// `<!--`, `rem`, ...), or it starts with a *strong* opener (`//`, `#` and `--` followed by a space
+/// or the end, `/*`, `<!--`, `;;`, `%%`) and the prose between the leading and trailing opener runs holds none of
+/// `;(){}=` (`# noqa  # poly: ...`). Code that merely starts with an opener character
+/// (`*p = 0;`, `--i;`, `!ok() && go();`, `#include <x>`, `%define x`) is neither: its first
+/// opener is not strong, so the directive trails code and covers its own line.
 fn is_comment_only_prefix(prefix: &str) -> bool {
     let prefix = prefix.trim();
     if prefix.is_empty() {
@@ -343,7 +350,23 @@ fn is_comment_only_prefix(prefix: &str) -> bool {
     {
         return true;
     }
-    prefix.chars().all(|c| OPENER_PUNCTUATION.contains(c)) && ends_with_comment_opener(prefix)
+    if prefix.chars().all(|c| OPENER_PUNCTUATION.contains(c)) && ends_with_comment_opener(prefix) {
+        return true;
+    }
+    starts_with_strong_opener(prefix)
+        && !prefix
+            .trim_matches(|c| OPENER_PUNCTUATION.contains(c))
+            .contains(|c| CODE_PUNCTUATION.contains(c))
+}
+
+/// Whether `prefix` begins with an opener that cannot also start code.
+fn starts_with_strong_opener(prefix: &str) -> bool {
+    let spaced = |opener: &str| {
+        prefix
+            .strip_prefix(opener)
+            .is_some_and(|rest| rest.is_empty() || rest.starts_with(char::is_whitespace))
+    };
+    ["//", "/*", "<!--", ";;", "%%"].iter().any(|o| prefix.starts_with(o)) || spaced("#") || spaced("--")
 }
 
 /// Whether `prefix` ends with an opener that is a whole word, not the tail of an identifier
@@ -675,6 +698,39 @@ mod tests {
             assert_eq!(codes(&diagnostics), vec![Some("X")], "opener {opener:?}");
             assert_eq!(diagnostics[0].span.unwrap().start_line, 1, "opener {opener:?}");
         }
+    }
+
+    #[test]
+    fn a_comment_line_with_prose_before_the_marker_targets_the_next_line() {
+        let cases = [
+            "# noqa  # poly: allow[X] reason",
+            "// eslint-disable-line  // poly: allow[X] reason",
+            "-- sqlfluff: disable  -- poly: allow[X] reason",
+            "/* lint */ // poly: allow[X] reason",
+            ";; todo  ;; poly: allow[X] reason",
+        ];
+        for case in cases {
+            let source = format!("{case}\nnext();\n");
+            let mut diagnostics = vec![diag(Some("X"), Some(1)), diag(Some("X"), Some(2))];
+            Suppressions::parse(&source).apply(test_path(), &mut diagnostics, &mut Vec::new());
+            assert_eq!(
+                diagnostics
+                    .iter()
+                    .map(|d| d.span.unwrap().start_line)
+                    .collect::<Vec<_>>(),
+                vec![1],
+                "{case:?}: line 2 is covered, line 1 is not"
+            );
+        }
+    }
+
+    #[test]
+    fn a_comment_line_with_code_like_prose_stays_same_line() {
+        let source = "// call foo(); // poly: allow[X] reason\nnext();\n";
+        let mut diagnostics = vec![diag(Some("X"), Some(1)), diag(Some("X"), Some(2))];
+        Suppressions::parse(source).apply(test_path(), &mut diagnostics, &mut Vec::new());
+        assert_eq!(diagnostics.len(), 1);
+        assert_eq!(diagnostics[0].span.unwrap().start_line, 2);
     }
 
     #[test]
