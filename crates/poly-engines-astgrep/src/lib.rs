@@ -63,6 +63,7 @@ mod go_arch;
 pub mod language;
 pub mod map;
 pub mod pack;
+mod parse;
 pub mod report;
 pub mod rules;
 pub mod test;
@@ -71,7 +72,6 @@ use std::collections::{BTreeSet, HashMap, HashSet};
 use std::sync::{Arc, Mutex, OnceLock};
 
 use ast_grep_config::{CombinedScan, RuleConfig, Severity as AsgSeverity};
-use ast_grep_core::tree_sitter::StrDoc;
 use serde::Serialize;
 
 use poly_engine_api::config::EngineConfig;
@@ -225,11 +225,12 @@ impl Engine for AstGrepEngine {
         };
         let selection = &resolved.selection;
 
-        // `try_new` owns the parse, and `ast-grep-core` already pools the
+        // `StrDoc::try_new` owns the parse, and `ast-grep-core` already pools the
         // underlying `tree_sitter::Parser` per thread per language behind it
         // (`PARSER_CACHE` in its `tree_sitter` module), so there is nothing for
-        // a pool of poly's own to save here.
-        let root = match ast_grep_core::AstGrep::<StrDoc<TslpLanguage>>::try_new(&src.content, tslp_lang) {
+        // a pool of poly's own to save here. What `parse::root` saves is the
+        // parse itself, when a linked engine already parsed this content.
+        let root = match parse::root(&src.content, tslp_lang) {
             Ok(r) => r,
             Err(e) => {
                 tracing::debug!(

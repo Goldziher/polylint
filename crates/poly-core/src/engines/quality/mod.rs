@@ -83,10 +83,12 @@ use settings::Settings;
 const QUALITY_VERSION: &str =
     "quality-6+parse-limit+tslp1.25.0+no-rust-allow+max-in-title+no-prose-lazy-ignore+uncollected-test-file+cols1";
 
-/// A grammar's pooled parser and its kind-class table, both built once per thread.
+/// A grammar's pooled parser and its kind-class table, both built once per thread,
+/// and the grammar itself, which keys the lint pass's shared tree (ADR 0057).
 struct GrammarState {
     parser: Parser,
     kinds: KindTable,
+    language: tree_sitter::Language,
 }
 
 thread_local! {
@@ -198,27 +200,40 @@ fn needs_parse_tree(grammar: &str, settings: &Settings) -> bool {
     settings.magic_number || settings.law_of_demeter || definitions::has_query(grammar) || kinds::has_table(grammar)
 }
 
+/// This thread's pooled state for `grammar`, built on first use; `None` when the
+/// grammar cannot be loaded.
+fn grammar_state<'p>(pool: &'p mut FxHashMap<String, GrammarState>, grammar: &str) -> Option<&'p mut GrammarState> {
+    if !pool.contains_key(grammar) {
+        let language = crate::engines::grammar::language(grammar)?;
+        let mut parser = Parser::new();
+        parser.set_language(&language).ok()?;
+        let kinds = KindTable::build(grammar, &language);
+        pool.insert(
+            grammar.to_owned(),
+            GrammarState {
+                parser,
+                kinds,
+                language,
+            },
+        );
+    }
+    pool.get_mut(grammar)
+}
+
 /// Parse `src` once (via the pooled parser for `grammar`) and run every
 /// structural rule against the resulting tree, degrading honestly per rule
 /// per the module docs when the grammar has no query/table for it.
 fn run_structural_rules(grammar: &str, src: &SourceFile, settings: &Settings, diagnostics: &mut Vec<Diagnostic>) {
     PARSERS.with(|cell| {
         let mut pool = cell.borrow_mut();
-        if !pool.contains_key(grammar) {
-            let Some(language) = crate::engines::grammar::language(grammar) else {
-                return;
-            };
-            let mut parser = Parser::new();
-            if parser.set_language(&language).is_err() {
-                return;
-            }
-            let kinds = KindTable::build(grammar, &language);
-            pool.insert(grammar.to_owned(), GrammarState { parser, kinds });
-        }
-        let Some(state) = pool.get_mut(grammar) else {
+        let Some(state) = grammar_state(&mut pool, grammar) else {
             return;
         };
-        let Some(tree) = state.parser.parse(src.content.as_bytes(), None) else {
+        // Another linked engine in this lint pass (ast-grep) may already hold the tree.
+        let parser = &mut state.parser;
+        let Some(tree) = crate::engines::grammar::shared_tree(&src.content, &state.language, || {
+            parser.parse(src.content.as_bytes(), None)
+        }) else {
             return;
         };
         let kind_table = &state.kinds;

@@ -504,3 +504,125 @@ mod lint_batching {
         assert_eq!(titles(&pass.diagnostics), ["per-file"]);
     }
 }
+
+#[cfg(all(feature = "engine-quality", feature = "engine-astgrep"))]
+mod shared_parse {
+    //! ADR 0057: a lint pass parses a file once per grammar for every linked
+    //! engine that asks (`quality`, `astgrep`), and each `--fix` re-lint is its
+    //! own pass over its own content.
+
+    use std::path::PathBuf;
+
+    use super::*;
+    use crate::config::{EngineConfig, GlobalDefaults};
+    use crate::engine::Engine;
+    use crate::engines::astgrep::AstGrepEngine;
+    use crate::engines::grammar::parse_count;
+    use crate::engines::quality::QualityEngine;
+    use crate::filter::SeverityRemap;
+
+    /// Trips `swallowed-error` (built-in pack, on by default) and
+    /// `too-many-parameters` (quality), so both engines demonstrably used a tree.
+    const RUST: &str = "fn f(a: u8, b: u8, c: u8, d: u8, e: u8, g: u8, h: u8) {\n    \
+                        match r() {\n        Ok(v) => v,\n        Err(_) => {}\n    }\n}\n";
+
+    fn engine_config() -> EngineConfig {
+        EngineConfig {
+            globals: GlobalDefaults::default(),
+            indent_width: 4,
+            options: toml::Table::new(),
+        }
+    }
+
+    fn plan(engine: Box<dyn Engine>) -> EnginePlan {
+        EnginePlan {
+            engine,
+            config: engine_config(),
+            serialized_args: ResultCache::serialize_args(&toml::Table::new()),
+            severity_remap: SeverityRemap::new(Vec::new()),
+            provides_language_lint: true,
+            format_ignore: None,
+        }
+    }
+
+    fn plans() -> Vec<EnginePlan> {
+        vec![plan(Box::new(AstGrepEngine)), plan(Box::new(QualityEngine))]
+    }
+
+    fn rust_file() -> DiscoveredFile {
+        DiscoveredFile {
+            path: PathBuf::from("src/lib.rs"),
+            language: Language::Rust,
+            config_id: 0,
+        }
+    }
+
+    fn codes(diagnostics: &[Diagnostic]) -> Vec<&str> {
+        let mut codes: Vec<&str> = diagnostics.iter().filter_map(|d| d.code.as_deref()).collect();
+        codes.sort_unstable();
+        codes
+    }
+
+    fn lint(content: &str) -> Vec<Diagnostic> {
+        lint_content(
+            &rust_file(),
+            &plans(),
+            content,
+            false,
+            &[],
+            false,
+            &LintPrefill::default(),
+        )
+        .expect("lint")
+        .diagnostics
+    }
+
+    #[test]
+    fn a_lint_pass_parses_the_file_once_for_both_engines() {
+        let before = parse_count();
+        let diagnostics = lint(RUST);
+        assert_eq!(parse_count() - before, 1, "quality and astgrep must share one parse");
+        assert_eq!(codes(&diagnostics), ["swallowed-error", "too-many-parameters"]);
+    }
+
+    /// The control for the test above: the counter does see each engine's parse
+    /// when no pass shares them, so the `1` there is not a counter that never fires.
+    #[test]
+    fn engines_outside_a_lint_pass_parse_once_each() {
+        let src = SourceFile {
+            path: PathBuf::from("src/lib.rs"),
+            language: Language::Rust,
+            content: std::sync::Arc::from(RUST),
+        };
+        let before = parse_count();
+        let mut diagnostics = AstGrepEngine.lint(&src, &engine_config()).expect("astgrep");
+        diagnostics.extend(QualityEngine.lint(&src, &engine_config()).expect("quality"));
+        assert_eq!(parse_count() - before, 2);
+        assert_eq!(codes(&diagnostics), ["swallowed-error", "too-many-parameters"]);
+    }
+
+    #[test]
+    fn the_shared_tree_leaves_every_diagnostic_unchanged() {
+        let src = SourceFile {
+            path: PathBuf::from("src/lib.rs"),
+            language: Language::Rust,
+            content: std::sync::Arc::from(RUST),
+        };
+        let mut alone = AstGrepEngine.lint(&src, &engine_config()).expect("astgrep");
+        alone.extend(QualityEngine.lint(&src, &engine_config()).expect("quality"));
+        assert!(!alone.is_empty());
+        let json = |diagnostics: &[Diagnostic]| serde_json::to_string(diagnostics).expect("serialize");
+        assert_eq!(json(&lint(RUST)), json(&alone));
+    }
+
+    /// A `--fix` re-lint hands the engines rewritten content, which must be parsed
+    /// afresh: a tree from the previous pass would describe bytes that are gone.
+    #[test]
+    fn each_pass_parses_its_own_content() {
+        let fixed = RUST.replace("Err(_) => {}", "Err(e) => return Err(e),");
+        let before = parse_count();
+        assert_eq!(codes(&lint(RUST)), ["swallowed-error", "too-many-parameters"]);
+        assert_eq!(codes(&lint(&fixed)), ["too-many-parameters"]);
+        assert_eq!(parse_count() - before, 2);
+    }
+}

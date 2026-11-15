@@ -30,6 +30,9 @@ pub(super) struct LintPass {
 /// the record. A `prefilled` batch result stands in for running an engine on the
 /// same content. When `collect_debug` is set, also returns per-engine cache
 /// hit/miss + timing; otherwise that element is `None`.
+///
+/// The engines run inside one parse-sharing scope (ADR 0057), so linked engines that
+/// parse this content under the same grammar (`quality`, `astgrep`) parse it once.
 pub(super) fn lint_content(
     f: &DiscoveredFile,
     engine_plans: &[EnginePlan],
@@ -39,6 +42,7 @@ pub(super) fn lint_content(
     keep: bool,
     prefilled: &LintPrefill,
 ) -> anyhow::Result<LintPass> {
+    let _shared_parses = crate::engines::grammar::SharedParses::open();
     let src = SourceFile {
         path: f.path.clone(),
         language: f.language.clone(),

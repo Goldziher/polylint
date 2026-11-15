@@ -12,6 +12,13 @@
 //!   failure without touching the download lock, so a failing fetch costs one
 //!   attempt per window rather than one per file, yet a transient outage heals
 //!   instead of poisoning the rest of the run.
+//!
+//! It also owns the per-lint-pass parse sharing between linked engines
+//! ([`SharedParses`], [`shared_tree`]).
+
+mod shared;
+
+pub use shared::{SharedParses, parse_count, shared_tree, with_shared_parses};
 
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex, OnceLock, RwLock};
