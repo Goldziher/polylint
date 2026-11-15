@@ -617,9 +617,16 @@ where
 /// to a normal result instead of aborting.
 const WORKER_STACK_SIZE: usize = 16 * 1024 * 1024;
 
+static POOL_JOBS: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
+
 fn configure_pool(jobs: Option<usize>) {
     static INIT: Once = Once::new();
+    static WARNED: Once = Once::new();
+    if INIT.is_completed() && jobs.unwrap_or(0) != POOL_JOBS.load(std::sync::atomic::Ordering::Relaxed) {
+        WARNED.call_once(|| tracing::debug!(?jobs, "the worker pool is already sized; `jobs` is ignored"));
+    }
     INIT.call_once(|| {
+        POOL_JOBS.store(jobs.unwrap_or(0), std::sync::atomic::Ordering::Relaxed);
         let mut builder = rayon::ThreadPoolBuilder::new().stack_size(WORKER_STACK_SIZE);
         if let Some(n) = jobs
             && n > 0
