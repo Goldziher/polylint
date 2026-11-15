@@ -20,6 +20,9 @@ use crate::runner::{SkippedFile, SuppressedDiagnostic};
 /// Options controlling a lint/format run.
 #[derive(Debug, Clone, Default)]
 pub struct RunOptions {
+    /// Collect per-phase and per-engine timings (`--timings`); read them back
+    /// with [`crate::timings::take`]. Does not change what the run does.
+    pub timings: bool,
     /// Bypass the content-hash result cache.
     pub no_cache: bool,
     /// Number of worker threads; `None` => all logical cores.

@@ -9,6 +9,7 @@ use crate::config::{Config, Kind};
 use crate::discover::{DiscoveredFile, DiscoveryReport, discover_reporting};
 use crate::filter::{PerFileIgnores, is_generated_lockfile, match_bases};
 use crate::resolve::ConfigSet;
+use crate::timings;
 use poly_cache::{Namespace, ResultCache};
 use rayon::prelude::*;
 use rustc_hash::FxHashSet;
@@ -108,12 +109,18 @@ pub fn lint_run(
     fix: bool,
     collect_debug: bool,
 ) -> anyhow::Result<LintRun> {
+    start_timings(opts);
     configure_pool(opts.jobs);
     let cache = ResultCache::open_default(!opts.no_cache)?;
+    let phase = timings::phase("config resolve");
     let configs = build_config_set(paths, config, opts)?;
     let selection = EngineSelection::new(&opts.only, &opts.skip);
     validate_selection(&configs, crate::components::run_index(opts), &opts.only, &opts.skip)?;
+    drop(phase);
+    let phase = timings::phase("discovery");
     let (files, discovery) = discover_reporting(paths, &configs, &opts.exclude, opts.force_exclude);
+    drop(phase);
+    let phase = timings::phase("planning");
     let plan = plan_by_config_language(
         &files,
         &configs,
@@ -123,6 +130,7 @@ pub fn lint_run(
         &project::ancestor_configs(&configs, paths),
     );
     prefetch_tier2_grammars(&plan);
+    drop(phase);
     let setup = lint_setup(&configs, paths, opts);
     // One relaxed increment per file, so the summary can state how many files
     // were genuinely linted rather than how many were handed to the pipeline.
@@ -132,6 +140,7 @@ pub fn lint_run(
         diagnostics: !fix && !collect_debug,
         verdicts: !collect_debug,
     };
+    let phase = timings::phase("stat index resolve");
     let fast = FastPath::new(
         &cache,
         Namespace::Lint,
@@ -141,7 +150,10 @@ pub fn lint_run(
         replay,
     );
     let resolutions = resolve_all(fast.as_ref(), &files);
+    drop(phase);
+    let phase = timings::phase("batch prefill");
     let prefilled = lint_prefill(&files, &resolutions, &plan, &setup.size_limits);
+    drop(phase);
     let ctx = LintCtx {
         plan: &plan,
         fix,
@@ -152,8 +164,12 @@ pub fn lint_run(
         prefilled: &prefilled,
         fast: fast.as_ref(),
     };
+    let phase = timings::phase("per-file loop");
     let (mut linted, errs) = lint_files(&ctx, &files, resolutions, &checked);
+    drop(phase);
+    let phase = timings::phase("cache flush");
     flush_stat_indexes(&cache);
+    drop(phase);
     log_fast_path(fast.as_ref(), "lint");
     let env = RunEnv {
         paths,
@@ -164,7 +180,9 @@ pub fn lint_run(
         cache: &cache,
         selection,
     };
+    let phase = timings::phase("project phase");
     let project_reports = project_phase(&env, &setup, fix, &mut linted);
+    drop(phase);
     Ok(assemble_lint_run(
         &env,
         linted,
@@ -173,6 +191,14 @@ pub fn lint_run(
         checked.into_inner(),
         discovery,
     ))
+}
+
+/// Turn on `--timings` collection when the caller asked for it. Never turns it off,
+/// so phases a caller recorded before the run are kept.
+fn start_timings(opts: &RunOptions) {
+    if opts.timings {
+        timings::enable();
+    }
 }
 
 /// Per-config lint inputs, resolved once per run rather than once per file.
@@ -420,25 +446,33 @@ pub fn format_run(
     write: bool,
     collect_debug: bool,
 ) -> anyhow::Result<FormatRun> {
+    start_timings(opts);
     configure_pool(opts.jobs);
     let cache = ResultCache::open_default(!opts.no_cache)?;
     let explicit: FxHashSet<&std::path::Path> = paths.iter().map(PathBuf::as_path).collect();
+    let phase = timings::phase("config resolve");
     let configs = build_config_set(paths, config, opts)?;
     let selection = EngineSelection::new(&opts.only, &opts.skip);
     validate_selection(&configs, crate::components::run_index(opts), &opts.only, &opts.skip)?;
+    drop(phase);
+    let phase = timings::phase("discovery");
     let (discovered, discovery) = discover_reporting(paths, &configs, &opts.exclude, opts.force_exclude);
     let files: Vec<DiscoveredFile> = discovered
         .into_iter()
         .filter(|f| explicit.contains(f.path.as_path()) || !is_generated_lockfile(&f.path))
         .collect();
+    drop(phase);
+    let phase = timings::phase("planning");
     let plan = plan_by_config_language(&files, &configs, Kind::Format, selection, opts, &[]);
     prefetch_tier2_grammars(&plan);
+    drop(phase);
     // Same key, same resolution, same phase-agnostic answer as `lint_run`.
     let act_on_generated = acts_on_generated(&configs, opts.generated);
     let size_limits = SizeLimits::of(&configs);
     // Batch-capable formatters run once over many files here, before the loop.
     // Whatever this produces is an accelerator only: every filter below still
     // runs, and a file with no entry simply takes the per-file path (ADR 0033).
+    let phase = timings::phase("stat index resolve");
     let fast = FastPath::new(
         &cache,
         Namespace::Fmt,
@@ -451,7 +485,10 @@ pub fn format_run(
         },
     );
     let resolutions = resolve_all(fast.as_ref(), &files);
+    drop(phase);
+    let phase = timings::phase("batch prefill");
     let prefilled = format_prefill(&files, &resolutions, &plan, &cache, &size_limits);
+    drop(phase);
     let ctx = FormatCtx {
         plan: &plan,
         cache: &cache,
@@ -463,8 +500,12 @@ pub fn format_run(
         prefilled: &prefilled,
         fast: fast.as_ref(),
     };
+    let phase = timings::phase("per-file loop");
     let (results, errors) = format_files(&ctx, &files, resolutions);
+    drop(phase);
+    let phase = timings::phase("cache flush");
     flush_stat_indexes(&cache);
+    drop(phase);
     log_fast_path(fast.as_ref(), "format");
     let env = RunEnv {
         paths,

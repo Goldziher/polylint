@@ -5,8 +5,9 @@
 //! both, and on expiry kills the child's whole process group so a wrapper script
 //! cannot leave the real tool running.
 
+use std::cell::Cell;
 use std::io::{Read, Write};
-use std::process::{Command, ExitStatus, Stdio};
+use std::process::{Child, Command, ExitStatus, Stdio};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc::{Receiver, RecvTimeoutError, channel};
 use std::sync::{Arc, Mutex};
@@ -24,6 +25,81 @@ pub(crate) const STDERR_CAP: usize = 64 * 1024;
 /// daemon the tool started (gradle, bazel, dart servers) inherits them and
 /// would otherwise hang the worker until it dies.
 const DRAIN_GRACE: Duration = Duration::from_secs(2);
+
+/// CPU time and spawn count of the child processes a thread has waited for.
+///
+/// Monotonic per thread, so a caller measures a region as the difference of two
+/// snapshots. `cpu` is `None` where the platform reports no per-child usage.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub(crate) struct ChildUsage {
+    pub(crate) cpu: Option<Duration>,
+    pub(crate) spawns: u64,
+}
+
+thread_local! {
+    static CHILD_USAGE: Cell<ChildUsage> = const { Cell::new(ChildUsage { cpu: None, spawns: 0 }) };
+}
+
+/// The child usage accumulated so far by tool runs made on the calling thread.
+///
+/// [`run_for`] blocks its caller until the child is reaped, so a child's CPU
+/// lands on exactly the worker that waited for it: two rayon workers running
+/// tools at once never see each other's children, unlike a process-wide
+/// `RUSAGE_CHILDREN` delta.
+pub(crate) fn thread_child_usage() -> ChildUsage {
+    CHILD_USAGE.with(Cell::get)
+}
+
+fn note_child(cpu: Option<Duration>) {
+    CHILD_USAGE.with(|cell| {
+        let now = cell.get();
+        cell.set(ChildUsage {
+            cpu: match (now.cpu, cpu) {
+                (Some(total), Some(add)) => Some(total + add),
+                (None, Some(add)) => Some(add),
+                (total, None) => total,
+            },
+            spawns: now.spawns + 1,
+        });
+    });
+}
+
+/// Wait for `child` and report its own user + system CPU time.
+///
+/// `wait4` on the child's pid returns that one child's `rusage` (including the
+/// descendants it reaped), where `getrusage(RUSAGE_CHILDREN)` would mix in every
+/// child any thread of the process had reaped.
+#[cfg(unix)]
+fn reap(child: &mut Child) -> std::io::Result<(ExitStatus, Option<Duration>)> {
+    use std::os::unix::process::ExitStatusExt;
+    let pid = child.id() as libc::pid_t;
+    let mut raw: libc::c_int = 0;
+    // SAFETY: `rusage` is plain data for which all-zero bytes are a valid value.
+    let mut usage: libc::rusage = unsafe { std::mem::zeroed() };
+    loop {
+        // SAFETY: `raw` and `usage` are valid, writable and outlive the call.
+        let reaped = unsafe { libc::wait4(pid, &mut raw, 0, &mut usage) };
+        if reaped == pid {
+            break;
+        }
+        if reaped == -1 {
+            let error = std::io::Error::last_os_error();
+            if error.kind() != std::io::ErrorKind::Interrupted {
+                return Err(error);
+            }
+        }
+    }
+    let micros = |tv: libc::timeval| Duration::new(tv.tv_sec as u64, (tv.tv_usec as u32).saturating_mul(1000));
+    Ok((
+        ExitStatus::from_raw(raw),
+        Some(micros(usage.ru_utime) + micros(usage.ru_stime)),
+    ))
+}
+
+#[cfg(not(unix))]
+fn reap(child: &mut Child) -> std::io::Result<(ExitStatus, Option<Duration>)> {
+    child.wait().map(|status| (status, None))
+}
 
 /// What kind of invocation is being run, which sets its default deadline.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -193,20 +269,24 @@ pub(crate) fn run_for(
     let (stderr, stderr_done) = spawn_drain(err_pipe, STDERR_CAP);
     let (exited, reaped) = channel();
     std::thread::spawn(move || {
-        let _ = exited.send(child.wait());
+        let _ = exited.send(reap(&mut child));
     });
     let waited = match timeout.filter(|limit| Instant::now().checked_add(*limit).is_some()) {
         Some(limit) => reaped.recv_timeout(limit),
         None => reaped.recv().map_err(|_| RecvTimeoutError::Disconnected),
     };
     let status = match waited {
-        Ok(status) => {
+        Ok(waited) => {
             children::unregister(pid);
-            status.with_context(|| format!("waiting for '{tool}'"))?
+            let (status, cpu) = waited.with_context(|| format!("waiting for '{tool}'"))?;
+            note_child(cpu);
+            status
         }
         Err(RecvTimeoutError::Timeout) => {
             children::kill_group(pid);
-            let _ = reaped.recv();
+            if let Ok(Ok((_, cpu))) = reaped.recv() {
+                note_child(cpu);
+            }
             children::unregister(pid);
             return Err(anyhow::Error::new(TimedOut {
                 tool: tool.to_owned(),
@@ -323,6 +403,18 @@ pub(crate) mod fake_tool {
 mod tests {
     use super::fake_tool::script;
     use super::*;
+
+    #[test]
+    #[cfg(unix)]
+    fn child_usage_counts_the_spawn_on_the_waiting_thread() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let tool = script(dir.path(), "tool", "exit 0");
+        let before = thread_child_usage();
+        run_for(&mut Command::new(&tool), "tool", None, LONG).expect("run");
+        let after = thread_child_usage();
+        assert_eq!(after.spawns, before.spawns + 1);
+        assert!(after.cpu.is_some(), "wait4 reports child CPU on unix");
+    }
 
     const SHORT: Option<Duration> = Some(Duration::from_millis(300));
     const LONG: Option<Duration> = Some(Duration::from_secs(10));

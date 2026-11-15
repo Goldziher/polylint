@@ -712,7 +712,9 @@ pub(super) fn plan_by_config_language(
 ) -> RunPlan {
     // The only pass that installs components; the plans below, and the workers after them,
     // only ever load what it made available.
+    let phase = crate::timings::phase("component install");
     let resolved = resolve_components(files, configs, opts, ancestors);
+    drop(phase);
     let mut plans: PlanMap = FxHashMap::default();
     let mut withdrawn: WithdrawnMap = FxHashMap::default();
     for f in files {

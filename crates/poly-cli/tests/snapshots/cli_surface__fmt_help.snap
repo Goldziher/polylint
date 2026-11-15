@@ -138,6 +138,13 @@ Options:
           The budgeted form of `--deny-skips`, for a repo with a known, bounded set of files poly
           cannot check: the gate holds the number steady instead of letting it grow unnoticed.
 
+      --timings
+          After the report, print per-phase wall time and a per-engine table (calls, wall, own and
+          child-process CPU, p95, slowest file) to stderr. Also enabled by `POLY_TIMINGS=1`.
+          
+          Collection does not change what the run does, so the stat-replay fast path stays on,
+          unlike `--debug`.
+
       --set <KEY=VALUE>
           Override a config key for this run (repeatable), as a TOML layer above `poly.local.toml`.
           `KEY` is a dotted TOML path, `VALUE` a TOML value; a value that is not valid TOML is taken

@@ -7,12 +7,14 @@ use clap::Args;
 use poly_config::BaseConfigResolver;
 use poly_core::{Config, LintResult, RunOptions, Severity, Verbosity, report};
 
+use crate::component_notes::report_blocking_components;
 use crate::config_sources::RemoteExtendsResolver;
 
 pub mod auto_lock;
 pub mod cache_cmd;
 pub mod cli;
 pub mod commit;
+mod component_notes;
 pub mod components_cmd;
 pub mod config_cmd;
 pub mod config_sources;
@@ -26,6 +28,7 @@ pub mod polylock;
 pub mod progress;
 pub mod remote;
 pub mod rules_cmd;
+mod timings;
 pub mod workspace_coverage;
 pub mod workspace_phase;
 
@@ -218,6 +221,15 @@ pub struct CommonArgs {
     #[arg(long, value_name = "N")]
     pub max_skips: Option<usize>,
 
+    /// After the report, print per-phase wall time and a per-engine table (calls,
+    /// wall, own and child-process CPU, p95, slowest file) to stderr. Also enabled
+    /// by `POLY_TIMINGS=1`.
+    ///
+    /// Collection does not change what the run does, so the stat-replay fast path
+    /// stays on, unlike `--debug`.
+    #[arg(long)]
+    pub timings: bool,
+
     /// Override a config key for this run (repeatable), as a TOML layer above
     /// `poly.local.toml`. `KEY` is a dotted TOML path, `VALUE` a TOML value; a
     /// value that is not valid TOML is taken as a string.
@@ -337,7 +349,11 @@ pub fn run_lint(args: LintArgs) -> ExitCode {
     init_logging_at(flags.debug, flags.quiet);
     apply_color();
     let verbosity = Verbosity::from_flags(flags.quiet, flags.verbose, flags.debug);
-    let (paths, config, mut opts, poly_config) = match prepare_with_poly(&common) {
+    timings::start(&common);
+    let phase = poly_core::timings::phase("config load");
+    let prepared = prepare_with_poly(&common);
+    drop(phase);
+    let (paths, config, mut opts, poly_config) = match prepared {
         Ok(triple) => triple,
         Err(code) => return code,
     };
@@ -476,13 +492,16 @@ pub fn run_lint(args: LintArgs) -> ExitCode {
                      (and not filtered by [discovery] exclude)"
                 );
             }
-            match workspace_phase::run(
+            let phase = poly_core::timings::phase("whole-project phase");
+            let outcome = workspace_phase::run(
                 config,
                 workspace_plan,
                 overlapped_phase,
                 &phase_options,
                 animations_enabled(&common),
-            ) {
+            );
+            drop(phase);
+            match outcome {
                 Ok(ok) => ok,
                 Err(e) => {
                     eprintln!("error: whole-project lint phase failed: {e:#}");
@@ -491,6 +510,8 @@ pub fn run_lint(args: LintArgs) -> ExitCode {
             }
         }
     };
+
+    timings::print(&common);
 
     // A file whose engine failed was not checked, so it belongs with the other
     // coverage failures in 2 — never in 1, which callers treat as "findings to
@@ -503,36 +524,6 @@ pub fn run_lint(args: LintArgs) -> ExitCode {
     } else {
         ExitCode::SUCCESS
     }
-}
-
-/// Print why each needed component could not be used, once, and say whether any fails the run.
-///
-/// A component `on_missing = "skip"` turned into skips does not fail the run (the user chose
-/// that), but it is never silent: a warning names it and the files it left unchecked, and the
-/// document's `summary.missing_components` counts it.
-fn report_blocking_components(components: &poly_core::components::ComponentsReport) -> bool {
-    for line in component_lines(components) {
-        eprintln!("{line}");
-    }
-    components.blocking()
-}
-
-/// One `error:` or `warning:` line per missing component; see [`report_blocking_components`].
-fn component_lines(components: &poly_core::components::ComponentsReport) -> Vec<String> {
-    components
-        .missing
-        .iter()
-        .map(|missing| {
-            if missing.blocking {
-                format!("error: {}", missing.reason)
-            } else {
-                format!(
-                    "warning: {}; the files it handles were skipped, not checked (`on_missing = \"skip\"`)",
-                    missing.reason
-                )
-            }
-        })
-        .collect()
 }
 
 /// Apply `--deny-skips` / `--max-skips`, naming every file that put the run over
@@ -597,7 +588,11 @@ pub fn run_fmt(args: FmtArgs) -> ExitCode {
     init_logging_at(flags.debug, flags.quiet);
     apply_color();
     let verbosity = Verbosity::from_flags(flags.quiet, flags.verbose, flags.debug);
-    let (paths, config, opts) = match prepare(common) {
+    timings::start(common);
+    let phase = poly_core::timings::phase("config load");
+    let prepared = prepare(common);
+    drop(phase);
+    let (paths, config, opts) = match prepared {
         Ok(triple) => triple,
         Err(code) => return code,
     };
@@ -637,6 +632,8 @@ pub fn run_fmt(args: FmtArgs) -> ExitCode {
             return ExitCode::from(2);
         }
     };
+
+    timings::print(common);
 
     // `poly fmt` is a pure formatter: it runs only the per-file formatting tier
     // above and never the whole-project lint phase (`cargo clippy`/`-sort`/
@@ -747,6 +744,7 @@ fn prepare_with_poly(
         only: common.only.clone(),
         skip: common.skip.clone(),
         on_missing: common.on_missing.map(Into::into),
+        timings: timings::requested(common),
         ..RunOptions::default()
     };
     Ok((paths, config, opts, poly_config))
@@ -826,6 +824,7 @@ fn load_poly_config(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::component_notes::component_lines;
     use poly_core::Diagnostic;
     use poly_core::components::{ComponentsReport, MissingComponent};
 

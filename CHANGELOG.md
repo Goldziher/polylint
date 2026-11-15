@@ -9,6 +9,9 @@ binary drives lint, format, hooks, and commit checks from one `poly.toml`.
 
 ### Added
 
+- **`--timings` for `poly lint` and `poly fmt`** (or `POLY_TIMINGS=1`). Prints per-phase wall time and a per-engine
+  table (calls, wall, own CPU, child-process CPU, p95, slowest file) to stderr, and the slow-engine log now counts a
+  subprocess engine's child CPU, so a busy `rustfmt` is no longer reported as "waiting, not computing".
 - **Twelve more Go rules in the built-in ast-grep pack.** On by default at warning: `go-deprecated-import`
   (`io/ioutil`, `golang.org/x/net/context`), `go-dot-import` and `go-rand-seed`. Opt-in: `go-blank-import-outside-main`,
   `go-fmt-print-outside-main`, `go-time-sleep`, `go-panic-in-library`, `go-goroutine-without-recover`,
