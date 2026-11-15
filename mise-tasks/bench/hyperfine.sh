@@ -166,7 +166,7 @@ run_binary() {
   if [[ -f "$corpus/poly.toml" ]] && grep -q '^\[hooks' "$corpus/poly.toml"; then
     echo "== pre-commit hooks"
     "${hf[@]}" --export-json "$dir/hooks.json" \
-      "bash -c 'cd $corpus && $poly hooks run pre-commit --all-files'"
+      "bash -c 'cd $corpus && POLY_TRUST=1 $poly hooks run pre-commit --all-files'"
   else
     echo "== pre-commit hooks: skipped, $corpus/poly.toml has no [hooks]"
   fi

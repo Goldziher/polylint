@@ -200,3 +200,26 @@ pub(crate) fn eprint_untrusted_note() {
         eprintln!("{line}");
     }
 }
+
+/// Refuse to run `[hooks]` from a config whose exec-capable keys were withheld.
+///
+/// # Errors
+///
+/// When `config` is not trusted.
+pub(crate) fn require_trusted(config: &poly_config::PolyConfig, what: &str) -> Result<()> {
+    if !config.trust.is_restricted() {
+        return Ok(());
+    }
+    let root = config
+        .trust
+        .root
+        .as_ref()
+        .map_or_else(|| "this repository".to_owned(), |root| root.display().to_string());
+    bail!(
+        "refusing to run {what}: {root} is not trusted and its config sets keys that run programs ({}). \
+         Review them with `poly trust --show`, then run `poly trust` (or `poly hooks install`), or set {}=1 \
+         for one run",
+        config.trust.withheld.join(", "),
+        trust::TRUST_ENV
+    )
+}

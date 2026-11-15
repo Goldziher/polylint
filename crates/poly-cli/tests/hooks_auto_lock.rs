@@ -80,6 +80,9 @@ fn poly(repo: &Path, cache: &Path, args: &[&str], env: &[(&str, &str)]) -> Outpu
         .args(args)
         .current_dir(repo)
         .env("POLY_CACHE_HOME", cache)
+        // `poly hooks install` records trust; keep it out of the user's own store.
+        .env("POLY_CONFIG_HOME", cache.join("config"))
+        .env("POLY_TRUST", "1")
         .env_remove("POLY_OFFLINE")
         .env_remove("POLY_LOCKED");
     for (key, value) in env {

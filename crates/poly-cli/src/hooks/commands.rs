@@ -216,6 +216,7 @@ fn run_stage(args: RunArgs) -> Result<ExitCode> {
     let flags = crate::global();
     let explicit_config = flags.config.as_deref();
     let config = load_config(explicit_config)?;
+    crate::trust_cmd::require_trusted(&config, "`poly hooks run`")?;
     let poly_bin = std::env::current_exe().context("failed to resolve the running poly binary")?;
     let stage = resolve_run_stage(args.stage.as_deref(), &config.hooks)?;
 
@@ -308,6 +309,12 @@ fn install(args: InstallArgs) -> Result<ExitCode> {
     if !crate::auto_lock::locked(args.locked) {
         crate::auto_lock::lock_missing("poly hooks install")
             .context("locking missing poly.lock entries (pass --locked to skip)")?;
+    }
+    // Installing hooks is the user's act of trusting this repository (ADR 0057): the
+    // shims will run its `[hooks]` on every commit.
+    if poly_config::find_config(&root).is_some() {
+        let trusted = crate::trust_cmd::trust_repo(&root).context("recording trust for this repository")?;
+        println!("Trusted {} (`poly trust --revoke` undoes it)", trusted.root.display());
     }
     let config = load_config(None)?;
     super::sources::provision(&root, &config.hooks, true).context("provisioning hook sources")?;
@@ -568,6 +575,7 @@ fn hook_impl(args: HookImplArgs) -> Result<ExitCode> {
     let root = repository_root()?;
     let explicit_config = crate::global().config.as_deref();
     let config = load_config(explicit_config)?;
+    crate::trust_cmd::require_trusted(&config, "the git hook")?;
     let sources = provision_for_hook(args.hook_type, &root, &config.hooks)?;
     let Some(inputs) = poly_hooks::hook_impl::hook_impl(args.hook_type, &args.git_args, &root)? else {
         return Ok(ExitCode::SUCCESS);

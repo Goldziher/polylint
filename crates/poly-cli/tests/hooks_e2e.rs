@@ -55,6 +55,9 @@ fn poly_hooks(repo: &Path, args: &[&str]) -> Output {
         .arg("hooks")
         .args(args)
         .current_dir(repo)
+        // `poly hooks install` records trust; keep it out of the user's own store.
+        .env("POLY_CONFIG_HOME", repo.join(".git/poly-config"))
+        .env("POLY_TRUST", "1")
         .output()
         .expect("poly invocation")
 }
@@ -294,6 +297,8 @@ run = "touch {}"
     let commit = Command::new("git")
         .args(["commit", "-q", "-m", "feat: trigger hook"])
         .current_dir(root)
+        // The shim's hook-impl must find the trust `poly hooks install` recorded.
+        .env("POLY_CONFIG_HOME", root.join(".git/poly-config"))
         .env("PATH", augmented_path)
         .output()
         .expect("git commit");
@@ -350,6 +355,7 @@ workspace = true
     let warm = Command::new(POLY)
         .args(["hooks", "run", "pre-commit"])
         .current_dir(root)
+        .env("POLY_TRUST", "1")
         .env("CARGO_HOME", cargo_home.path())
         .output()
         .expect("poly invocation");
@@ -378,6 +384,7 @@ workspace = true
     let mut child = Command::new(POLY)
         .args(["hooks", "run", "pre-commit"])
         .current_dir(root)
+        .env("POLY_TRUST", "1")
         .env("CARGO_HOME", cargo_home.path())
         .stdout(std::process::Stdio::piped())
         .stderr(std::process::Stdio::piped())

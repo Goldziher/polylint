@@ -94,6 +94,10 @@ pub struct WorkspaceLintOutcome {
     /// The per-tool results, in run order. Empty when the phase did not run
     /// (disabled, or no whole-project tools configured).
     pub tools: Vec<WorkspaceToolResult>,
+    /// Whether the phase was skipped because the repository is not trusted to
+    /// run its `[hooks]` (ADR 0057). Such a run neither lowers the hooks, which
+    /// would evaluate their `skip`/`only` guards, nor runs any tool.
+    pub untrusted: bool,
 }
 
 impl WorkspaceLintOutcome {
@@ -102,6 +106,15 @@ impl WorkspaceLintOutcome {
         Self {
             passed: true,
             tools: Vec::new(),
+            untrusted: false,
+        }
+    }
+
+    /// The outcome for a phase withheld from an untrusted repository.
+    fn untrusted() -> Self {
+        Self {
+            untrusted: true,
+            ..Self::skipped()
         }
     }
 
@@ -122,6 +135,7 @@ impl WorkspaceLintOutcome {
         Self {
             passed: outcome.success(),
             tools,
+            untrusted: false,
         }
     }
 }
@@ -203,6 +217,9 @@ pub fn run_planned_workspace_lint(
     live_progress: bool,
 ) -> Result<WorkspaceLintOutcome> {
     let Some(PlannedWorkspace { root, mut spec }) = planned else {
+        if config.trust.hooks_withheld && !workspace_phase_disabled(config) {
+            return Ok(WorkspaceLintOutcome::untrusted());
+        }
         return Ok(WorkspaceLintOutcome::skipped());
     };
     if opts.fix {
@@ -267,7 +284,8 @@ pub fn planned_workspace_tool_ids(config: &PolyConfig) -> Result<Vec<String>> {
 /// past the disabled check, so a repo that has turned the phase off never pays
 /// for the `git rev-parse` that finding it costs.
 fn planned_workspace_stage(config: &PolyConfig) -> Result<Option<(PathBuf, poly_hooks::StageSpec)>> {
-    if workspace_phase_disabled(config) {
+    // An untrusted `[hooks]` is not even lowered: lowering runs `skip`/`only` guards.
+    if workspace_phase_disabled(config) || config.trust.hooks_withheld {
         return Ok(None);
     }
     let root = poly_hooks::git::get_root()
@@ -356,6 +374,10 @@ fn workspace_lint_disabled(lint: &toml::Table) -> bool {
     lint.get("workspace").and_then(toml::Value::as_bool) == Some(false)
 }
 
+/// What a whole-project phase withheld from an untrusted repository reports.
+pub const UNTRUSTED_SKIP: &str = "skipped (untrusted): this repository's [hooks] whole-project tools did not run; \
+                                  review them with `poly trust --show`, then run `poly trust`";
+
 /// Render the whole-project results under a lint-appropriate header — one
 /// `✓/× id` line per tool, with each failing tool's captured output indented
 /// beneath it. Written to stdout when `report_to_stdout`, else stderr.
@@ -363,6 +385,16 @@ fn workspace_lint_disabled(lint: &toml::Table) -> bool {
 /// Byte-for-byte identical to the historic in-CLI renderer. A phase that did not
 /// run (empty [`WorkspaceLintOutcome::tools`]) prints nothing.
 pub fn render_workspace_outcome(outcome: &WorkspaceLintOutcome, report_to_stdout: bool) {
+    if outcome.untrusted {
+        let header = "whole-project checks".if_supports_color(sink_stream(report_to_stdout), |t| t.bold());
+        let block = format!("\n{header}\n  - {UNTRUSTED_SKIP}\n");
+        if report_to_stdout {
+            print!("{block}");
+        } else {
+            let _ = write!(std::io::stderr().lock(), "{block}");
+        }
+        return;
+    }
     if outcome.tools.is_empty() {
         return;
     }

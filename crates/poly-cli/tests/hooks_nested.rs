@@ -42,6 +42,7 @@ fn run_pre_commit(repo: &Path) -> Output {
     Command::new(POLY)
         .args(["hooks", "run", "pre-commit"])
         .current_dir(repo)
+        .env("POLY_TRUST", "1")
         .output()
         .expect("poly invocation")
 }
@@ -166,6 +167,8 @@ fn installing_binds_the_git_hooks_a_nested_config_uses() {
     let output = Command::new(POLY)
         .args(["hooks", "install"])
         .current_dir(root)
+        // `poly hooks install` records trust; keep it out of the user's own store.
+        .env("POLY_CONFIG_HOME", root.join(".git/poly-config"))
         .output()
         .expect("poly invocation");
     assert!(output.status.success(), "{}", String::from_utf8_lossy(&output.stderr));

@@ -91,6 +91,7 @@ pub fn discover(root: &Path, files: &[PathBuf]) -> Result<Vec<NestedHooks>> {
         let config = PolyConfig::load_file_with(&path, &resolver)
             .with_context(|| format!("failed to load the nested config {}", path.display()))?;
         if config.hooks.present {
+            crate::trust_cmd::require_trusted(&config, &format!("the hooks of {}", path.display()))?;
             found.push(NestedHooks { dir, config });
         }
     }
