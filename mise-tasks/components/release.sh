@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 #MISE description="Release build of the downloadable components on alef's content-addressed plan (previous-lock, plan, build, package, lock)"
-#USAGE arg "<step>" help="Release step" { choices "previous-lock" "public-keys" "fetch-alef" "fetch-mise" "fetch-jq" "fetch-rustup-init" "plan" "build" "package" "lock"; }
-#USAGE arg "[args]..." help="plan, build and package take <triple>; lock takes <plans> <records> <out>"
+#USAGE arg "<step>" help="Release step" { choices "previous-lock" "public-keys" "fetch-alef" "fetch-mise" "fetch-jq" "fetch-rustup-init" "plan" "build" "stage" "unstage" "package" "lock"; }
+#USAGE arg "[args]..." help="plan, build, stage, unstage and package take <triple>; lock takes <plans> <records> <out>"
 # Release build of the downloadable components, on alef's content-addressed plan:
 #
 #   mise run components:release previous-lock                  fetch the lock the newest earlier release shipped and
@@ -16,14 +16,21 @@
 #   mise run components:release plan    <triple>               fingerprint each component's inputs; mark each
 #                                                              build or reuse against that lock
 #   mise run components:release build   <triple>               compile the rows marked build (thin LTO, stripped)
+#   mise run components:release stage   <triple>               tar the built payloads and the plan for the signing
+#                                                              job, and write their digest manifest
+#   mise run components:release unstage <triple>               check a staged tar and plan against the digest
+#                                                              manifest and put the payloads back where package reads them
 #   mise run components:release package <triple>               sign and package them, verify
 #   mise run components:release lock    <plans> <records> <out>  merge every triple's plan, then write the lock,
 #                                                              carrying the reuse rows over verbatim
 #
 # publish.yaml runs plan, build and package inside a manylinux_2_28 container on linux gnu, through the
-# musl mise that fetch-mise verified (MISE_TASK_RUN_AUTO_INSTALL=false: the container installs no tools). Everything
-# lands under target/components-release/: previous-lock.json (`{}` when there is none), tools/, plan.json (merged, by `lock`) and, per
-# triple, build/ (shared cargo target dir), plan/plan.json and dist/ (archives and *.record.json to upload).
+# musl mise that fetch-mise verified (MISE_TASK_RUN_AUTO_INSTALL=false: the container installs no tools).
+# plan, build and stage run in the build job, which never sees the signing key; unstage and package run in
+# a separate signing job on a fresh runner (ADR 0057). Everything lands under target/components-release/:
+# previous-lock.json (`{}` when there is none), tools/, plan.json (merged, by `lock`) and, per triple,
+# build/ (shared cargo target dir), plan/plan.json, unstaged/ and digests.sha256 (stage), and dist/
+# (archives and *.record.json to upload).
 #
 # Environment:
 #   GH_TOKEN, GITHUB_REPOSITORY     read the previous release (previous-lock)
@@ -60,13 +67,13 @@ export CARGO_PROFILE_RELEASE_LTO=thin
 # hash differently from the plan. RUSTFLAGS and CARGO_PROFILE_* are fingerprinted from the environment.
 EXTRA=(--extra "key-id=${KEY_ID}" --extra "image=${BUILD_IMAGE:-host}")
 
-STEP="${1:?usage: mise run components:release previous-lock|public-keys|fetch-alef|fetch-mise|fetch-jq|fetch-rustup-init|plan|build|package|lock ...}"
+STEP="${1:?usage: mise run components:release previous-lock|public-keys|fetch-alef|fetch-mise|fetch-jq|fetch-rustup-init|plan|build|stage|unstage|package|lock ...}"
 
 COMPONENTS_OUT="${ROOT_DIR}/target/components-release"
 PREVIOUS_LOCK="${COMPONENTS_OUT}/previous-lock.json"
 
 usage() {
-  echo "usage: mise run components:release previous-lock | public-keys | fetch-alef | fetch-mise | fetch-jq | fetch-rustup-init | plan|build|package <triple> | lock <plans> <records> <out>" >&2
+  echo "usage: mise run components:release previous-lock | public-keys | fetch-alef | fetch-mise | fetch-jq | fetch-rustup-init | plan|build|stage|unstage|package <triple> | lock <plans> <records> <out>" >&2
   exit 1
 }
 
@@ -431,6 +438,11 @@ OUT="${COMPONENTS_OUT}/${TARGET}"
 BUILD="${OUT}/build"
 DIST="${OUT}/dist"
 PLAN="${OUT}/plan/plan.json"
+# Where `component build --target-dir` leaves each payload, beside the <payload>.input-hash that
+# `package --plan` requires.
+PAYLOADS="${BUILD}/${TARGET}/release"
+STAGED="${OUT}/unstaged"
+DIGESTS="${OUT}/digests.sha256"
 
 case "${STEP}" in
 plan)
@@ -467,6 +479,70 @@ build)
   if [[ "$(build_rows "${PLAN}")" -gt 0 ]]; then
     alef component build --plan "${PLAN}" --target-dir "${BUILD}" "${EXTRA[@]}"
   fi
+  ;;
+
+stage)
+  [[ -f "${PLAN}" ]] || {
+    echo "components-release: no plan at ${PLAN}; run the plan step first" >&2
+    exit 1
+  }
+  expected="$(build_rows "${PLAN}")"
+  names=()
+  if [[ "${expected}" -gt 0 ]]; then
+    while IFS= read -r sidecar; do
+      payload="${sidecar%.input-hash}"
+      [[ -f "${payload}" ]] || {
+        echo "components-release: ${sidecar} has no payload beside it" >&2
+        exit 1
+      }
+      names+=("$(basename "${payload}")" "$(basename "${sidecar}")")
+    done < <(find "${PAYLOADS}" -maxdepth 1 -name '*.input-hash' | sort)
+  fi
+  [[ "$((${#names[@]} / 2))" == "${expected}" ]] || {
+    echo "components-release: ${TARGET} plans ${expected} build(s), found $((${#names[@]} / 2)) built payload(s)" >&2
+    exit 1
+  }
+  rm -rf "${STAGED}"
+  mkdir -p "${STAGED}"
+  # One tar, so the executables keep their mode through the artifact store.
+  if [[ "${expected}" -gt 0 ]]; then
+    tar -cf "${STAGED}/payloads.tar" -C "${PAYLOADS}" "${names[@]}"
+  else
+    tar -cf "${STAGED}/payloads.tar" -T /dev/null
+  fi
+  cp "${PLAN}" "${STAGED}/plan.json"
+  {
+    printf '%s  %s\n' "$(sha256_of "${STAGED}/payloads.tar")" payloads.tar
+    printf '%s  %s\n' "$(sha256_of "${STAGED}/plan.json")" plan.json
+  } >"${DIGESTS}"
+  cat "${DIGESTS}"
+  ;;
+
+unstage)
+  [[ -f "${DIGESTS}" && -f "${STAGED}/payloads.tar" && -f "${STAGED}/plan.json" ]] || {
+    echo "components-release: unstage needs ${DIGESTS}, ${STAGED}/payloads.tar and ${STAGED}/plan.json" >&2
+    exit 1
+  }
+  [[ "$(awk '{ print $2 }' "${DIGESTS}" | sort | tr '\n' ' ')" == "payloads.tar plan.json " ]] || {
+    echo "components-release: ${DIGESTS} must list exactly payloads.tar and plan.json" >&2
+    exit 1
+  }
+  while read -r digest name; do
+    actual="$(sha256_of "${STAGED}/${name}")"
+    [[ "${actual}" == "${digest}" ]] || {
+      echo "components-release: staged ${name} is sha256:${actual}, the build job recorded sha256:${digest}" >&2
+      exit 1
+    }
+  done <"${DIGESTS}"
+  mkdir -p "${PAYLOADS}" "$(dirname "${PLAN}")"
+  cp "${STAGED}/plan.json" "${PLAN}"
+  tar -xf "${STAGED}/payloads.tar" -C "${PAYLOADS}"
+  sidecars="$(find "${PAYLOADS}" -maxdepth 1 -name '*.input-hash' | grep -c . || true)"
+  [[ "${sidecars}" == "$(build_rows "${PLAN}")" ]] || {
+    echo "components-release: ${TARGET} plans $(build_rows "${PLAN}") build(s), the staged tar holds ${sidecars}" >&2
+    exit 1
+  }
+  echo "unstaged ${sidecars} payload(s) for ${TARGET}, digests verified"
   ;;
 
 package)

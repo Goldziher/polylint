@@ -27,23 +27,25 @@ on:
 # rust-version and rust-toolchain.toml: every `RUST_TOOLCHAIN:` env, the `toolchain:` inputs of
 # dtolnay/rust-toolchain, and the `rust:<minor>-alpine` image tag (and its digest) of the musl leg.
 
-# Component signing: the build-components jobs sign each archive with the Ed25519 private key in the
-# repository secret POLY_COMPONENT_SIGNING_KEY (PKCS#8 PEM, or base64 of the PKCS#8 DER or a raw
-# 32-byte seed). Its public half is `poly-release-1` in alef.toml
-# ([crates.component_distribution.public_keys]); rotate by adding a second key id there and changing
-# KEY_ID in mise-tasks/components/release.sh. A missing secret fails the release.
+# Component signing (ADR 0057): build-components builds without any secret; sign_components, on a
+# fresh runner in the `release` environment, checks the payloads against the build job's digest
+# manifest and signs each archive with the Ed25519 private key in the environment secret
+# POLY_COMPONENT_SIGNING_KEY (PKCS#8 PEM, or base64 of the PKCS#8 DER or a raw 32-byte seed). Its
+# public half is `poly-release-1` in alef.toml ([crates.component_distribution.public_keys]); the
+# rotation procedure is in the ADR and docs/release-runbook.md. A missing secret fails the release.
+# HOMEBREW_TOKEN and RELEASE_TAG_TOKEN are `release` environment secrets too.
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: false
 
-# Least privilege at the workflow level: only `contents: write`, which the
-# release-asset steps need. The npm and PyPI jobs additionally request
-# `id-token: write` on themselves, because trusted publishing (OIDC) mints its
-# token from that claim — granting it to every job would hand the whole matrix a
-# credential that can publish packages.
+# Least privilege: read-only by default. The few jobs that write to the release (create_release,
+# publish_assets, finalize_release, the major tag) or must see a draft release (meta) ask for
+# `contents: write` themselves, and no job that compiles code holds a write token. The npm and PyPI
+# jobs additionally request `id-token: write` on themselves, because trusted publishing (OIDC) mints
+# its token from that claim.
 permissions:
-  contents: write
+  contents: read
 
 jobs:
   plugin-meta:
@@ -179,6 +181,10 @@ jobs:
     if: ${{ !inputs.plugins-only }}
     name: Resolve release metadata
     runs-on: ubuntu-latest
+    permissions:
+      # A draft release, and so whether a failed run left one complete, is visible only to a token
+      # with write access.
+      contents: write
     outputs:
       version: ${{ steps.version.outputs.version }}
       tag: ${{ steps.version.outputs.tag }}
@@ -204,6 +210,7 @@ jobs:
         uses: actions/checkout@v7
         with:
           fetch-depth: 0
+          persist-credentials: false
           ref: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.tag || '' }}
 
       - name: Extract version from tag
@@ -380,12 +387,11 @@ jobs:
             case "$tag" in
               *-rc.* | *-beta* | *-alpha*) prerelease="--prerelease" ;;
             esac
-            # Create as a DRAFT. The build matrix uploads binaries to it, but it
-            # stays invisible (assets not publicly downloadable) until the
-            # finalize_release job promotes it — and that job only runs once
-            # checksums (which requires all platform binaries) succeeds. A failed
-            # platform build therefore leaves a hidden draft, not a live release
-            # with missing binaries and no checksums.
+            # Create as a DRAFT. publish_assets uploads to it once every build has
+            # passed, but it stays invisible (assets not publicly downloadable) until
+            # the finalize_release job promotes it. A failed platform build therefore
+            # leaves a hidden draft, not a live release with missing binaries and no
+            # checksums.
             gh release create "$tag" --title "$tag" --notes "Release $tag" --verify-tag --draft $prerelease
           fi
 
@@ -420,6 +426,7 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v7
         with:
+          persist-credentials: false
           ref: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.tag || '' }}
 
       - name: Setup Rust
@@ -444,25 +451,28 @@ jobs:
             ATTRIBUTIONS.md
           if-no-files-found: error
 
+  # Builds every component with no secret and a read-only token: build scripts and proc macros of the
+  # whole dependency tree run here, so nothing this job can reach may sign or publish (ADR 0057). The
+  # built payloads leave as one tar plus a digest manifest for sign_components.
   build-components:
     name: Build components / ${{ matrix.triple }}
     needs: [meta, create_release]
     if: >-
       !inputs.plugins-only && (needs.meta.outputs.release_assets_exist != 'true')
     runs-on: ${{ matrix.os }}
+    permissions:
+      contents: read
     env:
-      RELEASE_TAG: ${{ needs.meta.outputs.tag }}
-      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       # Part of each component's input hash, so a new image rebuilds instead of reusing. Empty
       # for the native builds.
       BUILD_IMAGE: ${{ matrix.image }}
       # One exact toolchain for every component build: the host setup, the manylinux container's
       # rustup and the input hash all use this value. Bump it deliberately; it rebuilds everything.
       RUST_TOOLCHAIN: "1.100.0"
-      REBUILD_COMPONENTS: ${{ github.event.inputs.rebuild_components || 'false' }}
     strategy:
       fail-fast: false
       # musl is absent on purpose: that binary is fully bundled and downloads no component.
+      # sign_components repeats this matrix: keep the two in step.
       matrix:
         include:
           # glibc is the floor the components' symbols are linked against, so the gnu builds run in
@@ -483,6 +493,7 @@ jobs:
         uses: actions/checkout@v7
         with:
           fetch-depth: 0
+          persist-credentials: false
           ref: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.tag || '' }}
 
       - name: Shorten paths for the biome checkout (adrs/0003-dependency-policy.md)
@@ -498,11 +509,6 @@ jobs:
           toolchain: ${{ env.RUST_TOOLCHAIN }}
           targets: ${{ matrix.triple }}
 
-      - name: Setup cache
-        uses: Swatinem/rust-cache@v2
-        with:
-          key: components-${{ matrix.triple }}
-
       # go builds the sh component, an executable producer (alef.toml); the manylinux containers get it by mount.
       - name: Setup mise (alef, go)
         uses: xberg-io/actions/setup-mise@v1
@@ -516,12 +522,10 @@ jobs:
           path: target/components-release
 
       # The musl alef, the musl mise, jq and rustup-init are fetched here, on the host, checked against
-      # the sha256 pinned in mise-tasks/components/release.sh, and reached through the /work mount. The container has an old glibc and no mise, so it runs the
-      # same `mise run components:release` task with the static binary and installs no tools
-      # (MISE_TASK_RUN_AUTO_INSTALL=false): alef comes from ALEF, cargo and rustc from rustup. The
-      # signing key reaches only the package container; rustup, plan and build run in one without
-      # it. Both containers share image, mounts and environment, so the package step recomputes the
-      # fingerprint the plan recorded.
+      # the sha256 pinned in mise-tasks/components/release.sh, and reached through the /work mount.
+      # The container has an old glibc and no mise, so it runs the same `mise run components:release`
+      # task with the static binary and installs no tools (MISE_TASK_RUN_AUTO_INSTALL=false): alef
+      # comes from ALEF, cargo and rustc from rustup.
       - name: Fetch alef and mise for the manylinux_2_28 container
         if: ${{ matrix.image }}
         shell: bash
@@ -539,8 +543,9 @@ jobs:
             echo "GOROOT_ON_HOST=$(go env GOROOT)"
           } >> "$GITHUB_ENV"
 
-      # rustup installs into CARGO_HOME/RUSTUP_HOME under the workspace, in the keyless container;
-      # the package container reuses them offline. Both get the same paths.
+      # rustup installs into CARGO_HOME/RUSTUP_HOME under the workspace. sign_components repeats this
+      # container's image, mounts and environment, so its package step recomputes the fingerprint the
+      # plan recorded.
       - name: Plan and build components (manylinux_2_28 container)
         if: ${{ matrix.image }}
         shell: bash
@@ -566,8 +571,153 @@ jobs:
               chown -R "$HOST_UID:$HOST_GID" target
             '
 
-      # No network and no installer here: the key is a read-only 0600 file, exported for the one
-      # package command only.
+      - name: Plan components (input hashes, reuse against the previous lock)
+        if: ${{ !matrix.image }}
+        shell: bash
+        run: mise run components:release plan "${{ matrix.triple }}"
+
+      - name: Build components
+        if: ${{ !matrix.image }}
+        shell: bash
+        run: mise run components:release build "${{ matrix.triple }}"
+
+      - name: Stage the unsigned payloads and record their digests
+        shell: bash
+        run: mise run components:release stage "${{ matrix.triple }}"
+
+      - name: Save the unsigned payloads for signing
+        uses: actions/upload-artifact@v7
+        with:
+          name: component-unsigned-${{ matrix.triple }}
+          path: target/components-release/${{ matrix.triple }}/unstaged/
+          if-no-files-found: error
+
+      # A separate artifact, so the signing job compares the payload tar with a manifest it downloads
+      # on its own rather than with a file inside the same upload.
+      - name: Save the digest manifest
+        uses: actions/upload-artifact@v7
+        with:
+          name: component-digests-${{ matrix.triple }}
+          path: target/components-release/${{ matrix.triple }}/digests.sha256
+          if-no-files-found: error
+
+      - name: Save the plan for the lock
+        uses: actions/upload-artifact@v7
+        with:
+          name: component-plan-${{ matrix.triple }}
+          path: target/components-release/${{ matrix.triple }}/plan/plan.json
+          if-no-files-found: error
+
+  # Signs the components on a fresh runner that ran no build: it checks the build job's payloads
+  # against the digest manifest, then `alef component package` re-fingerprints the checked-out tree
+  # (cargo metadata, rustc -vV and go version, none of which runs dependency code), signs and
+  # verifies. The key lives in the `release` environment, so a job outside it cannot read it, and
+  # this job holds no write token. The runner OS and image match build-components because alef's
+  # fingerprint includes the native toolchain of the target's OS family.
+  sign_components:
+    name: Sign components / ${{ matrix.triple }}
+    needs: [meta, build-components]
+    if: >-
+      !inputs.plugins-only && (needs.meta.outputs.release_assets_exist != 'true')
+    runs-on: ${{ matrix.os }}
+    environment: release
+    permissions:
+      contents: read
+    env:
+      BUILD_IMAGE: ${{ matrix.image }}
+      RUST_TOOLCHAIN: "1.100.0"
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - triple: x86_64-unknown-linux-gnu
+            os: ubuntu-latest
+            image: quay.io/pypa/manylinux_2_28_x86_64:2026.11.01-2@sha256:7e41b1c7fd64dfc69703a1124b43c404382973ee06ec5d764b85c34d2221fded
+          - triple: aarch64-unknown-linux-gnu
+            os: ubuntu-24.04-arm
+            image: quay.io/pypa/manylinux_2_28_aarch64:2026.11.01-2@sha256:54b271d9562a3686298880df05367909e949ed317e7b1b79b59c696d75f78676
+          - triple: aarch64-apple-darwin
+            os: macos-26
+          - triple: x86_64-pc-windows-msvc
+            os: windows-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+          ref: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.tag || '' }}
+
+      - name: Shorten paths for the biome checkout (adrs/0003-dependency-policy.md)
+        if: runner.os == 'Windows'
+        shell: bash
+        run: |
+          git config --global core.longpaths true
+          echo 'CARGO_HOME=D:\c' >> "$GITHUB_ENV"
+
+      - name: Setup Rust
+        if: ${{ !matrix.image }}
+        uses: dtolnay/rust-toolchain@v1
+        with:
+          toolchain: ${{ env.RUST_TOOLCHAIN }}
+          targets: ${{ matrix.triple }}
+
+      # alef's sha256 is pinned in mise.lock (native legs) or in release.sh (fetch-alef, gnu legs).
+      - name: Setup mise (alef, go)
+        uses: xberg-io/actions/setup-mise@v1
+        with:
+          tools: github:xberg-io/alef go
+
+      - name: Download the unsigned payloads
+        uses: actions/download-artifact@v8
+        with:
+          name: component-unsigned-${{ matrix.triple }}
+          path: target/components-release/${{ matrix.triple }}/unstaged
+
+      - name: Download the digest manifest
+        uses: actions/download-artifact@v8
+        with:
+          name: component-digests-${{ matrix.triple }}
+          path: target/components-release/${{ matrix.triple }}
+
+      - name: Check the payloads against the digests and put them in place
+        shell: bash
+        run: mise run components:release unstage "${{ matrix.triple }}"
+
+      - name: Fetch alef and mise for the manylinux_2_28 container
+        if: ${{ matrix.image }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          alef="$(mise run components:release fetch-alef)"
+          mise_bin="$(mise run components:release fetch-mise)"
+          jq_bin="$(mise run components:release fetch-jq)"
+          rustup_init="$(mise run components:release fetch-rustup-init)"
+          {
+            echo "ALEF_IN_CONTAINER=/work/${alef#"$PWD"/}"
+            echo "MISE_IN_CONTAINER=/work/${mise_bin#"$PWD"/}"
+            echo "JQ_IN_CONTAINER=/work/${jq_bin#"$PWD"/}"
+            echo "RUSTUP_INIT_IN_CONTAINER=/work/${rustup_init#"$PWD"/}"
+            echo "GOROOT_ON_HOST=$(go env GOROOT)"
+          } >> "$GITHUB_ENV"
+
+      # The toolchain is installed in its own container run, before the key file exists.
+      - name: Install the toolchain (manylinux_2_28 container)
+        if: ${{ matrix.image }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          docker run --rm -v "$PWD":/work -w /work \
+            -e TARGET="${{ matrix.triple }}" -e RUST_TOOLCHAIN -e RUSTUP_INIT_IN_CONTAINER \
+            -e CARGO_HOME=/work/target/components-release/toolchain/cargo \
+            -e RUSTUP_HOME=/work/target/components-release/toolchain/rustup \
+            -e HOST_UID="$(id -u)" -e HOST_GID="$(id -g)" \
+            "${{ matrix.image }}" bash -euo pipefail -c '
+              "$RUSTUP_INIT_IN_CONTAINER" -y --no-modify-path --profile minimal --default-toolchain "$RUST_TOOLCHAIN" --target "$TARGET"
+              chown -R "$HOST_UID:$HOST_GID" target
+            '
+
+      # The key is a read-only 0600 file, exported for the one package command only.
       - name: Write the signing key file
         if: ${{ matrix.image }}
         shell: bash
@@ -605,16 +755,6 @@ jobs:
         shell: bash
         run: rm -f "$RUNNER_TEMP/poly-key"
 
-      - name: Plan components (input hashes, reuse against the previous lock)
-        if: ${{ !matrix.image }}
-        shell: bash
-        run: mise run components:release plan "${{ matrix.triple }}"
-
-      - name: Build components
-        if: ${{ !matrix.image }}
-        shell: bash
-        run: mise run components:release build "${{ matrix.triple }}"
-
       - name: Sign and package components
         if: ${{ !matrix.image }}
         shell: bash
@@ -622,19 +762,7 @@ jobs:
           POLY_COMPONENT_SIGNING_KEY: ${{ secrets.POLY_COMPONENT_SIGNING_KEY }}
         run: mise run components:release package "${{ matrix.triple }}"
 
-      - name: Upload component assets to the release
-        shell: bash
-        run: |
-          set -euo pipefail
-          shopt -s nullglob
-          assets=(target/components-release/${{ matrix.triple }}/dist/*)
-          if [ "${#assets[@]}" -eq 0 ]; then
-            echo "every component for ${{ matrix.triple }} is reused; nothing to upload"
-          else
-            gh release upload "$RELEASE_TAG" "${assets[@]}" --clobber
-          fi
-
-      - name: Save artifact for the lock and checksums
+      - name: Save the signed components for the lock and checksums
         uses: actions/upload-artifact@v7
         with:
           name: releases-components-${{ matrix.triple }}
@@ -642,29 +770,25 @@ jobs:
           # Empty when the plan reuses every component for this triple.
           if-no-files-found: ignore
 
-      - name: Save the plan for the lock
-        uses: actions/upload-artifact@v7
-        with:
-          name: component-plan-${{ matrix.triple }}
-          path: target/components-release/${{ matrix.triple }}/plan/plan.json
-          if-no-files-found: error
-
   component-lock:
     name: Merge the component lock
-    needs: [meta, build-components]
+    needs: [meta, sign_components]
     if: >-
       !inputs.plugins-only && (needs.meta.outputs.release_assets_exist != 'true')
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
     steps:
       - name: Checkout
         uses: actions/checkout@v7
         with:
+          persist-credentials: false
           ref: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.tag || '' }}
 
       - name: Setup mise (alef)
         uses: xberg-io/actions/setup-mise@v1
 
-      - name: Download every triple's built component assets
+      - name: Download every triple's signed components
         # Absent when the plan reuses every component on every triple.
         continue-on-error: true
         uses: actions/download-artifact@v8
@@ -728,11 +852,6 @@ jobs:
           }
           echo "lock carries $total signed artifacts ($to_build built for $RELEASE_TAG, $((total - to_build)) reused)"
 
-      - name: Upload the lock to the release
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: gh release upload "${{ needs.meta.outputs.tag }}" poly-components.lock.json --clobber
-
       - name: Save the lock for the core builds and checksums
         uses: actions/upload-artifact@v7
         with:
@@ -747,6 +866,9 @@ jobs:
     if: >-
       !inputs.plugins-only && (needs.meta.outputs.release_assets_exist != 'true')
     runs-on: ${{ matrix.os }}
+    # Like build-components: dependency build code runs here, so no secret and no write token.
+    permissions:
+      contents: read
     # Stamp the build id from the tag we are releasing rather than leaving
     # build.rs to infer it from `git describe`. The release also force-moves the
     # `v0` major tag onto this commit, so a later workflow_dispatch re-run — the
@@ -779,6 +901,7 @@ jobs:
         uses: actions/checkout@v7
         with:
           fetch-depth: 0
+          persist-credentials: false
           ref: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.tag || '' }}
 
       - name: Shorten paths for the biome checkout (adrs/0003-dependency-policy.md)
@@ -801,12 +924,6 @@ jobs:
           toolchain: ${{ env.RUST_TOOLCHAIN }}
           targets: ${{ matrix.triple }}
 
-      - name: Setup cache
-        if: ${{ !matrix.alpine }}
-        uses: Swatinem/rust-cache@v2
-        with:
-          key: ${{ matrix.triple }}
-
       - name: Install clang for bindgen (Linux)
         if: ${{ runner.os == 'Linux' && !matrix.alpine }}
         run: sudo apt-get update && sudo apt-get install -y clang libclang-dev
@@ -817,6 +934,18 @@ jobs:
         with:
           name: releases-components-lock
           path: components-lock
+
+      # The smoke test serves this tag's components from the signed artifacts: they reach the release
+      # only once every build has passed.
+      - name: Download this release's signed components
+        if: ${{ matrix.alpine != true }}
+        # Absent when the plan reuses every component on every triple.
+        continue-on-error: true
+        uses: actions/download-artifact@v8
+        with:
+          pattern: releases-components-*-*
+          merge-multiple: true
+          path: components-dist
 
       - name: Build binary (native, component lock embedded)
         if: ${{ !matrix.alpine }}
@@ -978,12 +1107,15 @@ jobs:
 
       - name: Smoke-test the core binary against this release's components
         # Runs the binary users get: it installs every component of its triple through the embedded,
-        # signed lock (assets fetched from the draft release into a localhost mirror, so each lock
-        # URL keeps its path) and lints and formats one file per component language. A wrong signing
-        # key, a component that does not load, or an engine that errors fails the release here.
+        # signed lock (this tag's assets from the signed artifacts, reused ones from their published
+        # release, into a localhost mirror, so each lock URL keeps its path) and lints and formats one
+        # file per component language. A wrong signing key, a component that does not load, or an
+        # engine that errors fails the release here.
         if: ${{ matrix.alpine != true }}
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # Reads the published releases reused entries point at; this job's token is read-only.
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ needs.meta.outputs.tag }}
         run: |
           set -euo pipefail
           bin="$PWD/target/${{ matrix.triple }}/$PROFILE_DIR/poly"
@@ -997,7 +1129,11 @@ jobs:
             tag="$(echo "$path" | cut -d/ -f5)"
             dir="$mirror/$(dirname "$path")"
             mkdir -p "$dir"
-            gh release download "$tag" --repo "$GITHUB_REPOSITORY" --pattern "$(basename "$path")" --dir "$dir" --clobber
+            if [ "$tag" = "$RELEASE_TAG" ]; then
+              cp "components-dist/$(basename "$path")" "$dir/"
+            else
+              gh release download "$tag" --repo "$GITHUB_REPOSITORY" --pattern "$(basename "$path")" --dir "$dir" --clobber
+            fi
             rows=$((rows + 1))
           done < <(jq -er --arg t "${{ matrix.triple }}" '.artifacts[] | select(.identity.target == $t) | .url' "$lock")
           [ "$rows" -gt 0 ] || { echo "::error::the lock has no components for ${{ matrix.triple }}"; exit 1; }
@@ -1086,30 +1222,6 @@ jobs:
           done
         shell: bash
 
-      - name: Upload release artifacts
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          set -euo pipefail
-          tag="${{ needs.meta.outputs.tag }}"
-
-          case "${{ matrix.triple }}" in
-            *windows*)
-              archive="poly-${{ needs.meta.outputs.version }}-${{ matrix.triple }}.zip"
-              ;;
-            *)
-              archive="poly-${{ needs.meta.outputs.version }}-${{ matrix.triple }}.tar.gz"
-              ;;
-          esac
-
-          if [ ! -f "$archive" ]; then
-            echo "::error::Archive not found: $archive"
-            exit 1
-          fi
-
-          gh release upload "$tag" "$archive" --clobber
-        shell: bash
-
       - name: Save artifact for checksums
         uses: actions/upload-artifact@v7
         with:
@@ -1121,13 +1233,16 @@ jobs:
 
   checksums:
     if: ${{ !inputs.plugins-only }}
-    name: Generate and upload checksums
-    needs: [meta, build-binaries, build-components, component-lock]
+    name: Generate checksums
+    needs: [meta, build-binaries, sign_components, component-lock]
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
     steps:
       - name: Checkout
         uses: actions/checkout@v7
         with:
+          persist-credentials: false
           ref: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.tag || '' }}
 
       - name: Download all artifacts
@@ -1168,7 +1283,7 @@ jobs:
       - name: Verify every component asset is present
         env:
           RELEASE_TAG: ${{ needs.meta.outputs.tag }}
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
           missing=0
@@ -1227,20 +1342,59 @@ jobs:
             -o -name "poly-components.lock.json" \) -exec sha256sum {} \; | sort > ../sha256sums.txt
           cat ../sha256sums.txt
 
-      - name: Upload checksums to release
+      - name: Save the checksums for the upload
+        uses: actions/upload-artifact@v7
+        with:
+          name: release-checksums
+          path: sha256sums.txt
+          if-no-files-found: error
+
+  # The only build-path job with a write token: it uploads exactly the files sha256sums.txt lists,
+  # after checking each against it, and builds nothing.
+  publish_assets:
+    if: ${{ !inputs.plugins-only }}
+    name: Upload release assets
+    needs: [meta, checksums]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Download the release files
+        uses: actions/download-artifact@v8
+        with:
+          pattern: releases-*
+          merge-multiple: true
+          path: artifacts
+
+      - name: Download the checksums
+        uses: actions/download-artifact@v8
+        with:
+          name: release-checksums
+          path: artifacts
+
+      - name: Check every listed file and upload it
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ needs.meta.outputs.tag }}
         run: |
           set -euo pipefail
-          tag="${{ needs.meta.outputs.tag }}"
-          gh release upload "$tag" sha256sums.txt --clobber
+          cd artifacts
+          sha256sum -c sha256sums.txt
+          mapfile -t assets < <(awk '{ n = $NF; sub(/^\.\//, "", n); print n }' sha256sums.txt)
+          [ "${#assets[@]}" -gt 0 ] || { echo "::error::sha256sums.txt lists nothing"; exit 1; }
+          # Assets first, sha256sums.txt last: it is the marker meta and the installers read as "complete".
+          gh release upload "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" --clobber "${assets[@]}"
+          gh release upload "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" --clobber sha256sums.txt
+          echo "uploaded ${#assets[@]} assets and sha256sums.txt to $RELEASE_TAG"
 
   finalize_release:
     name: Publish GitHub release
-    needs: [meta, checksums]
+    needs: [meta, checksums, publish_assets]
     if: >-
       !inputs.plugins-only && (always() && needs.meta.result == 'success')
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
     steps:
       - name: Checkout
         uses: actions/checkout@v7
@@ -1311,6 +1465,10 @@ jobs:
     if: >-
       !inputs.plugins-only && (needs.finalize_release.result == 'success' && !contains(needs.meta.outputs.version, '-rc') && !contains(needs.meta.outputs.version, '-beta') && !contains(needs.meta.outputs.version, '-alpha'))
     runs-on: ubuntu-latest
+    # HOMEBREW_TOKEN is a `release` environment secret.
+    environment: release
+    permissions:
+      contents: read
     steps:
       - name: Checkout
         uses: actions/checkout@v7
@@ -1403,6 +1561,8 @@ jobs:
     # every other channel is served from. Nothing depends on this job, so its
     # failure cannot re-draft the release.
     continue-on-error: true
+    # HOMEBREW_TOKEN is a `release` environment secret.
+    environment: release
     permissions:
       # Reads the release's sha256sums.txt; the bucket push uses a PAT, not this
       # token, so the job never needs write access to this repository.
@@ -1912,6 +2072,10 @@ jobs:
     if: >-
       !inputs.plugins-only && (needs.finalize_release.result == 'success' && !contains(needs.meta.outputs.version, '-rc') && !contains(needs.meta.outputs.version, '-beta') && !contains(needs.meta.outputs.version, '-alpha'))
     runs-on: ubuntu-latest
+    # RELEASE_TAG_TOKEN is a `release` environment secret.
+    environment: release
+    permissions:
+      contents: write
     steps:
       - name: Checkout
         uses: actions/checkout@v7
@@ -1944,7 +2108,7 @@ jobs:
           git tag -f "$major" "$sha"
           if ! git push -f origin "refs/tags/${major}"; then
             if [ "$HAS_RELEASE_TAG_TOKEN" != "true" ]; then
-              echo "::error::Moving ${major} needs a token with contents and workflows write access when the release changes .github/workflows. Add it as the RELEASE_TAG_TOKEN repository secret."
+              echo "::error::Moving ${major} needs a token with contents and workflows write access when the release changes .github/workflows. Add it as the RELEASE_TAG_TOKEN secret of the release environment."
             fi
             exit 1
           fi
