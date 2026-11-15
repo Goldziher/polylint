@@ -100,6 +100,10 @@ pub enum Language {
     Dotenv,
     /// INI (also covers INI-shaped dotfiles like `.npmrc`, `.editorconfig`).
     Ini,
+    /// Typst markup (`.typ`).
+    Typst,
+    /// LaTeX (`.tex`, `.sty`, `.cls`).
+    Latex,
     /// Any other language, identified by its tree-sitter-language-pack id.
     Other(String),
 }
@@ -198,6 +202,8 @@ impl Language {
             Language::CSharp => "csharp",
             Language::Dotenv => "dotenv",
             Language::Ini => "ini",
+            Language::Typst => "typst",
+            Language::Latex => "latex",
             Language::Other(s) => s.as_str(),
         }
     }
@@ -310,6 +316,8 @@ impl Language {
             "dart" => Language::Dart,
             "gleam" => Language::Gleam,
             "cs" => Language::CSharp,
+            "typ" => Language::Typst,
+            "tex" | "sty" | "cls" => Language::Latex,
             _ => return None,
         };
         Some(lang)
@@ -374,6 +382,8 @@ impl Language {
             // Matches the `dotenv-linter` catalog entry's `languages = ["env"]`.
             "env" | "dotenv" => Language::Dotenv,
             "ini" => Language::Ini,
+            "typst" => Language::Typst,
+            "latex" | "tex" => Language::Latex,
             "make" | "makefile" => Language::Other("make".to_string()),
             "vim" | "vimscript" => Language::Other("vim".to_string()),
             other => Language::Other(other.to_string()),
@@ -411,6 +421,8 @@ impl Language {
             | Language::Gleam
             | Language::Proto
             | Language::Markdown
+            | Language::Typst
+            | Language::Latex
             | Language::Shell => 2,
             _ => 4,
         }
@@ -689,6 +701,18 @@ mod tests {
         assert_eq!(Language::from_path(Path::new(".pypirc")), Some(Language::Ini));
         assert_eq!(Language::from_path(Path::new("home/.pypirc")), Some(Language::Ini));
         assert_eq!(Language::from_path(Path::new(".npmrc")), Some(Language::Ini));
+    }
+
+    #[test]
+    fn typst_and_latex_are_first_class_languages() {
+        assert_eq!(Language::from_path(Path::new("doc/main.typ")), Some(Language::Typst));
+        assert_eq!(Language::from_path(Path::new("paper.tex")), Some(Language::Latex));
+        assert_eq!(Language::from_path(Path::new("style.sty")), Some(Language::Latex));
+        assert_eq!(Language::from_path(Path::new("article.cls")), Some(Language::Latex));
+        assert_eq!(Language::from_catalog_name("typst"), Language::Typst);
+        assert_eq!(Language::from_catalog_name("latex"), Language::Latex);
+        assert_eq!(Language::Typst.id(), "typst");
+        assert_eq!(Language::Latex.id(), "latex");
     }
 
     /// Shell is two-space, not four.

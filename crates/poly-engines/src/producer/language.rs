@@ -50,6 +50,8 @@ static NAMED: &[Language] = &[
     Language::CSharp,
     Language::Dotenv,
     Language::Ini,
+    Language::Typst,
+    Language::Latex,
 ];
 
 /// The [`Language`] whose [`Language::id`] is `id`; an id no variant owns is [`Language::Other`].
