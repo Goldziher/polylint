@@ -23,6 +23,10 @@ on:
         type: boolean
         default: false
 
+# RUST_TOOLCHAIN is pinned in several places that must be bumped together with Cargo.toml's
+# rust-version and rust-toolchain.toml: every `RUST_TOOLCHAIN:` env, the `toolchain:` inputs of
+# dtolnay/rust-toolchain, and the `rust:<minor>-alpine` image tag of the musl leg.
+
 # Component signing: the build-components jobs sign each archive with the Ed25519 private key in the
 # repository secret POLY_COMPONENT_SIGNING_KEY (PKCS#8 PEM, or base64 of the PKCS#8 DER or a raw
 # 32-byte seed). Its public half is `poly-release-1` in alef.toml
@@ -77,11 +81,12 @@ jobs:
 
   verify_ci:
     # Publishing is gated on CI: a tag pushed ahead of, or onto a commit that failed, the ci workflow
-    # must not release. Tag pushes race CI, so the check polls for up to 30 minutes.
+    # must not release. Tag pushes race CI, so the check polls for up to 60 minutes (test jobs have a
+    # 60-minute timeout).
     if: ${{ !inputs.plugins-only }}
     name: Verify CI passed on the release commit
     runs-on: ubuntu-latest
-    timeout-minutes: 40
+    timeout-minutes: 75
     permissions:
       checks: read
       contents: read
@@ -132,9 +137,16 @@ jobs:
             "cargo-deny"
           )
 
-          for attempt in $(seq 1 31); do
+          empty=0
+          for attempt in $(seq 1 60); do
             gh api --paginate "repos/$GITHUB_REPOSITORY/commits/$sha/check-runs?per_page=100" \
               --jq '.check_runs[] | [.name, .status, (.conclusion // "")] | @tsv' > runs.tsv
+            # A tag on a commit whose main-push CI run was replaced or cancelled never gets check-runs.
+            if [ -s runs.tsv ]; then empty=0; else empty=$((empty + 1)); fi
+            if [ "$empty" -ge 3 ]; then
+              echo "::error::no CI run exists for this commit ($sha); re-run CI (workflow_dispatch of ci.yaml on the tag's commit) or dispatch publish with skip_ci_check=true"
+              exit 1
+            fi
             pending=()
             for name in "${required[@]}"; do
               # The newest run of a name wins, so a re-run after a failure counts.
@@ -156,10 +168,10 @@ jobs:
               echo "All ${#required[@]} required CI checks succeeded on $sha"
               exit 0
             fi
-            echo "Waiting for CI (attempt $attempt/31): ${pending[*]}"
-            [ "$attempt" -lt 31 ] && sleep 60
+            echo "Waiting for CI (attempt $attempt/60): ${pending[*]}"
+            [ "$attempt" -lt 60 ] && sleep 60
           done
-          echo "::error::CI did not finish green on $sha within 30 minutes"
+          echo "::error::CI did not finish green on $sha within 60 minutes"
           exit 1
 
   meta:
@@ -1550,6 +1562,17 @@ jobs:
             *-rc.* | *-beta* | *-alpha*) npm_tag="next" ;;
             *) npm_tag="latest" ;;
           esac
+          # Only the newest release tag may move `latest`: a hotfix of an older line gets a
+          # per-line dist-tag instead of rolling `latest` backwards.
+          if [ "$npm_tag" = "latest" ]; then
+            tag="${{ needs.meta.outputs.tag }}"
+            newest="$(git ls-remote --tags origin 'v*' | awk '{ sub("refs/tags/", "", $2); print $2 }' |
+              grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' | sort -V | tail -n1)"
+            if [ "$tag" != "$newest" ]; then
+              npm_tag="release-$(cut -d. -f1,2 <<< "$version")"
+              echo "::notice::$tag is not the newest release tag ($newest); publishing under --tag $npm_tag"
+            fi
+          fi
 
           publish_one() {
             local dir="$1"
@@ -1650,6 +1673,29 @@ jobs:
           archive="$(jq -r '.filename' "$RUNNER_TEMP/plugin-pack.json")"
           case "$archive" in /*) ;; *) archive="$RUNNER_TEMP/$archive" ;; esac
           python3 "$POLY_REGISTRY_GUARD" npm "$archive" >> "$GITHUB_OUTPUT"
+      - name: Resolve the npm dist-tag
+        id: npm-tag
+        if: steps.npm-version.outputs.exists != 'true'
+        env:
+          VERSION: ${{ needs.plugin-meta.outputs.version || needs.meta.outputs.version }}
+          RELEASE_TAG: ${{ inputs.plugins-only && '' || needs.meta.outputs.tag }}
+        run: |
+          set -euo pipefail
+          if [[ "$VERSION" == *-* ]]; then
+            npm_tag="next"
+          else
+            npm_tag="latest"
+            # Only the newest release tag may move `latest`; plugins-only publishes current main.
+            if [ -n "$RELEASE_TAG" ]; then
+              newest="$(git ls-remote --tags origin 'v*' | awk '{ sub("refs/tags/", "", $2); print $2 }' |
+                grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' | sort -V | tail -n1)"
+              if [ "$RELEASE_TAG" != "$newest" ]; then
+                npm_tag="release-$(cut -d. -f1,2 <<< "$VERSION")"
+                echo "::notice::$RELEASE_TAG is not the newest release tag ($newest); using --tag $npm_tag"
+              fi
+            fi
+          fi
+          echo "tag=$npm_tag" >> "$GITHUB_OUTPUT"
       - name: Publish verified agent package
         if: steps.npm-version.outputs.exists != 'true'
         uses: xberg-io/actions/publish-npm@v1
@@ -1657,7 +1703,7 @@ jobs:
           expected-version: ${{ needs.plugin-meta.outputs.version || needs.meta.outputs.version }}
           package-dir: plugin
           access: public
-          npm-tag: ${{ contains(needs.plugin-meta.outputs.version || needs.meta.outputs.version, '-') && 'next' || 'latest' }}
+          npm-tag: ${{ steps.npm-tag.outputs.tag }}
           provenance: "true"
 
   publish_plugin_artifacts:

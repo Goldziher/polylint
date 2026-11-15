@@ -4,7 +4,7 @@ How a release flows, and how to take one back. The workflow is `.github/workflow
 
 ## Flow
 
-1. `verify_ci` waits (up to 30 minutes) for the `ci` workflow's required check runs on the tagged commit. A
+1. `verify_ci` waits (up to 60 minutes) for the `ci` workflow's required check runs on the tagged commit. A
    `workflow_dispatch` can bypass it with `skip_ci_check`; use that only for an emergency re-publish.
 2. The GitHub release is created as a draft, binaries and components are built, `checksums` uploads
    `sha256sums.txt`, and `finalize_release` un-drafts it.
@@ -15,6 +15,25 @@ How a release flows, and how to take one back. The workflow is `.github/workflow
 The release archives, npm platform packages and wheels carry `ATTRIBUTIONS.md` and `THIRD-PARTY-LICENSES.md` next
 to the binary. `mise run release:third-party-licenses [out]` generates the latter (crate table from
 `cargo metadata --locked` over the five workspaces, then `ATTRIBUTIONS.md` verbatim, which holds the tsrs NOTICE).
+
+## When verify_ci finds no CI run
+
+A tag on a commit whose main-push `ci` run was replaced or cancelled by the concurrency group never gets check
+runs. After three consecutive polls with none, `verify_ci` fails fast with "no CI run exists for this commit".
+Run `ci.yaml` through `workflow_dispatch` on the tag's commit and re-dispatch the publish, or dispatch publish
+with `skip_ci_check=true` once you have confirmed the commit is good.
+
+## Re-publishing old tags
+
+Tags created before the license and `verify_ci` changes (v0.35.0 and earlier) cannot be re-dispatched through the
+current workflow: its third-party-licenses job needs `mise-tasks/release/third-party-licenses.sh` at the tag, and
+`verify_ci` expects today's check-run names, so older commits fail or never match. Use the workflow file from the
+old tag, or publish by hand, and set `skip_ci_check` if a dispatch is still attempted.
+
+## npm dist-tags
+
+`latest` only moves for the newest stable `vX.Y.Z` tag. Re-running an older stable tag publishes the umbrella,
+platform and plugin packages under `release-<major>.<minor>` instead; prereleases use `next`.
 
 ## Rolling back
 
