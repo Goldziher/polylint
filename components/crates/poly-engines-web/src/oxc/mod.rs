@@ -152,7 +152,7 @@ use self::lint::lint_js;
 ///                `operator_position`, `single_attribute_per_line` and `sort_imports`
 ///                reach the formatters, and `.oxfmtrc.json[c]` supplies them by default.
 const VERSION: &str = "oxc_formatter:0.77.0+oxlint+parser:0.158.0+rev:74e5e66+json-fmt+rules-v5+fmt-opts+\
-                       jsonc-trailing-comma+plugins-v1+minified-skip+oxfmtrc-v1+package-json-v1+oxlintrc-v1+rule-args-1+safe-fix-1+js-plugins-ext-1+oxfmtrc-scope-1";
+                       jsonc-trailing-comma+plugins-v1+minified-skip+oxfmtrc-v1+package-json-v1+oxlintrc-v1+rule-args-1+safe-fix-1+js-plugins-ext-1+oxfmtrc-scope-1+opts-2";
 
 static LANGUAGES: &[Language] = &[
     Language::JavaScript,

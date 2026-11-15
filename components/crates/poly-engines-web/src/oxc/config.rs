@@ -26,6 +26,7 @@ fn option_bool(cfg: &EngineConfig, key: &str) -> Option<bool> {
 /// | `cfg.options` key | Type | Values |
 /// |---|---|---|
 /// | `quote_style` | string | `"double"` (default) / `"single"` |
+/// | `single_quote` | bool | `true` is `quote_style = "single"`; an explicit `quote_style` wins |
 /// | `jsx_quote_style` | string | `"double"` (default) / `"single"` |
 /// | `semicolons` | string | `"always"` (default) / `"as-needed"` |
 /// | `trailing_commas` | string | `"all"` (default) / `"es5"` / `"none"` |
@@ -46,15 +47,12 @@ pub(super) fn build_js_options(cfg: &EngineConfig) -> JsFormatOptions {
     let indent_width = resolve_indent_width(cfg);
     let indent_style = resolve_indent_style(cfg);
 
-    let quote_style = cfg
-        .options
-        .get("quote_style")
-        .and_then(|v| v.as_str())
-        .map(|s| match s {
-            "single" => QuoteStyle::Single,
-            _ => QuoteStyle::Double,
-        })
-        .unwrap_or_default();
+    let quote_style = match option_str(cfg, "quote_style") {
+        Some("single") => QuoteStyle::Single,
+        Some(_) => QuoteStyle::Double,
+        None if option_bool(cfg, "single_quote") == Some(true) => QuoteStyle::Single,
+        None => QuoteStyle::default(),
+    };
 
     let jsx_quote_style = cfg
         .options
@@ -151,7 +149,7 @@ pub(super) fn build_js_options(cfg: &EngineConfig) -> JsFormatOptions {
 /// | `cfg.options` key | Type | Values |
 /// |---|---|---|
 /// | `bracket_spacing` | bool | `true` (default) |
-/// | `trailing_commas` | string | `"always"` (default for JSONC) / `"never"` |
+/// | `trailing_commas` | string | `"all"` / `"es5"` (default) or `"none"` / `"never"`; `"always"` is `"all"` |
 ///
 /// `line_width` and `indent_width` are always sourced from `cfg.globals.line_length`
 /// and `cfg.indent_width`. The variant (Json vs Jsonc) is derived from the file language
@@ -174,15 +172,13 @@ pub(super) fn build_json_options(src: &SourceFile, cfg: &EngineConfig) -> JsonFo
         .map(JsonBracketSpacing::from)
         .unwrap_or_default();
 
-    let trailing_commas = cfg
-        .options
-        .get("trailing_commas")
-        .and_then(|v| v.as_str())
-        .map(|s| match s {
-            "never" => JsonTc::Never,
-            _ => JsonTc::Always,
-        })
-        .unwrap_or_default();
+    let trailing_commas = match option_str(cfg, "trailing_commas") {
+        None => JsonTc::default(),
+        Some(value) => parse_json_trailing_commas(value).unwrap_or_else(|| {
+            warn_once("trailing_commas", value, "expected `all`, `es5`, `none` or `never`");
+            JsonTc::default()
+        }),
+    };
 
     let expand = match option_str(cfg, "object_wrap") {
         Some("collapse") => JsonExpand::Never,
@@ -205,6 +201,30 @@ pub(super) fn build_json_options(src: &SourceFile, cfg: &EngineConfig) -> JsonFo
         single_quote: option_bool(cfg, "single_quote").unwrap_or_default().into(),
         bracket_spacing,
         trailing_commas,
+    }
+}
+
+/// JSON `trailing_commas`: the JS vocabulary (`all`, `es5`, `none`) plus the legacy `always` / `never`.
+/// JSON has no distinction between `all` and `es5`, so both keep the commas.
+fn parse_json_trailing_commas(value: &str) -> Option<oxc_formatter_json::TrailingCommas> {
+    use oxc_formatter_json::TrailingCommas;
+    match value {
+        "all" | "es5" | "always" => Some(TrailingCommas::Always),
+        "none" | "never" => Some(TrailingCommas::Never),
+        _ => None,
+    }
+}
+
+/// Warn about an invalid option value once per `(key, value)`, since the formatter runs per file.
+fn warn_once(key: &str, value: &str, expected: &str) {
+    static SEEN: std::sync::OnceLock<std::sync::Mutex<std::collections::HashSet<(String, String)>>> =
+        std::sync::OnceLock::new();
+    let seen = SEEN.get_or_init(Default::default);
+    let first = seen
+        .lock()
+        .is_ok_and(|mut seen| seen.insert((key.to_string(), value.to_string())));
+    if first {
+        tracing::warn!(key, value, "invalid oxc option value, using the default: {expected}");
     }
 }
 
@@ -242,4 +262,60 @@ pub(super) fn sorted_package_json(src: &SourceFile, cfg: &EngineConfig) -> Optio
         .with_sort_scripts(sort_scripts)
         .with_pretty(false);
     sort_package_json::sort_package_json_with_options(&src.content, &options).ok()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use poly_engine_api::config::GlobalDefaults;
+
+    fn cfg(options: &str) -> EngineConfig {
+        EngineConfig {
+            globals: GlobalDefaults::default(),
+            indent_width: 2,
+            options: options.parse().unwrap(),
+        }
+    }
+
+    #[test]
+    fn single_quote_reaches_the_js_formatter() {
+        let options = build_js_options(&cfg("single_quote = true"));
+        assert_eq!(options.quote_style, oxc_formatter::QuoteStyle::Single);
+        let options = build_js_options(&cfg("single_quote = false"));
+        assert_eq!(options.quote_style, oxc_formatter::QuoteStyle::Double);
+    }
+
+    #[test]
+    fn explicit_quote_style_wins_over_single_quote() {
+        let options = build_js_options(&cfg("single_quote = true\nquote_style = \"double\""));
+        assert_eq!(options.quote_style, oxc_formatter::QuoteStyle::Double);
+    }
+
+    #[test]
+    fn json_trailing_commas_accepts_the_js_vocabulary() {
+        use oxc_formatter_json::TrailingCommas::{Always, Never};
+        for (value, expected) in [
+            ("all", Always),
+            ("es5", Always),
+            ("always", Always),
+            ("none", Never),
+            ("never", Never),
+        ] {
+            assert_eq!(parse_json_trailing_commas(value), Some(expected), "{value}");
+        }
+        assert_eq!(parse_json_trailing_commas("bogus"), None);
+    }
+
+    #[test]
+    fn json_trailing_commas_none_drops_the_commas() {
+        let src = SourceFile {
+            path: "a.jsonc".into(),
+            language: Language::Jsonc,
+            content: "".into(),
+        };
+        let options = build_json_options(&src, &cfg("trailing_commas = \"none\""));
+        assert_eq!(options.trailing_commas, oxc_formatter_json::TrailingCommas::Never);
+        let options = build_json_options(&src, &cfg("trailing_commas = \"bogus\""));
+        assert_eq!(options.trailing_commas, oxc_formatter_json::TrailingCommas::default());
+    }
 }
