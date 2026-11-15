@@ -1593,8 +1593,14 @@ jobs:
   finalize_release:
     name: Publish GitHub release
     needs: [meta, checksums, publish_assets, attest_provenance, attest_sboms]
+    # A run that built anything promotes only once checksums, the upload and both attestation jobs
+    # succeeded. A dispatch that found the draft already complete (release_assets_exist) builds
+    # nothing, so those jobs are skipped and the asset check below decides alone.
     if: >-
-      !inputs.plugins-only && (always() && needs.meta.result == 'success')
+      !inputs.plugins-only && always() && needs.meta.result == 'success'
+      && (needs.meta.outputs.release_assets_exist == 'true'
+      || (needs.checksums.result == 'success' && needs.publish_assets.result == 'success'
+      && needs.attest_provenance.result == 'success' && needs.attest_sboms.result == 'success'))
     runs-on: ubuntu-latest
     permissions:
       contents: write

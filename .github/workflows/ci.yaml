@@ -746,6 +746,8 @@ jobs:
       - uses: EmbarkStudios/cargo-deny-action@v2
         with:
           command: check
+          # Like the other workspaces: an optional dependency behind a feature ships in some build.
+          arguments: --all-features
       - name: cargo-deny (components workspace)
         uses: EmbarkStudios/cargo-deny-action@v2
         with:
