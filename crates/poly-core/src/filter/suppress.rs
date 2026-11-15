@@ -22,10 +22,14 @@
 //! # Scope
 //!
 //! - `allow-file` applies to the entire file wherever it appears.
-//! - `allow` on a line that is *entirely* a comment applies to the next
-//!   non-blank line.
+//! - `allow` on a line that is *entirely* a comment (only a comment opener precedes the marker)
+//!   applies to the next line that is neither blank nor itself a comment-only directive, so
+//!   stacked directives all reach the same code line.
 //! - `allow` trailing after code applies to that same line.
 //! - A diagnostic with no span is only suppressible by `allow-file`.
+//! - A line-scoped directive matches a diagnostic by the line it *starts* on; a multi-line
+//!   finding that begins above the directive line is not covered (ADR 0028 scopes `allow` to a
+//!   single line).
 //!
 //! # The reason is mandatory
 //!
@@ -57,6 +61,12 @@ const WILDCARD: &str = "*";
 /// Comment openers accepted immediately before the marker. Quote characters are
 /// excluded on purpose (see the module docs).
 const OPENERS: &[&str] = &["//", "#", "--", ";", "/*", "*", "<!--", "%", "!", "dnl"];
+
+/// Alphabetic openers that must start at a word boundary.
+const WORD_OPENERS: &[&str] = &["dnl"];
+
+/// Characters a punctuation-only comment prefix (`///`, `##`, `<!--`) may consist of.
+const OPENER_PUNCTUATION: &str = "/*#-;<!%";
 
 /// Openers matched without regard to case (Batch `REM`/`rem`/`Rem`).
 const CASE_INSENSITIVE_OPENERS: &[&str] = &["rem"];
@@ -151,7 +161,7 @@ impl Suppressions {
             match directive.scope {
                 Scope::File => suppressions.file.push(directive.rules),
                 Scope::NextLine => {
-                    if let Some(target) = next_non_blank(&lines, index) {
+                    if let Some(target) = next_target(&lines, index) {
                         suppressions.lines.push((target, directive.rules));
                     }
                 }
@@ -247,6 +257,8 @@ struct Directive {
     justified: bool,
     /// 1-based column of the marker, for the `lazy-ignore` span.
     column: u32,
+    /// Whether only a comment opener precedes the marker, so the line holds no code.
+    comment_only: bool,
 }
 
 impl Directive {
@@ -263,7 +275,7 @@ impl Directive {
             let (scope, rest) = if let Some(rest) = rest.strip_prefix(ALLOW_FILE) {
                 (Scope::File, rest)
             } else if let Some(rest) = rest.strip_prefix(ALLOW) {
-                let scope = if starts_with_comment_opener(line.trim_start()) {
+                let scope = if is_comment_only_prefix(prefix) {
                     Scope::NextLine
                 } else {
                     Scope::SameLine
@@ -285,6 +297,7 @@ impl Directive {
                 rules: RuleSet::parse(list),
                 justified: is_justified(reason),
                 column: prefix.chars().count() as u32 + 1,
+                comment_only: is_comment_only_prefix(prefix),
             });
         }
         None
@@ -305,21 +318,42 @@ fn is_justified(reason: &str) -> bool {
 /// Whether the text immediately before the marker ends with a comment opener.
 fn ends_with_comment_opener(prefix: &str) -> bool {
     let prefix = prefix.trim_end();
-    OPENERS.iter().any(|opener| prefix.ends_with(opener))
+    OPENERS
+        .iter()
+        .any(|opener| !WORD_OPENERS.contains(opener) && prefix.ends_with(opener))
         || CASE_INSENSITIVE_OPENERS
             .iter()
-            .any(|opener| ends_with_ignore_ascii_case(prefix, opener))
+            .chain(WORD_OPENERS)
+            .any(|opener| ends_with_word_opener(prefix, opener))
 }
 
-/// Whether a line begins with a comment opener — i.e. the whole line is a
-/// comment, so its directive targets the next non-blank line rather than itself.
-fn starts_with_comment_opener(trimmed: &str) -> bool {
-    OPENERS.iter().any(|opener| trimmed.starts_with(opener))
-        || CASE_INSENSITIVE_OPENERS.iter().any(|opener| {
-            trimmed
-                .get(..opener.len())
-                .is_some_and(|head| head.eq_ignore_ascii_case(opener))
-        })
+/// Whether the text before the marker is nothing but a comment opener (`//`, `///`, `/*`, ` *`,
+/// `<!--`, `rem`, ...), i.e. the directive sits in the line's first comment and no code precedes it.
+/// Code that merely starts with an opener character (`*p = 0;`, `--i;`, `#include <x>`) carries
+/// alphanumerics or other punctuation and so is not comment-only.
+fn is_comment_only_prefix(prefix: &str) -> bool {
+    let prefix = prefix.trim();
+    if prefix.is_empty() {
+        return false;
+    }
+    if CASE_INSENSITIVE_OPENERS
+        .iter()
+        .chain(WORD_OPENERS)
+        .any(|word| prefix.eq_ignore_ascii_case(word))
+    {
+        return true;
+    }
+    prefix.chars().all(|c| OPENER_PUNCTUATION.contains(c)) && ends_with_comment_opener(prefix)
+}
+
+/// Whether `prefix` ends with an opener that is a whole word, not the tail of an identifier
+/// (`theorem` must not read as `rem`).
+fn ends_with_word_opener(prefix: &str, opener: &str) -> bool {
+    ends_with_ignore_ascii_case(prefix, opener)
+        && prefix[..prefix.len() - opener.len()]
+            .chars()
+            .next_back()
+            .is_none_or(|c| !(c.is_alphanumeric() || c == '_'))
 }
 
 fn ends_with_ignore_ascii_case(haystack: &str, needle: &str) -> bool {
@@ -330,13 +364,16 @@ fn ends_with_ignore_ascii_case(haystack: &str, needle: &str) -> bool {
         .is_some_and(|tail| tail.eq_ignore_ascii_case(needle))
 }
 
-/// 1-based number of the first non-blank line after `index`, if any.
-fn next_non_blank(lines: &[&str], index: usize) -> Option<u32> {
+/// 1-based number of the first line after `index` that is neither blank nor a comment-only
+/// directive, if any: stacked `poly: allow[...]` comments all target the code line below them.
+fn next_target(lines: &[&str], index: usize) -> Option<u32> {
     lines
         .iter()
         .enumerate()
         .skip(index + 1)
-        .find(|(_, line)| !line.trim().is_empty())
+        .find(|(_, line)| {
+            !line.trim().is_empty() && !Directive::parse(line).is_some_and(|directive| directive.comment_only)
+        })
         .map(|(found, _)| found as u32 + 1)
 }
 
@@ -601,5 +638,65 @@ mod tests {
         let mut diagnostics = Vec::new();
         Suppressions::parse(source).apply(test_path(), &mut diagnostics, &mut Vec::new());
         assert_eq!(codes(&diagnostics), vec![Some("lazy-ignore")]);
+    }
+
+    #[test]
+    fn a_trailing_directive_after_code_starting_with_an_opener_char_covers_its_own_line() {
+        let cases = [
+            "*p = 0; // poly: allow[X] reason",
+            "--i; // poly: allow[X] reason",
+            "!ok() && go(); // poly: allow[X] reason",
+            "#include <foo> // poly: allow[X] reason",
+            "%define x // poly: allow[X] reason",
+        ];
+        for case in cases {
+            let source = format!("{case}\nnext();\n");
+            let mut diagnostics = vec![diag(Some("X"), Some(1)), diag(Some("X"), Some(2))];
+            Suppressions::parse(&source).apply(test_path(), &mut diagnostics, &mut Vec::new());
+            assert_eq!(
+                diagnostics
+                    .iter()
+                    .map(|d| d.span.unwrap().start_line)
+                    .collect::<Vec<_>>(),
+                vec![2],
+                "{case:?}: line 1 is covered, line 2 is not"
+            );
+        }
+    }
+
+    #[test]
+    fn comment_only_prefixes_target_the_next_line() {
+        for opener in [
+            "//", "///", "#", "##", "--", ";", ";;", "/*", " *", "<!--", "%", "dnl", "REM",
+        ] {
+            let source = format!("{opener} poly: allow[X] reason\ncode();\n");
+            let mut diagnostics = vec![diag(Some("X"), Some(1)), diag(Some("X"), Some(2))];
+            Suppressions::parse(&source).apply(test_path(), &mut diagnostics, &mut Vec::new());
+            assert_eq!(codes(&diagnostics), vec![Some("X")], "opener {opener:?}");
+            assert_eq!(diagnostics[0].span.unwrap().start_line, 1, "opener {opener:?}");
+        }
+    }
+
+    #[test]
+    fn stacked_directives_all_apply_to_the_next_code_line() {
+        let source = "// poly: allow[A] first\n// poly: allow[B] second\n\ncode();\n";
+        let mut diagnostics = vec![
+            diag(Some("A"), Some(4)),
+            diag(Some("B"), Some(4)),
+            diag(Some("C"), Some(4)),
+        ];
+        Suppressions::parse(source).apply(test_path(), &mut diagnostics, &mut Vec::new());
+        assert_eq!(codes(&diagnostics), vec![Some("C")]);
+    }
+
+    #[test]
+    fn rem_inside_a_word_is_not_an_opener() {
+        for source in [
+            "theorem poly: allow[*] x\ncode();\n",
+            "x = 1; theorem poly: allow[*] x\n",
+        ] {
+            let suppressions = Suppressions::parse(source);
+            assert!(suppressions.is_empty(), "{source:?}");
+        }
     }
 }

@@ -371,7 +371,9 @@ that language's own comment syntax:
 </Tabs>
 
 - **`poly: allow[RULE, RULE2] reason`** — covers the line it trails. On a line that is *entirely* a
-  comment, it covers the next non-blank line instead.
+  comment (only a comment opener before the directive), it covers the next line that is neither blank
+  nor another such directive, so stacked directives all apply to the code below. A finding is matched
+  by the line it starts on.
 - **`poly: allow-file[RULE] reason`** — covers the whole file, wherever in the file it appears.
   This is the only form that can suppress a diagnostic with no span.
 - Rule codes are comma-separated and matched exactly or as a code-family prefix, the same way
