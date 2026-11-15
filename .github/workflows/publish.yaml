@@ -392,6 +392,42 @@ jobs:
           path: target/components-release/previous-lock.json
           if-no-files-found: error
 
+  third-party-licenses:
+    name: Generate THIRD-PARTY-LICENSES.md
+    needs: [meta, create_release]
+    if: >-
+      !inputs.plugins-only && (needs.meta.outputs.release_assets_exist != 'true')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.tag || '' }}
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@v1
+        with:
+          toolchain: "1.100.0"
+
+      - name: Setup mise
+        uses: xberg-io/actions/setup-mise@v1
+
+      - name: Generate the licence table and attributions
+        env:
+          MISE_TASK_RUN_AUTO_INSTALL: "false"
+        run: mise run release:third-party-licenses THIRD-PARTY-LICENSES.md
+
+      - name: Save the licence files for the archives
+        uses: actions/upload-artifact@v7
+        with:
+          name: third-party-licenses
+          path: |
+            THIRD-PARTY-LICENSES.md
+            ATTRIBUTIONS.md
+          if-no-files-found: error
+
   build-components:
     name: Build components / ${{ matrix.triple }}
     needs: [meta, create_release]
@@ -443,7 +479,7 @@ jobs:
       - name: Setup Rust
         uses: dtolnay/rust-toolchain@v1
         with:
-          toolchain: ${{ env.RUST_TOOLCHAIN }}
+          toolchain: stable
           targets: ${{ matrix.triple }}
 
       - name: Setup cache
@@ -681,7 +717,7 @@ jobs:
   build-binaries:
     name: Build binaries / ${{ matrix.triple }}
     # The component lock is embedded in every build that downloads components (all but musl).
-    needs: [meta, create_release, component-lock]
+    needs: [meta, create_release, component-lock, third-party-licenses]
     if: >-
       !inputs.plugins-only && (needs.meta.outputs.release_assets_exist != 'true')
     runs-on: ${{ matrix.os }}
@@ -986,18 +1022,35 @@ jobs:
           echo "poly lint (uncomment): $(jq -c .summary "$RUNNER_TEMP/uncomment.json")"
         shell: bash
 
+      - name: Download the licence files
+        uses: actions/download-artifact@v8
+        with:
+          name: third-party-licenses
+          path: third-party-licenses
+
+      # The binary statically links third-party code whose licences, and the tsrs NOTICE, must travel
+      # with it, so the archive carries them next to the executable.
       - name: Create release artifacts
         run: |
+          set -euo pipefail
+          for f in ATTRIBUTIONS.md THIRD-PARTY-LICENSES.md; do
+            cp "third-party-licenses/$f" "target/${{ matrix.triple }}/$PROFILE_DIR/$f"
+          done
           cd target/${{ matrix.triple }}/$PROFILE_DIR
 
           case "${{ matrix.triple }}" in
             *windows*)
-              7z a ../../../poly-${{ needs.meta.outputs.version }}-${{ matrix.triple }}.zip poly.exe
+              7z a ../../../poly-${{ needs.meta.outputs.version }}-${{ matrix.triple }}.zip poly.exe ATTRIBUTIONS.md THIRD-PARTY-LICENSES.md
+              listing="$(7z l -ba ../../../poly-${{ needs.meta.outputs.version }}-${{ matrix.triple }}.zip)"
               ;;
             *)
-              tar czf ../../../poly-${{ needs.meta.outputs.version }}-${{ matrix.triple }}.tar.gz poly
+              tar czf ../../../poly-${{ needs.meta.outputs.version }}-${{ matrix.triple }}.tar.gz poly ATTRIBUTIONS.md THIRD-PARTY-LICENSES.md
+              listing="$(tar -tzf ../../../poly-${{ needs.meta.outputs.version }}-${{ matrix.triple }}.tar.gz)"
               ;;
           esac
+          for f in ATTRIBUTIONS.md THIRD-PARTY-LICENSES.md; do
+            grep -q -- "$f" <<< "$listing" || { echo "::error::the archive is missing $f"; exit 1; }
+          done
         shell: bash
 
       - name: Upload release artifacts
