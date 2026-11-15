@@ -47,6 +47,7 @@ use std::str::FromStr;
 use std::sync::{Arc, Mutex, OnceLock, PoisonError};
 
 use poly_engine_api::host_hooks::{ruff_context, ruff_target};
+use poly_engine_api::options::OptionsExt;
 use ruff_db::diagnostic::Severity as RuffSeverity;
 use ruff_linter::linter::{ParseSource, lint_only};
 use ruff_linter::package::PackageRoot;
@@ -313,8 +314,7 @@ fn build_settings(cfg: &EngineConfig) -> LinterSettings {
 
     let line_length = cfg
         .options
-        .get("line_length")
-        .and_then(toml::Value::as_integer)
+        .opt_i64("line_length")
         .map(|v| v as usize)
         .unwrap_or(cfg.globals.line_length);
 
@@ -330,24 +330,18 @@ fn build_settings(cfg: &EngineConfig) -> LinterSettings {
 
     if let Some(v) = cfg
         .options
-        .get("mccabe_max_complexity")
-        .and_then(toml::Value::as_integer)
+        .opt_i64("mccabe_max_complexity")
         .and_then(|v| usize::try_from(v).ok())
     {
         settings.mccabe.max_complexity = v;
     }
 
-    if let Some(convention) = cfg
-        .options
-        .get("pydocstyle_convention")
-        .and_then(toml::Value::as_str)
-        .and_then(|s| match s {
-            "google" => Some(PydocstyleConvention::Google),
-            "numpy" => Some(PydocstyleConvention::Numpy),
-            "pep257" => Some(PydocstyleConvention::Pep257),
-            _ => None,
-        })
-    {
+    if let Some(convention) = cfg.options.opt_str("pydocstyle_convention").and_then(|s| match s {
+        "google" => Some(PydocstyleConvention::Google),
+        "numpy" => Some(PydocstyleConvention::Numpy),
+        "pep257" => Some(PydocstyleConvention::Pep257),
+        _ => None,
+    }) {
         settings.pydocstyle.convention = Some(convention);
         for rule in convention.rules_to_be_ignored() {
             settings.rules.disable(*rule);
@@ -503,7 +497,7 @@ impl Engine for RuffEngine {
             &*owned_settings
         };
 
-        let unsafe_fixes = cfg.options.get("unsafe_fixes").and_then(toml::Value::as_bool) == Some(true);
+        let unsafe_fixes = cfg.options.opt_bool("unsafe_fixes") == Some(true);
         let is_stub = src.path.extension().is_some_and(|e| e == "pyi");
         let source_kind = SourceKind::Python {
             code: src.content.to_string(),

@@ -18,6 +18,7 @@ use ruff_python_formatter::{
 
 use poly_engine_api::config::EngineConfig;
 use poly_engine_api::engine::{OptionType, SourceFile};
+use poly_engine_api::options::OptionsExt;
 
 /// The keys `[fmt.python.ruff]` reads, with the type each is read as.
 ///
@@ -45,7 +46,7 @@ fn width(value: usize) -> LineWidth {
 }
 
 fn indent_style(cfg: &EngineConfig) -> Option<IndentStyle> {
-    match cfg.options.get("indent_style").and_then(toml::Value::as_str)? {
+    match cfg.options.opt_str("indent_style")? {
         "space" => Some(IndentStyle::Space),
         "tab" => Some(IndentStyle::Tab),
         other => {
@@ -61,7 +62,7 @@ fn indent_style(cfg: &EngineConfig) -> Option<IndentStyle> {
 }
 
 fn quote_style(cfg: &EngineConfig) -> Option<QuoteStyle> {
-    match cfg.options.get("quote_style").and_then(toml::Value::as_str)? {
+    match cfg.options.opt_str("quote_style")? {
         "double" => Some(QuoteStyle::Double),
         "single" => Some(QuoteStyle::Single),
         "preserve" => Some(QuoteStyle::Preserve),
@@ -130,7 +131,7 @@ const EXCLUDE_MEMO_CAP: usize = 64;
 /// `auto` follows the first line break in the file, so a CRLF file stays CRLF;
 /// `native` follows the platform. A file with no line break keeps `\n`.
 fn line_ending(cfg: &EngineConfig, content: &str) -> Option<LineEnding> {
-    match cfg.options.get("line_ending").and_then(toml::Value::as_str)? {
+    match cfg.options.opt_str("line_ending")? {
         "lf" => Some(LineEnding::LineFeed),
         "cr-lf" => Some(LineEnding::CarriageReturnLineFeed),
         "native" => Some(if cfg!(windows) {
@@ -166,13 +167,12 @@ fn detect_line_ending(content: &str) -> LineEnding {
 pub(super) fn build_options(src: &SourceFile, cfg: &EngineConfig) -> PyFormatOptions {
     let line_width = width(
         cfg.options
-            .get("line_length")
-            .and_then(toml::Value::as_integer)
+            .opt_i64("line_length")
             .and_then(|v| usize::try_from(v).ok())
             .unwrap_or(cfg.globals.line_length),
     );
 
-    let docstring_code = match cfg.options.get("docstring_code_format").and_then(toml::Value::as_bool) {
+    let docstring_code = match cfg.options.opt_bool("docstring_code_format") {
         Some(false) => DocstringCode::Disabled,
         _ => DocstringCode::Enabled,
     };
@@ -201,18 +201,13 @@ pub(super) fn build_options(src: &SourceFile, cfg: &EngineConfig) -> PyFormatOpt
     if let Some(style) = quote_style(cfg) {
         options = options.with_quote_style(style);
     }
-    if cfg
-        .options
-        .get("skip_magic_trailing_comma")
-        .and_then(toml::Value::as_bool)
-        == Some(true)
-    {
+    if cfg.options.opt_bool("skip_magic_trailing_comma") == Some(true) {
         options = options.with_magic_trailing_comma(MagicTrailingComma::Ignore);
     }
     if let Some(ending) = line_ending(cfg, &src.content) {
         options = options.with_line_ending(ending);
     }
-    if cfg.options.get("preview").and_then(toml::Value::as_bool) == Some(true) {
+    if cfg.options.opt_bool("preview") == Some(true) {
         options = options.with_preview(PreviewMode::Enabled);
     }
     options

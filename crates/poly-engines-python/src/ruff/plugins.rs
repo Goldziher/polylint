@@ -22,6 +22,7 @@ use ruff_linter::settings::types::{IdentifierPattern, PreviewMode};
 use rustc_hash::FxHashMap;
 
 use poly_engine_api::config::EngineConfig;
+use poly_engine_api::options::OptionsExt;
 
 mod extra;
 
@@ -44,7 +45,7 @@ pub(super) fn apply(settings: &mut LinterSettings, cfg: &EngineConfig) {
 /// The preview selection: `preview` turns preview rules on, and
 /// `explicit_preview_rules` then requires them to be named by full code.
 pub(super) fn preview_options(cfg: &EngineConfig) -> PreviewOptions {
-    let flag = |key: &str| cfg.options.get(key).and_then(toml::Value::as_bool).unwrap_or(false);
+    let flag = |key: &str| cfg.options.opt_bool(key).unwrap_or(false);
     PreviewOptions {
         mode: PreviewMode::from(flag("preview")),
         require_explicit: flag("explicit_preview_rules"),
@@ -67,22 +68,18 @@ impl Options<'_> {
     }
 
     fn flag(&self, key: &str) -> Option<bool> {
-        self.cfg.options.get(key).and_then(toml::Value::as_bool)
+        self.cfg.options.opt_bool(key)
     }
 
     fn usize_opt(&self, key: &str) -> Option<usize> {
-        self.cfg
-            .options
-            .get(key)
-            .and_then(toml::Value::as_integer)
-            .and_then(|value| usize::try_from(value).ok())
+        self.cfg.options.opt_usize(key)
     }
 
     fn general(&self, settings: &mut LinterSettings) {
         if let Some(external) = self.str_list("external") {
             settings.external = external;
         }
-        if let Some(pattern) = self.cfg.options.get("dummy_variable_rgx").and_then(toml::Value::as_str) {
+        if let Some(pattern) = self.cfg.options.opt_str("dummy_variable_rgx") {
             match regex::Regex::new(pattern) {
                 Ok(regex) => settings.dummy_variable_rgx = regex,
                 Err(error) => {
@@ -131,8 +128,7 @@ impl Options<'_> {
         let after = self
             .cfg
             .options
-            .get("isort_lines_after_imports")
-            .and_then(toml::Value::as_integer)
+            .opt_i64("isort_lines_after_imports")
             .and_then(|lines| isize::try_from(lines).ok());
         if let Some(lines) = after {
             isort.lines_after_imports = lines;
@@ -140,11 +136,7 @@ impl Options<'_> {
         if let Some(lines) = self.usize_opt("isort_lines_between_types") {
             isort.lines_between_types = lines;
         }
-        let order = self
-            .cfg
-            .options
-            .get("isort_relative_imports_order")
-            .and_then(toml::Value::as_str);
+        let order = self.cfg.options.opt_str("isort_relative_imports_order");
         if let Some(order) = choice::<RelativeImportsOrder>("isort_relative_imports_order", order) {
             isort.relative_imports_order = order;
         }
@@ -223,11 +215,7 @@ impl Options<'_> {
         if let Some(order) = self.str_list("isort_section_order") {
             isort.section_order = order.iter().filter_map(section).collect();
         }
-        if let Some(name) = self
-            .cfg
-            .options
-            .get("isort_default_section")
-            .and_then(toml::Value::as_str)
+        if let Some(name) = self.cfg.options.opt_str("isort_default_section")
             && let Some(default) = section(&name.to_owned())
         {
             isort.default_section = default;
@@ -235,12 +223,7 @@ impl Options<'_> {
         if let Some(names) = self.str_list("isort_no_lines_before") {
             isort.no_lines_before = names.iter().filter_map(section).collect();
         }
-        if let Some(headings) = self
-            .cfg
-            .options
-            .get("isort_import_heading")
-            .and_then(toml::Value::as_table)
-        {
+        if let Some(headings) = self.cfg.options.opt_table("isort_import_heading") {
             isort.import_headings = headings
                 .iter()
                 .filter_map(|(name, text)| Some((section(name)?, text.as_str()?.to_owned())))
@@ -260,8 +243,7 @@ impl Options<'_> {
         let user_defined: FxHashMap<String, Vec<IdentifierPattern>> = self
             .cfg
             .options
-            .get("known_section")
-            .and_then(toml::Value::as_table)
+            .opt_table("known_section")
             .map(|table| {
                 table
                     .iter()
@@ -327,19 +309,15 @@ impl Options<'_> {
     fn flake8_quotes(&self, settings: &mut LinterSettings) {
         let options = &self.cfg.options;
         let quotes = &mut settings.flake8_quotes;
-        let inline = options.get("flake8_quotes_inline_quotes").and_then(toml::Value::as_str);
+        let inline = options.opt_str("flake8_quotes_inline_quotes");
         if let Some(quote) = quote("flake8_quotes_inline_quotes", inline) {
             quotes.inline_quotes = quote;
         }
-        let multiline = options
-            .get("flake8_quotes_multiline_quotes")
-            .and_then(toml::Value::as_str);
+        let multiline = options.opt_str("flake8_quotes_multiline_quotes");
         if let Some(quote) = quote("flake8_quotes_multiline_quotes", multiline) {
             quotes.multiline_quotes = quote;
         }
-        let docstring = options
-            .get("flake8_quotes_docstring_quotes")
-            .and_then(toml::Value::as_str);
+        let docstring = options.opt_str("flake8_quotes_docstring_quotes");
         if let Some(quote) = quote("flake8_quotes_docstring_quotes", docstring) {
             quotes.docstring_quotes = quote;
         }
@@ -376,21 +354,15 @@ impl Options<'_> {
         if let Some(parentheses) = self.flag("flake8_pytest_style_mark_parentheses") {
             style.mark_parentheses = parentheses;
         }
-        let names = options
-            .get("flake8_pytest_style_parametrize_names_type")
-            .and_then(toml::Value::as_str);
+        let names = options.opt_str("flake8_pytest_style_parametrize_names_type");
         if let Some(kind) = choice::<ParametrizeNameType>("flake8_pytest_style_parametrize_names_type", names) {
             style.parametrize_names_type = kind;
         }
-        let values = options
-            .get("flake8_pytest_style_parametrize_values_type")
-            .and_then(toml::Value::as_str);
+        let values = options.opt_str("flake8_pytest_style_parametrize_values_type");
         if let Some(kind) = choice::<ParametrizeValuesType>("flake8_pytest_style_parametrize_values_type", values) {
             style.parametrize_values_type = kind;
         }
-        let rows = options
-            .get("flake8_pytest_style_parametrize_values_row_type")
-            .and_then(toml::Value::as_str);
+        let rows = options.opt_str("flake8_pytest_style_parametrize_values_row_type");
         if let Some(kind) = choice::<ParametrizeValuesRowType>("flake8_pytest_style_parametrize_values_row_type", rows)
         {
             style.parametrize_values_row_type = kind;
@@ -426,24 +398,13 @@ impl Options<'_> {
     fn flake8_import_conventions(&self, settings: &mut LinterSettings) {
         let options = &self.cfg.options;
         let conventions = &mut settings.flake8_import_conventions;
-        if let Some(aliases) = alias_pairs(
-            options
-                .get("flake8_import_conventions_aliases")
-                .and_then(toml::Value::as_table),
-        ) {
+        if let Some(aliases) = alias_pairs(options.opt_table("flake8_import_conventions_aliases")) {
             conventions.aliases = aliases.into_iter().collect();
         }
-        if let Some(extra) = alias_pairs(
-            options
-                .get("flake8_import_conventions_extend_aliases")
-                .and_then(toml::Value::as_table),
-        ) {
+        if let Some(extra) = alias_pairs(options.opt_table("flake8_import_conventions_extend_aliases")) {
             conventions.aliases.extend(extra);
         }
-        if let Some(banned) = options
-            .get("flake8_import_conventions_banned_aliases")
-            .and_then(toml::Value::as_table)
-        {
+        if let Some(banned) = options.opt_table("flake8_import_conventions_banned_aliases") {
             conventions.banned_aliases = banned
                 .iter()
                 .filter_map(|(module, aliases)| {

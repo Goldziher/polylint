@@ -61,6 +61,7 @@ use poly_engine_api::engine::{
     Capabilities, Diagnostic, Engine, FormatOutput, OptionKeys, OptionTable, OptionType, Severity, SourceFile, Span,
 };
 use poly_engine_api::language::Language;
+use poly_engine_api::options::OptionsExt;
 use poly_engine_api::rule_config::{RuleSelection, string_list, union_codes, warn_and_skip_blank};
 
 /// sqruff SQL backend — lint + format for SQL files.
@@ -316,7 +317,7 @@ fn with_linter<T>(cfg: &EngineConfig, mode: Mode, f: impl FnOnce(&Linter) -> any
 ///
 /// [`RuleSet::get_rulepack`]: sqruff_lib::core::rules::RuleSet
 fn build_fluff_config(cfg: &EngineConfig, mode: Mode) -> anyhow::Result<FluffConfig> {
-    let dialect_str = cfg.options.get("dialect").and_then(|v| v.as_str()).unwrap_or("ansi");
+    let dialect_str = cfg.options.opt_str("dialect").unwrap_or("ansi");
 
     if dialect_str != "ansi" {
         DialectKind::from_str(dialect_str).map_err(|_| {
@@ -362,7 +363,7 @@ fn build_fluff_config(cfg: &EngineConfig, mode: Mode) -> anyhow::Result<FluffCon
     }
 
     // These become `[sqruff:rules:<name>]` INI sections that sqruff merges on
-    if let Some(rule_configs) = cfg.options.get("rule_configs").and_then(|v| v.as_table()) {
+    if let Some(rule_configs) = cfg.options.opt_table("rule_configs") {
         for (rule_name, rule_opts) in rule_configs {
             if let Some(opts_table) = rule_opts.as_table() {
                 push_rule_section(&mut ini, rule_name, opts_table);

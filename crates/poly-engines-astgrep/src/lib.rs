@@ -78,6 +78,7 @@ use poly_engine_api::engine::{
     Capabilities, Diagnostic, Engine, FormatOutput, OptionKeys, OptionTable, Severity, SourceFile,
 };
 use poly_engine_api::language::Language;
+use poly_engine_api::options::OptionsExt;
 use poly_engine_api::rule_config::RuleSelection;
 
 use language::{TslpLanguage, grammar_for_language_id};
@@ -272,7 +273,7 @@ fn resolved_memo() -> &'static Mutex<ResolvedMemo> {
 /// A config with rule dirs but no `rules_hash` is never memoised: without the
 /// hash the fingerprint cannot see an edit to the rule files.
 fn resolved_for(lang_name: &str, cfg: &EngineConfig) -> anyhow::Result<Arc<Resolved>> {
-    let content_hash = cfg.options.get("rules_hash").and_then(|v| v.as_str()).unwrap_or("");
+    let content_hash = cfg.options.opt_str("rules_hash").unwrap_or("");
     let dirs = dirs_from_options(&cfg.options);
     let memoise = !(content_hash.is_empty() && !dirs.is_empty());
     let key = memoise.then(|| cfg.fingerprint());
@@ -330,10 +331,7 @@ fn load_user_rule_map(dirs: &[String], content_hash: &str) -> anyhow::Result<Opt
 /// without going through `Config` (as in unit tests) still gets the pack
 /// unless a test opts out explicitly.
 pub(crate) fn builtin_pack_enabled(cfg: &EngineConfig) -> bool {
-    cfg.options
-        .get("builtin_pack_enabled")
-        .and_then(|v| v.as_bool())
-        .unwrap_or(true)
+    cfg.options.opt_bool("builtin_pack_enabled").unwrap_or(true)
 }
 
 /// Resolve the active rule set for one language: built-in pack rules (when
@@ -552,11 +550,7 @@ fn effective_severity_name(rule: &RuleConfig<TslpLanguage>, selection: &RuleSele
 
 /// Read `rules_dirs` string array from the engine's `options` table.
 fn dirs_from_options(options: &toml::Table) -> Vec<String> {
-    options
-        .get("rules_dirs")
-        .and_then(|v| v.as_array())
-        .map(|arr| arr.iter().filter_map(|v| v.as_str()).map(str::to_string).collect())
-        .unwrap_or_default()
+    options.opt_string_list("rules_dirs")
 }
 
 #[cfg(test)]

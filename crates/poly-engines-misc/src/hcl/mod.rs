@@ -26,6 +26,7 @@ use poly_engine_api::engine::{
 };
 use poly_engine_api::engine_guard::refuse_pathological_nesting;
 use poly_engine_api::language::Language;
+use poly_engine_api::options::OptionsExt;
 
 /// Version string used as the Engine cache key; bump the suffix whenever formatter output changes.
 const ENGINE_VERSION: &str = "hcl-edit 0.10.0 + hclwrite-format-v1";
@@ -115,8 +116,7 @@ impl Engine for HclEngine {
 /// over the language default already baked into `cfg.indent_width`.
 fn indent_width_from_cfg(cfg: &EngineConfig) -> usize {
     cfg.options
-        .get("indent_width")
-        .and_then(toml::Value::as_integer)
+        .opt_i64("indent_width")
         .filter(|&n| n > 0)
         .map(|n| n as usize)
         .unwrap_or(cfg.indent_width)

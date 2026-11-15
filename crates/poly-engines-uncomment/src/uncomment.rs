@@ -69,6 +69,7 @@ use poly_engine_api::engine::{
 };
 use poly_engine_api::language::Language;
 use poly_engine_api::line_index::LineIndex;
+use poly_engine_api::options::OptionsExt;
 
 /// Cache-key version: the wrapped crate version plus a marker for this backend's
 /// own mapping logic. Bump whenever `uncomment` is updated OR the diagnostic/edit
@@ -204,7 +205,7 @@ fn enabled(cfg: &EngineConfig) -> bool {
 /// Read a boolean option from the merged `[lint.uncomment]` table, falling back
 /// to `default` when it is absent or not a bool.
 fn flag(cfg: &EngineConfig, key: &str, default: bool) -> bool {
-    cfg.options.get(key).and_then(toml::Value::as_bool).unwrap_or(default)
+    cfg.options.opt_bool(key).unwrap_or(default)
 }
 
 /// Keep only the removals that belong to a contiguous comment block reading as
@@ -613,7 +614,7 @@ fn first_token_is_keyword(line: &str) -> bool {
 /// here — poly owns file discovery — and `language_config` is `None` so the
 /// crate's built-in registry supplies comment node types by extension.
 fn resolved_config(cfg: &EngineConfig) -> ResolvedConfig {
-    let flag = |key: &str, default: bool| cfg.options.get(key).and_then(toml::Value::as_bool).unwrap_or(default);
+    let flag = |key: &str, default: bool| cfg.options.opt_bool(key).unwrap_or(default);
     let preserve_patterns = cfg
         .options
         .get("preserve_patterns")

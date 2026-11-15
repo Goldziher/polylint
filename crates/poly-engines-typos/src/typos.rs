@@ -38,6 +38,7 @@ use poly_engine_api::engine::{
 };
 use poly_engine_api::language::Language;
 use poly_engine_api::line_index::LineIndex;
+use poly_engine_api::options::OptionsExt;
 
 /// Combined cache-key version: `typos` tokeniser + `typos-dict` word list,
 /// plus a marker for the noise-suppression guards below. Bump whenever either
@@ -266,7 +267,7 @@ fn prepared_for(cfg: &EngineConfig) -> Arc<Prepared> {
 
 impl Prepared {
     fn build(options: &toml::Table) -> Self {
-        let exclude_globs = str_array(options, "extend_exclude");
+        let exclude_globs = options.opt_string_list("extend_exclude");
         let exclude = if exclude_globs.is_empty() {
             None
         } else {
@@ -279,12 +280,13 @@ impl Prepared {
             builder.build().ok()
         };
 
-        let mut valid_words: HashSet<String> = str_array(options, "extend_ignore_words")
+        let mut valid_words: HashSet<String> = options
+            .opt_string_list("extend_ignore_words")
             .iter()
             .map(|s| s.to_ascii_lowercase())
             .collect();
         let mut word_corrections = Vec::new();
-        if let Some(words_table) = options.get("extend_words").and_then(|v| v.as_table()) {
+        if let Some(words_table) = options.opt_table("extend_words") {
             for (typo, value) in words_table {
                 match value.as_str() {
                     Some(correction) if !correction.eq_ignore_ascii_case(typo) => {
@@ -298,30 +300,20 @@ impl Prepared {
         }
 
         let valid_identifiers = options
-            .get("extend_identifiers")
-            .and_then(|v| v.as_table())
+            .opt_table("extend_identifiers")
             .map(|t| t.keys().map(|k| k.to_ascii_lowercase()).collect())
             .unwrap_or_default();
 
         Self {
             exclude,
-            ignore_re: compile_regexes(&str_array(options, "extend_ignore_re")),
-            word_ignore_re: compile_regexes(&str_array(options, "extend_ignore_words_re")),
-            ident_ignore_re: compile_regexes(&str_array(options, "extend_ignore_identifiers_re")),
+            ignore_re: compile_regexes(&options.opt_string_list("extend_ignore_re")),
+            word_ignore_re: compile_regexes(&options.opt_string_list("extend_ignore_words_re")),
+            ident_ignore_re: compile_regexes(&options.opt_string_list("extend_ignore_identifiers_re")),
             valid_words,
             valid_identifiers,
             word_corrections,
         }
     }
-}
-
-/// Read `options[key]` as an array of strings (empty when absent or wrong type).
-fn str_array(options: &toml::Table, key: &str) -> Vec<String> {
-    options
-        .get(key)
-        .and_then(|v| v.as_array())
-        .map(|arr| arr.iter().filter_map(|v| v.as_str()).map(str::to_string).collect())
-        .unwrap_or_default()
 }
 
 /// Compile `patterns` into regexes, skipping (with a warning) any that fail to

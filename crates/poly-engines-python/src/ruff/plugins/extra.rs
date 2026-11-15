@@ -17,6 +17,7 @@ use ruff_python_semantic::{Alias, MemberNameImport, ModuleNameImport, NameImport
 use rustc_hash::FxHashSet;
 
 use super::{Options, choice};
+use poly_engine_api::options::OptionsExt;
 
 impl Options<'_> {
     pub(super) fn extra_plugins(&self, settings: &mut LinterSettings) {
@@ -40,7 +41,7 @@ impl Options<'_> {
     }
 
     fn option_str(&self, key: &str) -> Option<&str> {
-        self.cfg.options.get(key).and_then(toml::Value::as_str)
+        self.cfg.options.opt_str(key)
     }
 
     fn linter_wide(&self, settings: &mut LinterSettings) {
@@ -212,16 +213,8 @@ impl Options<'_> {
         if let Some(strictness) = choice::<Strictness>("ban-relative-imports", strictness) {
             tidy.ban_relative_imports = strictness;
         }
-        let banned = self
-            .cfg
-            .options
-            .get("flake8_tidy_imports_banned_api")
-            .and_then(toml::Value::as_table);
-        let extended = self
-            .cfg
-            .options
-            .get("flake8_tidy_imports_extend_banned_api")
-            .and_then(toml::Value::as_table);
+        let banned = self.cfg.options.opt_table("flake8_tidy_imports_banned_api");
+        let extended = self.cfg.options.opt_table("flake8_tidy_imports_extend_banned_api");
         if banned.is_some() || extended.is_some() {
             tidy.banned_api = banned
                 .into_iter()
