@@ -762,12 +762,29 @@ impl ResultCache {
     /// isort first-party classification depends on the package root). Without the
     /// path, two byte-identical files (e.g. empty `__init__.py`) would share a
     /// cache entry and the second would be served the first's path-bearing
-    /// diagnostics. Format output is path-independent, so it keeps using
-    /// [`single_file_digest`].
+    /// diagnostics. Format results use [`format_file_digest`], which folds in
+    /// less of the path.
     ///
     /// [`single_file_digest`]: ResultCache::single_file_digest
+    /// [`format_file_digest`]: ResultCache::format_file_digest
     pub fn single_file_digest_with_path(path: &str, content: &str) -> InputDigest {
         Self::file_set_digest(std::iter::once((path, content.as_bytes())))
+    }
+
+    /// Digest of one file for a **format** result: its content plus the language
+    /// and the file's base name.
+    ///
+    /// Format output is not a function of the bytes alone. Engines choose a
+    /// dialect from the language (`.json` vs `.js` parse differently) and from
+    /// the base name (`package.json`, `composer.json` and `*.importmap` get
+    /// their own JSON layout), so byte-identical files of a different kind must
+    /// not share an entry. The directory is left out: it does not change the
+    /// output, and per-directory config reaches the key through the engine's
+    /// format salt.
+    pub fn format_file_digest(language: &str, path: &std::path::Path, content: &str) -> InputDigest {
+        let name = path.file_name().map(|n| n.to_string_lossy()).unwrap_or_default();
+        let scope = format!("{language}\0{name}");
+        Self::file_set_digest(std::iter::once((scope.as_str(), content.as_bytes())))
     }
 
     /// Compute an [`InputDigest`] over a set of `(repo_relative_path, bytes)` pairs.

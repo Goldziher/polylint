@@ -511,7 +511,7 @@ fn candidate_for(file: &DiscoveredFile, plan: &RunPlan, cache: &ResultCache) -> 
 
     // Already cached: the per-file loop answers it without spawning anything.
     if cache.enabled() {
-        let digest = ResultCache::single_file_digest(&content);
+        let digest = ResultCache::format_file_digest(file.language.id(), &file.path, &content);
         let key = ResultCache::key_with_args(
             Namespace::Fmt,
             engine_plan.engine.name(),

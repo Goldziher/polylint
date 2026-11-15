@@ -106,6 +106,7 @@ impl<'a> FastPath<'a> {
         for ((config_id, language), engines) in plan.iter() {
             let mut scope = PlanKey::builder(namespace);
             scope.part([flags(*config_id)]);
+            scope.part(language.id());
             scope.part(
                 plan.withdrawal(*config_id, language)
                     .map(|withdrawal| withdrawal.reason())

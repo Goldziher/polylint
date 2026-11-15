@@ -786,7 +786,7 @@ fn format_one(
             }
             let version = plan.format_version(&f.path);
             let key = digest_if_enabled(cache, || {
-                let digest = ResultCache::single_file_digest(&current);
+                let digest = ResultCache::format_file_digest(f.language.id(), &f.path, &current);
                 ResultCache::key_with_args(
                     Namespace::Fmt,
                     plan.engine.name(),

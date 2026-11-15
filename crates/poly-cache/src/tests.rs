@@ -955,3 +955,28 @@ mod unix_permissions {
         );
     }
 }
+
+#[test]
+fn format_digest_separates_identical_content_by_language() {
+    let path = std::path::Path::new("a/x.json");
+    let json = ResultCache::format_file_digest("json", path, "{}");
+    let js = ResultCache::format_file_digest("javascript", path, "{}");
+    assert_ne!(json, js);
+    assert_eq!(json, ResultCache::format_file_digest("json", path, "{}"));
+}
+
+#[test]
+fn format_digest_separates_identical_content_by_base_name() {
+    let plain = ResultCache::format_file_digest("json", std::path::Path::new("x.json"), "{}");
+    let package = ResultCache::format_file_digest("json", std::path::Path::new("package.json"), "{}");
+    assert_ne!(plain, package);
+    let key = |d| ResultCache::key(Namespace::Fmt, "oxc", "1", &empty_args(), d);
+    assert_ne!(key(&plain), key(&package));
+}
+
+#[test]
+fn format_digest_ignores_the_directory() {
+    let a = ResultCache::format_file_digest("json", std::path::Path::new("a/package.json"), "{}");
+    let b = ResultCache::format_file_digest("json", std::path::Path::new("b/package.json"), "{}");
+    assert_eq!(a, b);
+}
