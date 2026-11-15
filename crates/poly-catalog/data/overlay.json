@@ -2218,5 +2218,96 @@
         }
       }
     }
+  },
+  {
+    "name": "checkmake",
+    "binary": "checkmake",
+    "categories": [
+      "linter"
+    ],
+    "languages": [
+      "makefile"
+    ],
+    "homepage": "https://github.com/mrtazz/checkmake",
+    "commands": {
+      "lint": {
+        "arguments": [
+          "--output",
+          "json",
+          "$FILES"
+        ],
+        "stdin": false
+      }
+    },
+    "recipe": {
+      "output": "checkmake_json",
+      "config_files": [
+        "checkmake.ini"
+      ],
+      "ok_exits": [
+        1
+      ],
+      "install": {
+        "hint": "brew install checkmake, or set [tools.checkmake] version to a pinned release poly can download",
+        "source": {
+          "kind": "binary",
+          "github": "mrtazz/checkmake",
+          "checksum": {
+            "list": "checksums.txt"
+          },
+          "assets": {
+            "darwin-aarch64": {
+              "name": "checkmake-v{version}.darwin.arm64"
+            },
+            "darwin-x86_64": {
+              "name": "checkmake-v{version}.darwin.amd64"
+            },
+            "linux-aarch64": {
+              "name": "checkmake-v{version}.linux.arm64"
+            },
+            "linux-x86_64": {
+              "name": "checkmake-v{version}.linux.amd64"
+            },
+            "windows-x86_64": {
+              "name": "checkmake-v{version}.windows.amd64.exe"
+            },
+            "windows-aarch64": {
+              "name": "checkmake-v{version}.windows.arm64.exe"
+            }
+          }
+        },
+        "releases": {
+          "0.3.2": {
+            "kind": "binary",
+            "assets": {
+              "darwin-aarch64": {
+                "url": "https://github.com/mrtazz/checkmake/releases/download/v0.3.2/checkmake-v0.3.2.darwin.arm64",
+                "sha256": "d5dab7169d1cb246b380ed5e7fc1e6aded301d453db258f858e774422d25961f"
+              },
+              "darwin-x86_64": {
+                "url": "https://github.com/mrtazz/checkmake/releases/download/v0.3.2/checkmake-v0.3.2.darwin.amd64",
+                "sha256": "82942043a4766b9fb3ffe6c77584df7d6c832bfa00571f234d257799f492fdd7"
+              },
+              "linux-aarch64": {
+                "url": "https://github.com/mrtazz/checkmake/releases/download/v0.3.2/checkmake-v0.3.2.linux.arm64",
+                "sha256": "409167c4abb99407bd232c3bbd351b8a39df57997feafde5a08bddffb0f2dcb4"
+              },
+              "linux-x86_64": {
+                "url": "https://github.com/mrtazz/checkmake/releases/download/v0.3.2/checkmake-v0.3.2.linux.amd64",
+                "sha256": "e2effb876913f3ee2caef0ba35f6202c5e8a3cd55a077d8d2b9ce2034257b6af"
+              },
+              "windows-x86_64": {
+                "url": "https://github.com/mrtazz/checkmake/releases/download/v0.3.2/checkmake-v0.3.2.windows.amd64.exe",
+                "sha256": "6adf4bde2dbfe8001ecf2918abfe02f7a57191568f1d185537eccd9c59625dca"
+              },
+              "windows-aarch64": {
+                "url": "https://github.com/mrtazz/checkmake/releases/download/v0.3.2/checkmake-v0.3.2.windows.arm64.exe",
+                "sha256": "571b6440776236a3626c5fc9aeaef7da78eee625683f181af89439028996c611"
+              }
+            }
+          }
+        }
+      }
+    }
   }
 ]

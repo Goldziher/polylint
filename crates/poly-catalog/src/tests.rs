@@ -533,6 +533,38 @@ fn jarl_lints_r_through_sarif_and_fixes_on_a_scratch_copy() {
 }
 
 #[test]
+fn checkmake_lints_makefiles_as_json_and_is_pinned_for_every_published_platform() {
+    let tool = Catalog::get().tool("checkmake").expect("checkmake");
+    assert_eq!(tool.languages, ["makefile"]);
+    let (_, lint) = tool.lint_command().expect("a lint command");
+    assert_eq!(lint.arguments, ["--output", "json", "$FILES"]);
+    let recipe = recipe_of("checkmake");
+    assert_eq!(recipe.output, Output::CheckmakeJson);
+    assert_eq!(recipe.config_files, ["checkmake.ini"]);
+    assert_eq!(recipe.ok_exits, [1], "violations exit 1");
+    let install = recipe.install.as_ref().expect("install");
+    let release = install.releases.get("0.3.2").expect("0.3.2");
+    let mut have: Vec<&str> = release.assets.keys().map(String::as_str).collect();
+    have.sort_unstable();
+    assert_eq!(
+        have,
+        [
+            "darwin-aarch64",
+            "darwin-x86_64",
+            "linux-aarch64",
+            "linux-x86_64",
+            "windows-aarch64",
+            "windows-x86_64"
+        ]
+    );
+    assert!(
+        release.assets["linux-x86_64"]
+            .url
+            .ends_with("checkmake-v0.3.2.linux.amd64")
+    );
+}
+
+#[test]
 fn gau_lints_the_pins_of_workflows_and_action_manifests_as_json() {
     let gau = Catalog::get().tool("gau").expect("gau");
     assert_eq!(gau.binary, "gau");
@@ -598,7 +630,7 @@ fn buf_and_hadolint_are_pinned_for_every_desktop_and_server_platform() {
     }
 }
 
-const MIGRATED_TOOLS: [&str; 19] = [
+const MIGRATED_TOOLS: [&str; 20] = [
     "checkstyle",
     "palantir-java-format",
     "buildifier",
@@ -618,6 +650,7 @@ const MIGRATED_TOOLS: [&str; 19] = [
     "ktfmt",
     "air",
     "jarl",
+    "checkmake",
 ];
 
 #[test]
@@ -677,6 +710,7 @@ fn sources_declare_the_windows_builds_upstream_publishes() {
         "helm-template",
         "kubeconform",
         "air",
+        "checkmake",
     ];
     for name in both {
         let source = recipe_of(name).install.as_ref().unwrap().source.as_ref().unwrap();

@@ -61,6 +61,8 @@ pub enum Output {
     KtlintJson,
     /// credo `mix credo --format json`.
     CredoJson,
+    /// checkmake `--output json`.
+    CheckmakeJson,
 }
 
 /// How a run's files are split into invocations.

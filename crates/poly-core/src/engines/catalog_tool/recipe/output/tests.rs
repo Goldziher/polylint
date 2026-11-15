@@ -702,3 +702,53 @@ fn path_line_reports_keep_a_windows_drive_prefix_in_the_path() {
     assert_eq!((finding.line, finding.column), (Some(3), Some(7)));
     assert_eq!(finding.message, "bad value");
 }
+
+const CHECKMAKE_JSON: &str = r#"[
+  {
+    "rule": "minphony",
+    "violation": "Missing required phony target \"all\"",
+    "file_name": "fixtures/missing_phony.make",
+    "line_number": 21
+  },
+  {
+    "rule": "phonydeclared",
+    "violation": "Target \"all\" should be declared PHONY.",
+    "file_name": "fixtures/missing_phony.make",
+    "line_number": 16
+  }
+]
+"#;
+
+#[test]
+fn checkmake_violations_become_rule_named_findings() {
+    let findings = parse(Output::CheckmakeJson, CHECKMAKE_JSON, "Error: violations found (2)\n").expect("parses");
+    assert_eq!(findings.len(), 2, "{findings:?}");
+    assert_eq!(findings[0].path.as_deref(), Some("fixtures/missing_phony.make"));
+    assert_eq!(findings[0].line, Some(21));
+    assert_eq!(findings[0].code.as_deref(), Some("minphony"));
+    assert_eq!(findings[1].message, "Target \"all\" should be declared PHONY.");
+    assert_eq!(findings[1].severity, Severity::Error);
+}
+
+#[test]
+fn checkmake_prints_nothing_when_clean_but_a_failed_run_is_an_error() {
+    assert!(parse(Output::CheckmakeJson, "", "").expect("clean").is_empty());
+    assert!(parse(Output::CheckmakeJson, "[]", "").expect("parses").is_empty());
+    assert!(
+        parse(
+            Output::CheckmakeJson,
+            "",
+            "Error: failed to parse \"Makefile\": open Makefile: no such file or directory\n"
+        )
+        .is_err(),
+        "an unreadable Makefile did not lint"
+    );
+    assert!(
+        parse(Output::CheckmakeJson, r#"{"rule":"x"}"#, "").is_err(),
+        "not a list"
+    );
+    assert!(
+        parse(Output::CheckmakeJson, "usage: checkmake", "").is_err(),
+        "not JSON"
+    );
+}

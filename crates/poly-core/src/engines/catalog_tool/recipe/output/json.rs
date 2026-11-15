@@ -1,5 +1,5 @@
 //! The JSON reports: actionlint, buf, hadolint, golangci-lint, buildifier,
-//! tflint, npm-groovy-lint, gh-actions-updater (`gau --lint-pins`), shellcheck, kubeconform, ktlint and credo.
+//! tflint, npm-groovy-lint, gh-actions-updater (`gau --lint-pins`), shellcheck, kubeconform, ktlint, credo and checkmake.
 //!
 //! Each reader pulls only the fields it needs through `serde_json::Value`, so a
 //! tool adding a field never breaks it; a field it needs going missing, or the
@@ -492,6 +492,33 @@ pub(super) fn credo(stdout: &str) -> Result<Vec<Finding>> {
             finding.column = number(issue, "column");
             finding.end_column = number(issue, "column_end");
             finding.code = text(issue, "check");
+            finding
+        })
+        .collect())
+}
+
+/// checkmake's `--output json`: a list of `{rule, violation, file_name,
+/// line_number}`, printed only when there are violations, so a clean run has an
+/// empty stdout. An empty stdout next to an error on stderr is a run that did
+/// not lint (an unreadable Makefile), never a clean one.
+pub(super) fn checkmake(stdout: &str, stderr: &str) -> Result<Vec<Finding>> {
+    if stdout.trim().is_empty() {
+        if stderr.contains("Error:") && !stderr.contains("violations found") {
+            bail!("checkmake failed: {}", stderr.trim());
+        }
+        return Ok(Vec::new());
+    }
+    let report = document(stdout, "checkmake")?;
+    let Some(violations) = report.as_array() else {
+        bail!("checkmake printed a JSON value that is not a list of violations");
+    };
+    Ok(violations
+        .iter()
+        .map(|violation| {
+            let mut finding = Finding::new(Severity::Error, text(violation, "violation").unwrap_or_default());
+            finding.path = text(violation, "file_name");
+            finding.line = number(violation, "line_number");
+            finding.code = text(violation, "rule");
             finding
         })
         .collect())

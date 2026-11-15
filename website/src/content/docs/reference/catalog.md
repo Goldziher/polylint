@@ -25,7 +25,7 @@ run by `poly lint`; enabling one for linting logs a warning naming the command i
 
 ## Tools with a recipe
 
-Fifteen tools carry a **recipe** (`crates/poly-catalog/data/overlay.json`): how poly runs them
+Some tools carry a **recipe** (`crates/poly-catalog/data/overlay.json`): how poly runs them
 beyond one spawn per file with an exit-code verdict. They are what a repository's lefthook or
 pre-commit gate typically runs, and `poly migrate` maps those jobs onto them.
 
@@ -46,6 +46,7 @@ pre-commit gate typically runs, and `poly migrate` maps those jobs onto them.
 | `npm-groovy-lint` | format, lint | all files | JSON |
 | `air` | format | R files, in place on a scratch copy | -- |
 | `jarl` | lint, fix | R files | SARIF (rule, URL, fixable) |
+| `checkmake` | lint | Makefiles | JSON (rule, line) |
 
 ```toml
 [tools.checkstyle]
