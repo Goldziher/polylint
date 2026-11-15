@@ -23,6 +23,7 @@ use std::collections::BTreeMap;
 
 use crate::config::EngineConfig;
 use crate::engine::Severity;
+use crate::options::OptionsExt;
 
 /// Per-rule override from `[lint.<lang>.<tool>.rules.<id>]`.
 #[derive(Debug, Clone, Default)]
@@ -145,11 +146,7 @@ pub fn warn_and_skip_blank(codes: Vec<String>, engine: &str) -> Vec<String> {
 }
 
 fn string_list_from_table(table: &toml::Table, key: &str) -> Vec<String> {
-    table
-        .get(key)
-        .and_then(toml::Value::as_array)
-        .map(|arr| arr.iter().filter_map(|v| v.as_str().map(str::to_owned)).collect())
-        .unwrap_or_default()
+    table.opt_string_list(key)
 }
 
 fn parse_rules_sub_table(options: &toml::Table) -> BTreeMap<String, RuleOptions> {

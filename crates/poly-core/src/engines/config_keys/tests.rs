@@ -558,6 +558,13 @@ const CALL_READERS: &[(&str, OptionType)] = &[
     ("string_list", OptionType::ARRAY),
     ("str_array", OptionType::ARRAY),
     ("str_list", OptionType::ARRAY),
+    ("opt_bool", OptionType::BOOLEAN),
+    ("opt_str", OptionType::STRING),
+    ("opt_i64", OptionType::INTEGER),
+    ("opt_u32", OptionType::INTEGER),
+    ("opt_usize", OptionType::INTEGER),
+    ("opt_string_list", OptionType::ARRAY),
+    ("opt_table", OptionType::TABLE),
     // ruff's `require-lazy` / `ban-lazy`: `"all"`, a list, or an `{ include, exclude }` table.
     (
         "import_selector",
@@ -633,10 +640,16 @@ fn read_type_of(source: &str, key: &str) -> Option<OptionType> {
                 widen(*option_type);
             }
         }
+        let mut typed_by_options_ext = false;
         for (name, option_type) in CALL_READERS {
             if first_arg.captures(before).is_some_and(|m| &m[1] == *name) {
                 widen(*option_type);
+                typed_by_options_ext |= name.starts_with("opt_");
             }
+        }
+        // An `OptionsExt` accessor already names the type; what follows belongs to the value, not the key.
+        if typed_by_options_ext {
+            continue;
         }
         // Forward: stop at the next string literal, so a later read of a
         // different key cannot be mistaken for this one's — and at the end of
@@ -669,7 +682,7 @@ fn read_type_of(source: &str, key: &str) -> Option<OptionType> {
 /// for the call shapes an option read can take.
 fn keys_read_by(engine: &str) -> BTreeSet<String> {
     let reader = Regex::new(
-        r"(?s)(?:options\s*\.\s*(?:get|contains_key)|option_str|option_bool|string_list(?:_from_table)?|str_array|sets_any|usize_opt|str_list|import_selector|flag|integer|rule)\s*\(([^;]{0,200}?)\)",
+        r"(?s)(?:options\s*\.\s*(?:get|contains_key)|opt_(?:bool|str|i64|u32|usize|string_list|table)|option_str|option_bool|string_list(?:_from_table)?|str_array|sets_any|usize_opt|str_list|import_selector|flag|integer|rule)\s*\(([^;]{0,200}?)\)",
     )
     .expect("reader regex");
     let literal = Regex::new(r#""([a-zA-Z][a-zA-Z0-9_\-]*)""#).expect("literal regex");
