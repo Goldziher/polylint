@@ -38,6 +38,8 @@ binary drives lint, format, hooks, and commit checks from one `poly.toml`.
   local schema, offline, with line and column spans (ADR 0052). (#111)
 - **R formatting and linting through pinned release binaries:** `air` formats and `jarl` lints R without an R install
   (opt-in under `[tools.air]` and `[tools.jarl]`); the in-process component for R is not done yet. (#130)
+- **`.editorconfig` conformance:** `editorconfig-checker` as a pinned release recipe, opt-in under
+  `[tools.editorconfig-checker]`. (#176)
 - **Makefile linting:** `checkmake` as a pinned release recipe, opt-in under `[tools.checkmake]`. (#175)
 - **Catalog tools with pinned, checksummed downloads:** shellcheck, clang-format, zizmor, kubeconform, google-java-format
   and ktfmt; ktlint as a host-JRE recipe; Elixir `mix format` and `credo` as host-runtime recipes. ADR 0049 records the

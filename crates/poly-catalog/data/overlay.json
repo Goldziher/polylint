@@ -2309,5 +2309,98 @@
         }
       }
     }
+  },
+  {
+    "name": "editorconfig-checker",
+    "binary": "editorconfig-checker",
+    "categories": [
+      "linter"
+    ],
+    "languages": [],
+    "homepage": "https://github.com/editorconfig-checker/editorconfig-checker",
+    "commands": {
+      "lint": {
+        "arguments": [
+          "-format",
+          "gcc",
+          "$FILES"
+        ],
+        "stdin": false
+      }
+    },
+    "recipe": {
+      "output": "path_line",
+      "config_files": [
+        ".editorconfig",
+        ".editorconfig-checker.json"
+      ],
+      "ok_exits": [
+        1
+      ],
+      "install": {
+        "hint": "brew install editorconfig-checker, or set [tools.editorconfig-checker] version to a pinned release poly can download",
+        "source": {
+          "kind": "binary",
+          "github": "editorconfig-checker/editorconfig-checker",
+          "checksum": {
+            "list": "checksums.txt"
+          },
+          "assets": {
+            "darwin-aarch64": {
+              "name": "editorconfig-checker-darwin-all.tar.gz",
+              "member": "editorconfig-checker"
+            },
+            "darwin-x86_64": {
+              "name": "editorconfig-checker-darwin-all.tar.gz",
+              "member": "editorconfig-checker"
+            },
+            "linux-aarch64": {
+              "name": "editorconfig-checker-linux-arm64.tar.gz",
+              "member": "editorconfig-checker"
+            },
+            "linux-x86_64": {
+              "name": "editorconfig-checker-linux-amd64.tar.gz",
+              "member": "editorconfig-checker"
+            },
+            "windows-x86_64": {
+              "name": "editorconfig-checker-windows-amd64.zip",
+              "member": "editorconfig-checker.exe"
+            }
+          }
+        },
+        "releases": {
+          "4.0.2": {
+            "kind": "binary",
+            "assets": {
+              "darwin-aarch64": {
+                "url": "https://github.com/editorconfig-checker/editorconfig-checker/releases/download/v4.0.2/editorconfig-checker-darwin-all.tar.gz",
+                "sha256": "ff59f57717d95fc62b8e372c8051dbbb766f7d660942409a85d027b0feb2422c",
+                "member": "editorconfig-checker"
+              },
+              "darwin-x86_64": {
+                "url": "https://github.com/editorconfig-checker/editorconfig-checker/releases/download/v4.0.2/editorconfig-checker-darwin-all.tar.gz",
+                "sha256": "ff59f57717d95fc62b8e372c8051dbbb766f7d660942409a85d027b0feb2422c",
+                "member": "editorconfig-checker"
+              },
+              "linux-aarch64": {
+                "url": "https://github.com/editorconfig-checker/editorconfig-checker/releases/download/v4.0.2/editorconfig-checker-linux-arm64.tar.gz",
+                "sha256": "abad76da8c9950fdc2a314bcd66969172aa823e9c595fa7e3a389a91e34d025e",
+                "member": "editorconfig-checker"
+              },
+              "linux-x86_64": {
+                "url": "https://github.com/editorconfig-checker/editorconfig-checker/releases/download/v4.0.2/editorconfig-checker-linux-amd64.tar.gz",
+                "sha256": "44efaef3ed14c6ab52eb87481d78e5e5c204796dccf26e2f4598a61ba17f8003",
+                "member": "editorconfig-checker"
+              },
+              "windows-x86_64": {
+                "url": "https://github.com/editorconfig-checker/editorconfig-checker/releases/download/v4.0.2/editorconfig-checker-windows-amd64.zip",
+                "sha256": "857f8f74dfc259d73dac93573e37cf3ce01150787d7b139bf839549cc6b5beb9",
+                "member": "editorconfig-checker.exe"
+              }
+            }
+          }
+        }
+      }
+    }
   }
 ]

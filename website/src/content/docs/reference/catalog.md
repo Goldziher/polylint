@@ -47,6 +47,7 @@ pre-commit gate typically runs, and `poly migrate` maps those jobs onto them.
 | `air` | format | R files, in place on a scratch copy | -- |
 | `jarl` | lint, fix | R files | SARIF (rule, URL, fixable) |
 | `checkmake` | lint | Makefiles | JSON (rule, line) |
+| `editorconfig-checker` | lint | all text files | gcc-style lines (line, column) |
 
 ```toml
 [tools.checkstyle]

@@ -565,6 +565,34 @@ fn checkmake_lints_makefiles_as_json_and_is_pinned_for_every_published_platform(
 }
 
 #[test]
+fn editorconfig_checker_lints_every_file_as_gcc_lines_and_maps_both_macos_arches_to_one_asset() {
+    let tool = Catalog::get()
+        .tool("editorconfig-checker")
+        .expect("editorconfig-checker");
+    assert!(tool.languages.is_empty(), "language-agnostic: it checks any text file");
+    let (_, lint) = tool.lint_command().expect("a lint command");
+    assert_eq!(lint.arguments, ["-format", "gcc", "$FILES"]);
+    let recipe = recipe_of("editorconfig-checker");
+    assert_eq!(recipe.output, Output::PathLine);
+    assert_eq!(recipe.ok_exits, [1]);
+    assert_eq!(recipe.config_files, [".editorconfig", ".editorconfig-checker.json"]);
+    let release = &recipe.install.as_ref().expect("install").releases["4.0.2"];
+    assert_eq!(
+        release.assets["darwin-aarch64"], release.assets["darwin-x86_64"],
+        "upstream ships one universal macOS tarball"
+    );
+    assert!(release.assets["darwin-aarch64"].url.ends_with("darwin-all.tar.gz"));
+    assert_eq!(
+        release.assets["windows-x86_64"].member.as_deref(),
+        Some("editorconfig-checker.exe")
+    );
+    assert!(
+        !release.assets.contains_key("windows-aarch64"),
+        "its Windows arm64 build is not pinned"
+    );
+}
+
+#[test]
 fn gau_lints_the_pins_of_workflows_and_action_manifests_as_json() {
     let gau = Catalog::get().tool("gau").expect("gau");
     assert_eq!(gau.binary, "gau");
@@ -630,7 +658,7 @@ fn buf_and_hadolint_are_pinned_for_every_desktop_and_server_platform() {
     }
 }
 
-const MIGRATED_TOOLS: [&str; 20] = [
+const MIGRATED_TOOLS: [&str; 21] = [
     "checkstyle",
     "palantir-java-format",
     "buildifier",
@@ -651,6 +679,7 @@ const MIGRATED_TOOLS: [&str; 20] = [
     "air",
     "jarl",
     "checkmake",
+    "editorconfig-checker",
 ];
 
 #[test]

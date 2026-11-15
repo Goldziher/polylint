@@ -752,3 +752,19 @@ fn checkmake_prints_nothing_when_clean_but_a_failed_run_is_an_error() {
         "not JSON"
     );
 }
+
+#[test]
+fn editorconfig_checker_gcc_lines_become_findings() {
+    let stdout = "docs/a.md:3:1: error: Wrong amount of left-padding spaces(want multiple of 2)\n\
+                  src/b.rs:10:1: error: Trailing whitespace detected\n";
+    let findings = parse(Output::PathLine, stdout, "").expect("parses");
+    assert_eq!(findings.len(), 2, "{findings:?}");
+    assert_eq!(findings[0].path.as_deref(), Some("docs/a.md"));
+    assert_eq!((findings[0].line, findings[0].column), (Some(3), Some(1)));
+    assert_eq!(
+        findings[0].message,
+        "error: Wrong amount of left-padding spaces(want multiple of 2)"
+    );
+    assert_eq!(findings[1].path.as_deref(), Some("src/b.rs"));
+    assert!(parse(Output::PathLine, "", "").expect("clean").is_empty());
+}
