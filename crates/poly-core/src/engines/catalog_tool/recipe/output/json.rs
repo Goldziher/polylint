@@ -8,6 +8,7 @@
 use anyhow::{Context, Result, bail};
 use serde_json::Value;
 
+use super::yaml_locate::Locus;
 use super::{Finding, position};
 use crate::engine::Severity;
 
@@ -429,26 +430,36 @@ pub(super) fn kubeconform(stdout: &str) -> Result<Vec<Finding>> {
             .into_iter()
             .flatten()
             .collect();
-        let mut push = |detail: String| {
+        let mut push = |detail: String, pointer: &str| {
             let mut finding = Finding::new(severity, format!("{subject}: {detail}"));
             finding.path = text(resource, "filename");
             finding.code = code.clone();
+            finding.locus = locus(resource, pointer);
             findings.push(finding);
         };
         if details.is_empty() {
-            push(message);
+            push(message, "");
         }
         for detail in details {
             let path = text(detail, "path").unwrap_or_default();
             let reason = text(detail, "msg").unwrap_or_default();
-            push(if path.is_empty() {
+            let shown = if path.is_empty() {
                 reason
             } else {
                 format!("{path}: {reason}")
-            });
+            };
+            push(shown, &path);
         }
     }
     Ok(findings)
+}
+
+fn locus(resource: &Value, pointer: &str) -> Option<Locus> {
+    Some(Locus {
+        kind: text(resource, "kind").filter(|kind| !kind.is_empty())?,
+        name: text(resource, "name").unwrap_or_default(),
+        pointer: pointer.to_owned(),
+    })
 }
 
 /// ktlint's `--reporter=json`: a list of `{file, errors}` objects, each error

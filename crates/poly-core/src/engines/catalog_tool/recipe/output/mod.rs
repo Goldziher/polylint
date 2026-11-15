@@ -9,6 +9,7 @@ mod checkstyle;
 mod helm;
 mod json;
 mod sarif;
+mod yaml_locate;
 
 use anyhow::Result;
 use poly_catalog::Output;
@@ -32,6 +33,9 @@ pub(in crate::engines::catalog_tool) struct Finding {
     pub(in crate::engines::catalog_tool) url: Option<String>,
     /// The tool can fix this finding itself.
     pub(in crate::engines::catalog_tool) fixable: bool,
+    /// The resource the finding is about, for a report with no line numbers:
+    /// [`place`] turns it into `line` once the file's content is known.
+    pub(in crate::engines::catalog_tool) locus: Option<yaml_locate::Locus>,
 }
 
 impl Finding {
@@ -47,6 +51,7 @@ impl Finding {
             message: message.into(),
             url: None,
             fixable: false,
+            locus: None,
         }
     }
 }
@@ -80,6 +85,21 @@ pub(in crate::engines::catalog_tool) fn parse(format: Output, stdout: &str, stde
     }
 }
 
+/// Give a finding that only names a resource the line of that resource in
+/// `content`, the file the finding is about.
+pub(in crate::engines::catalog_tool) fn place(finding: &mut Finding, content: &str) {
+    if finding.line.is_some() {
+        return;
+    }
+    if let Some(line) = finding
+        .locus
+        .as_ref()
+        .and_then(|locus| yaml_locate::locate(content, locus))
+    {
+        finding.line = Some(line);
+    }
+}
+
 /// The revision of the parser for `format`, folded into the recipe tool's
 /// cache-key version. Bump a format's number whenever its parser changes what
 /// it reports for the same output, so cached findings of the old parser are not
@@ -90,6 +110,8 @@ pub(in crate::engines::catalog_tool) fn revision(format: Output) -> u32 {
         Output::ActionlintJson => 2,
         // 2: a result carrying `fixes` is reported fixable (jarl).
         Output::Sarif => 2,
+        // 2: findings carry the resource they are about, to be placed on a line.
+        Output::KubeconformJson => 2,
         _ => 1,
     }
 }

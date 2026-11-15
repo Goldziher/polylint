@@ -888,3 +888,61 @@ fn swiftlint_sarif_reports_rule_levels_and_tolerates_a_violation_without_a_regio
     assert_eq!(findings[1].line, None, "a file-level violation has no region");
     assert!(!findings[1].fixable);
 }
+
+const KUBECONFORM_REAL: &str = include_str!("fixtures/kubeconform.json");
+const KUBECONFORM_MANIFEST: &str = include_str!("fixtures/kubeconform_manifest.yaml");
+
+fn placed(content: &str) -> Vec<(String, Option<u32>)> {
+    parse(Output::KubeconformJson, KUBECONFORM_REAL, "")
+        .expect("parses")
+        .into_iter()
+        .map(|mut finding| {
+            super::place(&mut finding, content);
+            (finding.message, finding.line)
+        })
+        .collect()
+}
+
+#[test]
+fn kubeconform_findings_land_on_the_line_of_the_offending_field() {
+    let placed = placed(KUBECONFORM_MANIFEST);
+    let lines: Vec<Option<u32>> = placed.iter().map(|(_, line)| *line).collect();
+    // Widget: its document's first line; replicas and image: the field's own line.
+    assert_eq!(lines, [Some(27), Some(14), Some(25)], "{placed:?}");
+}
+
+#[test]
+fn kubeconform_findings_stay_unplaced_when_no_document_is_that_resource() {
+    assert!(
+        placed("kind: Service\nmetadata:\n  name: web\n")
+            .iter()
+            .all(|(_, line)| line.is_none())
+    );
+}
+
+#[test]
+fn a_pointer_that_runs_out_reports_the_deepest_line_reached() {
+    let content = "kind: Pod\nmetadata:\n  name: p\nspec:\n  containers:\n    - name: a\n";
+    let locus = |pointer: &str| super::yaml_locate::Locus {
+        kind: "Pod".into(),
+        name: "p".into(),
+        pointer: pointer.into(),
+    };
+    let at = |pointer: &str| super::yaml_locate::locate(content, &locus(pointer));
+    assert_eq!(at("/spec/containers/0/image"), Some(6));
+    assert_eq!(at("/spec/containers/3/image"), Some(5));
+    assert_eq!(at("/nothing"), Some(1));
+    assert_eq!(at(""), Some(1));
+}
+
+#[test]
+fn a_sequence_at_the_key_indent_is_followed() {
+    let content =
+        "kind: Pod\nmetadata:\n  name: p\nspec:\n  containers:\n  - name: a\n    image: x\n  - name: b\n    image: y\n";
+    let locus = super::yaml_locate::Locus {
+        kind: "Pod".into(),
+        name: "p".into(),
+        pointer: "/spec/containers/1/image".into(),
+    };
+    assert_eq!(super::yaml_locate::locate(content, &locus), Some(9));
+}

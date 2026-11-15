@@ -210,7 +210,13 @@ impl RecipeTool {
         for &index in indices {
             results[index] = Some(match failures[index].take() {
                 Some(reason) => Err(anyhow!("{} failed: {reason}", self.tool.name)),
-                None => Ok(findings[index].drain(..).map(|f| self.diagnostic(&f)).collect()),
+                None => Ok(findings[index]
+                    .drain(..)
+                    .map(|mut f| {
+                        output::place(&mut f, &members[index].src.content);
+                        self.diagnostic(&f)
+                    })
+                    .collect()),
             });
         }
     }

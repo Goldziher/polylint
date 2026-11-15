@@ -1,0 +1,30 @@
+{
+  "resources": [
+    {
+      "filename": "m.yaml",
+      "kind": "Widget",
+      "name": "w",
+      "version": "example.com/v1",
+      "status": "statusError",
+      "msg": "could not find schema for Widget"
+    },
+    {
+      "filename": "m.yaml",
+      "kind": "Deployment",
+      "name": "web",
+      "version": "apps/v1",
+      "status": "statusInvalid",
+      "msg": "problem validating schema. Check JSON formatting: jsonschema validation failed with 'https://raw.githubusercontent.com/yannh/kubernetes-json-schema/master/master-standalone/deployment-apps-v1.json#' - at '/spec/replicas': got string, want null or integer - at '/spec/template/spec/containers/0/image': got number, want null or string",
+      "validationErrors": [
+        {
+          "path": "/spec/replicas",
+          "msg": "got string, want null or integer"
+        },
+        {
+          "path": "/spec/template/spec/containers/0/image",
+          "msg": "got number, want null or string"
+        }
+      ]
+    }
+  ]
+}
