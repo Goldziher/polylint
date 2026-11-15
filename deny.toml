@@ -41,6 +41,7 @@ wildcards = "allow"
 [advisories]
 version = 2
 ignore = [
+  # `paste` is unmaintained (RUSTSEC-2024-0436): a maintenance notice, not a vulnerability, on a transitive dependency.
   "RUSTSEC-2024-0436",
   # `serde_yaml` (-> `unsafe-libyaml`) is a dependency of rumdl and sqruff-lib-dialects.
   "RUSTSEC-2024-0449",
