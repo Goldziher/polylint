@@ -93,13 +93,15 @@ family_component!(
     "misc",
     misc,
     MiscComponent,
-    "The `misc` component: the Dockerfile, dotenv, GraphQL, HCL and INI engines.",
+    "The `misc` component: the Dockerfile, dotenv, GraphQL, HCL, INI, Typst and LaTeX engines.",
     vec![
         Box::new(crate::misc::dockerfile::DockerfileEngine),
         Box::new(crate::misc::dotenv::DotenvEngine),
         Box::new(crate::misc::graphql::GraphQlEngine),
         Box::new(crate::misc::hcl::HclEngine),
         Box::new(crate::misc::ini::IniEngine),
+        Box::new(crate::misc::typst::TypstEngine),
+        Box::new(crate::misc::latex::LatexEngine),
     ]
 );
 family_component!(

@@ -8,7 +8,7 @@ authors.workspace = true
 repository.workspace = true
 documentation.workspace = true
 publish = false
-description = "The dockerfile, dotenv, HCL, INI and GraphQL engine family for poly."
+description = "The dockerfile, dotenv, HCL, INI, GraphQL, Typst and LaTeX engine family for poly."
 
 [package.metadata.cargo-machete]
 ignored = ["rust-ini"]
@@ -18,12 +18,14 @@ name = "poly_engines_misc"
 path = "src/lib.rs"
 
 [features]
-default = ["dockerfile", "dotenv", "hcl", "ini", "graphql"]
+default = ["dockerfile", "dotenv", "hcl", "ini", "graphql", "typst", "latex"]
 dockerfile = ["dep:dockerfile-parser"]
 dotenv = ["dep:dotenv-analyzer", "dep:dotenv-core"]
 hcl = ["dep:hcl-edit"]
 ini = ["dep:rust-ini"]
 graphql = ["dep:graphql-parser", "dep:pretty_graphql"]
+typst = ["dep:typstyle-core"]
+latex = ["dep:tex-fmt"]
 
 [dependencies]
 anyhow.workspace = true
@@ -35,8 +37,10 @@ hcl-edit = { workspace = true, optional = true }
 poly-engine-api.workspace = true
 pretty_graphql = { workspace = true, features = ["config_serde"], optional = true }
 rust-ini = { workspace = true, optional = true }
+tex-fmt = { workspace = true, optional = true }
 toml.workspace = true
 tracing.workspace = true
+typstyle-core = { workspace = true, optional = true }
 
 [dev-dependencies]
 insta.workspace = true

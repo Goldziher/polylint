@@ -27,6 +27,8 @@ misc = [
   "poly-engines-misc/hcl",
   "poly-engines-misc/ini",
   "poly-engines-misc/graphql",
+  "poly-engines-misc/typst",
+  "poly-engines-misc/latex",
 ]
 nix = ["dep:poly-engines-nix"]
 php = ["dep:poly-engines-php"]

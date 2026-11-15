@@ -46,6 +46,8 @@ checksummed release (macOS and Linux), and `RT` one that needs a host runtime.
 | Dockerfile (`Dockerfile`, `Dockerfile.*`, `Dockerfile-*`, `*.dockerfile`, `Containerfile`, …) | vendored `dockerfile-parser`, 22 in-process hadolint rules (same `DLxxxx` ids); opt-in `hadolint` | yes | no | component `misc`; recipe `hadolint` ↓ |
 | `.env` files (`.env`, `.env.*`, `*.env`) | dotenv-analyzer | yes | no | component `misc` |
 | INI and compatible (`.ini`, `.cfg`, `.desktop`, `.npmrc`, `.editorconfig`, `.pylintrc`, `.coveragerc`, `.flake8`, …) | `rust-ini` | yes | no | component `misc` |
+| Typst (`.typ`) | `typstyle-core` | no | yes | component `misc` |
+| LaTeX (`.tex`, `.sty`, `.cls`) | `tex-fmt` | no | yes | component `misc` |
 | Nix | alejandra | no | yes | component `nix` |
 | Ruby (`*.rb`, `Gemfile`, `Rakefile`, `*.gemspec`, `*.rake`, `*.ru`, `Podfile`, …) | rubyfmt | no | yes | component `ruby` |
 | PHP | mago | yes | yes | component `php` |

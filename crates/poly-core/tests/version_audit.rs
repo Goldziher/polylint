@@ -38,6 +38,7 @@ use poly_core::engines::graphql::GraphQlEngine;
 use poly_core::engines::hcl::HclEngine;
 use poly_core::engines::ini::IniEngine;
 use poly_core::engines::jsonschema::JsonSchemaEngine;
+use poly_core::engines::latex::LatexEngine;
 use poly_core::engines::mago::MagoEngine;
 use poly_core::engines::nixfmt::NixFmtEngine;
 use poly_core::engines::quality::QualityEngine;
@@ -46,6 +47,7 @@ use poly_core::engines::sqruff::SqruffEngine;
 use poly_core::engines::treesitter::TreeSitterEngine;
 use poly_core::engines::ty::TyEngine;
 use poly_core::engines::typos::TyposEngine;
+use poly_core::engines::typst::TypstEngine;
 use poly_core::engines::uncomment::UncommentEngine;
 
 /// Parse the workspace `Cargo.lock` into `name -> version`. The lockfile is a
@@ -137,6 +139,8 @@ fn engine_versions_track_cargo_lock() {
         ),
         check("dotenv", DotenvEngine.version(), vec!["dotenv-analyzer", "dotenv-core"]),
         check("ini", IniEngine.version(), vec!["rust-ini"]),
+        check("typstyle", TypstEngine.version(), vec!["typstyle-core"]),
+        check("tex-fmt", LatexEngine.version(), vec!["tex-fmt"]),
         // `astgrep` parses with the same grammar pack as `treesitter`, so both
         // must embed the same `tree-sitter-language-pack` version — new grammars
         // change what rules match. It was omitted from this list until the pack

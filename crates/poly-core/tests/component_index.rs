@@ -37,6 +37,8 @@ const PLACEMENT: &[(&str, Placement)] = &[
     ("hcl", In("misc")),
     ("graphql", In("misc")),
     ("ini", In("misc")),
+    ("typstyle", In("misc")),
+    ("tex-fmt", In("misc")),
     ("uncomment", In("uncomment")),
     ("jsonschema", In("jsonschema")),
     ("quality", Core),
@@ -98,6 +100,8 @@ const COMPONENTS: &[(&str, ComponentKind, bool, &[&str])] = &[
             "engine-hcl",
             "engine-ini",
             "engine-graphql",
+            "engine-typst",
+            "engine-latex",
         ],
     ),
     // The `sh` sidecar is a Go executable, so its entry is carried over like the git-pinned
@@ -139,6 +143,8 @@ const ALIASES: &[(&str, &[&str])] = &[
     ("dockerfile", &["dockerfile"]),
     ("hcl", &["hcl"]),
     ("dotenv", &["dotenv"]),
+    ("typst", &["typst"]),
+    ("latex", &["latex"]),
 ];
 
 fn index_path() -> PathBuf {

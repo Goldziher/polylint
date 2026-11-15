@@ -189,6 +189,7 @@ tar = { version = "0.4", default-features = false }
 target-lexicon = "0.13.6"
 tempfile = "3"
 terminal_size = "0.4.4"
+tex-fmt = { version = "=0.5.7", default-features = false }
 textwrap = "0.16.4"
 thiserror = "2"
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "io-std"] }
@@ -198,6 +199,7 @@ tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["fmt", "env-filter"] }
 tree-sitter = "0.27"
 tree-sitter-language-pack = "1.25"
+typstyle-core = { version = "=0.15.2", default-features = false }
 ty_module_resolver = "=0.0.21"
 # `testing` only exposes `TestProgramDb` (a salsa-cached `Program` from settings, no extra deps); poly-engines-python's
 # ty database is built on it because `ty_project` is unpublished.

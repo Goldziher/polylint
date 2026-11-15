@@ -1,7 +1,7 @@
 //! Backend implementations. Each backend is a self-contained module implementing
 //! [`crate::engine::Engine`]. New backends are added here and wired into the
 //! crate-private registry that routes each language to its backend(s). The python, php, sql, nix, typos,
-//! astgrep, uncomment and misc (dockerfile, dotenv, hcl, ini, graphql) families live in their own
+//! astgrep, uncomment and misc (dockerfile, dotenv, hcl, ini, graphql, typst, latex) families live in their own
 //! `poly-engines-*` crates and are re-exported here at their old paths. The web (oxc, taplo, markup_fmt,
 //! malva, rumdl, adrlint, yaml) and ruby families depend on git-pinned crates, so they live in the
 //! separate `components/` workspace and reach the registry through [`crate::register_engine_provider`].
@@ -30,6 +30,10 @@ pub use poly_engines_misc::graphql;
 pub use poly_engines_misc::hcl;
 #[cfg(feature = "engine-ini")]
 pub use poly_engines_misc::ini;
+#[cfg(feature = "engine-latex")]
+pub use poly_engines_misc::latex;
+#[cfg(feature = "engine-typst")]
+pub use poly_engines_misc::typst;
 pub mod line_index;
 #[cfg(feature = "engine-php")]
 pub use poly_engines_php::mago;

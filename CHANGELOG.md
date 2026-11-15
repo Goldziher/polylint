@@ -14,6 +14,8 @@ binary drives lint, format, hooks, and commit checks from one `poly.toml`.
   `go-fmt-print-outside-main`, `go-time-sleep`, `go-panic-in-library`, `go-goroutine-without-recover`,
   `go-naked-return`, `go-unsafe-import`, `go-http-default-client` and `go-waitgroup-add-in-goroutine`. The pack is now
   42 rules. (#125)
+- **Typst and LaTeX formatting.** `.typ` files format through `typstyle-core` and `.tex`, `.sty` and `.cls` files through
+  `tex-fmt`, both in-process engines in the `misc` component. (#171, #172)
 - **`[discovery] max_file_size`.** A file larger than this many bytes (default 32 MiB, `0` for no limit) is not read and
   is reported as skipped (`file too large`), which counts toward `--deny-skips`. (#207)
 

@@ -22,7 +22,7 @@
 //! behind an `engine-*` feature (`engine-python`, `engine-php`, `engine-sql`,
 //! `engine-nix`, `engine-typos`, `engine-quality`, `engine-astgrep`,
 //! `engine-uncomment`, `engine-dockerfile`, `engine-dotenv`, `engine-ini`, `engine-hcl`,
-//! `engine-graphql`); `all-engines` (the default) enables all of them. A language whose engine is
+//! `engine-graphql`, `engine-typst`, `engine-latex`); `all-engines` (the default) enables all of them. A language whose engine is
 //! compiled out is served by the tree-sitter generic tier. The web, biome and ruby families have no
 //! feature here: their upstream crates are git pins that live in the `components/` workspace, and a
 //! core build reaches them as downloadable components (the bundled binary supplies them through

@@ -54,6 +54,8 @@ all-engines = [
   "engine-ini",
   "engine-hcl",
   "engine-graphql",
+  "engine-typst",
+  "engine-latex",
   "engine-shfmt",
   "engine-gofmt",
 ]
@@ -78,6 +80,8 @@ engine-dotenv = ["dep:poly-engines-misc", "poly-engines-misc/dotenv"]
 engine-ini = ["dep:poly-engines-misc", "poly-engines-misc/ini"]
 engine-hcl = ["dep:poly-engines-misc", "poly-engines-misc/hcl"]
 engine-graphql = ["dep:poly-engines-misc", "poly-engines-misc/graphql"]
+engine-typst = ["dep:poly-engines-misc", "poly-engines-misc/typst"]
+engine-latex = ["dep:poly-engines-misc", "poly-engines-misc/latex"]
 
 [dependencies]
 anyhow.workspace = true

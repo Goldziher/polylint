@@ -40,6 +40,10 @@ const LINKED_FEATURES: &[&str] = &[
     "engine-hcl",
     #[cfg(feature = "engine-graphql")]
     "engine-graphql",
+    #[cfg(feature = "engine-typst")]
+    "engine-typst",
+    #[cfg(feature = "engine-latex")]
+    "engine-latex",
     #[cfg(feature = "engine-shfmt")]
     "engine-shfmt",
     #[cfg(feature = "engine-gofmt")]
