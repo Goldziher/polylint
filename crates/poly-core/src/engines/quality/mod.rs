@@ -281,4 +281,6 @@ fn usize_threshold(value: i64) -> usize {
 }
 
 #[cfg(test)]
+mod equivalence;
+#[cfg(test)]
 mod tests;

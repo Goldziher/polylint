@@ -232,7 +232,7 @@ fn demeter_and_magic_number_match_their_string_predicates() {
         assert!(!expected.is_empty(), "{grammar}: no numeric literals found");
         assert_eq!(numbers, expected, "{grammar}: magic numbers");
 
-        let chains: Vec<_> = demeter::scan(root, 0)
+        let chains: Vec<_> = demeter::scan(root, &source, 0)
             .iter()
             .map(|d| d.span.as_ref().map(|s| (s.start_line, s.start_col)))
             .collect();
