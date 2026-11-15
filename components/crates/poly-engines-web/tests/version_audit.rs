@@ -155,13 +155,14 @@ fn engine_versions_track_cargo_lock() {
 fn all_languages() -> Vec<Language> {
     use Language::{
         Angular, Astro, C, CSharp, Cpp, Css, Dart, Dockerfile, Dotenv, Elixir, Gleam, Go, GraphQl, Hcl, Html, Ini,
-        Java, JavaScript, Jinja, Json, Jsonc, Jsx, Kotlin, Less, Markdown, Mdx, Mustache, Nix, Php, Proto, Python, R,
-        Ruby, Rust, Scss, Shell, Sql, Svelte, Swift, Toml, Tsx, TypeScript, Vento, Vue, Xml, Yaml, Zig,
+        Java, JavaScript, Jinja, Json, Jsonc, Jsx, Kotlin, Latex, Less, Markdown, Mdx, Mustache, Nix, Php, Proto,
+        Python, R, Ruby, Rust, Scss, Shell, Sql, Svelte, Swift, Toml, Tsx, TypeScript, Typst, Vento, Vue, Xml, Yaml,
+        Zig,
     };
     vec![
         Python, JavaScript, TypeScript, Jsx, Tsx, Json, Jsonc, Yaml, Toml, Markdown, Mdx, Sql, Css, Scss, Less, Html,
         Vue, Svelte, Astro, Angular, Jinja, Vento, Mustache, Xml, GraphQl, Hcl, Nix, Shell, Dockerfile, Go, Java,
-        Kotlin, Ruby, Php, R, Elixir, C, Cpp, Rust, Proto, Zig, Swift, Dart, Gleam, CSharp, Dotenv, Ini,
+        Kotlin, Ruby, Php, R, Elixir, C, Cpp, Rust, Proto, Zig, Swift, Dart, Gleam, CSharp, Dotenv, Ini, Typst, Latex,
     ]
 }
 
@@ -213,6 +214,8 @@ fn assert_all_language_variants_listed(language: &Language) {
         | Language::Swift
         | Language::Dart
         | Language::Gleam
+        | Language::Typst
+        | Language::Latex
         | Language::CSharp
         | Language::Dotenv
         | Language::Ini

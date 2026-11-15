@@ -1139,6 +1139,50 @@
           },
           "additionalProperties": true
         },
+        "typst": {
+          "type": "object",
+          "description": "Backends that handle typst files.",
+          "properties": {
+            "typos": {
+              "$ref": "#/$defs/lint_typos"
+            },
+            "astgrep": {
+              "$ref": "#/$defs/lint_astgrep"
+            },
+            "uncomment": {
+              "$ref": "#/$defs/lint_uncomment"
+            },
+            "quality": {
+              "$ref": "#/$defs/lint_quality"
+            },
+            "secrets": {
+              "$ref": "#/$defs/lint_secrets"
+            }
+          },
+          "additionalProperties": true
+        },
+        "latex": {
+          "type": "object",
+          "description": "Backends that handle latex files.",
+          "properties": {
+            "typos": {
+              "$ref": "#/$defs/lint_typos"
+            },
+            "astgrep": {
+              "$ref": "#/$defs/lint_astgrep"
+            },
+            "uncomment": {
+              "$ref": "#/$defs/lint_uncomment"
+            },
+            "quality": {
+              "$ref": "#/$defs/lint_quality"
+            },
+            "secrets": {
+              "$ref": "#/$defs/lint_secrets"
+            }
+          },
+          "additionalProperties": true
+        },
         "typos": {
           "$ref": "#/$defs/lint_cross_typos"
         },
@@ -1597,6 +1641,26 @@
           "properties": {
             "treesitter": {
               "$ref": "#/$defs/fmt_treesitter"
+            }
+          },
+          "additionalProperties": true
+        },
+        "typst": {
+          "type": "object",
+          "description": "Backends that handle typst files.",
+          "properties": {
+            "typstyle": {
+              "$ref": "#/$defs/fmt_typstyle"
+            }
+          },
+          "additionalProperties": true
+        },
+        "latex": {
+          "type": "object",
+          "description": "Backends that handle latex files.",
+          "properties": {
+            "tex-fmt": {
+              "$ref": "#/$defs/fmt_tex-fmt"
             }
           },
           "additionalProperties": true
@@ -4374,6 +4438,9 @@
         "indent_width": {
           "type": "integer"
         },
+        "install": {
+          "type": "string"
+        },
         "rules": {
           "oneOf": [
             {
@@ -5551,6 +5618,50 @@
         "batch": {
           "type": "boolean"
         },
+        "enabled": {
+          "type": "boolean"
+        },
+        "indent_width": {
+          "type": "integer"
+        },
+        "rules": {
+          "oneOf": [
+            {
+              "type": "array"
+            },
+            {
+              "type": "object"
+            }
+          ]
+        }
+      },
+      "additionalProperties": true
+    },
+    "fmt_typstyle": {
+      "type": "object",
+      "properties": {
+        "enabled": {
+          "type": "boolean"
+        },
+        "indent_width": {
+          "type": "integer"
+        },
+        "rules": {
+          "oneOf": [
+            {
+              "type": "array"
+            },
+            {
+              "type": "object"
+            }
+          ]
+        }
+      },
+      "additionalProperties": true
+    },
+    "fmt_tex-fmt": {
+      "type": "object",
+      "properties": {
         "enabled": {
           "type": "boolean"
         },

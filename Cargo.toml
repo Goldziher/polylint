@@ -199,7 +199,6 @@ tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["fmt", "env-filter"] }
 tree-sitter = "0.27"
 tree-sitter-language-pack = "1.25"
-typstyle-core = { version = "=0.15.2", default-features = false }
 ty_module_resolver = "=0.0.21"
 # `testing` only exposes `TestProgramDb` (a salsa-cached `Program` from settings, no extra deps); poly-engines-python's
 # ty database is built on it because `ty_project` is unpublished.
@@ -209,6 +208,7 @@ ty_site_packages = "=0.0.21"
 ty_vendored = "=0.0.21"
 typos = "0.10"
 typos-dict = "0.14"
+typstyle-core = { version = "=0.15.2", default-features = false }
 uncomment = "3.10"
 unicase = "2"
 unicode-width = { version = "0.2.3", default-features = false }

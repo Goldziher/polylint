@@ -160,7 +160,9 @@ expression: json
         "dotenv",
         "graphql",
         "hcl",
-        "ini"
+        "ini",
+        "tex-fmt",
+        "typstyle"
       ]
     },
     {

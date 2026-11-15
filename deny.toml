@@ -45,6 +45,9 @@ ignore = [
   "RUSTSEC-2024-0436",
   # `serde_yaml` (-> `unsafe-libyaml`) is a dependency of rumdl and sqruff-lib-dialects.
   "RUSTSEC-2024-0449",
+  # `proc-macro-error2` is unmaintained (RUSTSEC-2026-0173): a build-time proc-macro dependency of `merge_derive`,
+  # reached through `tex-fmt` (LaTeX formatting); a maintenance notice, not a vulnerability.
+  "RUSTSEC-2026-0173",
 ]
 
 [sources]

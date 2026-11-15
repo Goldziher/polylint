@@ -1,0 +1,197 @@
+---
+source: crates/poly-cli/tests/components_cli.rs
+assertion_line: 70
+expression: json
+---
+{
+  "schema": 1,
+  "command": "list",
+  "flavor": "partial",
+  "offline": false,
+  "cache_root": "<cache>",
+  "lock": "this build embeds no component lock",
+  "components": [
+    {
+      "name": "web",
+      "kind": "engines",
+      "state": "unavailable",
+      "opt_in": false,
+      "engines": [
+        "adrlint",
+        "malva",
+        "markup_fmt",
+        "oxc",
+        "rumdl",
+        "skif",
+        "taplo",
+        "yaml"
+      ],
+      "detail": "this build embeds no component lock"
+    },
+    {
+      "name": "python",
+      "kind": "engines",
+      "state": "bundled",
+      "opt_in": false,
+      "engines": [
+        "python-types",
+        "ruff"
+      ]
+    },
+    {
+      "name": "pyrefly",
+      "kind": "engines",
+      "state": "unavailable",
+      "opt_in": true,
+      "engines": [
+        "pyrefly"
+      ],
+      "detail": "this build embeds no component lock"
+    },
+    {
+      "name": "secrets",
+      "kind": "engines",
+      "state": "unavailable",
+      "opt_in": true,
+      "engines": [
+        "secrets"
+      ],
+      "detail": "this build embeds no component lock"
+    },
+    {
+      "name": "tsrs",
+      "kind": "engines",
+      "state": "unavailable",
+      "opt_in": true,
+      "engines": [
+        "tsrs"
+      ],
+      "detail": "this build embeds no component lock"
+    },
+    {
+      "name": "sql",
+      "kind": "engines",
+      "state": "bundled",
+      "opt_in": false,
+      "engines": [
+        "sqruff"
+      ]
+    },
+    {
+      "name": "php",
+      "kind": "engines",
+      "state": "bundled",
+      "opt_in": false,
+      "engines": [
+        "mago"
+      ]
+    },
+    {
+      "name": "biome",
+      "kind": "engines",
+      "state": "unavailable",
+      "opt_in": false,
+      "engines": [
+        "biome"
+      ],
+      "detail": "this build embeds no component lock"
+    },
+    {
+      "name": "ruby",
+      "kind": "engines",
+      "state": "unavailable",
+      "opt_in": false,
+      "engines": [
+        "rubyfmt"
+      ],
+      "detail": "this build embeds no component lock"
+    },
+    {
+      "name": "nix",
+      "kind": "engines",
+      "state": "bundled",
+      "opt_in": false,
+      "engines": [
+        "alejandra"
+      ]
+    },
+    {
+      "name": "typos",
+      "kind": "engines",
+      "state": "bundled",
+      "opt_in": true,
+      "engines": [
+        "typos"
+      ]
+    },
+    {
+      "name": "astgrep",
+      "kind": "engines",
+      "state": "bundled",
+      "opt_in": false,
+      "engines": [
+        "astgrep"
+      ]
+    },
+    {
+      "name": "uncomment",
+      "kind": "engines",
+      "state": "bundled",
+      "opt_in": true,
+      "engines": [
+        "uncomment"
+      ]
+    },
+    {
+      "name": "jsonschema",
+      "kind": "engines",
+      "state": "bundled",
+      "opt_in": true,
+      "engines": [
+        "jsonschema"
+      ]
+    },
+    {
+      "name": "misc",
+      "kind": "engines",
+      "state": "bundled",
+      "opt_in": false,
+      "engines": [
+        "dockerfile",
+        "dotenv",
+        "graphql",
+        "hcl",
+        "ini",
+        "tex-fmt",
+        "typstyle"
+      ]
+    },
+    {
+      "name": "sh",
+      "kind": "sidecar",
+      "state": "bundled",
+      "opt_in": false,
+      "engines": [
+        "shfmt"
+      ],
+      "detail": "not the sidecar: this build runs the host `shfmt` when it is on PATH, else the tree-sitter tier"
+    },
+    {
+      "name": "go",
+      "kind": "sidecar",
+      "state": "bundled",
+      "opt_in": false,
+      "engines": [
+        "gofmt"
+      ],
+      "detail": "not the sidecar: this build runs the host `gofmt` when it is on PATH, else the tree-sitter tier"
+    },
+    {
+      "name": "mcp",
+      "kind": "frontend",
+      "state": "bundled",
+      "opt_in": false,
+      "engines": []
+    }
+  ]
+}

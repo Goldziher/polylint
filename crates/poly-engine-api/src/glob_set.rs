@@ -96,7 +96,7 @@ mod tests {
 
     #[test]
     fn strict_empty_matches_nothing() {
-        let set = build_glob_set::<&str>(&[]).unwrap();
+        let set = build_glob_set(&[] as &[&str]).unwrap();
         assert!(set.is_empty());
         assert!(!set.is_match("a.rs"));
     }
@@ -111,7 +111,7 @@ mod tests {
 
     #[test]
     fn lossy_empty_matches_nothing() {
-        let set = build_glob_set_lossy::<&str>(&[]);
+        let set = build_glob_set_lossy(&[] as &[&str]);
         assert!(set.is_empty());
     }
 

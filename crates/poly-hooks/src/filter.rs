@@ -273,16 +273,6 @@ impl<'a> HookFileFilter<'a> {
     pub fn matches_tags(&self, tags: Option<&TagSet>) -> bool {
         tags.is_some_and(|tags| self.tags.matches(tags))
     }
-
-    /// Return `true` if `filename` passes both the filename and tag filters,
-    /// looking up tags via `tag_cache`.
-    #[cfg(test)]
-    pub fn matches<'p>(&self, filename: &'p Path, tag_cache: &FileTagCache<'p>) -> bool {
-        if !self.matches_filename(filename) {
-            return false;
-        }
-        self.matches_tags(tag_cache.tags_for(filename))
-    }
 }
 
 /// Per-file tag cache — computes tags lazily via [`tags_from_path`] and

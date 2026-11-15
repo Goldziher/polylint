@@ -2600,7 +2600,15 @@
       "name": "misc",
       "kind": "engines",
       "opt_in": false,
-      "features": ["engine-dockerfile", "engine-dotenv", "engine-hcl", "engine-ini", "engine-graphql"],
+      "features": [
+        "engine-dockerfile",
+        "engine-dotenv",
+        "engine-hcl",
+        "engine-ini",
+        "engine-graphql",
+        "engine-typst",
+        "engine-latex"
+      ],
       "engines": [
         {
           "name": "dockerfile",
@@ -2851,6 +2859,106 @@
             "files": [],
             "dirs": null
           }
+        },
+        {
+          "name": "tex-fmt",
+          "languages": ["latex"],
+          "capabilities": {
+            "lint": false,
+            "format": true,
+            "fix": false,
+            "project": false
+          },
+          "version": "tex-fmt-0.5.7+fmt1",
+          "option_keys": [
+            {
+              "table": "Lint",
+              "checked": true,
+              "declared": [],
+              "rule_selection": false,
+              "has_derived": false,
+              "note": null
+            },
+            {
+              "table": "Format",
+              "checked": true,
+              "declared": [],
+              "rule_selection": false,
+              "has_derived": false,
+              "note": null
+            },
+            {
+              "table": "CrossCuttingLint",
+              "checked": true,
+              "declared": [],
+              "rule_selection": false,
+              "has_derived": false,
+              "note": null
+            }
+          ],
+          "hooks": 0,
+          "takes_over_tier_one": false,
+          "claimed_paths": [],
+          "host_hook": "none",
+          "supplements_tier_one": false,
+          "self_manages_enabled": false,
+          "supersedes_generic_formatter": false,
+          "batch_shard_floor": 2,
+          "project_inputs": {
+            "gate_key": null,
+            "files": [],
+            "dirs": null
+          }
+        },
+        {
+          "name": "typstyle",
+          "languages": ["typst"],
+          "capabilities": {
+            "lint": false,
+            "format": true,
+            "fix": false,
+            "project": false
+          },
+          "version": "typstyle-core-0.15.2+fmt1",
+          "option_keys": [
+            {
+              "table": "Lint",
+              "checked": true,
+              "declared": [],
+              "rule_selection": false,
+              "has_derived": false,
+              "note": null
+            },
+            {
+              "table": "Format",
+              "checked": true,
+              "declared": [],
+              "rule_selection": false,
+              "has_derived": false,
+              "note": null
+            },
+            {
+              "table": "CrossCuttingLint",
+              "checked": true,
+              "declared": [],
+              "rule_selection": false,
+              "has_derived": false,
+              "note": null
+            }
+          ],
+          "hooks": 0,
+          "takes_over_tier_one": false,
+          "claimed_paths": [],
+          "host_hook": "none",
+          "supplements_tier_one": false,
+          "self_manages_enabled": false,
+          "supersedes_generic_formatter": false,
+          "batch_shard_floor": 2,
+          "project_inputs": {
+            "gate_key": null,
+            "files": [],
+            "dirs": null
+          }
         }
       ],
       "lock_sha": null
@@ -3042,6 +3150,7 @@
     "js": ["web"],
     "js-deps": ["web"],
     "json": ["web"],
+    "latex": ["misc"],
     "markdown": ["web"],
     "nix": ["nix"],
     "php": ["php"],
@@ -3052,6 +3161,7 @@
     "sql": ["sql"],
     "toml": ["web"],
     "ts": ["web"],
+    "typst": ["misc"],
     "yaml": ["web"]
   }
 }

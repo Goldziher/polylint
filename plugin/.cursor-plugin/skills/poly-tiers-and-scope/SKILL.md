@@ -9,8 +9,8 @@ metadata:
 
 <!--
 AI-RULEZ :: GENERATED FILE — DO NOT EDIT
-Content-Hash: blake3:08841f2afc9ce323d73e14e48744e5c555e2b5002e73968f4b5821d4e545359e
-Source-Hash: blake3:96f26b0f2e2a2e679039b1d07dfd3e83e21e574c9e9ed176e92b374893a0e8ff
+Content-Hash: blake3:441c3fecc8c53b118684e486db63b3cc5914eecb8282ca76b1400e20828b2adf
+Source-Hash: blake3:aa1807e28d6926ffcc8cf34290727781a962b682d64f668dae998e26bb218e89
 Schema-Version: v1
 -->
 
@@ -46,7 +46,7 @@ Five mechanisms decide what actually inspects a file (`crates/poly-core/src/regi
    Kotlin, C, C++, C#, and Ruby; `magic-number` and `law-of-demeter` are opt-in. A
    per-language deferral table keeps it from duplicating
    a tier-1 rule (ruff's `C901`/`PLR0913`, oxlint's `max-depth`/`max-params`).
-5. **The built-in ast-grep rule pack** (ADR 0029) — 30 rules across 9 languages (C#, Elixir,
+5. **The built-in ast-grep rule pack** (ADR 0029) — 42 rules across 9 languages (C#, Elixir,
    Go, Java, Kotlin, Python, Ruby, Rust, Swift) embedded in the binary and on by default; 13
    of them ship `severity: off`. It sits *beneath* `[engines.astgrep] rule_dirs` (default
    `.poly/rules`), so a user rule with the same `id` replaces a pack rule. `builtin_pack = false`

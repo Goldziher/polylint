@@ -121,8 +121,8 @@ fn listing_reflects_ignore_and_level_overrides() {
         "a `level` override must show as the effective severity: {promoted}"
     );
     assert!(
-        stdout.contains("12 enabled"),
-        "ignoring one of the 13 default-on rules leaves 12: {stdout}"
+        stdout.contains("15 enabled"),
+        "ignoring one of the 16 default-on rules leaves 15: {stdout}"
     );
 }
 
@@ -147,7 +147,7 @@ fn a_user_rule_overriding_a_pack_rule_is_listed_once_as_the_users() {
     assert_eq!(rows.len(), 1, "one row per id, not one per source: {rows:?}");
     assert!(rows[0].contains("user"), "the user's rule wins the row: {}", rows[0]);
     assert!(
-        stdout.contains("29 built-in, 1 user"),
+        stdout.contains("41 built-in, 1 user"),
         "the override replaces a pack rule rather than adding to it: {stdout}"
     );
 }

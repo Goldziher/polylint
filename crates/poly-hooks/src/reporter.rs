@@ -41,9 +41,7 @@ use markers::{NOTHING_VALIDATED_MARKER, SKIPPED_MARKER, timed_out_marker, unknow
 
 pub use markers::project_status_marker;
 pub use notice::{lock_wait_line, still_running_line};
-pub use progress::{
-    CaptureSink, HOOK_OUTPUT_PREVIEW_LINES, HOOK_OUTPUT_PREVIEW_PREFIX, HookBar, OutputPreview, PreviewSink, ProgressUi,
-};
+pub use progress::{CaptureSink, HookBar, PreviewSink, ProgressUi};
 
 /// Truncate `input` so its Unicode display width fits within `width` columns.
 ///

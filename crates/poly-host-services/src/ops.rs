@@ -198,7 +198,7 @@ pub fn format_run_with(
 /// resolved config, else fall back to the default per-repo anchor walk (which
 /// respects `POLY_CACHE_HOME`). Network-free, matching the rest of this module.
 fn open_result_cache() -> anyhow::Result<ResultCache> {
-    let root = match resolve_poly_config(None)?.cache.dir {
+    let root = match resolve_poly_config(None)?.cache.dir.as_deref() {
         Some(dir) => PathBuf::from(dir),
         None => root_from_cwd()?,
     };

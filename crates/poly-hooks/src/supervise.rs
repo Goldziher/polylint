@@ -119,6 +119,9 @@ impl Supervised {
 ///
 /// Returns the spawn or wait error. The child (and its group) is killed before
 /// a wait error propagates, so no supervised process outlives this call.
+// No production caller after the module became crate-private: the unit tests exercise it, and the
+// supervised hook path is expected to route through it.
+#[cfg_attr(not(test), allow(dead_code))]
 pub fn run(
     command: &mut Command,
     budget: Budget,

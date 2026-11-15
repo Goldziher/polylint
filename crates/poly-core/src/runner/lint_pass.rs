@@ -7,11 +7,11 @@ use super::debug_record::{DebugSource, push_engine_debug};
 use super::engine_clock::{EngineClock, note_slow_engine};
 use super::fast::decode_payload;
 use super::fast::encode_payload;
-use super::guard_engine_panic;
 use super::plan::EnginePlan;
 use super::types::RunDebug;
 use crate::discover::DiscoveredFile;
 use crate::engine::{Diagnostic, SourceFile};
+use crate::engine_guard::guard_engine_panic;
 
 /// What one lint pass over a file produced.
 #[derive(Debug)]
