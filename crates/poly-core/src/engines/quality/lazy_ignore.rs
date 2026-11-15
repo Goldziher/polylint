@@ -142,6 +142,7 @@ fn scan_line(line: &str, line_no: usize) -> Option<Diagnostic> {
             continue;
         }
         let marker_col = indent + (trimmed.len() - rest.len() - marker.prefix.len());
+        let marker_col = line[..marker_col].chars().count();
         return Some(diagnostic(line_no, marker_col, marker.prefix.len()));
     }
     None
@@ -208,6 +209,13 @@ mod tests {
     /// score it at all — not even the bare form it once flagged, since a
     /// partial reimplementation is exactly what produced the two
     /// false-positive classes below.
+    #[test]
+    fn marker_column_counts_characters() {
+        let found = scan("é日 # noqa\n");
+        let span = found[0].span.as_ref().unwrap();
+        assert_eq!(span.start_col, 4);
+    }
+
     #[test]
     fn defers_every_rust_allow_form_to_the_ast_grep_pack_rule() {
         for source in [

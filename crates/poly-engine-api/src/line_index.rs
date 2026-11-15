@@ -5,6 +5,10 @@
 //! turns a 1 MB minified bundle with thousands of findings into billions of
 //! steps. [`LineIndex`] pays one O(file) pass up front and then answers each
 //! query in O(log lines + [`CHUNK`]) regardless of how long the line is.
+//!
+//! Convention: lines and columns are 1-based, and a column counts Unicode scalar values, not UTF-16
+//! code units and not bytes. In a CRLF file the `\r` is a column of its own. Consumers that expect
+//! UTF-16 columns (SARIF, LSP) are off by one for each astral character before the position.
 
 /// Granularity of the character-count checkpoints, in bytes.
 const CHUNK: usize = 1024;

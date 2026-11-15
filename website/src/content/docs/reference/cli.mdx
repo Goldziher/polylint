@@ -182,6 +182,12 @@ fully merged table. Each result's `config` field indexes into `configs` (omitted
 are only comparable when their `configs` entries match: a `poly.toml`, a `poly.local.toml`, a
 nested config or an `extends` base can move underneath an otherwise-identical run.
 
+**Positions.** A diagnostic's `span` lines and columns are 1-based. A column counts Unicode scalar
+values (characters), not bytes and not UTF-16 code units, so `é` is one column and an astral
+character such as an emoji is one column too. In CRLF files the `\r` counts as a column. A consumer
+that expects UTF-16 columns (SARIF, LSP) is off by one for each astral character that precedes the
+position on its line.
+
 The MCP server returns this same document, so both surfaces answer the coverage question identically.
 
 <Aside type="caution" title="Changed in 0.24.0">
