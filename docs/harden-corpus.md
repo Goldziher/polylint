@@ -155,3 +155,42 @@ run with it. Each root appends an NDJSON record to
 root still leaves its measurement behind. Every threshold a root was judged
 against is written into its own record, so a result read months later is
 self-describing.
+
+## The local-repository pass (release gate)
+
+Corpus A above measures the siblings in place through `poly_core`. The release
+gate is a stricter, CLI-level pass over every real local repository — each git
+repository directly under the polyrepo root and under `../xberg-io`, except
+poly itself:
+
+```sh
+mise run harden:repos -- --poly target/release/poly
+mise run harden:repos -- --poly target/release/poly --only xberg,alef --timeout 600
+```
+
+Flags: `--root DIR` (repeatable, replaces the defaults), `--out DIR` (default
+`reports/polylint-harden/<timestamp>/`), `--only`/`--skip` (comma-separated
+names), `--timeout SECONDS` (per invocation, default 1200), `--parallel N`
+(default 1; timings are only comparable when sequential), `--keep-copies`.
+
+The source trees are never touched. Each repository is copied from **`HEAD`
+only** (`git archive`, so uncommitted work and `export-ignore` paths are not
+measured), re-initialised as a git repository and committed, then every run
+happens in the copy. Per repository: cold lint (`--no-cache`, with `--timings`
+when the binary has it), a cache-priming and a warm lint, a `-j 1` lint, a
+format dry run, `fmt --fix` twice and a final dry run. Lint runs use
+`--workspace never`. Output goes to `<out>/<repo>/` (`lint-cold.json`,
+`lint-warm.json`, `fmt.json`, `fmt-fix-{1,2}.log`, `timings.txt`, `stderr.log`,
+`meta.json`) plus `summary.md` and `failures.md` at the top.
+
+Triage `failures.md`, which groups problems by kind. Hard kinds fail the run
+(exit 1): `poly-error-exit` (exit 2), `poly-errors` (non-empty `errors`),
+`panic`, `stack-overflow`, `signal`, `timeout`, `non-convergence` (the second
+`--fix` rewrote files, or a dry run still reports drift), `cache-mismatch`
+(primed or warm lint differs from cold), `jobs-mismatch` (`-j 1` differs from
+default jobs), `component-lock`, `bad-json`. Advisory kinds: `skip-outlier`
+(more than 20% of files skipped as generated) and `slow-file` (a backend run
+over 2 s, from the `backend run` log lines). Lint findings are not failures;
+only poly failing on a file is. `meta.json` lists the files the first
+`fmt --fix` changed, which is the place to look when a formatter rewrites code
+it should not.
