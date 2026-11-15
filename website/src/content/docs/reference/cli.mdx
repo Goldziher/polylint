@@ -431,13 +431,13 @@ poly mcp --allow-outside-workspace  # let tool calls name paths outside the star
 
 | Command | Flags |
 | --- | --- |
-| `poly commit` | `--exclude REGEX[->MESSAGE]` (reject matching messages; `->` separates the custom error text, so `:` stays part of the regex), `--cleanup FIND->REPLACE` (both repeatable) |
+| `poly commit` | `--exclude REGEX[->MESSAGE]` (reject matching messages; `->` separates the custom error text, so `:` stays part of the regex), `--cleanup FIND->REPLACE` (both repeatable). Exit `0` clean, `1` message rejected, `2` could not verify (config, I/O or other failure); the global `--config` is used when `--config` is not given after `commit` |
 | `poly hooks run [STAGE]` | `--all-files` (the whole tracked tree, not the staged files), `--message-file <PATH>` (required to run `commit-msg` / `prepare-commit-msg` directly), `-j <N>`, `--no-cache`, `--no-sccache` (and the global `-v`, `--config`) |
-| `poly hooks install` | `--hook-type <TYPE>` (repeatable; default: the stages `poly.toml` configures), `--overwrite` (discard an existing hook instead of keeping it as `<hook>.legacy`), `--replace-lefthook`, `--locked` (never write `poly.lock`; fail on a missing entry, also `POLY_LOCKED=1`) |
+| `poly hooks install` | `--hook-type <TYPE>` (repeatable; default: the stages `poly.toml` configures), `--overwrite` (discard an existing hook instead of keeping it as `<hook>.legacy`), `--replace-lefthook`, `--force` (install into a `core.hooksPath` outside the repository; also `POLY_HOOKS_ALLOW_SHARED_PATH=1`), `--locked` (never write `poly.lock`; fail on a missing entry, also `POLY_LOCKED=1`) |
 | `poly hooks uninstall` | `--hook-type <TYPE>`; restores a kept `<hook>.legacy` |
 | `poly cache gc` | `--max-age <DAYS>`, `--max-size <SIZE>` (`500M`, `2G`) |
 | `poly mcp` | `--allow-outside-workspace` (off by default: `paths`, `dirs` and `config` of tool calls must resolve inside the directory the server started in) |
-| `poly cache …` | `--cache-dir <DIR>` operates on another cache directory; `--format pretty\|json\|toon` |
+| `poly cache …` | `--cache-dir <DIR>` (before or after the subcommand) operates on another cache directory; `--format pretty\|json\|toon` |
 
 See [Git hooks](/poly/guides/hooks/) for the full `[hooks]` surface, and
 [Agents and MCP](/poly/guides/agents-and-mcp/) for the MCP tool reference. In short: the MCP server

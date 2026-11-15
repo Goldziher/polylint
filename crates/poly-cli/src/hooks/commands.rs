@@ -46,6 +46,9 @@ pub enum HooksCommand {
     /// Remove poly's git-hook shims, restoring any preserved hook.
     Uninstall(UninstallArgs),
     /// Internal: invoked by an installed shim when a git hook fires.
+    ///
+    /// `pre-push` checks the union of every pushed ref's changed files against the live
+    /// worktree, not the pushed commits.
     #[command(name = "hook-impl")]
     HookImpl(HookImplArgs),
     /// Internal: run the pure-Rust file-safety checks over the given files.

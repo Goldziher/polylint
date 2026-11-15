@@ -23,6 +23,11 @@ hook is the exception. poly replaces lefthook, and running both would run every 
 is kept (for `poly hooks uninstall` to restore) but never run, and `install` says so. Pass
 `--replace-lefthook` to discard it instead.
 
+If `core.hooksPath` points outside the repository (a global or shared hooks directory), `install`
+refuses: other repositories use that directory, so poly will not write shims into it or prune
+theirs. Unset it, or pass `--force` (or set `POLY_HOOKS_ALLOW_SHARED_PATH=1`) to install anyway;
+stale shims are never pruned from a shared directory.
+
 By default only a failing job's output is printed. Set `show_output = true` on a job, or run
 `poly hooks run -v`, to see the output of jobs that passed too.
 
@@ -92,6 +97,20 @@ A `run` line may use `{0}` / `{git_args}` (all arguments git passed to the hook)
 (one argument). Jobs in stages without a file list (`post-checkout`, `post-merge`, ...) and
 `prepare-commit-msg` also receive the arguments as `$@`, and every job sees `POLY_GIT_ARG_COUNT` and
 `POLY_GIT_ARG_<n>`.
+
+### Pre-push
+
+`pre-push` receives one line per pushed ref, so `git push origin a b`, `--all` and `--tags` are all
+gated: the files checked are the sorted union of what changed in every pushed range (deleted refs
+are skipped; a new root-commit branch checks the whole tree).
+
+`pre-push` reads the **live worktree**, not the commits being pushed: unlike `pre-commit` it has
+no index to snapshot, so uncommitted edits can make it pass or fail on bytes that are not part of
+the push. Push from a clean tree (or `git stash` first) when the gate must judge exactly what the
+remote will receive.
+
+Matched files whose names begin with `-` are passed to hook commands as `./-name`, so a tracked
+`-x.py` is never read as a flag.
 
 ### Nested `poly.toml`
 
