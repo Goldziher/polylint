@@ -23,6 +23,10 @@ TARGETS=(
   "win32-x64:x86_64-pc-windows-msvc"
 )
 
+# Shipped beside the binary (under bin/, which every platform package already publishes): the binary
+# links third-party code whose licences and the tsrs NOTICE must accompany it.
+NOTICE_FILES=(ATTRIBUTIONS.md THIRD-PARTY-LICENSES.md)
+
 usage() {
   echo "usage: $0 --artifacts <dir> | --local <path-to-poly>" >&2
   exit 2
@@ -60,7 +64,7 @@ stage_from_archive() {
       echo "error: missing archive $archive" >&2
       return 1
     }
-    unzip -q -o "$archive" poly.exe -d "$dest"
+    unzip -q -o "$archive" poly.exe "${NOTICE_FILES[@]}" -d "$dest"
     [[ -f "$dest/poly.exe" ]] || {
       echo "error: $archive contained no poly.exe" >&2
       return 1
@@ -71,12 +75,18 @@ stage_from_archive() {
       echo "error: missing archive $archive" >&2
       return 1
     }
-    tar xzf "$archive" -C "$dest" poly
+    tar xzf "$archive" -C "$dest" poly "${NOTICE_FILES[@]}"
     [[ -x "$dest/poly" ]] || {
       echo "error: $archive contained no executable poly" >&2
       return 1
     }
   fi
+  for notice in "${NOTICE_FILES[@]}"; do
+    [[ -f "$dest/$notice" ]] || {
+      echo "error: $archive contained no $notice" >&2
+      return 1
+    }
+  done
   echo "  ✓ $name ← poly-$VERSION-$triple"
 }
 

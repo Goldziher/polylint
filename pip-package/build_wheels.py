@@ -67,6 +67,8 @@ TARGETS = (
     Target("x86_64-pc-windows-msvc", "zip", "poly.exe"),
 )
 
+NOTICE_FILES = ("ATTRIBUTIONS.md", "THIRD-PARTY-LICENSES.md")
+
 GLIBC_SYMBOL = re.compile(rb"GLIBC_2\.(\d+)")
 
 
@@ -129,25 +131,33 @@ def platform_tag(target: Target, binary: Path, component_minors: list[int] | Non
 
 
 def extract_binary(archive: Path, target: Target, destination: Path) -> Path:
-    """Unpack the single binary out of a published release archive."""
+    """Unpack the binary and its licence files out of a published release archive.
+
+    The licence files land beside the binary; ``hatch_build.py`` ships them in the wheel, because
+    the binary links third-party code whose licences and the tsrs NOTICE must accompany it.
+    """
     destination.mkdir(parents=True, exist_ok=True)
     output = destination / target.binary_name
 
     if target.archive_suffix == "zip":
-        with (
-            zipfile.ZipFile(archive) as zf,
-            zf.open(target.binary_name) as source,
-            output.open("wb") as sink,
-        ):
-            shutil.copyfileobj(source, sink)
+        with zipfile.ZipFile(archive) as zf:
+            for name in (target.binary_name, *NOTICE_FILES):
+                try:
+                    source = zf.open(name)
+                except KeyError:
+                    message = f"{archive} contains no {name}"
+                    raise SystemExit(message) from None
+                with source, (destination / name).open("wb") as sink:
+                    shutil.copyfileobj(source, sink)
     else:
         with tarfile.open(archive, "r:gz") as tf:
-            member = tf.extractfile(target.binary_name)
-            if member is None:
-                message = f"{archive} contains no {target.binary_name}"
-                raise SystemExit(message)
-            with output.open("wb") as sink:
-                shutil.copyfileobj(member, sink)
+            for name in (target.binary_name, *NOTICE_FILES):
+                member = tf.extractfile(name) if name in tf.getnames() else None
+                if member is None:
+                    message = f"{archive} contains no {name}"
+                    raise SystemExit(message)
+                with (destination / name).open("wb") as sink:
+                    shutil.copyfileobj(member, sink)
 
     output.chmod(0o755)
     return output
@@ -187,6 +197,7 @@ def run_build(out_dir: Path, env_overrides: dict[str, str]) -> Path:
     env = dict(os.environ)
     env.pop("POLY_WHEEL_TAG", None)
     env.pop("POLY_WHEEL_BINARY", None)
+    env.pop("POLY_WHEEL_NOTICES", None)
     env.update(env_overrides)
 
     subprocess.run(  # noqa: S603 - fixed argv
@@ -210,7 +221,10 @@ def build_platform_wheel(
     component_minors: list[int] | None = None,
 ) -> Path:
     tag = platform_tag(target, binary, component_minors)
-    wheel = run_build(out_dir, {"POLY_WHEEL_TAG": tag, "POLY_WHEEL_BINARY": str(binary)})
+    overrides = {"POLY_WHEEL_TAG": tag, "POLY_WHEEL_BINARY": str(binary)}
+    if all((binary.parent / name).is_file() for name in NOTICE_FILES):
+        overrides["POLY_WHEEL_NOTICES"] = str(binary.parent)
+    wheel = run_build(out_dir, overrides)
     force_executable_bit(wheel)
     print(f"  ✓ {target.triple:32} → {wheel.name}")
     return wheel

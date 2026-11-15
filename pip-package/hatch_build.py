@@ -41,3 +41,8 @@ class CustomBuildHook(BuildHookInterface):
         build_data["infer_tag"] = False
         build_data["tag"] = f"py3-none-{tag}"
         build_data["force_include"][binary] = f"polylint/bin/{target_name}"
+
+        notices = os.environ.get("POLY_WHEEL_NOTICES")
+        if notices:
+            for name in ("ATTRIBUTIONS.md", "THIRD-PARTY-LICENSES.md"):
+                build_data["force_include"][str(Path(notices) / name)] = f"polylint/licenses/{name}"
