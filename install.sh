@@ -1,5 +1,7 @@
 #!/bin/sh
-# in place). Pin a version with `POLY_VERSION` or a
+# poly installer for Linux and macOS: downloads the prebuilt binary for this host,
+# verifies it against the release's sha256sums.txt and installs it atomically.
+# Re-run any time to update. Run `install.sh --help` for options.
 
 set -eu
 
@@ -28,7 +30,24 @@ die() {
 }
 
 usage() {
-  sed -n '2,30p' "$0" | sed 's/^# \{0,1\}//'
+  cat <<'EOF'
+Usage: install.sh [OPTIONS] [VERSION]
+
+Installs poly (and the polylint alias) from a GitHub release.
+
+Options:
+  --version VERSION   Release to install, e.g. 0.35.0 or v0.35.0 (default: latest)
+  --bin-dir DIR       Install directory (default: $HOME/.local/bin)
+  --no-modify-path    Do not edit shell startup files; print the PATH line instead
+  -h, --help          Show this help
+
+Environment:
+  POLY_VERSION          Same as --version
+  POLY_INSTALL_DIR      Same as --bin-dir
+  POLY_NO_MODIFY_PATH   Any non-empty value: same as --no-modify-path
+
+A bare positional argument is also taken as the version.
+EOF
   exit 0
 }
 
@@ -78,6 +97,7 @@ Darwin)
   ;;
 Linux)
   if (ldd --version 2>&1 | grep -qi musl) || [ -e /lib/ld-musl-"${uname_m}".so.1 ]; then
+    [ "$arch" = "x86_64" ] || die "no prebuilt binary for ${arch} Linux with musl libc; build from source: https://github.com/${REPO}#installation"
     target="${arch}-unknown-linux-musl"
   else
     target="${arch}-unknown-linux-gnu"
@@ -117,7 +137,9 @@ base="https://github.com/${REPO}/releases/download/${tag}"
 
 previous=""
 if [ -x "${INSTALL_DIR}/poly" ]; then
-  previous=$("${INSTALL_DIR}/poly" --version 2>/dev/null | awk '{print $NF}' || true)
+  previous=$("${INSTALL_DIR}/poly" --version 2>/dev/null | awk '{print $2}' || true)
+  # `poly --version` prints `poly 0.35.0 (release build v0.35.0, release)`.
+  printf '%s\n' "$previous" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+([.+-][0-9A-Za-z.+-]+)?$' || previous=""
 fi
 
 if [ -n "$previous" ] && [ "$previous" = "$version" ]; then
@@ -134,7 +156,7 @@ trap 'rm -rf "$tmp"; [ -z "$staged" ] || rm -f "$staged"' EXIT
 
 info "Downloading ${C_DIM}${base}/${asset}${C_OFF}"
 curl -fsSL -o "${tmp}/${asset}" "${base}/${asset}" ||
-  die "failed to download ${asset} (does release ${tag} ship this platform?)"
+  die "failed to download ${base}/${asset}: check the version and your network (does release ${tag} ship ${target}?)"
 
 sha256_of() {
   if command -v sha256sum >/dev/null 2>&1; then
@@ -162,7 +184,7 @@ if curl -fsSL -o "${tmp}/sha256sums.txt" "${base}/sha256sums.txt" 2>/dev/null; t
     info "Checksum verified"
   fi
 else
-  die "could not download sha256sums.txt — refusing to install unverified binary"
+  die "could not download ${base}/sha256sums.txt — refusing to install an unverified binary"
 fi
 
 tar xzf "${tmp}/${asset}" -C "$tmp"
@@ -217,6 +239,11 @@ case "$target" in
 esac
 
 add_path_line='export PATH="'"${INSTALL_DIR}"':$PATH"'
+zdotdir="${ZDOTDIR:-$HOME}"
+case "${SHELL:-}" in
+*/fish) shell_path_line="fish_add_path ${INSTALL_DIR}" ;;
+*) shell_path_line="$add_path_line" ;;
+esac
 case ":${PATH}:" in
 *":${INSTALL_DIR}:"*)
   :
@@ -224,24 +251,24 @@ case ":${PATH}:" in
 *)
   if [ -n "$NO_MODIFY_PATH" ]; then
     warn "${INSTALL_DIR} is not on your PATH. Add it with:"
-    printf '    %s\n' "$add_path_line"
+    printf '    %s\n' "$shell_path_line"
   else
     modified=""
-    for rc in "${HOME}/.profile" "${HOME}/.bashrc" "${HOME}/.zshrc"; do
+    for rc in "${HOME}/.profile" "${HOME}/.bashrc" "${zdotdir}/.zshrc"; do
       [ -e "$rc" ] || continue
       if ! grep -qF "$INSTALL_DIR" "$rc" 2>/dev/null; then
         {
           printf '\n# added by the poly installer\n%s\n' "$add_path_line"
         } >>"$rc"
-        modified="${modified} ${rc##*/}"
+        modified="${modified} ${rc}"
       fi
     done
     if [ -n "$modified" ]; then
       info "Added ${INSTALL_DIR} to PATH in:${modified}"
-      warn "Restart your shell or run: ${add_path_line}"
+      warn "Restart your shell or run: ${shell_path_line}"
     else
       warn "${INSTALL_DIR} is not on your PATH. Add it with:"
-      printf '    %s\n' "$add_path_line"
+      printf '    %s\n' "$shell_path_line"
     fi
   fi
   ;;
