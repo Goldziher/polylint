@@ -133,11 +133,18 @@ fn plan_for(plans: &PlanCache, cfg: &EngineConfig) -> anyhow::Result<Arc<LintPla
 /// All arena-backed objects are scoped to this function so the engine struct
 /// itself stays `Send + Sync` even though [`LocalArena`] is `!Sync`.
 pub(super) fn lint_php(src: &SourceFile, cfg: &EngineConfig, plans: &PlanCache) -> anyhow::Result<Vec<Diagnostic>> {
-    let arena = LocalArena::new();
+    super::format::with_arena(|arena| lint_in(arena, src, cfg, plans))
+}
 
+fn lint_in(
+    arena: &LocalArena,
+    src: &SourceFile,
+    cfg: &EngineConfig,
+    plans: &PlanCache,
+) -> anyhow::Result<Vec<Diagnostic>> {
     let file = File::ephemeral(Cow::Owned(file_name(src)), Cow::Owned(src.content.as_bytes().to_vec()));
 
-    let program = parse_file(&arena, &file);
+    let program = parse_file(arena, &file);
     let mut diags: Vec<Diagnostic> = Vec::new();
 
     for error in program.errors {
@@ -159,8 +166,8 @@ pub(super) fn lint_php(src: &SourceFile, cfg: &EngineConfig, plans: &PlanCache) 
     let plan = plan_for(plans, cfg)?;
     let registry = Arc::clone(&plan.registry);
 
-    let names = NameResolver::new(&arena).resolve(program);
-    let linter = Linter::from_registry(&arena, registry, plan.php_version);
+    let names = NameResolver::new(arena).resolve(program);
+    let linter = Linter::from_registry(arena, registry, plan.php_version);
     let issues = linter.lint(&file, program, &names);
     let file_id = file.file_id();
 

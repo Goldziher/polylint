@@ -15,6 +15,7 @@
 //! the syntax error) and when the formatted output is identical to the input.
 
 use std::borrow::Cow;
+use std::cell::RefCell;
 use std::collections::HashSet;
 use std::sync::Mutex;
 
@@ -28,28 +29,41 @@ use poly_engine_api::engine::{FormatOutput, SourceFile};
 /// Polylint-default PHP version for formatting rules.
 const PHP_VERSION: PHPVersion = PHPVersion::PHP84;
 
+/// Runs `f` with this thread's arena, reset first, so a file does not pay for a fresh allocation.
+///
+/// Nothing `f` allocates may escape it. A nested call on the same thread gets a fresh arena instead
+/// of a second borrow.
+pub(super) fn with_arena<R>(f: impl FnOnce(&mago_allocator::LocalArena) -> R) -> R {
+    thread_local! {
+        static ARENA: RefCell<mago_allocator::LocalArena> = RefCell::new(mago_allocator::LocalArena::new());
+    }
+    ARENA.with(|cell| match cell.try_borrow_mut() {
+        Ok(mut arena) => {
+            arena.reset();
+            f(&arena)
+        }
+        Err(_) => f(&mago_allocator::LocalArena::new()),
+    })
+}
+
 /// Format a single PHP source file.
 ///
-/// Creates a per-call arena and `Formatter`, avoiding any stored state so this
+/// Uses a per-thread arena and a per-call `Formatter`, avoiding any shared state so this
 /// function is safe to call from multiple rayon threads concurrently.
 pub(super) fn format_php(src: &SourceFile, cfg: &EngineConfig) -> anyhow::Result<FormatOutput> {
     let php_version = super::rules::parse_php_version(cfg)?.unwrap_or(PHP_VERSION);
     let settings = build_format_settings(cfg);
 
-    let arena = mago_allocator::LocalArena::new();
-    let formatter = Formatter::new(&arena, php_version, settings);
-
     let name: Cow<'static, [u8]> = Cow::Borrowed(b"input.php");
     let code: Cow<'static, [u8]> = Cow::Owned(src.content.as_bytes().to_vec());
 
-    let formatted_bytes = match formatter.format_code(name, code) {
-        Ok(bytes) => bytes,
-        Err(_) => return Ok(FormatOutput::Unchanged),
-    };
-
-    let formatted = match std::str::from_utf8(formatted_bytes) {
-        Ok(s) => s.to_owned(),
-        Err(_) => return Ok(FormatOutput::Unchanged),
+    let formatted = with_arena(|arena| {
+        let formatter = Formatter::new(arena, php_version, settings);
+        let bytes = formatter.format_code(name, code).ok()?;
+        std::str::from_utf8(bytes).ok().map(str::to_owned)
+    });
+    let Some(formatted) = formatted else {
+        return Ok(FormatOutput::Unchanged);
     };
 
     if formatted == *src.content {
