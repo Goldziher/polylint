@@ -311,7 +311,7 @@
             "fix": false,
             "project": false
           },
-          "version": "oxc_formatter:0.77.0+oxlint+parser:0.158.0+rev:74e5e66+json-fmt+rules-v5+fmt-opts+jsonc-trailing-comma+plugins-v1+minified-skip+oxfmtrc-v1+package-json-v1+oxlintrc-v1+rule-args-1+safe-fix-1+js-plugins-ext-1+oxfmtrc-scope-1",
+          "version": "oxc_formatter:0.77.0+oxlint+parser:0.158.0+rev:74e5e66+json-fmt+rules-v5+fmt-opts+jsonc-trailing-comma+plugins-v1+minified-skip+oxfmtrc-v1+package-json-v1+oxlintrc-v1+rule-args-1+safe-fix-1+js-plugins-ext-1+oxfmtrc-scope-1+opts-2",
           "option_keys": [
             {
               "table": "Lint",
@@ -459,7 +459,7 @@
             "fix": true,
             "project": true
           },
-          "version": "0.3.4+defaults5-mdx-rules-tmplskip-codeaware-md020guard-md038fmt-structfix+ruleparams1+extendsel2+oxc_formatter_markdown-74e5e66+md-embed-1+oxfmtrc-scope-1+links1",
+          "version": "0.3.4+defaults5-mdx-rules-tmplskip-codeaware-md020guard-md038fmt-structfix+ruleparams1+extendsel2+oxc_formatter_markdown-74e5e66+md-embed-1+oxfmtrc-scope-1+links1+fmt-err-2",
           "option_keys": [
             {
               "table": "Lint",
@@ -852,7 +852,7 @@
             "fix": false,
             "project": false
           },
-          "version": "0.1.0+serde_yaml-0.9.34+oxc_formatter_yaml-74e5e66+tmplskip+oxfmtrc-scope-1",
+          "version": "0.1.0+serde_yaml-0.9.34+oxc_formatter_yaml-74e5e66+tmplskip+oxfmtrc-scope-1+tmpl-parse-2",
           "option_keys": [
             {
               "table": "Lint",
@@ -1768,7 +1768,7 @@
             "fix": false,
             "project": true
           },
-          "version": "tsrs-7.1.0-beta.tsrs1+proj1",
+          "version": "tsrs-7.1.0-beta.tsrs1+proj3",
           "option_keys": [
             {
               "table": "Lint",
