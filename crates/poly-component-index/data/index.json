@@ -2367,7 +2367,7 @@
             "fix": true,
             "project": false
           },
-          "version": "ast-grep-core-0.51.2-engine-4+tslp1.25.0+builtin-pack-4",
+          "version": "ast-grep-core-0.51.2-engine-5+tslp1.25.0+builtin-pack-4",
           "option_keys": [
             {
               "table": "Lint",
@@ -2388,7 +2388,20 @@
             {
               "table": "CrossCuttingLint",
               "checked": true,
-              "declared": [],
+              "declared": [
+                {
+                  "name": "go_forbidden_calls",
+                  "types": 16
+                },
+                {
+                  "name": "go_forbidden_imports",
+                  "types": 16
+                },
+                {
+                  "name": "go_layers",
+                  "types": 16
+                }
+              ],
               "rule_selection": true,
               "has_derived": false,
               "note": null
@@ -2397,7 +2410,7 @@
           "hooks": 4,
           "takes_over_tier_one": false,
           "claimed_paths": [],
-          "host_hook": "none",
+          "host_hook": "go-mod-lint",
           "supplements_tier_one": false,
           "self_manages_enabled": false,
           "supersedes_generic_formatter": false,

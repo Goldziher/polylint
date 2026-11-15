@@ -4653,6 +4653,15 @@
         "extend_select": {
           "type": "array"
         },
+        "go_forbidden_calls": {
+          "type": "array"
+        },
+        "go_forbidden_imports": {
+          "type": "array"
+        },
+        "go_layers": {
+          "type": "array"
+        },
         "ignore": {
           "type": "array"
         },
