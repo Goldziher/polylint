@@ -82,10 +82,29 @@ fn platform_max_cli_length() -> usize {
     } else {
         usize::try_from(page).unwrap_or(4096)
     };
+    argv_budget(arg_max, page, current_env_size())
+}
+
+/// What is left of `ARG_MAX` for argv once the page reserve, the environment
+/// (which the kernel counts against the same limit) and the headroom are taken.
+#[cfg(unix)]
+fn argv_budget(arg_max: usize, page: usize, env_size: usize) -> usize {
     arg_max
         .saturating_sub(page)
+        .saturating_sub(env_size)
         .saturating_sub(ARG_HEADROOM)
         .clamp(1 << 12, 1 << 20)
+}
+
+/// Bytes the current environment occupies in `execve`: every `KEY=VALUE\0`.
+#[cfg(unix)]
+pub(crate) fn current_env_size() -> usize {
+    env_size_of(std::env::vars_os())
+}
+
+#[cfg(unix)]
+fn env_size_of(vars: impl Iterator<Item = (std::ffi::OsString, std::ffi::OsString)>) -> usize {
+    vars.map(|(key, value)| key.len() + 1 + value.len() + 1).sum()
 }
 
 #[cfg(not(unix))]
@@ -160,6 +179,26 @@ mod tests {
         let batches = partition_files(&files, 0);
         assert_eq!(batches.len(), 1);
         assert_eq!(batches[0].len(), 2);
+    }
+
+    #[test]
+    #[cfg(unix)]
+    fn env_size_counts_key_value_and_terminator() {
+        let vars = vec![("AB".into(), "cde".into()), ("X".into(), "".into())];
+        // "AB=cde\0" is 7 bytes, "X=\0" is 3.
+        assert_eq!(super::env_size_of(vars.into_iter()), 10);
+    }
+
+    #[test]
+    #[cfg(unix)]
+    fn argv_budget_subtracts_the_environment() {
+        let arg_max = 1 << 20;
+        let page = 4096;
+        let empty = super::argv_budget(arg_max, page, 0);
+        let loaded = super::argv_budget(arg_max, page, 100_000);
+        assert_eq!(empty, arg_max - page - super::ARG_HEADROOM);
+        assert_eq!(loaded, empty - 100_000);
+        assert_eq!(super::argv_budget(arg_max, page, usize::MAX), 1 << 12);
     }
 
     #[test]

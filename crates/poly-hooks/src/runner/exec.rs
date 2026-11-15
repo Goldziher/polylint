@@ -116,5 +116,8 @@ pub(super) fn base_arg_len(hook: &Hook) -> usize {
         HookCommand::Script { path, runner } => path.len() + runner.as_ref().map_or(0, String::len),
     };
     let args_len: usize = hook.args.iter().map(|a| a.len() + 9).sum();
-    FIXED + command_len + args_len
+    // The process environment is subtracted from the platform limit in
+    // `concurrency`; only the variables this hook adds on top are counted here.
+    let hook_env_len: usize = hook.env.iter().map(|(key, value)| key.len() + value.len() + 2).sum();
+    FIXED + command_len + args_len + hook_env_len
 }
