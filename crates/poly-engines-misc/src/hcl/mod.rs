@@ -345,4 +345,23 @@ mod tests {
             "resource \"a\" \"b\" {\n  x = 1\n}\n"
         );
     }
+
+    #[test]
+    fn deeply_nested_templates_are_refused_on_a_small_stack() {
+        let content = format!("a = {}", "\"${".repeat(100_000));
+        let outcome = std::thread::Builder::new()
+            .stack_size(8 << 20)
+            .spawn(move || {
+                let src = make_src("deep.tf", Language::Hcl, &content);
+                let cfg = default_cfg();
+                (
+                    HclEngine.lint(&src, &cfg).is_err(),
+                    HclEngine.format(&src, &cfg).is_err(),
+                )
+            })
+            .expect("spawn")
+            .join()
+            .expect("the engine must not abort");
+        assert_eq!(outcome, (true, true));
+    }
 }

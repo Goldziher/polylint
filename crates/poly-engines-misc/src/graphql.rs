@@ -40,6 +40,7 @@ use poly_engine_api::config::EngineConfig;
 use poly_engine_api::engine::{
     Capabilities, Diagnostic, Engine, FormatOutput, OptionKeys, OptionTable, Severity, SourceFile, Span,
 };
+use poly_engine_api::engine_guard::refuse_pathological_nesting;
 use poly_engine_api::language::Language;
 
 /// GraphQL backend: `pretty_graphql` for formatting, `graphql-parser` for lint.
@@ -86,6 +87,7 @@ impl Engine for GraphQlEngine {
     }
 
     fn lint(&self, src: &SourceFile, _cfg: &EngineConfig) -> anyhow::Result<Vec<Diagnostic>> {
+        refuse_pathological_nesting(&src.path, &src.content)?;
         if parse_schema::<&str>(&src.content).is_ok() {
             return Ok(Vec::new());
         }
@@ -115,6 +117,7 @@ impl Engine for GraphQlEngine {
     }
 
     fn format(&self, src: &SourceFile, cfg: &EngineConfig) -> anyhow::Result<FormatOutput> {
+        refuse_pathological_nesting(&src.path, &src.content)?;
         let options = build_format_options(cfg);
 
         let formatted = match pretty_graphql::format_text(&src.content, &options) {
@@ -235,5 +238,32 @@ mod tests {
         assert!(looks_like_schema("type User { id: ID! }"));
         assert!(looks_like_schema("interface Node { id: ID! }"));
         assert!(!looks_like_schema("query { user { id } }"));
+    }
+
+    #[test]
+    fn pathologically_nested_documents_are_refused_on_a_small_stack() {
+        let content = format!("query {}", "{ a ".repeat(100_000));
+        let outcome = std::thread::Builder::new()
+            .stack_size(8 << 20)
+            .spawn(move || {
+                let src = SourceFile {
+                    path: "deep.graphql".into(),
+                    language: Language::GraphQl,
+                    content: content.into(),
+                };
+                let cfg = EngineConfig {
+                    globals: poly_engine_api::config::GlobalDefaults::default(),
+                    indent_width: 2,
+                    options: toml::Table::new(),
+                };
+                (
+                    GraphQlEngine.lint(&src, &cfg).is_err(),
+                    GraphQlEngine.format(&src, &cfg).is_err(),
+                )
+            })
+            .expect("spawn")
+            .join()
+            .expect("the engine must not abort");
+        assert_eq!(outcome, (true, true));
     }
 }
