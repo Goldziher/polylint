@@ -655,7 +655,7 @@ jobs:
       - name: Build binary (musl, Alpine container)
         if: ${{ matrix.alpine }}
         run: |
-          # Build host-native inside rust:alpine (the image's host target IS x86_64-unknown-linux-musl),
+          # Build host-native inside rust:1.100-alpine (the image's host target IS x86_64-unknown-linux-musl),
           # dynamically linked against musl (-crt-static off). It must stay dynamic: tree-sitter grammars
           # are downloaded on demand and dlopen'd, and a static musl executable cannot dlopen, so a
           # crt-static build errors on every file whose grammar is not compiled in.
@@ -673,7 +673,7 @@ jobs:
           docker run --rm -v "$PWD":/work -w /work \
             -e CARGO_TARGET_DIR=/work/target \
             -e POLY_BUILD_ID="$POLY_BUILD_ID" \
-            rust:alpine sh -c '
+            rust:1.100-alpine sh -c '
               set -e
               apk add --no-cache build-base musl-dev pkgconf git perl
               unwind="$(rustc --print sysroot)/lib/rustlib/$(rustc -vV | sed -n "s/^host: //p")/lib/self-contained/libunwind.a"
