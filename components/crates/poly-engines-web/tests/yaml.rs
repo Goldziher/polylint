@@ -169,21 +169,48 @@ fn helm_yaml_is_still_skipped() {
 }
 
 #[test]
-fn yaml_template_inside_backticks_or_fences_is_still_skipped() {
+fn valid_yaml_with_template_looking_text_is_linted_not_skipped() {
     let engine = YamlEngine;
-    let fenced = make_src("notes.yaml", "notes: |\n  ```\n  image: {{ .Values.image }}\n  ```\n");
-    assert_eq!(
-        engine.skip_reason(&fenced).as_deref(),
-        Some(TEMPLATE_SKIP),
-        "a Markdown fence inside YAML is a plain scalar, not a code block"
-    );
+    let examples = [
+        (
+            "rules.yml",
+            "groups:\n  - name: a\n    rules:\n      - alert: Down\n        annotations:\n          \
+             summary: \"{{ $labels.instance }} down\"\n",
+        ),
+        (
+            "Taskfile.yml",
+            "version: '3'\ntasks:\n  hi:\n    cmds:\n      - echo {{.FOO}}\n",
+        ),
+        (
+            "grafana.yaml",
+            "apiVersion: 1\ndatasources:\n  - name: x\n    url: \"{{ .Env.URL }}\"\n",
+        ),
+        ("notes.yaml", "notes: |\n  ```\n  image: {{ .Values.image }}\n  ```\n"),
+        ("note.yaml", "note: \"see `{{ .Values.image }}`\"\n"),
+    ];
+    for (path, content) in examples {
+        let src = make_src(path, content);
+        assert_eq!(engine.skip_reason(&src).as_deref(), None, "{path} parses as YAML");
+    }
+}
 
-    let inline = make_src("notes.yaml", "note: \"see `{{ .Values.image }}`\"\n");
-    assert_eq!(
-        engine.skip_reason(&inline).as_deref(),
-        Some(TEMPLATE_SKIP),
-        "backticks inside YAML are plain characters, not an inline code span"
+#[test]
+fn valid_templated_yaml_is_formatted() {
+    let src = make_src("rules.yml", "summary:    \"{{ $labels.instance }} down\"\n");
+    match YamlEngine.format(&src, &engine_cfg()).unwrap() {
+        FormatOutput::Formatted(out) => assert_eq!(out, "summary: \"{{ $labels.instance }} down\"\n"),
+        FormatOutput::Unchanged => panic!("a parseable document with template-looking text must be formatted"),
+    }
+}
+
+#[test]
+fn top_level_helm_control_flow_is_still_skipped() {
+    let engine = YamlEngine;
+    let src = make_src(
+        "templates/cm.yaml",
+        "{{- if .Values.x }}\nkind: ConfigMap\n{{- end }}\n",
     );
+    assert_eq!(engine.skip_reason(&src).as_deref(), Some(TEMPLATE_SKIP));
 }
 
 #[test]

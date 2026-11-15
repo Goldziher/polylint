@@ -107,7 +107,7 @@ impl Engine for YamlEngine {
     }
 
     fn version(&self) -> &str {
-        "0.1.0+serde_yaml-0.9.34+oxc_formatter_yaml-74e5e66+tmplskip+oxfmtrc-scope-1"
+        "0.1.0+serde_yaml-0.9.34+oxc_formatter_yaml-74e5e66+tmplskip+oxfmtrc-scope-1+tmpl-parse-1"
     }
 
     /// The path-scoped oxfmt config (`overrides`, nested configs) shapes the output and the cache key.
@@ -116,11 +116,11 @@ impl Engine for YamlEngine {
     }
 
     fn skip_reason(&self, src: &SourceFile) -> Option<Cow<'static, str>> {
-        contains_go_template(&src.content).then_some(Cow::Borrowed(GO_TEMPLATE_SKIP))
+        is_unparseable_template(&src.content).then_some(Cow::Borrowed(GO_TEMPLATE_SKIP))
     }
 
     fn lint(&self, src: &SourceFile, _cfg: &EngineConfig) -> anyhow::Result<Vec<Diagnostic>> {
-        if contains_go_template(&src.content) {
+        if is_unparseable_template(&src.content) {
             return Ok(Vec::new());
         }
         match first_syntax_error(&src.content) {
@@ -150,7 +150,7 @@ impl Engine for YamlEngine {
     }
 
     fn format(&self, src: &SourceFile, cfg: &EngineConfig) -> anyhow::Result<FormatOutput> {
-        if contains_go_template(&src.content) {
+        if is_unparseable_template(&src.content) {
             return Ok(FormatOutput::Unchanged);
         }
         // Deeply nested unclosed flow collections make YAML parsers backtrack
@@ -166,7 +166,10 @@ impl Engine for YamlEngine {
             .and_then(|formatted| formatted.print().map_err(|_| ()))
         {
             Ok(printed) => printed.into_code(),
-            Err(()) => return Ok(FormatOutput::Unchanged),
+            // Lint already reports the syntax error for an invalid document, so leaving it
+            // untouched is visible to the user; a valid one the formatter rejects is a failure.
+            Err(()) if first_syntax_error(&src.content).is_some() => return Ok(FormatOutput::Unchanged),
+            Err(()) => anyhow::bail!("the YAML formatter could not process a document the parser accepts"),
         };
         if formatted == *src.content {
             Ok(FormatOutput::Unchanged)
@@ -174,6 +177,12 @@ impl Engine for YamlEngine {
             Ok(FormatOutput::Formatted(formatted))
         }
     }
+}
+
+/// Go/Helm template syntax that also breaks YAML parsing. Template-looking text in a document
+/// that parses (Prometheus rules, Taskfiles, Grafana provisioning) is ordinary YAML.
+fn is_unparseable_template(content: &str) -> bool {
+    contains_go_template(content) && first_syntax_error(content).is_some()
 }
 
 /// The first scanner or parser error in any document of `content`.

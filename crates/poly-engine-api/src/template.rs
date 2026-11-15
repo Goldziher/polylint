@@ -5,7 +5,8 @@
 //! or clean Markdown, so the strict backends (`yaml`, `rumdl`) report spurious
 //! syntax errors on it. Rather than key off chart layout (`Chart.yaml`,
 //! `templates/`), the backends scan file **content** for Go-template actions and
-//! skip a file that contains them.
+//! skip a file that contains them. The `yaml` backend narrows that to files that also fail to
+//! parse as YAML, since template-looking text in valid YAML (Prometheus rules, Taskfiles) is data.
 //!
 //! The check is deliberately specific to Go templates so it does not fire on the
 //! two common lookalikes that must keep being processed:
