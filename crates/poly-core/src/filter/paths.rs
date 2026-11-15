@@ -9,15 +9,25 @@ use std::path::{Path, PathBuf};
 /// the explicitly passed roots) that prefixes the path, so both `poly lint .`
 /// (relative paths) and `poly lint /abs/repo` (absolute paths) resolve to a
 /// repo-relative path the globs can match.
+///
+/// A relative path is also tried against the bases as the working-directory-joined
+/// absolute path, before the relative spelling: `poly lint docs/adr` must match
+/// `docs/adr/x.md` against the config directory, not `x.md` against the named
+/// directory. Callers list the config directory first, so it wins over the roots.
 pub(crate) fn relative_for_match(path: &Path, bases: &[PathBuf]) -> String {
+    let absolute = (path.is_relative() && !bases.is_empty())
+        .then(|| std::env::current_dir().ok().map(|cwd| cwd.join(path)))
+        .flatten();
     let mut rel = path;
-    for base in bases {
-        if let Ok(stripped) = path.strip_prefix(base) {
-            if stripped.as_os_str().is_empty() {
-                continue;
+    'bases: for base in bases {
+        for candidate in absolute.iter().map(PathBuf::as_path).chain([path]) {
+            if let Ok(stripped) = candidate.strip_prefix(base) {
+                if stripped.as_os_str().is_empty() {
+                    continue;
+                }
+                rel = stripped;
+                break 'bases;
             }
-            rel = stripped;
-            break;
         }
     }
     let rel = rel.strip_prefix(".").unwrap_or(rel);
@@ -94,6 +104,26 @@ mod tests {
         assert_eq!(
             relative_for_match(Path::new("tests/a.py"), &[PathBuf::from("/cwd"), file]),
             "tests/a.py"
+        );
+    }
+
+    #[test]
+    fn a_relative_path_matches_the_config_directory_before_a_named_directory() {
+        let cwd = std::env::current_dir().unwrap();
+        let bases = vec![cwd.clone(), PathBuf::from("docs/adr")];
+        assert_eq!(
+            relative_for_match(Path::new("docs/adr/x.md"), &bases),
+            "docs/adr/x.md",
+            "the named directory must not become the strip base"
+        );
+        assert_eq!(
+            relative_for_match(Path::new("./docs/adr/x.md"), &bases),
+            "docs/adr/x.md"
+        );
+        assert_eq!(
+            relative_for_match(Path::new("docs/adr/x.md"), &[PathBuf::from("docs/adr")]),
+            "x.md",
+            "with no config directory the named root still applies"
         );
     }
 
