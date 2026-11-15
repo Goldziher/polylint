@@ -47,6 +47,22 @@ impl PathEntry {
         cargo_bin_dirs().iter().any(|dir| parent == dir)
     }
 
+    /// Whether this entry is a mise shim: a `poly` that is really the `mise`
+    /// binary (a symlink to it) or a copy in mise's `shims` directory. Such a
+    /// shim resolves to whichever `poly` mise pins, so it is not a second install.
+    pub fn is_mise_shim(&self) -> bool {
+        let canonical_is_mise = self
+            .canonical
+            .file_stem()
+            .is_some_and(|stem| stem.eq_ignore_ascii_case("mise"));
+        let in_mise_shims = self.directory.file_name().is_some_and(|name| name == "shims")
+            && self
+                .directory
+                .components()
+                .any(|part| part.as_os_str().eq_ignore_ascii_case("mise"));
+        canonical_is_mise || in_mise_shims
+    }
+
     /// The command that actually removes this executable.
     pub fn removal_hint(&self) -> String {
         if self.is_cargo_bin() {
@@ -107,6 +123,28 @@ impl Resolution {
             .and_then(|running| entries.iter().position(|entry| &entry.canonical == running));
         Resolution {
             running,
+            entries,
+            running_index,
+        }
+    }
+
+    /// This resolution with mise shims dropped, so a mise-managed `poly` next to
+    /// the running one does not count as a conflicting install. The running
+    /// executable is kept even if it is itself a shim.
+    pub fn without_shims(&self) -> Self {
+        let mut entries = Vec::new();
+        let mut running_index = None;
+        for (index, entry) in self.entries.iter().enumerate() {
+            let is_running = self.running_index == Some(index);
+            if is_running || !entry.is_mise_shim() {
+                if is_running {
+                    running_index = Some(entries.len());
+                }
+                entries.push(entry.clone());
+            }
+        }
+        Resolution {
+            running: self.running.clone(),
             entries,
             running_index,
         }
@@ -208,7 +246,7 @@ pub fn warn_if_conflicting() {
     if std::env::var_os(SUPPRESS_ENV).is_some_and(|value| !value.is_empty()) {
         return;
     }
-    let resolution = Resolution::detect();
+    let resolution = Resolution::detect().without_shims();
     if !resolution.has_conflict() {
         return;
     }
@@ -251,6 +289,25 @@ mod tests {
             entries,
             running_index,
         }
+    }
+
+    #[test]
+    fn a_mise_shim_is_not_a_conflicting_install() {
+        let mut shim = entry("/home/u/.local/share/mise/shims/poly");
+        shim.canonical = PathBuf::from("/opt/homebrew/bin/mise");
+        assert!(shim.is_mise_shim());
+        assert!(!entry("/opt/homebrew/bin/poly").is_mise_shim());
+
+        let real = entry("/opt/homebrew/bin/poly");
+        let resolution = Resolution {
+            running: Some(real.canonical.clone()),
+            entries: vec![shim, real],
+            running_index: Some(1),
+        };
+        assert!(resolution.has_conflict(), "the raw scan sees two entries");
+        let filtered = resolution.without_shims();
+        assert!(!filtered.has_conflict(), "the shim is dropped");
+        assert_eq!(filtered.running_index, Some(0));
     }
 
     #[test]
