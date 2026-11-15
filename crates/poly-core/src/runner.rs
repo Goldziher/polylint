@@ -28,6 +28,7 @@ mod lint_pass;
 mod plan;
 mod project;
 pub(crate) use project::ancestor_pairs;
+mod schedule;
 pub(crate) mod selection;
 mod skips;
 mod types;
@@ -277,29 +278,36 @@ fn lint_files<'f>(
     resolutions: Vec<Resolution<'f>>,
     checked: &AtomicUsize,
 ) -> (Vec<LintResult>, Vec<LintError>) {
-    let (oks, errs): (Vec<_>, Vec<_>) = files
-        .par_iter()
-        .zip(resolutions)
-        .map(|(f, resolution)| match lint_one(ctx, f, resolution) {
-            Ok(result) => {
-                // A file no backend has rules for is not part of the linted
-                // count: it was routed and read, but nothing in the run knew
-                // its language, so counting it is the claim this fix removes.
-                if result.skipped.is_none() {
-                    checked.fetch_add(1, Ordering::Relaxed);
-                }
-                Ok(result)
+    let work = schedule::largest_first(files, resolutions);
+    let outcomes = schedule::run_each(work, |(f, resolution)| match lint_one(ctx, f, resolution) {
+        Ok(result) => {
+            // A file no backend has rules for is not part of the linted
+            // count: it was routed and read, but nothing in the run knew
+            // its language, so counting it is the claim this fix removes.
+            if result.skipped.is_none() {
+                checked.fetch_add(1, Ordering::Relaxed);
             }
-            Err(error) => Err(LintError {
-                path: f.path.clone(),
-                message: format!("{error:#}"),
-            }),
-        })
-        .partition(Result::is_ok);
-    (
-        oks.into_iter().map(Result::unwrap).collect(),
-        errs.into_iter().map(Result::unwrap_err).collect(),
-    )
+            Ok(result)
+        }
+        Err(error) => Err(LintError {
+            path: f.path.clone(),
+            message: format!("{error:#}"),
+        }),
+    });
+    split_outcomes(outcomes)
+}
+
+/// Separate the per-file loop's successes from its failures.
+fn split_outcomes<T, E>(outcomes: Vec<Result<T, E>>) -> (Vec<T>, Vec<E>) {
+    let mut oks = Vec::with_capacity(outcomes.len());
+    let mut errs = Vec::new();
+    for outcome in outcomes {
+        match outcome {
+            Ok(value) => oks.push(value),
+            Err(error) => errs.push(error),
+        }
+    }
+    (oks, errs)
 }
 
 /// Whole-project engines run after the per-file tier, on the files as the fix passes left them,
@@ -550,20 +558,14 @@ fn format_files<'f>(
     files: &[DiscoveredFile],
     resolutions: Vec<Resolution<'f>>,
 ) -> (Vec<FormatResult>, Vec<FormatError>) {
-    let (oks, errs): (Vec<_>, Vec<_>) = files
-        .par_iter()
-        .zip(resolutions)
-        .map(|(f, resolution)| {
-            format_one(ctx, f, resolution).map_err(|error| FormatError {
-                path: f.path.clone(),
-                message: format!("{error:#}"),
-            })
+    let work = schedule::largest_first(files, resolutions);
+    let outcomes = schedule::run_each(work, |(f, resolution)| {
+        format_one(ctx, f, resolution).map_err(|error| FormatError {
+            path: f.path.clone(),
+            message: format!("{error:#}"),
         })
-        .partition(Result::is_ok);
-    (
-        oks.into_iter().map(Result::unwrap).collect(),
-        errs.into_iter().map(Result::unwrap_err).collect(),
-    )
+    });
+    split_outcomes(outcomes)
 }
 
 fn assemble_format_run(
