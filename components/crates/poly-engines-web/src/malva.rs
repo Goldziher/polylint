@@ -26,7 +26,6 @@
 
 use malva::Syntax;
 use malva::config::FormatOptions;
-use oxc_allocator::Allocator;
 use oxc_formatter_core::FormatOptions as _;
 use oxc_formatter_css::{CssFormatOptions, CssVariant, TrailingCommas};
 use std::borrow::Cow;
@@ -162,12 +161,15 @@ fn format_with_oxc(src: &SourceFile, cfg: &EngineConfig) -> anyhow::Result<Forma
         Language::Less => CssVariant::Less,
         _ => CssVariant::Css,
     };
-    let allocator = Allocator::new();
-    let formatted = match oxc_formatter_css::format(&allocator, &src.content, oxc_css_options(cfg, variant))
-        .map_err(|_| ())
-        .and_then(|formatted| formatted.print().map_err(|_| ()))
-    {
-        Ok(printed) => printed.into_code(),
+    let options = oxc_css_options(cfg, variant);
+    let printed = crate::oxc::with_arena(|allocator| {
+        oxc_formatter_css::format(allocator, &src.content, options)
+            .map_err(|_| ())
+            .and_then(|formatted| formatted.print().map_err(|_| ()))
+            .map(|printed| printed.into_code())
+    });
+    let formatted = match printed {
+        Ok(code) => code,
         Err(()) => return Ok(FormatOutput::Unchanged),
     };
     if formatted == *src.content {

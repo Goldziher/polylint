@@ -46,7 +46,6 @@
 use markup_fmt::Language as MarkupLanguage;
 use markup_fmt::config::FormatOptions;
 use markup_fmt::format_text;
-use oxc_allocator::Allocator;
 use std::borrow::Cow;
 
 use poly_engine_api::config::EngineConfig;
@@ -147,18 +146,19 @@ impl Engine for MarkupFmtEngine {
         }
 
         let options = build_options(cfg);
-        let embedded_allocator = (src.language == Language::Astro).then(Allocator::new);
 
-        let mut embedded_scratch = cfg.clone();
+        // Most files have no embedded block, so the clone is paid on the first one only.
+        let mut scratch: Option<EngineConfig> = None;
         let formatted = format_text(&src.content, language, &options, |code, hints| {
+            let embedded_scratch = scratch.get_or_insert_with(|| cfg.clone());
             embedded_scratch.globals.line_length = hints.print_width;
+            let embedded_scratch = &*embedded_scratch;
             if src.language == Language::Astro && matches!(hints.ext, "js" | "jsx" | "ts" | "tsx") {
-                let allocator = embedded_allocator
-                    .as_ref()
-                    .expect("Astro formatter allocator must exist");
-                return super::oxc::format_embedded_js(allocator, code, hints.ext, &embedded_scratch)
-                    .map(Cow::Owned)
-                    .map_err(anyhow::Error::new);
+                return super::oxc::with_arena(|allocator| {
+                    super::oxc::format_embedded_js(allocator, code, hints.ext, embedded_scratch)
+                })
+                .map(Cow::Owned)
+                .map_err(anyhow::Error::new);
             }
             // `<style>` blocks and `<script>` blocks. Vue and Svelte route template expressions
             // through the same callback with a `ts` extension, and an expression is not a program
@@ -178,8 +178,7 @@ impl Engine for MarkupFmtEngine {
                 },
                 _ => "",
             };
-            let allocator = Allocator::new();
-            let formatted = match hints.ext {
+            let formatted = super::oxc::with_arena(|allocator| match hints.ext {
                 "css" | "scss" | "less" => {
                     let variant = match hints.ext {
                         "scss" => oxc_formatter_css::CssVariant::Scss,
@@ -187,19 +186,19 @@ impl Engine for MarkupFmtEngine {
                         _ => oxc_formatter_css::CssVariant::Css,
                     };
                     oxc_formatter_css::format(
-                        &allocator,
+                        allocator,
                         code,
-                        super::malva::oxc_css_options(&embedded_scratch, variant),
+                        super::malva::oxc_css_options(embedded_scratch, variant),
                     )
                     .ok()
                     .and_then(|formatted| formatted.print().ok())
                     .map(|printed| printed.into_code())
                 }
                 _ if !script_ext.is_empty() && (src.language != Language::Html || is_js_ext(script_ext)) => {
-                    super::oxc::format_embedded_js(&allocator, code, script_ext, &embedded_scratch).ok()
+                    super::oxc::format_embedded_js(allocator, code, script_ext, embedded_scratch).ok()
                 }
                 _ => None,
-            };
+            });
             Ok(formatted.map_or(Cow::Borrowed(code), Cow::Owned))
         });
         let formatted = match formatted {

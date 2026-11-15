@@ -102,7 +102,7 @@ const OXC_FORMAT_OPTION_KEYS: &[(&str, OptionType)] = js_format_keys!(
     ("external", OptionType::BOOLEAN),
 );
 
-pub(crate) use self::format::{format_embedded_js, is_embedded_js_parse_error};
+pub(crate) use self::format::{format_embedded_js, is_embedded_js_parse_error, with_arena};
 
 /// `oxc_formatter` options for a JS/TS block embedded in another document (a Markdown fence).
 pub(crate) fn embedded_js_options(cfg: &EngineConfig) -> oxc_formatter::JsFormatOptions {

@@ -1,6 +1,8 @@
 //! oxc format path: `oxc_formatter` for JS/TS/JSX/TSX and `oxc_formatter_json`
 //! for JSON/JSONC.
 
+use std::cell::RefCell;
+
 use oxc_allocator::Allocator;
 use oxc_span::SourceType;
 
@@ -9,6 +11,23 @@ use poly_engine_api::engine::{FormatOutput, SourceFile};
 use poly_engine_api::language::Language;
 
 use super::config::{build_js_options, build_json_options, sorted_package_json};
+
+/// Runs `f` with this thread's arena, reset first, so a format does not pay for a fresh allocation.
+///
+/// Whatever `f` allocates must not escape it. A nested call on the same thread gets a fresh arena
+/// instead of a second borrow.
+pub(crate) fn with_arena<R>(f: impl FnOnce(&Allocator) -> R) -> R {
+    thread_local! {
+        static ARENA: RefCell<Allocator> = RefCell::new(Allocator::new());
+    }
+    ARENA.with(|cell| match cell.try_borrow_mut() {
+        Ok(mut allocator) => {
+            allocator.reset();
+            f(&allocator)
+        }
+        Err(_) => f(&Allocator::new()),
+    })
+}
 
 const EMBEDDED_PARSE_ERROR_PREFIX: &str = "oxc_formatter embedded parse error: ";
 
@@ -90,19 +109,18 @@ pub(super) fn format_js(src: &SourceFile, cfg: &EngineConfig) -> anyhow::Result<
             });
         }
     }
-    let allocator = Allocator::new();
     let source_type = source_type_for(&src.language);
     let options = build_js_options(cfg);
 
-    let formatted = match oxc_formatter::format(&allocator, &src.content, source_type, options) {
-        Err(_) => return Ok(FormatOutput::Unchanged),
-        Ok(f) => f,
+    let printed = with_arena(|allocator| {
+        oxc_formatter::format(allocator, &src.content, source_type, options)
+            .ok()
+            .map(|formatted| formatted.print().map(|printed| printed.into_code()))
+    });
+    let mut code = match printed {
+        None => return Ok(FormatOutput::Unchanged),
+        Some(printed) => printed.map_err(|e| anyhow::anyhow!("oxc_formatter print error: {e}"))?,
     };
-
-    let printed = formatted
-        .print()
-        .map_err(|e| anyhow::anyhow!("oxc_formatter print error: {e}"))?;
-    let mut code = printed.into_code();
 
     if !code.ends_with('\n') {
         code.push('\n');
@@ -116,20 +134,19 @@ pub(super) fn format_js(src: &SourceFile, cfg: &EngineConfig) -> anyhow::Result<
 }
 
 pub(super) fn format_json(src: &SourceFile, cfg: &EngineConfig) -> anyhow::Result<FormatOutput> {
-    let allocator = Allocator::new();
     let options = build_json_options(src, cfg);
     let sorted = sorted_package_json(src, cfg);
     let text = sorted.as_deref().unwrap_or(&src.content);
 
-    let formatted = match oxc_formatter_json::format(&allocator, text, options) {
-        Err(_) => return Ok(FormatOutput::Unchanged),
-        Ok(f) => f,
+    let printed = with_arena(|allocator| {
+        oxc_formatter_json::format(allocator, text, options)
+            .ok()
+            .map(|formatted| formatted.print().map(|printed| printed.into_code()))
+    });
+    let mut code = match printed {
+        None => return Ok(FormatOutput::Unchanged),
+        Some(printed) => printed.map_err(|e| anyhow::anyhow!("oxc_formatter_json print error: {e}"))?,
     };
-
-    let mut code = formatted
-        .print()
-        .map_err(|e| anyhow::anyhow!("oxc_formatter_json print error: {e}"))?
-        .into_code();
 
     if !code.ends_with('\n') {
         code.push('\n');
