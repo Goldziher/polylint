@@ -516,7 +516,7 @@ kept. `--write` outside a git work tree needs `--allow-dirty`, and writes `poly.
 | `--verify` | Re-run lint and format after writing. |
 | `--strip-superseded` | Additionally strip `pyproject.toml` `[tool.*]` sections for the Python tools ruff supersedes — black, isort, flake8, … |
 | `--to-v2` | After the importers, rewrite `poly.toml` and `poly.local.toml` from the v1 to the v2 schema (ADR 0038), keeping comments. Conflicts with `--verify`. See [Migrating to the v2 config schema](/poly/guides/migrating-to-v2/). |
-| `--allow-dirty` | Let it write into a repository with uncommitted changes. |
+| `--allow-dirty` | Let it write into a repository with uncommitted changes, or outside a git work tree (deleted source configs are then unrecoverable). |
 
 It takes an optional path, defaulting to the current directory.
 

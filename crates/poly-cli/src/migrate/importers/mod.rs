@@ -188,7 +188,9 @@ fn render(item: &Item) -> String {
     item.to_string().trim().to_string()
 }
 
-/// Whether two items hold the same TOML value, ignoring formatting.
+/// Whether two items hold the same TOML value, ignoring formatting. Arrays of scalars compare as sets
+/// (order and duplicates do not matter) and an integer equals a float of the same value, so
+/// `select = ["E", "F"]` against `["F", "E"]` is not a conflict.
 fn same_value(a: &Item, b: &Item) -> bool {
     let parse = |item: &Item| {
         let rendered = render(item);
@@ -198,9 +200,32 @@ fn same_value(a: &Item, b: &Item) -> bool {
             .and_then(|mut t| t.remove("v"))
     };
     match (parse(a), parse(b)) {
-        (Some(left), Some(right)) => left == right,
+        (Some(left), Some(right)) => values_equal(&left, &right),
         _ => render(a) == render(b),
     }
+}
+
+fn values_equal(a: &toml::Value, b: &toml::Value) -> bool {
+    use toml::Value as V;
+    match (a, b) {
+        (V::Integer(i), V::Float(f)) | (V::Float(f), V::Integer(i)) => (*i as f64) == *f,
+        (V::Array(x), V::Array(y)) if x.iter().chain(y).all(is_scalar) => {
+            x.iter().all(|v| y.iter().any(|w| values_equal(v, w)))
+                && y.iter().all(|w| x.iter().any(|v| values_equal(v, w)))
+        }
+        (V::Array(x), V::Array(y)) => x.len() == y.len() && x.iter().zip(y).all(|(v, w)| values_equal(v, w)),
+        (V::Table(x), V::Table(y)) => {
+            x.len() == y.len() && x.iter().all(|(k, v)| y.get(k).is_some_and(|w| values_equal(v, w)))
+        }
+        _ => a == b,
+    }
+}
+
+fn is_scalar(value: &toml::Value) -> bool {
+    matches!(
+        value,
+        toml::Value::String(_) | toml::Value::Integer(_) | toml::Value::Float(_)
+    )
 }
 
 fn clear_positions(item: &mut Item) {
@@ -345,4 +370,42 @@ pub fn toml_string_list(value: Option<&toml::Value>) -> Vec<String> {
         .and_then(toml::Value::as_array)
         .map(|arr| arr.iter().filter_map(|v| v.as_str().map(str::to_string)).collect())
         .unwrap_or_default()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn item(src: &str) -> Item {
+        let doc: DocumentMut = format!("v = {src}").parse().unwrap();
+        doc["v"].clone()
+    }
+
+    #[test]
+    fn same_value_table() {
+        for (a, b, equal) in [
+            (r#"["E", "F"]"#, r#"["F", "E"]"#, true),
+            (r#"["E", "F", "E"]"#, r#"["F", "E"]"#, true),
+            (r#"["E", "F"]"#, r#"["E", "G"]"#, false),
+            (r#"["E"]"#, r#"["E", "F"]"#, false),
+            ("[1, 2]", "[2.0, 1]", true),
+            ("1", "1.0", true),
+            ("1", "2.0", false),
+            ("[[1, 2], [3]]", "[[3], [1, 2]]", false),
+            ("[[1, 2]]", "[[2, 1]]", true),
+            (r#""a""#, r#""a""#, true),
+        ] {
+            assert_eq!(same_value(&item(a), &item(b)), equal, "{a} vs {b}");
+        }
+    }
+
+    #[test]
+    fn a_reordered_array_is_not_a_conflict_and_keeps_existing_order() {
+        let mut target: DocumentMut = "[a]\nselect = [\"E\", \"F\"]\n".parse().unwrap();
+        let incoming: DocumentMut = "[a]\nselect = [\"F\", \"E\"]\n".parse().unwrap();
+        let mut out = Merge::default();
+        merge_table(target.as_table_mut(), incoming.as_table(), &mut Vec::new(), &mut out);
+        assert!(out.conflicts.is_empty(), "{:?}", out.conflicts);
+        assert_eq!(target.to_string(), "[a]\nselect = [\"E\", \"F\"]\n");
+    }
 }

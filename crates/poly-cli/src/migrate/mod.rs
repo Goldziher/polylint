@@ -95,7 +95,8 @@ pub struct MigrateArgs {
     #[arg(long)]
     pub verify: bool,
 
-    /// Allow `--write` even when the git working tree is dirty.
+    /// Allow `--write` even when the git working tree is dirty or not a git work tree at all (deleted
+    /// source configs are then unrecoverable).
     #[arg(long)]
     pub allow_dirty: bool,
 
@@ -415,9 +416,12 @@ fn strip_pyproject(path: &Path, sections: &[Vec<String>]) -> Result<()> {
 
 /// Write `contents` to `path` through a temp file in the same directory and a
 /// rename, so an interrupted write never leaves a truncated config. The target's
-/// permissions are kept.
+/// permissions are kept (a new file gets 0644, not the temp file's 0600), a
+/// symlink is written through so the link survives, and a hard-linked target is
+/// de-linked: the rename gives the path a new inode while other links keep the old one.
 fn write_atomic(path: &Path, contents: &str) -> Result<()> {
     use std::io::Write as _;
+    let path = &std::fs::canonicalize(path).unwrap_or_else(|_| path.to_path_buf());
     let dir = path
         .parent()
         .filter(|p| !p.as_os_str().is_empty())
@@ -427,6 +431,12 @@ fn write_atomic(path: &Path, contents: &str) -> Result<()> {
     temp.as_file().sync_all()?;
     if let Ok(meta) = std::fs::metadata(path) {
         std::fs::set_permissions(temp.path(), meta.permissions())?;
+    } else {
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt as _;
+            std::fs::set_permissions(temp.path(), std::fs::Permissions::from_mode(0o644))?;
+        }
     }
     temp.persist(path).map_err(|e| e.error)?;
     Ok(())
@@ -667,6 +677,29 @@ mod verify_tests {
         write_atomic(&path, "new").unwrap();
         assert_eq!(std::fs::read_to_string(&path).unwrap(), "new");
         assert_eq!(std::fs::read_dir(dir.path()).unwrap().count(), 1);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn write_atomic_gives_a_new_file_mode_0644() {
+        use std::os::unix::fs::PermissionsExt as _;
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("poly.toml");
+        write_atomic(&path, "new").unwrap();
+        assert_eq!(std::fs::metadata(&path).unwrap().permissions().mode() & 0o777, 0o644);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn write_atomic_writes_through_a_symlink_and_keeps_the_link() {
+        let dir = tempfile::tempdir().unwrap();
+        let real = dir.path().join("real.toml");
+        let link = dir.path().join("poly.toml");
+        std::fs::write(&real, "old").unwrap();
+        std::os::unix::fs::symlink(&real, &link).unwrap();
+        write_atomic(&link, "new").unwrap();
+        assert!(std::fs::symlink_metadata(&link).unwrap().file_type().is_symlink());
+        assert_eq!(std::fs::read_to_string(&real).unwrap(), "new");
     }
 
     /// `--verify` must still reach the directory it was pointed at when an
