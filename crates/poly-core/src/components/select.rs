@@ -80,5 +80,36 @@ pub fn host_options() -> anyhow::Result<HostOptions> {
 pub fn default_cache_root() -> PathBuf {
     poly_cache::cache_home()
         .map(|home| home.join("components"))
-        .unwrap_or_else(|_| std::env::temp_dir().join("poly-components"))
+        .unwrap_or_else(|_| fallback_cache_root(&std::env::temp_dir()))
+}
+
+/// The cache root used when poly has no cache home: per-user, so one user's directory under a shared
+/// temp dir is never another's. The host refuses it unless it is private to the current user.
+fn fallback_cache_root(temp_dir: &std::path::Path) -> PathBuf {
+    temp_dir.join(format!("poly-components-{}", current_user_tag()))
+}
+
+#[cfg(unix)]
+fn current_user_tag() -> String {
+    // SAFETY: geteuid has no preconditions and cannot fail.
+    unsafe { libc::geteuid() }.to_string()
+}
+
+#[cfg(not(unix))]
+fn current_user_tag() -> String {
+    std::env::var("USERNAME").unwrap_or_else(|_| "user".to_owned())
+}
+
+#[cfg(all(test, unix))]
+mod fallback_tests {
+    use super::*;
+
+    #[test]
+    fn the_fallback_root_is_per_user() {
+        let root = fallback_cache_root(std::path::Path::new("/tmp"));
+        // SAFETY: geteuid has no preconditions and cannot fail.
+        let uid = unsafe { libc::geteuid() };
+        assert_eq!(root, PathBuf::from(format!("/tmp/poly-components-{uid}")));
+        assert_ne!(root, PathBuf::from("/tmp/poly-components"));
+    }
 }
