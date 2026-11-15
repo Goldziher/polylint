@@ -101,7 +101,7 @@ impl ComponentHost {
     /// When the lock is not valid JSON, has an unsupported schema or repeats an entry, lists
     /// components it embeds no signing key for, or when no target is given and the host has none;
     /// on unix, when `POLY_COMPONENT_CACHE` names a directory that is not owned by the current user
-    /// or is writable by group or others.
+    /// (one of the user's own that is writable by group or others is tightened to 0700).
     pub fn new(options: HostOptions) -> anyhow::Result<Self> {
         let lock: ComponentLock =
             serde_json::from_str(&options.lock_json).context("the embedded component lock is not valid")?;

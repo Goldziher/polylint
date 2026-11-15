@@ -3,7 +3,8 @@
 //! A cached library is verified and later opened by path, and alef's verified stamp trusts a
 //! library whose file identity (device, inode, times) is unchanged. Anyone who can write the
 //! directory can forge a library together with a matching stamp, so a root that others can write
-//! is refused (an explicit override) or run without the stamp (the default root).
+//! is refused when it belongs to someone else, tightened when it is the user's own, and run without
+//! the stamp when it cannot be made private.
 
 use std::path::{Path, PathBuf};
 
@@ -20,12 +21,16 @@ pub(crate) struct CacheRoot {
 ///
 /// # Errors
 ///
-/// On unix, when `override_root` exists but is not owned by the current user or is writable by
-/// group or others, or cannot be created.
+/// On unix, when `override_root` is not owned by the current user, or cannot be created or resolved.
+/// An own directory writable by group or others is tightened to 0700 instead.
 pub(crate) fn resolve(default_root: PathBuf, override_root: Option<PathBuf>) -> anyhow::Result<CacheRoot> {
     match override_root {
         Some(path) => {
             create_private(&path).with_context(|| format!("creating the component cache {}", path.display()))?;
+            // A symlinked root is resolved once, so the directory vetted here is the one used.
+            let path = path
+                .canonicalize()
+                .with_context(|| format!("resolving the component cache {}", path.display()))?;
             require_private(&path)?;
             Ok(CacheRoot { path, stamp: false })
         }
@@ -33,6 +38,9 @@ pub(crate) fn resolve(default_root: PathBuf, override_root: Option<PathBuf>) -> 
             // Best effort: the manager creates the directory itself on first install.
             let _ = create_private(&default_root);
             let stamp = is_private(&default_root);
+            if !stamp {
+                warn_shared(&default_root);
+            }
             Ok(CacheRoot {
                 path: default_root,
                 stamp,
@@ -71,9 +79,27 @@ fn check(path: &Path) -> anyhow::Result<Option<&'static str>> {
     Ok(violation(meta.mode(), meta.uid(), rustix::process::geteuid().as_raw()))
 }
 
+fn warn_shared(path: &Path) {
+    static ONCE: std::sync::Once = std::sync::Once::new();
+    ONCE.call_once(|| {
+        tracing::warn!(
+            "the component cache {} is shared or not owned by you, so cached components are re-verified on every \
+             load; make it private (`chmod 700`) to skip that",
+            path.display()
+        );
+    });
+}
+
 #[cfg(unix)]
 fn require_private(path: &Path) -> anyhow::Result<()> {
+    use std::os::unix::fs::PermissionsExt;
     if let Some(reason) = check(path)? {
+        if reason.contains("writable") {
+            // Our own directory that is merely shared (a 0775 CI mount): tighten it. If that fails the
+            // root is still used, with the stamp off as for every override.
+            let _ = std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o700));
+            return Ok(());
+        }
         anyhow::bail!(
             "refusing the component cache {}: it {reason}, so another user could replace a cached component. \
              Use a directory only you can write (`chmod 700 {}`)",
@@ -121,20 +147,45 @@ mod tests {
     }
 
     #[test]
-    fn a_world_writable_override_is_refused() {
-        let dir = dir_with_mode(0o777);
-        let error = resolve(PathBuf::from("/unused"), Some(dir.path().to_owned()))
+    fn a_foreign_owned_override_is_refused() {
+        // Root-owned and not writable by us: only meaningful when not running as root.
+        if rustix::process::geteuid().is_root() || !Path::new("/usr").is_dir() {
+            return;
+        }
+        let error = resolve(PathBuf::from("/unused"), Some(PathBuf::from("/usr")))
             .err()
             .expect("refused");
         let message = format!("{error:#}");
-        assert!(message.contains(&dir.path().display().to_string()), "{message}");
+        assert!(message.contains("not owned"), "{message}");
         assert!(message.contains("chmod 700"), "{message}");
     }
 
     #[test]
-    fn a_group_writable_override_is_refused() {
-        let dir = dir_with_mode(0o770);
-        assert!(resolve(PathBuf::from("/unused"), Some(dir.path().to_owned())).is_err());
+    fn an_own_world_writable_override_is_tightened_and_used() {
+        let dir = dir_with_mode(0o777);
+        let root = resolve(PathBuf::from("/unused"), Some(dir.path().to_owned())).unwrap();
+        assert!(!root.stamp);
+        let mode = std::fs::metadata(dir.path()).unwrap().permissions().mode();
+        assert_eq!(mode & 0o022, 0, "{mode:o}");
+    }
+
+    #[test]
+    fn an_own_group_writable_override_is_tightened_and_used() {
+        let dir = dir_with_mode(0o775);
+        resolve(PathBuf::from("/unused"), Some(dir.path().to_owned())).unwrap();
+        let mode = std::fs::metadata(dir.path()).unwrap().permissions().mode();
+        assert_eq!(mode & 0o022, 0, "{mode:o}");
+    }
+
+    #[test]
+    fn a_symlinked_override_resolves_to_its_target() {
+        let parent = dir_with_mode(0o700);
+        let target = parent.path().join("real");
+        std::fs::create_dir(&target).unwrap();
+        let link = parent.path().join("link");
+        std::os::unix::fs::symlink(&target, &link).unwrap();
+        let root = resolve(PathBuf::from("/unused"), Some(link)).unwrap();
+        assert_eq!(root.path, target.canonicalize().unwrap());
     }
 
     #[test]
