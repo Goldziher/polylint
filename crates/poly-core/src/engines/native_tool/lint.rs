@@ -141,7 +141,7 @@ pub(crate) fn lint_via_shellcheck(spec: &ToolSpec, src: &SourceFile) -> anyhow::
         Command::new(lint_binary).args(spec.lint_args),
         lint_binary,
         Some(std::sync::Arc::from(src.content.as_bytes())),
-        crate::tool_run::tool_timeout(),
+        crate::tool_run::Budget::PerFile,
     )?;
 
     if !matches!(output.status.code(), Some(0 | 1)) {

@@ -117,6 +117,9 @@ fn exit_quietly_on_broken_pipe() {
 /// handler already set by an embedder) leaves the default behaviour.
 fn install_interrupt_cleanup() {
     let _ = ctrlc::set_handler(|| {
+        // Tools run in their own process group and never see the terminal's
+        // SIGINT; stop them before their scratch directories are removed.
+        poly_core::children::kill_all();
         poly_core::tempreg::cleanup_all();
         std::process::exit(130);
     });

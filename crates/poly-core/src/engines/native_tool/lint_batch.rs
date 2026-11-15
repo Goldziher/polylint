@@ -133,7 +133,7 @@ impl Members for Run<'_> {
             command.args(&self.mirrored[range.clone()]),
             self.binary,
             None,
-            crate::tool_run::tool_timeout(),
+            crate::tool_run::Budget::Unit,
         )?;
         // 0 and 1 are "scanned" (clean / findings). Anything higher means a file
         // could not be processed or the invocation was refused, and the JSON, if

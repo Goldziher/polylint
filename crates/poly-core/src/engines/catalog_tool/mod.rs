@@ -250,7 +250,7 @@ fn version_of(binary: &str) -> String {
         Command::new(binary).arg("--version"),
         binary,
         None,
-        crate::tool_run::PROBE_TIMEOUT,
+        crate::tool_run::Budget::Probe,
     )
     .ok()
     .map(|out| {
@@ -743,10 +743,11 @@ impl CatalogToolEngine {
             self.base_command(binary).args(&argv),
             binary,
             Some(Arc::from(src.content.as_bytes())),
-            crate::tool_run::tool_timeout(),
+            crate::tool_run::Budget::PerFile,
         )?;
         let write_result = output.stdin_error.map_or(Ok(()), Err);
 
+        // Opt-in catalog tier: a refusing tool leaves the file unchanged, not failed.
         if !output.status.success() {
             return Ok(FormatOutput::Unchanged);
         }
@@ -778,9 +779,10 @@ impl CatalogToolEngine {
             self.base_command(binary).args(&argv),
             binary,
             None,
-            crate::tool_run::tool_timeout(),
+            crate::tool_run::Budget::PerFile,
         )?;
 
+        // Opt-in catalog tier: a refusing tool leaves the file unchanged, not failed.
         if !output.status.success() {
             return Ok(FormatOutput::Unchanged);
         }
@@ -798,7 +800,7 @@ impl CatalogToolEngine {
             self.base_command(binary).args(&argv),
             binary,
             Some(Arc::from(src.content.as_bytes())),
-            crate::tool_run::tool_timeout(),
+            crate::tool_run::Budget::PerFile,
         )?;
         Ok(LintOutcome::new(
             output.status.success(),
@@ -844,7 +846,7 @@ impl CatalogToolEngine {
             self.base_command(binary).args(&argv),
             binary,
             None,
-            crate::tool_run::tool_timeout(),
+            crate::tool_run::Budget::PerFile,
         )?;
         Ok(LintOutcome::new(
             output.status.success(),

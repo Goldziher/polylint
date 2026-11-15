@@ -77,7 +77,7 @@ pub(crate) fn format_via_tool(
         &mut cmd,
         format_binary,
         Some(std::sync::Arc::from(src.content.as_bytes())),
-        crate::tool_run::tool_timeout(),
+        crate::tool_run::Budget::PerFile,
     )?;
 
     if !output.status.success() {

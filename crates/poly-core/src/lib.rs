@@ -34,6 +34,7 @@
 //! and found clean. Any caller that gates on the outcome must use [`lint_run`] /
 //! [`format_run`] and inspect [`LintRun::errors`] / [`FormatRun::errors`].
 
+pub mod children;
 pub mod component_wire;
 pub mod components;
 pub mod config;

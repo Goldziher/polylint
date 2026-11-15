@@ -67,7 +67,7 @@ pub(super) fn run_with_stdin(
 
 fn captured(mut command: Command, launcher: &Launcher, stdin: Option<Arc<[u8]>>) -> Result<Captured> {
     let name = launcher.program.display().to_string();
-    let output = crate::tool_run::run(&mut command, &name, stdin, crate::tool_run::tool_timeout())?;
+    let output = crate::tool_run::run(&mut command, &name, stdin, crate::tool_run::Budget::Unit)?;
     Ok(Captured {
         code: output.status.code(),
         stdout: String::from_utf8_lossy(&output.stdout).into_owned(),

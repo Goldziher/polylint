@@ -149,7 +149,7 @@ impl Members for Run<'_> {
                 .args(&self.mirrored[range.clone()]),
             self.binary,
             None,
-            crate::tool_run::tool_timeout(),
+            crate::tool_run::Budget::Unit,
         )?;
         Ok(output.status.success())
     }
