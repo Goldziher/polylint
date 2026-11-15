@@ -4,12 +4,40 @@
     "ignores": ["**/RustBridge/**"]
   },
   {
+    "id": "go-blank-import-outside-main",
+    "ignores": ["**/*_test.go", "**/*.pb.go", "**/*_generated.go"]
+  },
+  {
     "id": "go-context-background-outside-main",
     "ignores": ["**/*_test.go"]
   },
   {
+    "id": "go-deprecated-import",
+    "ignores": ["**/*_test.go", "**/*.pb.go", "**/*_generated.go"]
+  },
+  {
+    "id": "go-dot-import",
+    "ignores": ["**/*_test.go", "**/*.pb.go", "**/*_generated.go"]
+  },
+  {
+    "id": "go-fmt-print-outside-main",
+    "ignores": ["**/*_test.go", "**/*.pb.go", "**/*_generated.go"]
+  },
+  {
     "id": "go-forbidden-ambient-call",
     "ignores": ["**/*_test.go"]
+  },
+  {
+    "id": "go-goroutine-without-recover",
+    "ignores": ["**/*_test.go", "**/*.pb.go", "**/*_generated.go"]
+  },
+  {
+    "id": "go-http-default-client",
+    "ignores": ["**/*_test.go", "**/*.pb.go", "**/*_generated.go"]
+  },
+  {
+    "id": "go-naked-return",
+    "ignores": ["**/*_test.go", "**/*.pb.go", "**/*_generated.go"]
   },
   {
     "id": "go-no-init",
@@ -18,6 +46,26 @@
   {
     "id": "go-no-package-mutable-global",
     "ignores": ["**/*_test.go"]
+  },
+  {
+    "id": "go-panic-in-library",
+    "ignores": ["**/*_test.go", "**/*.pb.go", "**/*_generated.go"]
+  },
+  {
+    "id": "go-rand-seed",
+    "ignores": ["**/*_test.go"]
+  },
+  {
+    "id": "go-time-sleep",
+    "ignores": ["**/*_test.go"]
+  },
+  {
+    "id": "go-unsafe-import",
+    "ignores": ["**/*_test.go", "**/*.pb.go", "**/*_generated.go", "**/_cgo_*.go"]
+  },
+  {
+    "id": "go-waitgroup-add-in-goroutine",
+    "ignores": ["**/*_test.go", "**/*.pb.go", "**/*_generated.go"]
   },
   {
     "id": "not-null-assertion",

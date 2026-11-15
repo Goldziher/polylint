@@ -1,0 +1,61 @@
+id: go-panic-in-library
+language: go
+severity: off
+message: "`panic` in a library package takes the caller's process down; return an error."
+note: |
+  A `panic` that escapes a library function crashes every program that calls
+  it, unless the caller knows to wrap the call in `recover`. Go's convention
+  is that expected failures are returned as `error` values and `panic` is
+  reserved for programmer errors and unreachable states.
+
+  Exempt: any file in `package main`; `func main` and `func init`; functions
+  and methods whose name begins with `must`/`Must`, the Go convention
+  (`regexp.MustCompile`, `template.Must`) for a helper documented to abort;
+  and anything inside a function taking a `testing` parameter. `_test.go`
+  files and generated code are excluded by default.
+
+  Matching is syntactic: a user function named `panic` or a re-panic
+  inside a deferred `recover` handler is still reported.
+
+  Off by default: a `panic` on an impossible state is idiomatic in many
+  libraries, and the carve-outs cannot see documented invariants. Enable it
+  with `severity = "warning"` where the library contract is "never panics".
+
+  Idea origin: the Go blog's "Defer, Panic, and Recover" guidance and the
+  Effective Go section on panic; the matcher, carve-outs and message are
+  poly's own.
+url: https://go.dev/blog/defer-panic-and-recover
+ignores:
+  - "**/*_test.go"
+  - "**/*.pb.go"
+  - "**/*_generated.go"
+utils:
+  in-main-package:
+    inside:
+      stopBy: end
+      kind: source_file
+      has:
+        kind: package_clause
+        has:
+          kind: package_identifier
+          regex: "^main$"
+  in-exempt-function:
+    inside:
+      stopBy: end
+      any:
+        - kind: function_declaration
+        - kind: method_declaration
+      has:
+        field: name
+        regex: "^(main|init|[Mm]ust.*)$"
+rule:
+  kind: call_expression
+  has:
+    nthChild: 1
+    kind: identifier
+    regex: "^panic$"
+  not:
+    any:
+      - matches: in-main-package
+      - matches: in-exempt-function
+      - matches: go-in-test-function

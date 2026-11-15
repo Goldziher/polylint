@@ -1,0 +1,29 @@
+id: go-deprecated-import
+language: go
+severity: warning
+message: "Import of a deprecated package; use its replacement."
+note: |
+  `io/ioutil` has been deprecated since Go 1.16: every function in it is a
+  thin wrapper that now lives in `io` or `os` (`ioutil.ReadAll` is
+  `io.ReadAll`, `ioutil.ReadFile`/`WriteFile` are `os.ReadFile`/`os.WriteFile`,
+  `ioutil.TempDir`/`TempFile` are `os.MkdirTemp`/`os.CreateTemp`,
+  `ioutil.ReadDir` is `os.ReadDir`, `ioutil.NopCloser` is `io.NopCloser`,
+  `ioutil.Discard` is `io.Discard`). `golang.org/x/net/context` has been a
+  forwarding shim for the standard `context` package since Go 1.7.
+
+  Matches the import path literally, so an aliased import is still found.
+  Generated code and `_test.go` files are excluded by default.
+
+  Idea origin: the `io/ioutil` package documentation's deprecation notice
+  and Go 1.16 release notes; the matcher and message are poly's own.
+url: https://pkg.go.dev/io/ioutil
+ignores:
+  - "**/*_test.go"
+  - "**/*.pb.go"
+  - "**/*_generated.go"
+rule:
+  kind: import_spec
+  has:
+    field: path
+    kind: interpreted_string_literal
+    regex: '^"(io/ioutil|golang\.org/x/net/context)"$'

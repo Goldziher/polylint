@@ -60,7 +60,7 @@ fn lists_builtin_pack_rules_with_source_language_and_severity() {
         assert!(row.contains(field), "row `{row}` should carry `{field}`");
     }
     assert!(
-        stdout.contains("30 rules: 30 built-in, 0 user"),
+        stdout.contains("42 rules: 42 built-in, 0 user"),
         "the summary must count the pack: {stdout}"
     );
 }
@@ -161,7 +161,7 @@ fn json_output_carries_the_same_fields_as_the_table() {
 
     assert_eq!(document["builtin_pack_enabled"], serde_json::json!(true));
     let rules = document["rules"].as_array().expect("rules array");
-    assert_eq!(rules.len(), 30, "every pack rule is in the JSON document");
+    assert_eq!(rules.len(), 42, "every pack rule is in the JSON document");
 
     let rule = rules
         .iter()
@@ -187,7 +187,7 @@ fn toon_output_is_rendered_as_a_table() {
     let tmp = repo("[rules]\ndirs = []\n");
     let stdout = stdout_of(&rules_list(tmp.path(), &["--format", "toon"]));
     assert!(
-        stdout.contains("rules[30]{id,language,source,default_severity,severity,enabled}:"),
+        stdout.contains("rules[42]{id,language,source,default_severity,severity,enabled}:"),
         "TOON header must name every field: {stdout}"
     );
     assert!(

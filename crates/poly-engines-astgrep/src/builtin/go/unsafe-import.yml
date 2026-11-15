@@ -1,0 +1,33 @@
+id: go-unsafe-import
+language: go
+severity: off
+message: "Import of `unsafe` bypasses Go's type and memory safety."
+note: |
+  The `unsafe` package lets code reinterpret memory, skip bounds checks and
+  depend on layout details the language does not guarantee, and programs that
+  import it are not covered by the Go 1 compatibility promise. Architecture
+  policies usually confine it to one low-level package so the audit surface
+  stays small.
+
+  Matches the import of the path `unsafe` and flags the file once, not each
+  use. `_test.go` files and generated code (including cgo output) are
+  excluded by default.
+
+  Off by default: a legitimate low-level package must import it. Enable it
+  with `severity = "warning"` and allow that package with
+  `[per-file-ignores]`.
+
+  Idea origin: the `unsafe` package documentation; the matcher and message
+  are poly's own.
+url: https://pkg.go.dev/unsafe
+ignores:
+  - "**/*_test.go"
+  - "**/*.pb.go"
+  - "**/*_generated.go"
+  - "**/_cgo_*.go"
+rule:
+  kind: import_spec
+  has:
+    field: path
+    kind: interpreted_string_literal
+    regex: '^"unsafe"$'

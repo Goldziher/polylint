@@ -1,0 +1,9 @@
+id: go-time-sleep
+valid:
+  - "package app\n\nimport (\n\t\"context\"\n\t\"time\"\n)\n\nfunc wait(ctx context.Context) {\n\tselect {\n\tcase <-ctx.Done():\n\tcase <-time.After(time.Second):\n\t}\n}\n"
+  - "package app\n\nimport \"time\"\n\nfunc tick() *time.Ticker {\n\treturn time.NewTicker(time.Second)\n}\n"
+  - "package app\n\nimport (\n\t\"testing\"\n\t\"time\"\n)\n\nfunc settle(t *testing.T) {\n\ttime.Sleep(time.Millisecond)\n}\n"
+invalid:
+  - "package app\n\nimport \"time\"\n\nfunc retry() {\n\ttime.Sleep(time.Second)\n}\n"
+  - "package worker\n\nimport \"time\"\n\nfunc (w *Worker) loop() {\n\tfor {\n\t\tw.step()\n\t\ttime.Sleep(100 * time.Millisecond)\n\t}\n}\n"
+  - "package main\n\nimport \"time\"\n\nfunc main() {\n\ttime.Sleep(5 * time.Second)\n}\n"

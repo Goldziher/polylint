@@ -1,0 +1,38 @@
+id: go-waitgroup-add-in-goroutine
+language: go
+severity: off
+message: "`WaitGroup.Add` inside the goroutine it counts races with `Wait`; call `Add` before the `go` statement."
+note: |
+  `sync.WaitGroup.Add` must happen before the goroutine it accounts for is
+  started. If the goroutine calls `Add` itself, `Wait` can observe a zero
+  counter and return before the goroutine has registered, so the work is
+  silently not waited for. The `sync` documentation states the rule
+  explicitly: calls with a positive delta that occur when the counter is zero
+  must happen before a `Wait`.
+
+  Matches a call named `Add` on a receiver whose name looks like a wait group
+  (`wg`, `wait`, `waitGroup`, or a name ending in `WG`/`Wg`/`WaitGroup`)
+  inside a `go` statement. Receiver names are matched textually because the
+  type is not available, and a goroutine that legitimately owns a second,
+  inner wait group for goroutines it spawns is reported too.
+  `_test.go` files and generated code are excluded by default.
+
+  Off by default for those two reasons. Enable it with `severity = "warning"`
+  to catch the race early.
+
+  Idea origin: the `sync.WaitGroup` documentation and the `go vet`
+  `waitgroup` analyzer proposal; the matcher and message are poly's own.
+url: https://pkg.go.dev/sync#WaitGroup.Add
+ignores:
+  - "**/*_test.go"
+  - "**/*.pb.go"
+  - "**/*_generated.go"
+rule:
+  kind: call_expression
+  has:
+    nthChild: 1
+    kind: selector_expression
+    regex: '^(\w+\s*\.\s*)*(wg|wait|waitGroup|\w+WG|\w+Wg|\w+WaitGroup)\s*\.\s*Add$'
+  inside:
+    stopBy: end
+    kind: go_statement

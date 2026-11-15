@@ -763,7 +763,7 @@ mod tests {
         assert_eq!(listed(&listings, "swift", "force-cast").source, RuleSource::Builtin);
         assert_eq!(
             listings.len(),
-            30,
+            42,
             "every pack rule must be listed, not only the active ones"
         );
     }

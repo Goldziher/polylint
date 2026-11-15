@@ -1,0 +1,9 @@
+id: go-unsafe-import
+valid:
+  - "package app\n\nimport \"reflect\"\n\nvar _ = reflect.TypeOf\n"
+  - "package app\n\nimport \"github.com/acme/unsafe\"\n\nvar _ = unsafe.Go\n"
+  - "package app\n\nimport (\n\t\"fmt\"\n\t\"os\"\n)\n\nvar _ = fmt.Sprint(os.Args)\n"
+invalid:
+  - "package app\n\nimport \"unsafe\"\n\nfunc size(v int) uintptr {\n\treturn unsafe.Sizeof(v)\n}\n"
+  - "package app\n\nimport (\n\t\"fmt\"\n\t\"unsafe\"\n)\n\nvar _ = fmt.Sprint(unsafe.Sizeof(0))\n"
+  - "package app\n\nimport u \"unsafe\"\n\nvar _ = u.Sizeof(0)\n"

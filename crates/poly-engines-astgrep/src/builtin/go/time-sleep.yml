@@ -1,0 +1,33 @@
+id: go-time-sleep
+language: go
+severity: off
+message: "`time.Sleep` blocks the goroutine and ignores cancellation; wait on a timer with `select` and `ctx.Done()`."
+note: |
+  `time.Sleep` cannot be interrupted: a cancelled context, a shutdown signal
+  or a closed channel is noticed only after the full duration. In production
+  code it also usually hides a race (sleeping until "the other goroutine has
+  probably finished") or builds an unbounded retry loop. Use a
+  `time.Timer`/`time.After` in a `select` with `ctx.Done()`, a `time.Ticker`,
+  or synchronise on the real event.
+
+  Exempt: anything inside a function taking a `testing` parameter. `_test.go`
+  files are excluded by default. Matching is syntactic on the identifier
+  `time`; an import alias is not followed.
+
+  Off by default: back-off helpers and `main`-level pacing sleep on purpose.
+  Enable it with `severity = "warning"` and allow those files with
+  `[per-file-ignores]`.
+
+  Idea origin: the standard library documentation of `time.Sleep` and
+  `time.After`; the matcher and message are poly's own.
+url: https://pkg.go.dev/time#Sleep
+ignores:
+  - "**/*_test.go"
+rule:
+  kind: call_expression
+  has:
+    nthChild: 1
+    kind: selector_expression
+    regex: '^time\s*\.\s*Sleep$'
+  not:
+    matches: go-in-test-function

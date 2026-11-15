@@ -1,0 +1,9 @@
+id: go-naked-return
+valid:
+  - "package app\n\nfunc split(n int) (a, b int) {\n\ta = n / 2\n\tb = n - a\n\treturn a, b\n}\n"
+  - "package app\n\nfunc run() {\n\tif done() {\n\t\treturn\n\t}\n\twork()\n}\n"
+  - "package app\n\nfunc load() (cfg Config, err error) {\n\tgo func() {\n\t\tif stop() {\n\t\t\treturn\n\t\t}\n\t}()\n\treturn cfg, err\n}\n"
+invalid:
+  - "package app\n\nfunc split(n int) (a, b int) {\n\ta = n / 2\n\tb = n - a\n\treturn\n}\n"
+  - "package app\n\nfunc (s *Store) Get(id int) (row Row, err error) {\n\trow, err = s.find(id)\n\tif err != nil {\n\t\treturn\n\t}\n\treturn row, nil\n}\n"
+  - "package app\n\nvar f = func(n int) (out int) {\n\tout = n\n\treturn\n}\n"

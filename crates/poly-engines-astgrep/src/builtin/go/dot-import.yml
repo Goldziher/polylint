@@ -1,0 +1,27 @@
+id: go-dot-import
+language: go
+severity: warning
+message: "Dot import hides where identifiers come from; import the package by name."
+note: |
+  `import . "pkg"` merges the package's exported identifiers into the
+  importing file's scope. A reader can no longer tell whether `Open` is local
+  or imported, two dot imports can collide silently, and adding an exported
+  name to the dependency can break the importer. The Go style guide and the
+  Code Review Comments both discourage it outside tests that must avoid an
+  import cycle.
+
+  `_test.go` files are excluded by default, which is where dot imports of
+  `ginkgo`/`gomega`-style DSLs live. Generated code is excluded too.
+
+  Idea origin: the Go Code Review Comments ("Imports" section); the matcher
+  and message are poly's own.
+url: https://go.dev/wiki/CodeReviewComments#import-dot
+ignores:
+  - "**/*_test.go"
+  - "**/*.pb.go"
+  - "**/*_generated.go"
+rule:
+  kind: import_spec
+  has:
+    field: name
+    kind: dot

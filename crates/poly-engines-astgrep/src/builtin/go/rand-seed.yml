@@ -1,0 +1,25 @@
+id: go-rand-seed
+language: go
+severity: warning
+message: "`rand.Seed` is deprecated; the global source is seeded automatically, or use `rand.New(rand.NewSource(seed))`."
+note: |
+  Since Go 1.20 the top-level `math/rand` functions are seeded randomly at
+  startup and `rand.Seed` is deprecated; Go 1.24 makes it a no-op. Calling it
+  also reseeds a process-wide source shared by every package, so one caller
+  silently changes the sequence another sees. For reproducible sequences
+  create a local generator with `rand.New(rand.NewSource(seed))`.
+
+  Matches written call syntax on the identifier `rand`; an import alias is
+  not followed. `_test.go` files are excluded by default.
+
+  Idea origin: the `math/rand` package documentation's deprecation notice for
+  `Seed`; the matcher and message are poly's own.
+url: https://pkg.go.dev/math/rand#Seed
+ignores:
+  - "**/*_test.go"
+rule:
+  kind: call_expression
+  has:
+    nthChild: 1
+    kind: selector_expression
+    regex: '^rand\s*\.\s*Seed$'

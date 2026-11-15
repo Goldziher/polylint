@@ -110,13 +110,25 @@ const PACK_RULES: &[&str] = &[
     include_str!("builtin/csharp/rethrow-loses-stack.yml"),
     include_str!("builtin/csharp/sync-over-async.yml"),
     include_str!("builtin/elixir/unused-operation.yml"),
+    include_str!("builtin/go/blank-import-outside-main.yml"),
     include_str!("builtin/go/context-background-outside-main.yml"),
     include_str!("builtin/go/deep-exit.yml"),
     include_str!("builtin/go/defer-in-loop.yml"),
+    include_str!("builtin/go/deprecated-import.yml"),
+    include_str!("builtin/go/dot-import.yml"),
+    include_str!("builtin/go/fmt-print-outside-main.yml"),
     include_str!("builtin/go/forbidden-ambient-call.yml"),
     include_str!("builtin/go/force-type-assert.yml"),
+    include_str!("builtin/go/goroutine-without-recover.yml"),
+    include_str!("builtin/go/http-default-client.yml"),
+    include_str!("builtin/go/naked-return.yml"),
     include_str!("builtin/go/no-init.yml"),
     include_str!("builtin/go/no-package-mutable-global.yml"),
+    include_str!("builtin/go/panic-in-library.yml"),
+    include_str!("builtin/go/rand-seed.yml"),
+    include_str!("builtin/go/time-sleep.yml"),
+    include_str!("builtin/go/unsafe-import.yml"),
+    include_str!("builtin/go/waitgroup-add-in-goroutine.yml"),
     include_str!("builtin/java/empty-catch-block.yml"),
     include_str!("builtin/java/implicit-switch-fallthrough.yml"),
     include_str!("builtin/java/preserve-stack-trace.yml"),
@@ -361,7 +373,7 @@ mod tests {
     fn fully_available_build_has_nothing_missing() {
         let built = build(&|_| Ok(()));
         assert!(built.missing.is_empty());
-        assert_eq!(built.rules.values().map(Vec::len).sum::<usize>(), 30);
+        assert_eq!(built.rules.values().map(Vec::len).sum::<usize>(), 42);
     }
 
     #[test]
@@ -373,9 +385,9 @@ mod tests {
     }
 
     #[test]
-    fn builtin_pack_has_30_rules() {
+    fn builtin_pack_has_42_rules() {
         let total: usize = builtin_pack().values().map(Vec::len).sum();
-        assert_eq!(total, 30, "expected 30 built-in rules across 9 languages");
+        assert_eq!(total, 42, "expected 42 built-in rules across 9 languages");
     }
 
     /// The shared Rust test-context helpers live in exactly one place.

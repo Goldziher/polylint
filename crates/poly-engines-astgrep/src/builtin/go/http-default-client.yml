@@ -1,0 +1,33 @@
+id: go-http-default-client
+language: go
+severity: off
+message: "`$FN` uses a net/http default with no timeout; configure an `http.Client`/`http.Server` explicitly."
+note: |
+  The package-level helpers `http.Get`, `http.Head`, `http.Post` and
+  `http.PostForm`, and the shared `http.DefaultClient`, use a client with no
+  timeout, so a stalled peer hangs the calling goroutine forever. Likewise
+  `http.ListenAndServe` and `http.ListenAndServeTLS` build a server with no
+  read, write or idle timeouts, which leaves it open to slow-client
+  exhaustion. Construct an `http.Client{Timeout: ...}` or an `http.Server`
+  with explicit timeouts and inject it.
+
+  Matching is syntactic on the identifier `http`; an import alias is not
+  followed, and a local variable named `http` would be a false positive.
+  `_test.go` files and generated code are excluded by default.
+
+  Off by default: scripts and small tools use these on purpose. Enable it
+  with `severity = "warning"` for service code.
+
+  Idea origin: the `net/http` documentation's note that the default client
+  has no timeout, and Cloudflare's "The complete guide to Go net/http
+  timeouts"; the matcher and message are poly's own.
+url: https://pkg.go.dev/net/http#pkg-variables
+ignores:
+  - "**/*_test.go"
+  - "**/*.pb.go"
+  - "**/*_generated.go"
+rule:
+  kind: selector_expression
+  regex: '^http\s*\.\s*(Get|Head|Post|PostForm|DefaultClient|ListenAndServe|ListenAndServeTLS)$'
+  not:
+    matches: go-in-test-function

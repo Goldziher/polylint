@@ -1,0 +1,10 @@
+id: go-panic-in-library
+valid:
+  - "package main\n\nfunc load() {\n\tpanic(\"bad config\")\n}\n"
+  - "package parse\n\nfunc MustParse(s string) Doc {\n\tdoc, err := Parse(s)\n\tif err != nil {\n\t\tpanic(err)\n\t}\n\treturn doc\n}\n"
+  - "package parse\n\nfunc Parse(s string) (Doc, error) {\n\treturn Doc{}, fmt.Errorf(\"bad input %q\", s)\n}\n"
+  - "package parse\n\nimport \"testing\"\n\nfunc check(t *testing.T) {\n\tpanic(\"boom\")\n}\n"
+invalid:
+  - "package parse\n\nfunc Parse(s string) Doc {\n\tif s == \"\" {\n\t\tpanic(\"empty input\")\n\t}\n\treturn Doc{}\n}\n"
+  - "package store\n\nfunc (s *Store) Get(id int) Row {\n\trow, err := s.find(id)\n\tif err != nil {\n\t\tpanic(err)\n\t}\n\treturn row\n}\n"
+  - "package util\n\nfunc unreachable() {\n\tpanic(\"unreachable\")\n}\n"

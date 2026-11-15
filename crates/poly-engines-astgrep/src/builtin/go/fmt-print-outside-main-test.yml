@@ -1,0 +1,10 @@
+id: go-fmt-print-outside-main
+valid:
+  - "package main\n\nimport \"fmt\"\n\nfunc show() {\n\tfmt.Println(\"hi\")\n}\n"
+  - "package report\n\nimport (\n\t\"fmt\"\n\t\"io\"\n)\n\nfunc write(w io.Writer) {\n\tfmt.Fprintln(w, \"hi\")\n}\n"
+  - "package report\n\nimport \"fmt\"\n\nfunc label(n int) string {\n\treturn fmt.Sprintf(\"n=%d\", n)\n}\n"
+  - "package report\n\nimport (\n\t\"fmt\"\n\t\"testing\"\n)\n\nfunc dump(t *testing.T) {\n\tfmt.Println(t.Name())\n}\n"
+invalid:
+  - "package report\n\nimport \"fmt\"\n\nfunc show() {\n\tfmt.Println(\"hi\")\n}\n"
+  - "package service\n\nimport \"fmt\"\n\nfunc (s *Service) Start() {\n\tfmt.Printf(\"starting %s\\n\", s.name)\n}\n"
+  - "package util\n\nimport \"fmt\"\n\nfunc debug(v any) {\n\tfmt.Print(v)\n}\n"

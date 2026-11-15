@@ -1,0 +1,9 @@
+id: go-dot-import
+valid:
+  - "package app\n\nimport \"fmt\"\n\nfunc show() {\n\tfmt.Println(1)\n}\n"
+  - "package app\n\nimport _ \"embed\"\n\nvar x int\n"
+  - "package app\n\nimport (\n\tfm \"fmt\"\n\t\"os\"\n)\n\nfunc show() {\n\tfm.Println(os.Args)\n}\n"
+invalid:
+  - "package app\n\nimport . \"fmt\"\n\nfunc show() {\n\tPrintln(1)\n}\n"
+  - "package app\n\nimport (\n\t\"os\"\n\n\t. \"github.com/acme/dsl\"\n)\n\nvar _ = os.Args\n"
+  - "package app\n\nimport . \"strings\"\n\nvar up = ToUpper\n"

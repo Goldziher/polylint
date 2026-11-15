@@ -1,0 +1,9 @@
+id: go-waitgroup-add-in-goroutine
+valid:
+  - "package app\n\nfunc run(jobs []Job) {\n\tvar wg sync.WaitGroup\n\tfor _, j := range jobs {\n\t\twg.Add(1)\n\t\tgo func(j Job) {\n\t\t\tdefer wg.Done()\n\t\t\trun(j)\n\t\t}(j)\n\t}\n\twg.Wait()\n}\n"
+  - "package app\n\nfunc run() {\n\tgo func() {\n\t\tset.Add(1)\n\t}()\n}\n"
+  - "package app\n\nfunc run() {\n\tvar wg sync.WaitGroup\n\twg.Add(1)\n\tgo work(&wg)\n\twg.Wait()\n}\n"
+invalid:
+  - "package app\n\nfunc run(jobs []Job) {\n\tvar wg sync.WaitGroup\n\tfor _, j := range jobs {\n\t\tgo func(j Job) {\n\t\t\twg.Add(1)\n\t\t\tdefer wg.Done()\n\t\t\trun(j)\n\t\t}(j)\n\t}\n\twg.Wait()\n}\n"
+  - "package app\n\nfunc (p *Pool) start() {\n\tgo func() {\n\t\tp.wg.Add(1)\n\t\tdefer p.wg.Done()\n\t\tp.loop()\n\t}()\n}\n"
+  - "package app\n\nfunc run() {\n\tgo func() {\n\t\tworkerWG.Add(2)\n\t\twork()\n\t}()\n}\n"

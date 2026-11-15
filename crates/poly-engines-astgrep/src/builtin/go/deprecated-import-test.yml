@@ -1,0 +1,9 @@
+id: go-deprecated-import
+valid:
+  - "package app\n\nimport \"io\"\n\nfunc read(r io.Reader) {\n\t_, _ = io.ReadAll(r)\n}\n"
+  - "package app\n\nimport (\n\t\"context\"\n\t\"os\"\n)\n\nvar _ = os.ReadFile\nvar _ context.Context\n"
+  - "package app\n\nimport \"github.com/acme/ioutil\"\n\nvar _ = ioutil.Copy\n"
+invalid:
+  - "package app\n\nimport \"io/ioutil\"\n\nfunc read(p string) {\n\t_, _ = ioutil.ReadFile(p)\n}\n"
+  - "package app\n\nimport (\n\t\"fmt\"\n\tioutil \"io/ioutil\"\n)\n\nfunc show() {\n\tfmt.Println(ioutil.Discard)\n}\n"
+  - "package app\n\nimport \"golang.org/x/net/context\"\n\nfunc run(ctx context.Context) {}\n"

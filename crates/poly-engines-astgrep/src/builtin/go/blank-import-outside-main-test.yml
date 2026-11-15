@@ -1,0 +1,9 @@
+id: go-blank-import-outside-main
+valid:
+  - "package main\n\nimport (\n\t\"database/sql\"\n\n\t_ \"github.com/lib/pq\"\n)\n\nvar _ *sql.DB\n"
+  - "package store\n\nimport (\n\t\"database/sql\"\n)\n\nvar _ *sql.DB\n"
+  - "package assets\n\nimport _ \"embed\"\n\n//go:embed a.txt\nvar a string\n"
+invalid:
+  - "package store\n\nimport (\n\t\"database/sql\"\n\n\t_ \"github.com/lib/pq\"\n)\n\nvar _ *sql.DB\n"
+  - "package server\n\nimport _ \"net/http/pprof\"\n\nvar x int\n"
+  - "package codec\n\nimport (\n\t_ \"image/png\"\n\t_ \"image/jpeg\"\n)\n\nvar x int\n"

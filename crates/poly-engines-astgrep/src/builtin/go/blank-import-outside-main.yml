@@ -1,0 +1,47 @@
+id: go-blank-import-outside-main
+language: go
+severity: off
+message: "Blank import outside `package main` registers behaviour through a side effect; import it in `main`."
+note: |
+  `import _ "pkg"` runs the package's `init` functions for their side effects,
+  typically registering a database driver, image decoder or profiler handler
+  in a global registry. Done in a library package it forces that choice on
+  every program that imports the library. Leave the decision to `main`, which
+  owns the process's wiring.
+
+  Exempt: any file in `package main`. `_test.go` files are excluded by
+  default. `import _ "embed"` is a directive import rather than a registration
+  and is not matched.
+
+  Off by default: libraries that ship an adapter for one driver legitimately
+  blank-import it. Enable it with `severity = "warning"` and grandfather
+  existing imports with `[per-file-ignores]`.
+
+  Idea origin: the Go Code Review Comments' guidance that blank imports
+  belong in `main` or tests; the matcher and message are poly's own.
+url: https://go.dev/wiki/CodeReviewComments#import-blank
+ignores:
+  - "**/*_test.go"
+  - "**/*.pb.go"
+  - "**/*_generated.go"
+utils:
+  in-main-package:
+    inside:
+      stopBy: end
+      kind: source_file
+      has:
+        kind: package_clause
+        has:
+          kind: package_identifier
+          regex: "^main$"
+rule:
+  kind: import_spec
+  has:
+    field: name
+    kind: blank_identifier
+  not:
+    any:
+      - matches: in-main-package
+      - has:
+          field: path
+          regex: '^"embed"$'

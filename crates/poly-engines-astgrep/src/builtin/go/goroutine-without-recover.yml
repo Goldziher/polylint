@@ -1,0 +1,42 @@
+id: go-goroutine-without-recover
+language: go
+severity: off
+message: "Goroutine started from a function literal with no `recover`; a panic in it terminates the whole process."
+note: |
+  A panic is recovered only by a deferred call in the goroutine that panics.
+  A `recover` in the spawning function cannot catch it, so one unhandled
+  panic in any background goroutine kills the entire process. Server and
+  worker code usually wants a deferred `recover` at the top of each
+  goroutine that logs the failure and keeps the process alive.
+
+  Matches a `go` statement whose callee is a function literal and whose body
+  contains no call to `recover` anywhere. `go namedFunc()` is not matched,
+  because the callee's body is not visible without type information.
+  `_test.go` files and generated code are excluded by default.
+
+  Off by default: crashing on an unexpected panic is a valid policy, and
+  short-lived command-line programs prefer it. Enable it with
+  `severity = "warning"` for long-running services.
+
+  Idea origin: the Go specification's description of panics and the
+  `recover` builtin; the matcher and message are poly's own.
+url: https://go.dev/ref/spec#Handling_panics
+ignores:
+  - "**/*_test.go"
+  - "**/*.pb.go"
+  - "**/*_generated.go"
+rule:
+  kind: go_statement
+  has:
+    kind: call_expression
+    has:
+      field: function
+      kind: func_literal
+  not:
+    has:
+      stopBy: end
+      kind: call_expression
+      has:
+        nthChild: 1
+        kind: identifier
+        regex: "^recover$"

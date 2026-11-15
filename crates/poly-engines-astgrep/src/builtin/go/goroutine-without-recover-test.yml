@@ -1,0 +1,9 @@
+id: go-goroutine-without-recover
+valid:
+  - "package app\n\nfunc start() {\n\tgo func() {\n\t\tdefer func() {\n\t\t\tif r := recover(); r != nil {\n\t\t\t\tlog(r)\n\t\t\t}\n\t\t}()\n\t\twork()\n\t}()\n}\n"
+  - "package app\n\nfunc start() {\n\tgo worker()\n}\n"
+  - "package app\n\nfunc start(jobs []Job) {\n\tfor _, j := range jobs {\n\t\tgo func(j Job) {\n\t\t\tdefer func() { recover() }()\n\t\t\trun(j)\n\t\t}(j)\n\t}\n}\n"
+invalid:
+  - "package app\n\nfunc start() {\n\tgo func() {\n\t\twork()\n\t}()\n}\n"
+  - "package app\n\nfunc start(jobs []Job) {\n\tfor _, j := range jobs {\n\t\tgo func(j Job) {\n\t\t\trun(j)\n\t\t}(j)\n\t}\n}\n"
+  - "package app\n\nfunc (s *Server) Serve() {\n\tgo func() {\n\t\tdefer s.wg.Done()\n\t\ts.loop()\n\t}()\n}\n"

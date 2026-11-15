@@ -1,0 +1,9 @@
+id: go-http-default-client
+valid:
+  - "package app\n\nimport (\n\t\"net/http\"\n\t\"time\"\n)\n\nvar client = &http.Client{Timeout: 5 * time.Second}\n"
+  - "package app\n\nimport \"net/http\"\n\nfunc status() int {\n\treturn http.StatusOK\n}\n"
+  - "package app\n\nimport \"net/http\"\n\nfunc serve(h http.Handler) error {\n\tsrv := &http.Server{Addr: \":8080\", Handler: h}\n\treturn srv.ListenAndServe()\n}\n"
+invalid:
+  - "package app\n\nimport \"net/http\"\n\nfunc fetch(u string) {\n\tresp, _ := http.Get(u)\n\t_ = resp\n}\n"
+  - "package app\n\nimport \"net/http\"\n\nfunc send(req *http.Request) {\n\t_, _ = http.DefaultClient.Do(req)\n}\n"
+  - "package app\n\nimport \"net/http\"\n\nfunc run(h http.Handler) error {\n\treturn http.ListenAndServe(\":8080\", h)\n}\n"

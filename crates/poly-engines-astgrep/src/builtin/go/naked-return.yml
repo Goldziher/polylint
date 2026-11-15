@@ -1,0 +1,47 @@
+id: go-naked-return
+language: go
+severity: off
+message: "Naked `return` with named results; return the values explicitly."
+note: |
+  A bare `return` in a function with named results returns whatever those
+  variables hold at that point. In anything longer than a few lines the
+  reader has to scan back through the body to learn what is returned, and a
+  later edit can change the result without touching the `return`. The Go
+  Code Review Comments allow naked returns only in short functions.
+
+  Matches a `return` with no operands whose nearest enclosing function (a
+  declaration, method or literal) declares a parenthesised result list. The
+  rule has no line-count threshold, so it also reports short functions where
+  a naked return is acceptable. A deferred closure that modifies named
+  results by assignment is not affected: only the `return` statement is
+  matched.
+
+  Off by default for that reason. Enable it with `severity = "warning"` in a
+  project that bans naked returns outright.
+
+  Idea origin: the Go Code Review Comments ("Named Result Parameters") and
+  `nakedret`'s long-function heuristic; the matcher and message are poly's
+  own.
+url: https://go.dev/wiki/CodeReviewComments#named-result-parameters
+ignores:
+  - "**/*_test.go"
+  - "**/*.pb.go"
+  - "**/*_generated.go"
+rule:
+  kind: return_statement
+  not:
+    has:
+      kind: expression_list
+  inside:
+    stopBy:
+      any:
+        - kind: function_declaration
+        - kind: method_declaration
+        - kind: func_literal
+    any:
+      - kind: function_declaration
+      - kind: method_declaration
+      - kind: func_literal
+    has:
+      field: result
+      kind: parameter_list

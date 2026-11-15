@@ -1,0 +1,9 @@
+id: go-rand-seed
+valid:
+  - "package app\n\nimport \"math/rand\"\n\nfunc roll() int {\n\treturn rand.Intn(6)\n}\n"
+  - "package app\n\nimport \"math/rand\"\n\nfunc gen(seed int64) *rand.Rand {\n\treturn rand.New(rand.NewSource(seed))\n}\n"
+  - "package app\n\nfunc seed(r *Rng) {\n\tr.Seed(1)\n}\n"
+invalid:
+  - "package app\n\nimport (\n\t\"math/rand\"\n\t\"time\"\n)\n\nfunc init() {\n\trand.Seed(time.Now().UnixNano())\n}\n"
+  - "package app\n\nimport \"math/rand\"\n\nfunc setup() {\n\trand.Seed(42)\n}\n"
+  - "package app\n\nimport \"math/rand\"\n\nfunc (s *Server) Start() {\n\trand.Seed(s.seed)\n}\n"

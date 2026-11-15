@@ -1,0 +1,50 @@
+id: go-fmt-print-outside-main
+language: go
+severity: off
+message: "`fmt.Print*` writes to the process's stdout from a library package; take an `io.Writer` or a logger."
+note: |
+  `fmt.Print`, `fmt.Printf` and `fmt.Println` write to the global
+  `os.Stdout`. Library code that calls them cannot be silenced, redirected or
+  captured by its caller and pollutes the output of any program that embeds
+  it, including programs that speak a protocol on stdout. Accept an
+  `io.Writer` (and use `fmt.Fprint*`) or a logger instead.
+
+  Exempt: any file in `package main`, and anything inside a function taking a
+  `testing` parameter. `_test.go` files and generated code are excluded by
+  default. `fmt.Fprint*`, `fmt.Sprint*` and the builtin `print`/`println` are
+  not matched.
+
+  Matching is syntactic on the identifier `fmt`; an import alias is not
+  followed.
+
+  Off by default: command-line layers kept in packages such as `cmd/` or
+  `internal/cli` print on purpose. Enable it with `severity = "warning"` and
+  allow those directories with `[per-file-ignores]`.
+
+  Idea origin: the archlint "no fmt.Print* outside cmd/" rule; the matcher
+  and message are poly's own.
+url: https://pkg.go.dev/fmt#Println
+ignores:
+  - "**/*_test.go"
+  - "**/*.pb.go"
+  - "**/*_generated.go"
+utils:
+  in-main-package:
+    inside:
+      stopBy: end
+      kind: source_file
+      has:
+        kind: package_clause
+        has:
+          kind: package_identifier
+          regex: "^main$"
+rule:
+  kind: call_expression
+  has:
+    nthChild: 1
+    kind: selector_expression
+    regex: '^fmt\s*\.\s*(Print|Printf|Println)$'
+  not:
+    any:
+      - matches: in-main-package
+      - matches: go-in-test-function
