@@ -551,13 +551,17 @@ fn hook_impl(args: HookImplArgs) -> Result<ExitCode> {
 
     let poly_bin = std::env::current_exe().context("failed to resolve the running poly binary")?;
     let stage = inputs.stage;
-    let files = candidate_files(
-        &root,
-        stage,
-        inputs.all_files,
-        inputs.from_ref.as_deref(),
-        inputs.to_ref.as_deref(),
-    )?;
+    let files = if inputs.push_ranges.is_empty() || RunInputMode::from(stage) != RunInputMode::Files {
+        candidate_files(
+            &root,
+            stage,
+            inputs.all_files,
+            inputs.from_ref.as_deref(),
+            inputs.to_ref.as_deref(),
+        )?
+    } else {
+        poly_hooks::hook_impl::changed_files_for_ranges(&inputs.push_ranges, &root)?
+    };
     let cache = open_result_cache(&config, &root, args.no_cache)?;
     let git_args: Vec<String> = args
         .git_args

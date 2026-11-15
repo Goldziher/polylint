@@ -51,6 +51,9 @@ pub struct RunInputs {
     pub remote_branch: Option<String>,
     /// `pre-push`: the local branch being pushed.
     pub local_branch: Option<String>,
+    /// `pre-push`: every pushed range, one per stdin line that has something to
+    /// check. `from_ref` / `to_ref` / `all_files` above mirror the first.
+    pub push_ranges: Vec<PushInfo>,
     /// `post-checkout`: the checkout flag (`1` = branch checkout).
     pub checkout_type: Option<String>,
     /// `post-merge`: whether the merge was a squash merge.
@@ -131,66 +134,88 @@ pub struct PushInfo {
 /// 3. **New branch** — that first remote-unknown commit is itself a root
 ///    commit: there is no parent, so check the whole tracked tree.
 ///
-/// Returns `Ok(None)` when no line describes anything to push (deletions,
-/// already-reachable tips, malformed input).
+/// Returns the range of the first line that describes something to push, or
+/// `Ok(None)` when none does. A push of several refs has one range per line; use
+/// [`parse_pre_push_infos`] to gate all of them.
 pub fn parse_pre_push_info(stdin: &[u8], remote_name: &str, root: &Path) -> Result<Option<PushInfo>> {
+    Ok(parse_pre_push_infos(stdin, remote_name, root)?.into_iter().next())
+}
+
+/// Parse every `pre-push` stdin line into its own [`PushInfo`], in stdin order.
+///
+/// `git push origin a b`, `--all` and `--tags` send one line per ref; gating
+/// only the first would let the others through unchecked. Deletions,
+/// already-reachable tips and malformed lines yield no entry.
+pub fn parse_pre_push_infos(stdin: &[u8], remote_name: &str, root: &Path) -> Result<Vec<PushInfo>> {
     let buffer = String::from_utf8_lossy(stdin);
-
+    let mut infos = Vec::new();
     for line in buffer.lines() {
-        let parts: Vec<&str> = line.rsplitn(4, ' ').collect();
-        if parts.len() != 4 {
-            continue;
-        }
-
-        let local_branch = parts[3];
-        let local_sha = parts[2];
-        let remote_branch = parts[1];
-        let remote_sha = parts[0];
-
-        if local_sha.bytes().all(|b| b == b'0') {
-            continue;
-        }
-
-        if !remote_sha.bytes().all(|b| b == b'0') && git::rev_exists(remote_sha, root)? {
-            if git::is_ancestor(remote_sha, local_sha, root)? {
-                return Ok(Some(PushInfo {
-                    from_ref: Some(remote_sha.to_string()),
-                    to_ref: Some(local_sha.to_string()),
-                    all_files: false,
-                    remote_branch: Some(remote_branch.to_string()),
-                    local_branch: Some(local_branch.to_string()),
-                }));
-            }
-        }
-
-        let ancestors = git::get_ancestors_not_in_remote(local_sha, remote_name, root)?;
-        let Some(first_ancestor) = ancestors.first() else {
-            continue;
-        };
-
-        let roots = git::get_root_commits(local_sha, root)?;
-        if roots.contains(first_ancestor) {
-            return Ok(Some(PushInfo {
-                from_ref: None,
-                to_ref: Some(local_sha.to_string()),
-                all_files: true,
-                remote_branch: Some(remote_branch.to_string()),
-                local_branch: Some(local_branch.to_string()),
-            }));
-        }
-
-        if let Some(source) = git::get_parent_commit(first_ancestor, root)? {
-            return Ok(Some(PushInfo {
-                from_ref: Some(source),
-                to_ref: Some(local_sha.to_string()),
-                all_files: false,
-                remote_branch: Some(remote_branch.to_string()),
-                local_branch: Some(local_branch.to_string()),
-            }));
+        if let Some(info) = resolve_push_line(line, remote_name, root)? {
+            infos.push(info);
         }
     }
+    Ok(infos)
+}
 
-    Ok(None)
+fn resolve_push_line(line: &str, remote_name: &str, root: &Path) -> Result<Option<PushInfo>> {
+    let parts: Vec<&str> = line.rsplitn(4, ' ').collect();
+    if parts.len() != 4 {
+        return Ok(None);
+    }
+
+    let local_branch = parts[3];
+    let local_sha = parts[2];
+    let remote_branch = parts[1];
+    let remote_sha = parts[0];
+
+    if local_sha.bytes().all(|b| b == b'0') {
+        return Ok(None);
+    }
+
+    let info = |from_ref: Option<String>, all_files: bool| PushInfo {
+        from_ref,
+        to_ref: Some(local_sha.to_string()),
+        all_files,
+        remote_branch: Some(remote_branch.to_string()),
+        local_branch: Some(local_branch.to_string()),
+    };
+
+    if !remote_sha.bytes().all(|b| b == b'0')
+        && git::rev_exists(remote_sha, root)?
+        && git::is_ancestor(remote_sha, local_sha, root)?
+    {
+        return Ok(Some(info(Some(remote_sha.to_string()), false)));
+    }
+
+    let ancestors = git::get_ancestors_not_in_remote(local_sha, remote_name, root)?;
+    let Some(first_ancestor) = ancestors.first() else {
+        return Ok(None);
+    };
+
+    let roots = git::get_root_commits(local_sha, root)?;
+    if roots.contains(first_ancestor) {
+        return Ok(Some(info(None, true)));
+    }
+
+    Ok(git::get_parent_commit(first_ancestor, root)?.map(|source| info(Some(source), false)))
+}
+
+/// The union of files changed across every pushed range, sorted and
+/// de-duplicated so the order does not depend on stdin order.
+///
+/// A range that checks the whole tree (a new root-commit branch) makes the
+/// answer the whole tracked tree.
+pub fn changed_files_for_ranges(ranges: &[PushInfo], root: &Path) -> Result<Vec<PathBuf>> {
+    if ranges.iter().any(|range| range.all_files) {
+        return Ok(git::list_files(root)?);
+    }
+    let mut files = std::collections::BTreeSet::new();
+    for range in ranges {
+        if let (Some(from), Some(to)) = (range.from_ref.as_deref(), range.to_ref.as_deref()) {
+            files.extend(git::get_changed_files(from, to, root)?);
+        }
+    }
+    Ok(files.into_iter().collect())
 }
 
 /// Convert an `OsStr` argument to an owned `String` (lossily).
@@ -225,15 +250,17 @@ pub fn resolve_inputs(hook_type: HookType, args: &[OsString], stdin: &[u8], root
         HookType::PrePush => {
             let remote_name = arg_str(&args[0]);
             inputs.remote_url = Some(arg_str(&args[1]));
-            let Some(push) = parse_pre_push_info(stdin, &remote_name, root)? else {
+            let ranges = parse_pre_push_infos(stdin, &remote_name, root)?;
+            let Some(push) = ranges.first().cloned() else {
                 return Ok(None);
             };
             inputs.remote_name = Some(remote_name);
             inputs.from_ref = push.from_ref;
             inputs.to_ref = push.to_ref;
-            inputs.all_files = push.all_files;
+            inputs.all_files = ranges.iter().any(|range| range.all_files);
             inputs.remote_branch = push.remote_branch;
             inputs.local_branch = push.local_branch;
+            inputs.push_ranges = ranges;
         }
         HookType::CommitMsg => {
             inputs.message_file = Some(PathBuf::from(&args[0]));
@@ -394,6 +421,58 @@ mod tests {
         let line = format!("(delete) {zero} refs/heads/gone {zero}\n");
         let push = parse_pre_push_info(line.as_bytes(), "origin", root).expect("parse");
         assert!(push.is_none());
+    }
+
+    #[test]
+    fn parse_pre_push_infos_returns_every_ref() {
+        let repo = init_temp_repo();
+        let root = repo.path();
+        let base = commit_file(root, "a.txt");
+        let first = commit_file(root, "b.txt");
+        git_run(root, &["branch", "other", &first]);
+        let second = commit_file(root, "c.txt");
+
+        let zero = "0".repeat(40);
+        let input = format!(
+            "refs/heads/main {second} refs/heads/main {base}\n\
+             (delete) {zero} refs/heads/gone {zero}\n\
+             refs/heads/other {first} refs/heads/other {base}\n"
+        );
+        let infos = parse_pre_push_infos(input.as_bytes(), "origin", root).expect("parse");
+
+        assert_eq!(infos.len(), 2, "the deletion is skipped, both real refs kept");
+        assert_eq!(infos[0].to_ref.as_deref(), Some(second.as_str()));
+        assert_eq!(infos[1].to_ref.as_deref(), Some(first.as_str()));
+        assert_eq!(infos[1].from_ref.as_deref(), Some(base.as_str()));
+
+        let inputs = resolve_inputs(
+            HookType::PrePush,
+            &[OsString::from("origin"), OsString::from("url")],
+            input.as_bytes(),
+            root,
+        )
+        .expect("resolve")
+        .expect("inputs");
+        assert_eq!(inputs.push_ranges.len(), 2);
+        assert_eq!(inputs.to_ref.as_deref(), Some(second.as_str()));
+    }
+
+    #[test]
+    fn changed_files_for_ranges_unions_sorted() {
+        let repo = init_temp_repo();
+        let root = repo.path();
+        let base = commit_file(root, "a.txt");
+        let first = commit_file(root, "z.txt");
+        let second = commit_file(root, "b.txt");
+        let range = |from: &str, to: &str| PushInfo {
+            from_ref: Some(from.to_string()),
+            to_ref: Some(to.to_string()),
+            all_files: false,
+            remote_branch: None,
+            local_branch: None,
+        };
+        let files = changed_files_for_ranges(&[range(&first, &second), range(&base, &first)], root).expect("files");
+        assert_eq!(files, vec![PathBuf::from("b.txt"), PathBuf::from("z.txt")]);
     }
 
     #[test]
