@@ -35,23 +35,27 @@
 //!   endings / the final newline).
 
 mod indent;
+mod kinds;
 
 use std::borrow::Cow;
 use std::cell::RefCell;
 use std::collections::HashMap;
 
-use tree_sitter_language_pack::{Node, Parser, detect_language, get_parser};
+use tree_sitter::{Node, Parser};
+use tree_sitter_language_pack::detect_language;
 
 use crate::config::EngineConfig;
 use crate::defaults::normalize_whitespace;
 use crate::engine::{Capabilities, Engine, FormatOutput, OptionKeys, OptionTable, SourceFile};
 use crate::language::Language;
+use kinds::KindTable;
 
 thread_local! {
     /// Per-thread parser pool keyed by grammar name. tree-sitter parsers are
     /// expensive to build, so each rayon worker reuses one parser per language
-    /// across files instead of constructing one per file.
-    static PARSERS: RefCell<HashMap<String, Parser>> = RefCell::new(HashMap::new());
+    /// across files instead of constructing one per file. The kind table is
+    /// built once beside it so walks classify nodes by id.
+    static PARSERS: RefCell<HashMap<String, (Parser, KindTable)>> = RefCell::new(HashMap::new());
 }
 
 /// Generic tree-sitter backend (see module docs).
@@ -220,13 +224,14 @@ fn reindent_braces(name: &str, src: &SourceFile, cfg: &EngineConfig) -> Option<S
     PARSERS.with(|cell| {
         let mut pool = cell.borrow_mut();
         if !pool.contains_key(name) {
-            crate::engines::grammar::language(name)?;
-            let parser = get_parser(name).ok()?;
-            pool.insert(name.to_string(), parser);
+            let language = crate::engines::grammar::language(name)?;
+            let mut parser = Parser::new();
+            parser.set_language(&language).ok()?;
+            pool.insert(name.to_string(), (parser, KindTable::new(&language, name)));
         }
-        let parser = pool.get_mut(name)?;
-        let tree = parser.parse(&src.content)?;
-        let cst = collect_cst(&tree.root_node(), name);
+        let (parser, kinds) = pool.get_mut(name)?;
+        let tree = parser.parse(src.content.as_bytes(), None)?;
+        let cst = collect_cst(&tree.root_node(), name, kinds);
         Some(reindent(&src.content, name, &cst, cfg))
     })
 }
@@ -317,20 +322,18 @@ impl CstFacts {
 /// are tracked. The walk does not descend into protected nodes, so delimiters
 /// inside strings/comments never count toward depth. Per-language switch/case
 /// adjustments are collected in a second pass via [`collect_case_adjustments`].
-fn collect_cst(root: &Node, grammar_name: &str) -> CstFacts {
+fn collect_cst(root: &Node, grammar_name: &str, kinds: &KindTable) -> CstFacts {
     let mut delimiters = Vec::new();
     let mut protected: Vec<(usize, usize)> = Vec::new();
     let mut macro_bodies: Vec<(usize, usize)> = Vec::new();
     let mut cursor = root.walk();
     loop {
         let node = cursor.node();
-        let kind = node.kind();
-        let is_protected = kind.contains("string") || kind.contains("comment");
+        let is_protected = kinds.has(&node, kinds::STRING_OR_COMMENT);
         if is_protected {
             protected.push((node.start_byte(), node.end_byte()));
-        } else if kind == "token_tree"
-            && grammar_name == "rust"
-            && node.parent().is_some_and(|p| p.kind() == "macro_invocation")
+        } else if kinds.has(&node, kinds::TOKEN_TREE)
+            && node.parent().is_some_and(|p| kinds.has(&p, kinds::MACRO_INVOCATION))
         {
             // The walk is pre-order, so starts ascend and a nested macro's body lies inside the
             // last one recorded; keeping only the outermost lets `in_macro_body` binary-search.
@@ -339,16 +342,16 @@ fn collect_cst(root: &Node, grammar_name: &str) -> CstFacts {
                 macro_bodies.push((open, close));
             }
         } else if node.child_count() == 0 {
-            match kind.as_str() {
-                "(" | "[" | "{" => delimiters.push(Delimiter {
+            if kinds.has(&node, kinds::OPEN) {
+                delimiters.push(Delimiter {
                     byte: node.start_byte(),
                     open: true,
-                }),
-                ")" | "]" | "}" => delimiters.push(Delimiter {
+                });
+            } else if kinds.has(&node, kinds::CLOSE) {
+                delimiters.push(Delimiter {
                     byte: node.start_byte(),
                     open: false,
-                }),
-                _ => {}
+                });
             }
         }
         if !is_protected && cursor.goto_first_child() {
@@ -363,7 +366,7 @@ fn collect_cst(root: &Node, grammar_name: &str) -> CstFacts {
                 protected.sort_by_key(|r| r.0);
                 let mut case_label_dedent = Vec::new();
                 let mut case_body_extra = Vec::new();
-                collect_case_adjustments(root, grammar_name, &mut case_body_extra, &mut case_label_dedent);
+                collect_case_adjustments(root, grammar_name, kinds, &mut case_body_extra, &mut case_label_dedent);
                 return CstFacts {
                     delimiters,
                     protected,
@@ -381,19 +384,14 @@ fn collect_cst(root: &Node, grammar_name: &str) -> CstFacts {
 fn collect_case_adjustments(
     root: &Node,
     grammar_name: &str,
+    kinds: &KindTable,
     case_body_extra: &mut Vec<(usize, usize)>,
     case_label_dedent: &mut Vec<(usize, usize)>,
 ) {
     match grammar_name {
-        "swift" => collect_swift_case_adjustments(root, case_body_extra, case_label_dedent),
-        "dart" => collect_switch_case_bodies(
-            root,
-            "switch_statement_case",
-            "switch_statement_default",
-            case_body_extra,
-        ),
-        "csharp" => collect_switch_case_bodies(root, "switch_section", "switch_section", case_body_extra),
-        "go" => collect_go_case_adjustments(root, case_body_extra, case_label_dedent),
+        "swift" => collect_swift_case_adjustments(root, kinds, case_body_extra, case_label_dedent),
+        "dart" | "csharp" => collect_switch_case_bodies(root, kinds, case_body_extra),
+        "go" => collect_go_case_adjustments(root, kinds, case_body_extra, case_label_dedent),
         _ => {}
     }
 }
@@ -403,11 +401,12 @@ fn collect_case_adjustments(
 /// the body ends up at bracket depth (net adjustment of 0 for body lines).
 fn collect_swift_case_adjustments(
     root: &Node,
+    kinds: &KindTable,
     case_body_extra: &mut Vec<(usize, usize)>,
     case_label_dedent: &mut Vec<(usize, usize)>,
 ) {
     for_each_node(root, |node| {
-        if node.kind() != "switch_entry" {
+        if !kinds.has(&node, kinds::CASE_HOLDER) {
             return;
         }
         case_label_dedent.push((node.start_byte(), node.end_byte()));
@@ -415,7 +414,7 @@ fn collect_swift_case_adjustments(
         if cursor.goto_first_child() {
             loop {
                 let child = cursor.node();
-                if child.kind() == "statements" {
+                if kinds.has(&child, kinds::STATEMENTS) {
                     case_body_extra.push((child.start_byte(), child.end_byte()));
                 }
                 if !cursor.goto_next_sibling() {
@@ -428,10 +427,10 @@ fn collect_swift_case_adjustments(
 
 /// Visit `root` and every descendant in pre-order without recursing, so a tree nested hundreds of
 /// thousands of levels deep cannot overflow the stack.
-fn for_each_node(root: &Node, mut visit: impl FnMut(&Node)) {
+fn for_each_node<'tree>(root: &Node<'tree>, mut visit: impl FnMut(Node<'tree>)) {
     let mut cursor = root.walk();
     loop {
-        visit(&cursor.node());
+        visit(cursor.node());
         if cursor.goto_first_child() {
             continue;
         }
@@ -454,15 +453,12 @@ fn for_each_node(root: &Node, mut visit: impl FnMut(&Node)) {
 /// depth still stays there, since the reindenter never dedents.
 fn collect_go_case_adjustments(
     root: &Node,
+    kinds: &KindTable,
     case_body_extra: &mut Vec<(usize, usize)>,
     case_label_dedent: &mut Vec<(usize, usize)>,
 ) {
     for_each_node(root, |node| {
-        let kind = node.kind();
-        if matches!(
-            kind.as_ref(),
-            "expression_case" | "default_case" | "type_case" | "communication_case"
-        ) {
+        if kinds.has(&node, kinds::CASE_HOLDER) {
             case_label_dedent.push((node.start_byte(), node.end_byte()));
             let mut after_colon = false;
             let mut trailing_comments: Vec<(usize, usize)> = Vec::new();
@@ -472,9 +468,9 @@ fn collect_go_case_adjustments(
                     let child = cursor.node();
                     if after_colon {
                         case_body_extra.push((child.start_byte(), child.end_byte()));
-                        track_trailing_comment(&child, &mut trailing_comments);
+                        track_trailing_comment(&child, kinds, &mut trailing_comments);
                     }
-                    if child.kind() == ":" {
+                    if kinds.has(&child, kinds::COLON) {
                         after_colon = true;
                     }
                     if !cursor.goto_next_sibling() {
@@ -483,15 +479,12 @@ fn collect_go_case_adjustments(
                 }
             }
             case_label_dedent.extend(trailing_comments);
-        } else if matches!(
-            kind.as_ref(),
-            "expression_switch_statement" | "type_switch_statement" | "select_statement"
-        ) {
+        } else if kinds.has(&node, kinds::SWITCH_HOLDER) {
             let mut cursor = node.walk();
             if cursor.goto_first_child() {
                 loop {
                     let child = cursor.node();
-                    if child.kind() == "comment" {
+                    if kinds.has(&child, kinds::COMMENT) {
                         case_label_dedent.push((child.start_byte(), child.end_byte()));
                     }
                     if !cursor.goto_next_sibling() {
@@ -499,7 +492,7 @@ fn collect_go_case_adjustments(
                     }
                 }
             }
-        } else if kind == "labeled_statement"
+        } else if kinds.has(&node, kinds::LABELED)
             && let Some(label) = node.child(0)
         {
             case_label_dedent.push((label.start_byte(), label.end_byte()));
@@ -508,26 +501,20 @@ fn collect_go_case_adjustments(
 }
 
 /// Keep `trailing` holding the comments that follow the last non-comment node seen so far.
-fn track_trailing_comment(child: &Node, trailing: &mut Vec<(usize, usize)>) {
-    if child.kind() == "comment" {
+fn track_trailing_comment(child: &Node, kinds: &KindTable, trailing: &mut Vec<(usize, usize)>) {
+    if kinds.has(child, kinds::COMMENT) {
         trailing.push((child.start_byte(), child.end_byte()));
     } else {
         trailing.clear();
     }
 }
 
-/// Dart / C#: walk the tree looking for `case_kind` and `default_kind` nodes.
-/// For each such node, find the last `:` child; any siblings after that `:` are
-/// the implicit case body and receive a +1 extra-indent adjustment.
-fn collect_switch_case_bodies(
-    root: &Node,
-    case_kind: &str,
-    default_kind: &str,
-    case_body_extra: &mut Vec<(usize, usize)>,
-) {
+/// Dart / C#: walk the tree looking for case and default nodes (`CASE_HOLDER`
+/// in the grammar's kind table). For each, siblings after the `:` child are the
+/// implicit case body and receive a +1 extra-indent adjustment.
+fn collect_switch_case_bodies(root: &Node, kinds: &KindTable, case_body_extra: &mut Vec<(usize, usize)>) {
     for_each_node(root, |node| {
-        let kind = node.kind();
-        if kind != case_kind && kind != default_kind {
+        if !kinds.has(&node, kinds::CASE_HOLDER) {
             return;
         }
         let mut after_colon = false;
@@ -538,7 +525,7 @@ fn collect_switch_case_bodies(
                 if after_colon {
                     case_body_extra.push((child.start_byte(), child.end_byte()));
                 }
-                if child.kind() == ":" {
+                if kinds.has(&child, kinds::COLON) {
                     after_colon = true;
                 }
                 if !cursor.goto_next_sibling() {

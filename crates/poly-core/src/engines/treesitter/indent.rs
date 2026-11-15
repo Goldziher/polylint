@@ -40,8 +40,10 @@ use tree_sitter_language_pack::{QueryKind, get_indents_query, get_query};
 use crate::config::EngineConfig;
 use crate::engine::SourceFile;
 
+use super::kinds::{self, KindTable};
+
 thread_local! {
-    static QUERY_STATE: RefCell<HashMap<String, (RawParser, QueryCursor)>> =
+    static QUERY_STATE: RefCell<HashMap<String, (RawParser, QueryCursor, KindTable)>> =
         RefCell::new(HashMap::new());
 }
 
@@ -170,7 +172,7 @@ const BASH_INDENTS: &str = r#"
 "#;
 
 thread_local! {
-    static BUILTIN_STATE: RefCell<HashMap<String, (RawParser, QueryCursor, Query)>> =
+    static BUILTIN_STATE: RefCell<HashMap<String, (RawParser, QueryCursor, Query, KindTable)>> =
         RefCell::new(HashMap::new());
 }
 
@@ -207,7 +209,10 @@ fn builtin_facts(name: &str, query_src: &str, src: &SourceFile) -> Option<(Adjus
             let mut parser = RawParser::new();
             parser.set_language(&language).ok()?;
             let query = Query::new(&language, query_src).ok()?;
-            pool.insert(name.to_string(), (parser, QueryCursor::new(), query));
+            pool.insert(
+                name.to_string(),
+                (parser, QueryCursor::new(), query, KindTable::new(&language, name)),
+            );
         }
         let entry = pool.get_mut(name)?;
         let tree = entry.0.parse(src.content.as_bytes(), None)?;
@@ -219,7 +224,7 @@ fn builtin_facts(name: &str, query_src: &str, src: &SourceFile) -> Option<(Adjus
             return None;
         }
         let adjustments = collect_adjustments(&entry.2, &mut entry.1, &tree, src.content.as_bytes());
-        let protected = collect_protected_ranges(&tree, src.content.as_bytes());
+        let protected = collect_protected_ranges(&tree, src.content.as_bytes(), &entry.3);
         Some((adjustments, protected))
     })
 }
@@ -240,12 +245,15 @@ pub fn try_reindent_query(name: &str, src: &SourceFile, cfg: &EngineConfig) -> O
             let language = crate::engines::grammar::language(name)?;
             let mut parser = RawParser::new();
             parser.set_language(&language).ok()?;
-            pool.insert(name.to_string(), (parser, QueryCursor::new()));
+            pool.insert(
+                name.to_string(),
+                (parser, QueryCursor::new(), KindTable::new(&language, name)),
+            );
         }
         let entry = pool.get_mut(name)?;
         let tree = entry.0.parse(src.content.as_bytes(), None)?;
         let adjustments = collect_adjustments(&query, &mut entry.1, &tree, src.content.as_bytes());
-        let protected = collect_protected_ranges(&tree, src.content.as_bytes());
+        let protected = collect_protected_ranges(&tree, src.content.as_bytes(), &entry.2);
         Some((adjustments, protected))
     })?;
 
@@ -484,14 +492,13 @@ fn truncate_keeps_at_inner_openers(openers: &[Opener], keep_ranges: &mut Vec<(us
 /// with overlaps merged, so [`is_interior`] can binary-search them: without the
 /// merge, a range nested inside or straddling another would be shadowed by the
 /// `partition_point` lookup and its lines reindented.
-fn collect_protected_ranges(tree: &tree_sitter::Tree, source: &[u8]) -> Vec<(usize, usize)> {
+fn collect_protected_ranges(tree: &tree_sitter::Tree, source: &[u8], kinds: &KindTable) -> Vec<(usize, usize)> {
     let mut ranges: Vec<(usize, usize)> = Vec::new();
     let mut cursor = tree.root_node().walk();
     'walk: loop {
         let node = cursor.node();
-        let kind = node.kind();
-        let is_heredoc = kind.contains("heredoc");
-        let is_protected = is_heredoc || kind.contains("string") || kind.contains("comment");
+        let is_heredoc = kinds.has(&node, kinds::HEREDOC);
+        let is_protected = is_heredoc || kinds.has(&node, kinds::STRING_OR_COMMENT);
         if is_heredoc {
             if let Some(offset) = source[node.start_byte()..node.end_byte()]
                 .iter()
