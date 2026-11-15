@@ -1,4 +1,4 @@
-//! SARIF 2.1.0 logs, the report format zizmor, detekt and jarl share.
+//! SARIF 2.1.0 logs, the report format zizmor, detekt, jarl and SwiftLint share.
 //!
 //! Only the fields a diagnostic needs are read: the rule, level and message of
 //! each result and the first usable location's file and region. A log without a

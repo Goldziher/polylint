@@ -811,3 +811,80 @@ fn rubocop_output_that_is_not_its_report_is_an_error_not_a_clean_run() {
         assert!(parse(Output::RubocopJson, stdout, "").is_err(), "{why}");
     }
 }
+
+const SWIFTLINT_SARIF: &str = r#"{
+  "$schema" : "https://docs.oasis-open.org/sarif/sarif/v2.1.0/cos02/schemas/sarif-schema-2.1.0.json",
+  "runs" : [
+    {
+      "results" : [
+        {
+          "level" : "warning",
+          "locations" : [
+            {
+              "physicalLocation" : {
+                "artifactLocation" : {
+                  "uri" : "Sources/App/Model.swift"
+                },
+                "region" : {
+                  "startColumn" : 9,
+                  "startLine" : 12
+                }
+              }
+            }
+          ],
+          "message" : {
+            "text" : "Variable name should be between 3 and 40 characters long: 'x'"
+          },
+          "ruleId" : "identifier_name"
+        },
+        {
+          "level" : "error",
+          "locations" : [
+            {
+              "physicalLocation" : {
+                "artifactLocation" : {
+                  "uri" : "Sources/App/Model.swift"
+                }
+              }
+            }
+          ],
+          "message" : {
+            "text" : "Force casts should be avoided"
+          },
+          "ruleId" : "force_cast"
+        }
+      ],
+      "tool" : {
+        "driver" : {
+          "informationUri" : "https://github.com/realm/SwiftLint/blob/0.65.1/README.md",
+          "name" : "SwiftLint",
+          "rules" : [
+            {
+              "helpUri" : "https://realm.github.io/SwiftLint/identifier_name.html",
+              "id" : "identifier_name"
+            }
+          ],
+          "semanticVersion" : "0.65.1"
+        }
+      }
+    }
+  ],
+  "version" : "2.1.0"
+}"#;
+
+#[test]
+fn swiftlint_sarif_reports_rule_levels_and_tolerates_a_violation_without_a_region() {
+    let findings = parse(Output::Sarif, SWIFTLINT_SARIF, "").expect("parses");
+    assert_eq!(findings.len(), 2, "{findings:?}");
+    assert_eq!(findings[0].path.as_deref(), Some("Sources/App/Model.swift"));
+    assert_eq!((findings[0].line, findings[0].column), (Some(12), Some(9)));
+    assert_eq!(findings[0].code.as_deref(), Some("identifier_name"));
+    assert_eq!(findings[0].severity, Severity::Warning);
+    assert_eq!(
+        findings[0].url.as_deref(),
+        Some("https://realm.github.io/SwiftLint/identifier_name.html")
+    );
+    assert_eq!(findings[1].severity, Severity::Error);
+    assert_eq!(findings[1].line, None, "a file-level violation has no region");
+    assert!(!findings[1].fixable);
+}

@@ -625,6 +625,34 @@ fn rbcop_lints_ruby_through_rubocop_json_and_ships_no_windows_build() {
 }
 
 #[test]
+fn swiftlint_lints_swift_through_sarif_with_the_static_linux_build() {
+    let tool = Catalog::get().tool("swiftlint").expect("swiftlint");
+    assert_eq!(tool.languages, ["swift"]);
+    let (name, lint) = tool.lint_command().expect("a lint command");
+    assert_eq!(name, "lint", "the recipe command wins over mdsf's default");
+    assert_eq!(lint.arguments, ["lint", "--quiet", "--reporter", "sarif", "$FILES"]);
+    let recipe = recipe_of("swiftlint");
+    assert_eq!(recipe.output, Output::Sarif);
+    assert_eq!(recipe.ok_exits, [2], "error-severity violations exit 2");
+    assert_eq!(recipe.config_files, [".swiftlint.yml"]);
+    let install = recipe.install.as_ref().expect("install");
+    assert_eq!(install.source.as_ref().expect("source").tag_template(), "{version}");
+    let release = &install.releases["0.65.1"];
+    assert_eq!(
+        release.assets["darwin-aarch64"], release.assets["darwin-x86_64"],
+        "one universal portable build"
+    );
+    for platform in ["linux-aarch64", "linux-x86_64"] {
+        assert_eq!(
+            release.assets[platform].member.as_deref(),
+            Some("swiftlint-static"),
+            "{platform}"
+        );
+    }
+    assert!(!release.assets.contains_key("windows-x86_64"));
+}
+
+#[test]
 fn gau_lints_the_pins_of_workflows_and_action_manifests_as_json() {
     let gau = Catalog::get().tool("gau").expect("gau");
     assert_eq!(gau.binary, "gau");
@@ -690,7 +718,7 @@ fn buf_and_hadolint_are_pinned_for_every_desktop_and_server_platform() {
     }
 }
 
-const MIGRATED_TOOLS: [&str; 22] = [
+const MIGRATED_TOOLS: [&str; 23] = [
     "checkstyle",
     "palantir-java-format",
     "buildifier",
@@ -713,6 +741,7 @@ const MIGRATED_TOOLS: [&str; 22] = [
     "checkmake",
     "editorconfig-checker",
     "rbcop",
+    "swiftlint",
 ];
 
 #[test]
