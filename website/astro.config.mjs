@@ -84,6 +84,7 @@ export default defineConfig({
             { label: "Configuration", slug: "guides/configuration" },
             { label: "Toolchains, runtimes and recipes", slug: "guides/toolchains" },
             { label: "Components and offline use", slug: "guides/components" },
+            { label: "Verifying a release", slug: "guides/verifying-releases" },
             { label: "Migrating to the v2 config schema", slug: "guides/migrating-to-v2" },
             { label: "Git hooks", slug: "guides/hooks" },
             { label: "Agents and MCP", slug: "guides/agents-and-mcp" },

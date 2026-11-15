@@ -9,7 +9,7 @@ set -euo pipefail
 # mise run release:sbom binary <triple> <out> <Cargo.toml> [--no-default-features --features ...]
 # mise run release:sbom components <triple> <out-dir> <plan.json>
 #
-# The SBOMs attached to a release (ADR 0057), CycloneDX 1.5 JSON. A Rust artifact is described by
+# The SBOMs attached to a release (ADR 0060), CycloneDX 1.5 JSON. A Rust artifact is described by
 # cargo-cyclonedx for its package, target and features, from the committed Cargo.lock; a Go sidecar
 # (alef `producer_language = "executable"`) by cyclonedx-gomod for its GOOS/GOARCH. `components` writes
 # one SBOM per row the plan marks `build`; reused components keep the SBOM of the release that built them.

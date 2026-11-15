@@ -6,8 +6,10 @@ How a release flows, and how to take one back. The workflow is `.github/workflow
 
 1. `verify_ci` waits (up to 60 minutes) for the `ci` workflow's required check runs on the tagged commit. A
    `workflow_dispatch` can bypass it with `skip_ci_check`; use that only for an emergency re-publish.
-2. The GitHub release is created as a draft, binaries and components are built, `checksums` uploads
-   `sha256sums.txt`, and `finalize_release` un-drafts it.
+2. The GitHub release is created as a draft. Components and binaries are built with read-only tokens and no secret;
+   `sign_components` signs the components in the `release` environment; `checksums` writes `sha256sums.txt`;
+   `attest_provenance` and `attest_sboms` attest the files and SBOMs; `publish_assets` uploads everything listed in
+   `sha256sums.txt`; and `finalize_release` un-drafts the release once all of them succeeded (ADR 0060).
 3. The publish jobs run after `finalize_release`: Homebrew, Scoop, npm, PyPI, the plugins and the major tag.
    Homebrew, Scoop and the major tag only move when the released tag is the newest `vX.Y.Z` tag; re-running an
    older tag leaves them alone.
@@ -50,21 +52,21 @@ platform and plugin packages under `release-<major>.<minor>` instead; prerelease
 - **Homebrew**: revert the formula commit in `Goldziher/homebrew-tap` (`Formula/polylint.rb`).
 - **Scoop**: revert the manifest commit in `Goldziher/scoop-bucket` (`bucket/polylint.json` and `bucket/poly.json`).
 
+## Release environment
+
+`sign_components`, `publish_homebrew`, `publish_scoop` and `update_major_tag` run in the `release` environment, which
+holds `POLY_COMPONENT_SIGNING_KEY`, `HOMEBREW_TOKEN` and `RELEASE_TAG_TOKEN`. Its deployment branch and tag policy
+must allow the `v*` tags (and `main`, for a `workflow_dispatch` re-publish). Without the environment or its secrets
+the release fails at `sign_components`.
+
 ## Component signing key rotation
 
-Component archives are signed with the key in the `POLY_COMPONENT_SIGNING_KEY` secret; the public half is
-`poly-release-1` under `[crates.component_distribution.public_keys]` in `alef.toml`, and `KEY_ID` in
-`mise-tasks/components/release.sh` names the signing key.
+Component archives are signed with the key in the `release` environment's `POLY_COMPONENT_SIGNING_KEY`; the public
+half is listed under `[crates.component_distribution.public_keys]` in `alef.toml`, and `KEY_ID` in
+`mise-tasks/components/release.sh` names the signing key. The lock carries two keys, the current one and a next one
+held offline; the procedure is in [ADR 0060](../adrs/0060-release-signing-and-attestations.md#key-rotation-two-keys-per-lock).
 
-To rotate: add the new key id and public key to `alef.toml`, switch `KEY_ID` and the secret, and release. The
-`component-lock` job asserts the lock's key set and each artifact's key id in `publish.yaml`:
-
-```text
-and ((.public_keys | keys) == ["poly-release-1"])
-and all(.artifacts[]; .key_id == "poly-release-1" and (.url | startswith($prefix)))
-```
-
-Edit both lines for the new id. During a dual-key period the key set is both ids (for example
-`["poly-release-1", "poly-release-2"]`) and the artifact check accepts either; narrow them back once binaries signed
-with the old key are no longer in use. Older binaries embed the lock they were built with, so keep the old public key
-until they have aged out.
+`component-lock` asserts that the lock's `public_keys` equal `alef.toml`'s table by value, that every entry is signed
+by one of them, and that every entry built for the tag is signed with `KEY_ID`; `previous-lock` applies the same
+key check, plus the release's `sha256sums.txt` and attestation, before reusing an older lock. Adding or removing a
+key changes every component's fingerprint, so that release rebuilds every component.

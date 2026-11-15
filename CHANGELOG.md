@@ -49,6 +49,20 @@ binary drives lint, format, hooks, and commit checks from one `poly.toml`.
   the release compiles vectorscan from source in its manylinux_2_28 image instead of using the prebuilt archive, which
   needs glibc 2.32. (#112)
 
+### Security
+
+- **Signed, attested releases with SBOMs.** Component signing moved out of the build jobs into a job on a fresh runner
+  in the `release` environment, which checks the build's payloads against a digest manifest before signing; build
+  jobs hold no secret and a read-only token, and only the upload job can write to the release. Every release file
+  carries a build provenance attestation, each archive ships a CycloneDX SBOM (`<archive>.cdx.json`, also inside the
+  npm and PyPI packages), and the binaries embed their dependency list (`cargo auditable`). The tools that run beside
+  the signing key are pinned by sha256, and a reused component lock is checked against its release before reuse
+  (ADR 0060).
+- **Installers verify more.** `install.sh` allows only HTTPS with TLS 1.2 or newer, including redirects, and
+  `install.ps1` requires TLS 1.2 or newer. `POLY_VERIFY_ATTESTATION=1` (and the Action's `verify-attestation: true`)
+  also verifies the archive's attestation with `gh` and fails closed. The Action caches the release archive and
+  re-checks it against `sha256sums.txt` on every run instead of trusting a cached binary.
+
 ### Fixed
 
 - **Dockerfiles, `.env` and INI files format the same in every build.** The bundled build left them with no formatter,

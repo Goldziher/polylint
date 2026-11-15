@@ -1,0 +1,99 @@
+---
+title: Verifying a release
+description: >-
+  Check a polylint release archive against its checksum, its build provenance attestation and its SBOM, and
+  make the installers and the GitHub Action require the attestation.
+---
+
+import { Aside, Steps } from '@astrojs/starlight/components';
+
+Every file a polylint release publishes is listed in its `sha256sums.txt`, and every one of them, `sha256sums.txt`
+included, carries a [GitHub artifact attestation](https://docs.github.com/actions/security-for-github-actions/using-artifact-attestations)
+signed with the identity of the release workflow (`.github/workflows/publish.yaml`) on the tagged commit. Each
+`poly` archive and each engine component archive built for the release also ships a CycloneDX SBOM next to it, as
+`<archive>.cdx.json`, attested against the archive it describes. The release binaries embed their dependency list
+as well ([`cargo auditable`](https://github.com/rust-secure-code/cargo-auditable)).
+
+<Aside type="note">
+  Attestations and SBOMs start with the first release after 0.35.0. Earlier releases carry only `sha256sums.txt`, and
+  attestation checks fail for them.
+</Aside>
+
+## Verify an archive by hand
+
+You need the [GitHub CLI](https://cli.github.com/) (`gh`). Replace `X.Y.Z` and the triple with the release and
+platform you install.
+
+<Steps>
+
+1. Download the archive, its SBOM and the checksums:
+
+   ```sh
+   gh release download vX.Y.Z --repo Goldziher/polylint \
+     --pattern 'poly-X.Y.Z-x86_64-unknown-linux-gnu.tar.gz*' --pattern sha256sums.txt
+   ```
+
+2. Check the bytes against the release's checksums:
+
+   ```sh
+   sha256sum -c --ignore-missing sha256sums.txt
+   ```
+
+   On macOS use `shasum -a 256 -c --ignore-missing sha256sums.txt`.
+
+3. Check that the release workflow built the archive:
+
+   ```sh
+   gh attestation verify poly-X.Y.Z-x86_64-unknown-linux-gnu.tar.gz --repo Goldziher/polylint \
+     --signer-workflow Goldziher/polylint/.github/workflows/publish.yaml
+   ```
+
+   The output names the workflow run, the commit and the tag. The same command verifies
+   `sha256sums.txt`, `poly-components.lock.json` and any `poly-component-*.tar.gz`.
+
+4. Check the SBOM attestation, which binds `poly-X.Y.Z-x86_64-unknown-linux-gnu.tar.gz.cdx.json` to the archive:
+
+   ```sh
+   gh attestation verify poly-X.Y.Z-x86_64-unknown-linux-gnu.tar.gz --repo Goldziher/polylint \
+     --predicate-type https://cyclonedx.org/bom
+   ```
+
+</Steps>
+
+The SBOM is plain CycloneDX 1.5 JSON, so any SBOM tool reads it. The installed binary describes itself too:
+`cargo audit bin "$(command -v poly)"` reads the embedded dependency list and checks it against the RustSec database.
+The npm platform packages carry the same SBOM as `bin/poly.cdx.json`, and the PyPI wheels as
+`polylint/sbom/poly.cdx.json`.
+
+## Require the attestation when installing
+
+The installer scripts always check the archive against `sha256sums.txt`. With `POLY_VERIFY_ATTESTATION=1` they also
+run `gh attestation verify` and refuse to install when it fails or when `gh` is missing:
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/Goldziher/polylint/main/install.sh | POLY_VERIFY_ATTESTATION=1 sh
+```
+
+```powershell
+$env:POLY_VERIFY_ATTESTATION = "1"
+irm https://raw.githubusercontent.com/Goldziher/polylint/main/install.ps1 | iex
+```
+
+In GitHub Actions, the setup action takes the same switch. The job's token is enough for `gh`:
+
+```yaml
+- uses: Goldziher/polylint@v0
+  with:
+    verify-attestation: true
+```
+
+The action caches the release archive, not the installed binary, and re-checks a restored archive against
+`sha256sums.txt` on every run, so a tampered cache entry is downloaded again rather than run.
+
+## Components
+
+A core build downloads engine components on demand and checks each against the archive digest and Ed25519 signature
+in the component lock compiled into the binary, so no extra step is needed. To audit one by hand, download the
+`poly-component-*.tar.gz` from the release that built it (the lock's `url`) and run step 3 on it. How the signing key
+is kept apart from the build and rotated is recorded in
+[ADR 0060](https://github.com/Goldziher/polylint/blob/main/adrs/0060-release-signing-and-attestations.md).

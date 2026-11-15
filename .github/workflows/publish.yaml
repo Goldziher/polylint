@@ -27,7 +27,7 @@ on:
 # rust-version and rust-toolchain.toml: every `RUST_TOOLCHAIN:` env, the `toolchain:` inputs of
 # dtolnay/rust-toolchain, and the `rust:<minor>-alpine` image tag (and its digest) of the musl leg.
 
-# Component signing (ADR 0057): build-components builds without any secret; sign_components, on a
+# Component signing (ADR 0060): build-components builds without any secret; sign_components, on a
 # fresh runner in the `release` environment, checks the payloads against the build job's digest
 # manifest and signs each archive with the Ed25519 private key in the environment secret
 # POLY_COMPONENT_SIGNING_KEY (PKCS#8 PEM, or base64 of the PKCS#8 DER or a raw 32-byte seed). Its
@@ -464,7 +464,7 @@ jobs:
           if-no-files-found: error
 
   # Builds every component with no secret and a read-only token: build scripts and proc macros of the
-  # whole dependency tree run here, so nothing this job can reach may sign or publish (ADR 0057). The
+  # whole dependency tree run here, so nothing this job can reach may sign or publish (ADR 0060). The
   # built payloads leave as one tar plus a digest manifest for sign_components.
   build-components:
     name: Build components / ${{ matrix.triple }}

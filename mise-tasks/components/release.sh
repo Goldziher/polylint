@@ -27,7 +27,7 @@
 # publish.yaml runs plan, build and package inside a manylinux_2_28 container on linux gnu, through the
 # musl mise that fetch-mise verified (MISE_TASK_RUN_AUTO_INSTALL=false: the container installs no tools).
 # plan, build and stage run in the build job, which never sees the signing key; unstage and package run in
-# a separate signing job on a fresh runner (ADR 0057). Everything lands under target/components-release/:
+# a separate signing job on a fresh runner (ADR 0060). Everything lands under target/components-release/:
 # previous-lock.json (`{}` when there is none), tools/, plan.json (merged, by `lock`) and, per triple,
 # build/ (shared cargo target dir), plan/plan.json, unstaged/ and digests.sha256 (stage), and dist/
 # (archives and *.record.json to upload).
