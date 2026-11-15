@@ -180,6 +180,7 @@ struct Fixture {
 fn fixture(mode: Mode, offline: bool) -> Fixture {
     let cache = tempfile::tempdir().unwrap();
     let mut options = HostOptions::new(lock(), PathBuf::from(cache.path()));
+    options.allow_unsigned = true;
     options.target = Some(TARGET.into());
     options.offline = offline;
     options.gate_loads = true;
@@ -598,6 +599,7 @@ impl TransportConnector for ShConnector {
 fn sidecar_fixture(offline: bool) -> (ComponentHost, Arc<ShFake>, tempfile::TempDir) {
     let cache = tempfile::tempdir().unwrap();
     let mut options = HostOptions::new(sidecar_lock(), PathBuf::from(cache.path()));
+    options.allow_unsigned = true;
     options.target = Some(TARGET.into());
     options.offline = offline;
     options.gate_loads = true;

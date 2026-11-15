@@ -63,6 +63,7 @@ fn index() -> ComponentIndex {
 
 fn options(cache: &Path) -> RunOptions {
     let mut host_options = HostOptions::new(lock(), PathBuf::from(cache));
+    host_options.allow_unsigned = true;
     host_options.target = Some(TARGET.into());
     host_options.gate_loads = true;
     let host = ComponentHost::new(host_options)

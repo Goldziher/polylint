@@ -125,6 +125,7 @@ impl Fixture {
         let tmp = TempDir::new().unwrap();
         let lock = lock();
         let mut options = HostOptions::new(lock.clone(), tmp.path().join("cache"));
+        options.allow_unsigned = true;
         options.target = Some(TARGET.into());
         options.offline = offline;
         options.gate_loads = true;

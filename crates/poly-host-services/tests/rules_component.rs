@@ -123,6 +123,7 @@ mod injected {
     fn injection(offline: bool) -> (ComponentInjection, tempfile::TempDir) {
         let cache = tempfile::tempdir().unwrap();
         let mut options = HostOptions::new(lock(), PathBuf::from(cache.path()));
+        options.allow_unsigned = true;
         options.target = Some(TARGET.into());
         options.offline = offline;
         options.gate_loads = true;

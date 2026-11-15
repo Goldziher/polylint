@@ -138,6 +138,7 @@ impl TransportConnector for Connector {
 fn a_component_served_project_check_reports_its_findings() {
     let cache = tempfile::tempdir().unwrap();
     let mut host_options = HostOptions::new(lock(), PathBuf::from(cache.path()));
+    host_options.allow_unsigned = true;
     host_options.target = Some(TARGET.into());
     host_options.gate_loads = true;
     let host = ComponentHost::new(host_options)
@@ -246,6 +247,7 @@ fn a_run_on_a_nested_directory_gives_a_component_the_whole_tree_of_the_ancestor_
     component_index.components[0].engines = vec![whole_tree_desc()];
     let cache = tempfile::tempdir().unwrap();
     let mut host_options = HostOptions::new(lock(), PathBuf::from(cache.path()));
+    host_options.allow_unsigned = true;
     host_options.target = Some(TARGET.into());
     host_options.gate_loads = true;
     let host = ComponentHost::new(host_options)
@@ -318,6 +320,7 @@ fn a_per_file_component_of_an_ancestor_config_is_neither_ensured_nor_reported() 
     });
     let cache = tempfile::tempdir().unwrap();
     let mut host_options = HostOptions::new(lock(), PathBuf::from(cache.path()));
+    host_options.allow_unsigned = true;
     host_options.target = Some(TARGET.into());
     host_options.gate_loads = true;
     let host = ComponentHost::new(host_options)
@@ -365,6 +368,7 @@ fn an_ancestor_config_that_owns_a_file_of_the_run_fetches_no_component_for_other
     component_index.components[0].engines = vec![rust_tree];
     let cache = tempfile::tempdir().unwrap();
     let mut host_options = HostOptions::new(lock(), PathBuf::from(cache.path()));
+    host_options.allow_unsigned = true;
     host_options.target = Some(TARGET.into());
     host_options.gate_loads = true;
     let host = ComponentHost::new(host_options)
