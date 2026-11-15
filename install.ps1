@@ -74,8 +74,17 @@ function Install-Binary($Source, $Destination) {
 # shares), fall back to a copy — the installer rewrites the alias on every run,
 # so the copy cannot outlive the upgrade that replaced poly.exe.
 function Install-Alias($Target, $AliasPath) {
-    if (-not (Test-Path -LiteralPath $Target)) { Die "Cannot create the polylint alias: $Target is missing" }
-    Remove-Item -LiteralPath $AliasPath -Force -ErrorAction SilentlyContinue
+    if (-not (Test-Path -LiteralPath $Target)) { Warn "Cannot create the polylint alias: $Target is missing"; return }
+    # poly.exe is already replaced by now, so a locked alias (a running polylint.exe)
+    # must not fail the install: warn and keep the previous alias.
+    try {
+        Remove-Item -LiteralPath $AliasPath -Force -ErrorAction Stop
+    } catch {
+        if (Test-Path -LiteralPath $AliasPath) {
+            Warn "Could not replace the polylint alias at ${AliasPath} (in use?); close it and re-run to refresh it: $_"
+            return
+        }
+    }
     try {
         New-Item -ItemType HardLink -Path $AliasPath -Target $Target -ErrorAction Stop | Out-Null
     } catch {
@@ -83,14 +92,14 @@ function Install-Alias($Target, $AliasPath) {
             Copy-Item -LiteralPath $Target -Destination $AliasPath -Force -ErrorAction Stop
             Warn "hard links are unavailable here, so polylint.exe was installed as a copy of poly.exe"
         } catch {
-            Die "Failed to install the polylint alias at ${AliasPath}: $_"
+            Warn "Failed to install the polylint alias at ${AliasPath}: $_"
         }
     }
 }
 
 $arch = switch ($env:PROCESSOR_ARCHITECTURE) {
     "AMD64" { "x86_64" }
-    "ARM64" { "aarch64" }
+    "ARM64" { Die "No prebuilt binary for Windows arm64; build from source: https://github.com/$Repo#installation" }
     default { Die "Unsupported architecture: $env:PROCESSOR_ARCHITECTURE" }
 }
 $target = "$arch-pc-windows-msvc"
@@ -118,7 +127,9 @@ $base = "https://github.com/$Repo/releases/download/$tag"
 
 $existing = Join-Path $InstallDir "poly.exe"
 if (Test-Path $existing) {
-    $prev = (& $existing --version 2>$null) -replace '.*\s', ''
+    # `poly --version` prints `poly 0.35.0 (release build v0.35.0, release)`.
+    $prev = ((& $existing --version 2>$null) -split '\s+')[1]
+    if ($prev -notmatch '^\d+\.\d+\.\d+([.+-][0-9A-Za-z.+-]+)?$') { $prev = $null }
     if ($prev -eq $ver) { Info "poly $ver already installed — re-installing." }
     elseif ($prev) { Info "Updating poly $prev -> $ver" }
 } else {
@@ -130,10 +141,18 @@ New-Item -ItemType Directory -Path $tmp -Force | Out-Null
 try {
     $archive = Join-Path $tmp $asset
     Info "Downloading $base/$asset"
-    Invoke-WebRequest -Uri "$base/$asset" -OutFile $archive
+    try {
+        Invoke-WebRequest -Uri "$base/$asset" -OutFile $archive
+    } catch {
+        Die "Failed to download $base/${asset}: check the version and your network (does release $tag ship $target?)"
+    }
 
     $sumsPath = Join-Path $tmp "sha256sums.txt"
-    Invoke-WebRequest -Uri "$base/sha256sums.txt" -OutFile $sumsPath
+    try {
+        Invoke-WebRequest -Uri "$base/sha256sums.txt" -OutFile $sumsPath
+    } catch {
+        Die "Could not download $base/sha256sums.txt - refusing to install unverified binaries"
+    }
     $expected = $null
     foreach ($line in Get-Content $sumsPath) {
         $parts = $line -split '\s+'
@@ -169,7 +188,8 @@ if (($userPath -split ';') -notcontains $InstallDir) {
     if ($env:POLY_NO_MODIFY_PATH) {
         Warn "$InstallDir is not on your PATH. Add it via System > Environment Variables."
     } else {
-        [Environment]::SetEnvironmentVariable("Path", "$userPath;$InstallDir", "User")
+        $newPath = if ($userPath) { "$($userPath.TrimEnd(';'));$InstallDir" } else { $InstallDir }
+        [Environment]::SetEnvironmentVariable("Path", $newPath, "User")
         $env:Path = "$env:Path;$InstallDir"
         Info "Added $InstallDir to your user PATH (restart your terminal to pick it up)."
     }
