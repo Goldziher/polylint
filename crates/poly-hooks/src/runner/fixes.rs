@@ -402,7 +402,7 @@ fn write_atomic(path: &Path, contents: &[u8]) -> anyhow::Result<()> {
 
 /// Best-effort removal of `.*.poly.tmp` files in `dir` older than a day: leftovers of a killed run.
 fn sweep_stale_tmp(dir: &Path) {
-    const STALE: std::time::Duration = std::time::Duration::from_secs(24 * 60 * 60);
+    const STALE: std::time::Duration = std::time::Duration::from_hours(24);
     let Ok(entries) = std::fs::read_dir(dir) else {
         return;
     };
@@ -415,7 +415,7 @@ fn sweep_stale_tmp(dir: &Path) {
         let stale = entry
             .metadata()
             .ok()
-            .filter(|meta| meta.is_file())
+            .filter(std::fs::Metadata::is_file)
             .and_then(|meta| meta.modified().ok())
             .and_then(|modified| std::time::SystemTime::now().duration_since(modified).ok())
             .is_some_and(|age| age > STALE);
@@ -476,7 +476,7 @@ mod tests {
         let dir = TempDir::new().expect("tempdir");
         let stale = dir.path().join(".old.1.poly.tmp");
         fs_err::write(&stale, "").expect("seed");
-        let old = std::time::SystemTime::now() - std::time::Duration::from_secs(2 * 24 * 60 * 60);
+        let old = std::time::SystemTime::now() - std::time::Duration::from_hours(48);
         std::fs::File::options()
             .write(true)
             .open(&stale)
