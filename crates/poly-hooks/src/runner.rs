@@ -105,6 +105,7 @@ mod exec;
 mod fixes;
 mod git_context;
 mod prepare;
+mod target_dir;
 
 use self::fixes::Fingerprints;
 use self::git_context::GitContext;
@@ -133,10 +134,12 @@ struct ExecContext<'a> {
     tree: ValidatedTree,
     /// Tier-2 sccache settings, when the run carries them.
     sccache: Option<&'a SccacheSettings>,
-    /// `CARGO_TARGET_DIR` override. Under a staged run cargo is pointed back at
-    /// the repository's own `target/` so the snapshot does not force a cold
-    /// rebuild (ADR 0019); in a worktree run cargo already has it.
-    cargo_target_dir: Option<PathBuf>,
+    /// Live repository root whose cargo target directory a staged run reuses
+    /// so the snapshot does not force a cold rebuild (ADR 0019); `None` in a
+    /// worktree run, where cargo already resolves it.
+    target_dir_root: Option<&'a Path>,
+    /// The resolved target directory, computed on the first command built.
+    cargo_target_dir: std::sync::OnceLock<PathBuf>,
     /// The arguments git passed to the hook, exported to every hook's environment.
     git_args: &'a [String],
     /// The original repository's git dir and active index, exported to every
@@ -146,6 +149,16 @@ struct ExecContext<'a> {
 }
 
 impl<'a> ExecContext<'a> {
+    /// The cargo target directory to inject, resolved once per run on first use.
+    fn cargo_target_dir(&self) -> Option<&Path> {
+        let root = self.target_dir_root?;
+        Some(
+            self.cargo_target_dir
+                .get_or_init(|| target_dir::resolve_target_dir(root, &|key| std::env::var_os(key)))
+                .as_path(),
+        )
+    }
+
     fn new(request: &'a HookRunRequest) -> Self {
         let (root, tree) = execution_root(request);
         let staged = matches!(tree, ValidatedTree::StagedIndex);
@@ -153,7 +166,8 @@ impl<'a> ExecContext<'a> {
             root,
             tree,
             sccache: request.sccache.as_ref(),
-            cargo_target_dir: staged.then(|| request.root.join("target")),
+            target_dir_root: staged.then_some(request.root.as_path()),
+            cargo_target_dir: std::sync::OnceLock::new(),
             git_args: &request.git_args,
             git_context: staged.then(|| GitContext::resolve(&request.root)).flatten(),
         }
@@ -625,13 +639,7 @@ fn run_hook(
     let results: Vec<(HookStatus, Vec<u8>)> = batches
         .into_par_iter()
         .map(|batch| {
-            let mut cmd = exec::build_command(
-                hook,
-                context.root,
-                batch,
-                context.sccache,
-                context.cargo_target_dir.as_deref(),
-            );
+            let mut cmd = exec::build_command(hook, context.root, batch, context.sccache, context.cargo_target_dir());
             exec::export_git_args(&mut cmd, context.git_args);
             if let Some(git) = &context.git_context {
                 git.export(&mut cmd, &hook.env);
