@@ -12,113 +12,9 @@ use serde::Serialize;
 use crate::language::Language;
 use crate::resolve::{ConfigSet, ExcludeRule, RootSnapshot};
 
-/// Tool-cache and environment directory names pruned from every walk, whether
-/// or not git tracks anything in them (`node_modules`, `.git`, virtualenvs,
-/// linter and test caches, `.polylint`).
-///
-/// None of it is source the user authored, so no linter or formatter should
-/// touch it, and pruning it at the walk boundary avoids descending into large
-/// generated subtrees. `[discovery] no_prune` is the explicit opt-out.
-const ALWAYS_PRUNED_DIRECTORIES: &[&str] = &[
-    "node_modules",
-    ".git",
-    ".venv",
-    "venv",
-    "__pycache__",
-    ".mypy_cache",
-    ".ruff_cache",
-    ".pytest_cache",
-    ".tox",
-    ".gradle",
-    ".next",
-    ".nuxt",
-    ".polylint",
-];
+mod prune_policy;
 
-/// Directory names that are build output in most ecosystems and ordinary source
-/// in others (`deploy/build/`, a committed `vendor/` or Hex `deps/`).
-///
-/// These are pruned only when git tracks nothing inside them: a tracked
-/// directory is source by definition, an untracked one is output. Outside a git
-/// repository there is no such evidence, so they are pruned unconditionally.
-const CONDITIONALLY_PRUNED_DIRECTORIES: &[&str] = &["build", "dist", "target", "deps", "vendor", "coverage"];
-
-/// The decision rule for [`keep_walk_entry`]: which nested directories a walk
-/// drops, built once per walk root.
-///
-/// The set of git-tracked directories among [`CONDITIONALLY_PRUNED_DIRECTORIES`]
-/// is loaded lazily, by one `git ls-files` per root on the first such directory
-/// the walk meets, so a tree without any pays nothing and no git process is
-/// ever spawned per directory.
-#[derive(Debug)]
-pub(crate) struct PrunePolicy {
-    root: PathBuf,
-    no_prune: Vec<String>,
-    tracked: std::sync::OnceLock<Option<std::collections::HashSet<PathBuf>>>,
-}
-
-impl PrunePolicy {
-    pub(crate) fn new(root: &Path, no_prune: &[String]) -> Self {
-        Self {
-            root: root.to_path_buf(),
-            no_prune: no_prune.to_vec(),
-            tracked: std::sync::OnceLock::new(),
-        }
-    }
-
-    /// Whether the walk keeps the directory `name` at `path`.
-    fn keeps_directory(&self, name: &std::ffi::OsStr, path: &Path) -> bool {
-        if self.no_prune.iter().any(|kept| name == kept.as_str()) {
-            return true;
-        }
-        if ALWAYS_PRUNED_DIRECTORIES.iter().any(|pruned| name == *pruned) {
-            return false;
-        }
-        if CONDITIONALLY_PRUNED_DIRECTORIES.iter().any(|pruned| name == *pruned) {
-            return self
-                .tracked
-                .get_or_init(|| tracked_conditional_directories(&self.root))
-                .as_ref()
-                .is_some_and(|tracked| tracked.contains(path));
-        }
-        true
-    }
-}
-
-/// Every directory under `root` that is named like one of
-/// [`CONDITIONALLY_PRUNED_DIRECTORIES`] and holds at least one git-tracked file,
-/// as `root`-joined paths. `None` when `root` is not in a git repository (or git
-/// cannot run), in which case the caller has no evidence to keep anything.
-fn tracked_conditional_directories(root: &Path) -> Option<std::collections::HashSet<PathBuf>> {
-    let output = std::process::Command::new("git")
-        .arg("-C")
-        .arg(root)
-        .args(["ls-files", "-z"])
-        .output()
-        .ok()?;
-    if !output.status.success() {
-        return None;
-    }
-    let mut directories = std::collections::HashSet::new();
-    for raw in output.stdout.split(|byte| *byte == 0).filter(|path| !path.is_empty()) {
-        let Ok(relative) = std::str::from_utf8(raw) else {
-            continue;
-        };
-        let mut end = 0;
-        let mut segments = relative.split('/').peekable();
-        while let Some(segment) = segments.next() {
-            if segments.peek().is_none() {
-                break;
-            }
-            end += segment.len();
-            if CONDITIONALLY_PRUNED_DIRECTORIES.contains(&segment) {
-                directories.insert(root.join(&relative[..end]));
-            }
-            end += 1;
-        }
-    }
-    Some(directories)
-}
+pub(crate) use prune_policy::{PrunePolicy, TrackedDirs, TrackedDirsCache};
 
 /// A file found during discovery, tagged with its detected language and the id
 /// of the config (within the run's [`ConfigSet`]) that governs it.
@@ -566,10 +462,10 @@ struct PruneRecorder {
 }
 
 impl PruneRecorder {
-    fn new(root: &Path, no_prune: &[String]) -> Arc<Self> {
+    fn new(root: &Path, no_prune: &[String], tracked: TrackedDirs) -> Arc<Self> {
         Arc::new(Self {
             root: root.to_path_buf(),
-            policy: PrunePolicy::new(root, no_prune),
+            policy: PrunePolicy::new(root, no_prune, tracked),
             hits: Mutex::new(PruneHits::default()),
         })
     }
@@ -736,7 +632,7 @@ pub fn discover_reporting(
             continue;
         }
         let matcher = ExcludeMatcher::new(root, exclude);
-        let pruner = PruneRecorder::new(root, configs.no_prune());
+        let pruner = PruneRecorder::new(root, configs.no_prune(), configs.tracked_dirs(root));
         if let Some(snapshot) = configs.take_walk_snapshot(root) {
             replay_snapshot(&snapshot, matcher.as_deref(), &pruner, configs, &mut out, &mut report);
             if let Some(matcher) = &matcher {
@@ -805,7 +701,7 @@ fn walk_listing(
     recursive: bool,
     matcher: Option<Arc<ExcludeMatcher>>,
 ) -> Vec<PathBuf> {
-    let policy = PrunePolicy::new(dir, configs.no_prune());
+    let policy = PrunePolicy::new(dir, configs.no_prune(), configs.tracked_dirs(dir));
     let mut builder = WalkBuilder::new(dir);
     builder
         .hidden(false)

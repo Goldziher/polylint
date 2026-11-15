@@ -23,8 +23,10 @@
 
 use std::collections::{BTreeSet, HashSet};
 use std::path::{Path, PathBuf};
+use std::sync::Arc;
 
 use crate::config::Config;
+use crate::discover::{TrackedDirs, TrackedDirsCache};
 
 mod canon;
 mod scan;
@@ -108,6 +110,8 @@ pub struct ConfigSet {
     /// The tree the nested-config scan already walked, handed to discovery so it
     /// need not walk the same directories a second time.
     snapshot: WalkSnapshot,
+    /// Git-tracked pruned-directory sets per walk root, shared by the scan, discovery and listings.
+    tracked: Arc<TrackedDirsCache>,
 }
 
 impl ConfigSet {
@@ -122,6 +126,7 @@ impl ConfigSet {
             root_config_registered: false,
             canon: Canon::default(),
             snapshot: WalkSnapshot::default(),
+            tracked: Arc::default(),
         }
     }
 
@@ -156,7 +161,8 @@ impl ConfigSet {
         let mut lookup: Vec<(PathBuf, usize)> = Vec::new();
         let mut seen: HashSet<PathBuf> = HashSet::new();
 
-        let (governing, snapshot) = config_dirs_governing(roots, resolver, &no_prune)?;
+        let tracked = Arc::new(TrackedDirsCache::default());
+        let (governing, snapshot) = config_dirs_governing(roots, resolver, &no_prune, &tracked)?;
         for dir in governing {
             if !seen.insert(canonical_key(&dir, &canon)) {
                 continue;
@@ -180,6 +186,7 @@ impl ConfigSet {
             root_config_registered,
             canon,
             snapshot,
+            tracked,
         })
     }
 
@@ -187,6 +194,11 @@ impl ConfigSet {
     /// path, handed over once. `None` means discovery must walk `root` itself.
     pub(crate) fn take_walk_snapshot(&self, root: &Path) -> Option<RootSnapshot> {
         self.snapshot.take(root)
+    }
+
+    /// The shared cell holding the git-tracked pruned directories under `root`.
+    pub(crate) fn tracked_dirs(&self, root: &Path) -> TrackedDirs {
+        self.tracked.for_root(root)
     }
 
     /// `[discovery] no_prune` from the run's root config: directory names the
@@ -567,6 +579,7 @@ fn config_dirs_governing(
     roots: &[PathBuf],
     resolver: &dyn poly_config::BaseConfigResolver,
     no_prune: &[String],
+    tracked: &TrackedDirsCache,
 ) -> anyhow::Result<(Vec<PathBuf>, WalkSnapshot)> {
     let mut dirs = Vec::new();
     let mut frames = HashSet::new();
@@ -581,7 +594,7 @@ fn config_dirs_governing(
                 .map(normalize_dir),
         );
     }
-    let (scanned, snapshot) = scan_config_dirs(roots, no_prune);
+    let (scanned, snapshot) = scan_config_dirs(roots, no_prune, tracked);
     dirs.extend(scanned);
     Ok((dirs, snapshot))
 }

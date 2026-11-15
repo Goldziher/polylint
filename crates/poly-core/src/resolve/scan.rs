@@ -13,7 +13,7 @@ use std::sync::{Arc, Mutex, PoisonError};
 
 use ignore::{WalkBuilder, WalkState};
 
-use crate::discover::{PrunePolicy, keep_walk_entry};
+use crate::discover::{PrunePolicy, TrackedDirsCache, keep_walk_entry};
 
 /// One file or directory the scan walk saw below a walk root.
 #[derive(Debug)]
@@ -69,7 +69,11 @@ impl Drop for Collector<'_> {
 /// A `poly.toml` inside a still-pruned directory remains undiscoverable, which
 /// is why `no_prune` is read from the run's root config rather than from a
 /// config nested inside the directory it would un-prune.
-pub(super) fn scan_config_dirs(roots: &[PathBuf], no_prune: &[String]) -> (Vec<PathBuf>, WalkSnapshot) {
+pub(super) fn scan_config_dirs(
+    roots: &[PathBuf],
+    no_prune: &[String],
+    tracked: &TrackedDirsCache,
+) -> (Vec<PathBuf>, WalkSnapshot) {
     let mut config_dirs = Vec::new();
     let mut snapshot = HashMap::new();
     for root in roots.iter().filter(|root| !root.is_file()) {
@@ -84,7 +88,7 @@ pub(super) fn scan_config_dirs(roots: &[PathBuf], no_prune: &[String]) -> (Vec<P
             .filter_entry({
                 // `filter_entry` demands a `'static` closure, and this walk runs
                 // once per root, so the policy owns its copy of the opt-out list.
-                let policy = PrunePolicy::new(root, no_prune);
+                let policy = PrunePolicy::new(root, no_prune, tracked.for_root(root));
                 let pruned = Arc::clone(&pruned);
                 move |entry| {
                     let keep = keep_walk_entry(entry, &policy);
