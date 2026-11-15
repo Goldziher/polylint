@@ -226,7 +226,12 @@ fn apply_settings(config: &mut ParsedCommandLine, settings: &Settings, config_pa
 /// errors, and returns one warning per such `extends`. An `extends` of a package nothing declares keeps its error.
 ///
 /// The config is still read without the extended options, so what it inherits is not applied.
-fn forgive_declared_extends(config: &mut ParsedCommandLine, host_config: &Path, declared: &Declared) -> Vec<Raw> {
+fn forgive_declared_extends(
+    config: &mut ParsedCommandLine,
+    config_path: &str,
+    host_config: &Path,
+    declared: &Declared,
+) -> Vec<Raw> {
     let mut warnings = Vec::new();
     config.errors.retain(|diagnostic| {
         if diagnostic.code() != FILE_NOT_FOUND {
@@ -242,8 +247,8 @@ fn forgive_declared_extends(config: &mut ParsedCommandLine, host_config: &Path, 
             return true;
         }
         warnings.push(Raw {
-            file: None,
-            span: None,
+            file: Some(config_path.to_owned()),
+            span: Some((1, 1, 1, 1)),
             code: FILE_NOT_FOUND,
             error: false,
             message: format!(
@@ -282,7 +287,7 @@ fn check(
             });
         }
     };
-    let warnings = forgive_declared_extends(&mut config, host_config, declared);
+    let warnings = forgive_declared_extends(&mut config, config_path, host_config, declared);
     apply_settings(&mut config, settings, config_path)?;
 
     let threads = settings.threads.get();

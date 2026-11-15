@@ -435,12 +435,14 @@ fn yaml_values_after(text: &str, key: &str) -> Vec<String> {
 
 /// The text after `key:` when `line` starts with the key (bare or quoted), else `None`.
 fn value_after_key<'a>(line: &'a str, key: &str) -> Option<&'a str> {
-    let rest = line.strip_prefix(key).or_else(|| {
-        line.strip_prefix('"')
-            .or_else(|| line.strip_prefix('\''))
-            .and_then(|quoted| quoted.strip_prefix(key))
-            .map(|after| after.trim_start_matches(['"', '\'']))
-    })?;
+    let rest = line
+        .strip_prefix(key)
+        .or_else(|| {
+            line.strip_prefix('"')
+                .or_else(|| line.strip_prefix('\''))
+                .and_then(|quoted| quoted.strip_prefix(key))
+        })
+        .map(|after| after.trim_start_matches(['"', '\'']))?;
     Some(rest.trim_start().strip_prefix(':')?.trim())
 }
 

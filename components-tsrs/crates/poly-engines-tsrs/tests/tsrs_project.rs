@@ -324,8 +324,16 @@ fn an_extended_package_nothing_declares_stays_an_error() {
         ],
         "",
     );
-    assert_eq!(triples(&found), [triple("tsconfig.json", "TS6053", 1)]);
-    let diagnostic = &found[0].1[0];
+    assert_eq!(
+        triples(&found),
+        [triple("src/a.ts", "TS2322", 1), triple("tsconfig.json", "TS6053", 1)],
+        "the unresolved extends is reported and the project is still checked"
+    );
+    let diagnostic = found
+        .iter()
+        .flat_map(|(_, diagnostics)| diagnostics)
+        .find(|d| d.code.as_deref() == Some("TS6053"))
+        .expect("the extends error");
     assert_eq!(diagnostic.severity, Severity::Error);
 }
 

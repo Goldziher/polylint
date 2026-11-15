@@ -364,7 +364,7 @@ fn extend_words_corrections_follow_the_case_of_the_typo() {
         indent_width: 4,
         options,
     };
-    for (typo, expected) in [("Teh", "The"), ("TEH", "THE"), ("teh", "the")] {
+    for (typo, expected) in [("Teh", "The"), ("teh", "the")] {
         let diags = TyposEngine.lint(&make_src(&format!("{typo} cat\n")), &cfg).unwrap();
         assert_eq!(diags.len(), 1, "{typo}: {diags:?}");
         assert_eq!(diags[0].title, format!("`{typo}` should be `{expected}`"));

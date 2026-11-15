@@ -223,11 +223,7 @@ mod exclude_tests {
     use super::*;
 
     fn cfg_excluding(patterns: &[&str]) -> EngineConfig {
-        let mut options = toml::Table::new();
-        options.insert(
-            "exclude".into(),
-            toml::Value::Array(patterns.iter().map(|p| toml::Value::String((*p).to_owned())).collect()),
-        );
+        let options: toml::Table = toml::from_str(&format!("exclude = {patterns:?}")).unwrap();
         EngineConfig {
             globals: poly_engine_api::config::GlobalDefaults::default(),
             indent_width: 4,

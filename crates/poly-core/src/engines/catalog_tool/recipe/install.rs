@@ -190,7 +190,13 @@ fn adopt_existing(path: &Path, asset: &Asset) -> bool {
             return false;
         }
     }
-    file_digest(path).is_some_and(|digest| digest == asset.sha256) && record_stamp(path, &asset.sha256).is_ok()
+    if file_digest(path).is_some_and(|digest| digest == asset.sha256) {
+        return record_stamp(path, &asset.sha256).is_ok();
+    }
+    // The directory was writable by others, so a stamp found in it vouches for nothing: drop it, or
+    // the tightened directory would make it trusted for a file that does not hash to the pin.
+    let _ = std::fs::remove_file(stamp(path));
+    false
 }
 
 fn file_digest(path: &Path) -> Option<String> {

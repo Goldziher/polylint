@@ -1865,7 +1865,7 @@
             "fix": false,
             "project": false
           },
-          "version": "0.44.0+rule-configs-3-presentation-fmt+cp02-off",
+          "version": "0.44.0+rule-configs-3-presentation-fmt+cp02-off+indent-width",
           "option_keys": [
             {
               "table": "Lint",
@@ -1950,7 +1950,7 @@
             "fix": true,
             "project": false
           },
-          "version": "mago-1.59.0+advisory-sev1+filename",
+          "version": "mago-1.59.0+advisory-sev1+filename+fmt-fields",
           "option_keys": [
             {
               "table": "Lint",
@@ -2250,7 +2250,7 @@
             "fix": false,
             "project": false
           },
-          "version": "0.10.44+dict-0.14.5+guards1+cfg3+warn-noautofix+builtins2+rulecodes1",
+          "version": "0.10.44+dict-0.14.5+guards1+cfg3+warn-noautofix+builtins2+rulecodes2+cols1+extcase1",
           "option_keys": [
             {
               "table": "Lint",
@@ -2426,7 +2426,7 @@
             "fix": true,
             "project": false
           },
-          "version": "uncomment-3.10.4+map2-codeonly+prose3-blocks",
+          "version": "uncomment-3.10.4+map2-codeonly+prose3-blocks+cols1",
           "option_keys": [
             {
               "table": "Lint",
@@ -2543,7 +2543,7 @@
             "fix": false,
             "project": false
           },
-          "version": "jsonschema-0.61.2+granit-parser-2.1.0+spans1",
+          "version": "jsonschema-0.61.2+granit-parser-2.1.0+spans2",
           "option_keys": [
             {
               "table": "Lint",
@@ -2611,7 +2611,7 @@
             "fix": false,
             "project": false
           },
-          "version": "0.10.0+vendored1+parse-diag-v1+extendsel2+tmplskip+hadolint-rules-v1",
+          "version": "0.10.0+vendored1+parse-diag-v1+extendsel2+tmplskip+hadolint-rules-v1+spans1",
           "option_keys": [
             {
               "table": "Lint",

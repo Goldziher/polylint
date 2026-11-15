@@ -1737,6 +1737,13 @@
           "description": "Whether poly acts on machine-generated files — those whose opening lines\ncarry a `DO NOT EDIT` / `@generated` / `Code generated …` banner, or a\n`<project>:hash:<digest>` content stamp.\n\n**Defaults to `true`**: a generated file is linted and formatted like any\nother, which is how a generator bug gets noticed. Set it to `false` for a\nrepository whose generated output is not its to fix, and whose findings\nthere are therefore noise:\n\n```toml\n[discovery]\ngenerated = false\n```\n\nOne key for both phases on purpose. \"Is this file mine to check?\" has a\nsingle answer per file, and splitting it into `[lint]` and `[fmt]` halves\nwould be two keys a reader must keep in agreement to get the behaviour\nthey asked for.\n\nThose files are then reported as **skipped**, never silently dropped: the\nskip feeds the `checked` count, the JSON `skipped` payload, and\n`--deny-skips` / `--max-skips`, so a gate cannot quietly stop covering\nthem.\n\nUnlike `exclude`, this cannot prune the walk — a banner is content, so\nthe file must be read before the question can be answered. It is a skip,\nnot an exclusion, and the resolved value is per-config: a nested\n`poly.toml` (ADR 0018) may set it for its own subtree.\n\nThis governs whether poly *acts on* the file at all. Whether a generated\nfile poly did act on may be **rewritten** is a separate, narrower\nquestion that only a content-hash stamp can answer `no` to — see\n`--fix-generated`.",
           "type": "boolean",
           "default": true
+        },
+        "max_file_size": {
+          "description": "Largest file, in bytes, that poly reads. A bigger file is not opened: it is\nreported as skipped (`file too large`), which counts toward `--deny-skips`.\n`0` means no limit.\n\nDefaults to 32 MiB (33554432). Machine-written bundles and data dumps beyond\nthat cost more to read and parse than a result is worth.\n\n```toml\n[discovery]\nmax_file_size = 0\n```\n\nThe resolved value is per-config: a nested `poly.toml` (ADR 0018) may set it\nfor its own subtree.",
+          "type": "integer",
+          "format": "uint64",
+          "minimum": 0,
+          "default": 33554432
         }
       }
     }

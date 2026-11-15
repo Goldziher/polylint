@@ -192,7 +192,7 @@ mod tests {
     fn a_private_override_is_accepted_without_the_stamp() {
         let dir = dir_with_mode(0o700);
         let root = resolve(PathBuf::from("/unused"), Some(dir.path().to_owned())).unwrap();
-        assert_eq!(root.path, dir.path());
+        assert_eq!(root.path, dir.path().canonicalize().unwrap());
         assert!(!root.stamp);
     }
 

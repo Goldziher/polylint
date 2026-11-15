@@ -105,30 +105,29 @@ impl Rng {
 fn generate_script(seed: u64, lines: usize) -> String {
     let mut rng = Rng(seed | 1);
     let mut out = String::new();
-    let mut depth = 0usize;
+    let mut closers: Vec<&str> = Vec::new();
     let mut n = 0usize;
     while n < lines {
         let pad = " ".repeat(rng.below(9));
         match rng.below(14) {
             0 => {
                 out.push_str(&format!("{pad}if [ \"$x{n}\" = 1 ]; then\n"));
-                depth += 1;
+                closers.push("fi");
                 n += 1;
             }
             1 => {
                 out.push_str(&format!("{pad}for i in 1 2 3; do\n"));
-                depth += 1;
+                closers.push("done");
                 n += 1;
             }
             2 => {
                 out.push_str(&format!("{pad}f{n}() {{\n"));
-                depth += 1;
+                closers.push("}");
                 n += 1;
             }
-            3 if depth > 0 => {
-                let closer = ["fi", "done", "}"][rng.below(3)];
+            3 if !closers.is_empty() => {
+                let closer = closers.pop().unwrap_or("fi");
                 out.push_str(&format!("{pad}{closer}\n"));
-                depth -= 1;
                 n += 1;
             }
             4 => {
@@ -161,8 +160,9 @@ fn generate_script(seed: u64, lines: usize) -> String {
             }
         }
     }
-    for _ in 0..depth {
-        out.push_str("fi\n");
+    while let Some(closer) = closers.pop() {
+        out.push_str(closer);
+        out.push('\n');
     }
     out
 }
