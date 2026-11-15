@@ -55,7 +55,7 @@ pub use skips::{
     NO_LINT_RULES_SKIP_PREFIX, SkippedFile, is_withdrawal_reason,
 };
 use skips::{is_lock_file, unmatched_explicit_paths};
-use write::write_atomic;
+use write::write_atomic_if_unchanged;
 // The suppression record lives beside the filters that produce it; re-exported
 // here so a consumer reaches it next to `SkippedFile`, the accounting it
 // completes.
@@ -622,7 +622,7 @@ fn lint_one(
             }
         }
         if content != original {
-            write_atomic(&f.path, &content)?;
+            write_atomic_if_unchanged(&f.path, &original, &content)?;
         }
     }
 
@@ -863,7 +863,7 @@ fn format_one(
 
     let changed = *current != *original;
     if changed && write {
-        write_atomic(&f.path, &current)?;
+        write_atomic_if_unchanged(&f.path, &original, &current)?;
     }
     // The content is written first — the passes did real work and throwing it
     // away would leave the file worse — but the run must not then call the file

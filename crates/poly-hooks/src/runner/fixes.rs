@@ -381,19 +381,48 @@ fn write_atomic(path: &Path, contents: &[u8]) -> anyhow::Result<()> {
     let parent = path.parent().unwrap_or_else(|| Path::new("."));
     let file_name = path.file_name().and_then(|name| name.to_str()).unwrap_or("poly");
     let tmp = parent.join(format!(".{file_name}.{}.poly.tmp", std::process::id()));
+    sweep_stale_tmp(parent);
     let original_permissions = fs_err::symlink_metadata(path).ok().map(|meta| meta.permissions());
-    fs_err::write(&tmp, contents)?;
-    // The rename replaces the original inode with a freshly created temp file,
-    // whose mode is `0666 & !umask` and has no relationship to the file being
-    // fixed. Without this, fixing an executable script clears its exec bit.
-    if let Some(permissions) = original_permissions {
-        fs_err::set_permissions(&tmp, permissions)?;
-    }
-    if let Err(error) = fs_err::rename(&tmp, path) {
+    let written = (|| -> anyhow::Result<()> {
+        fs_err::write(&tmp, contents)?;
+        // The rename replaces the original inode with a freshly created temp file,
+        // whose mode is `0666 & !umask` and has no relationship to the file being
+        // fixed. Without this, fixing an executable script clears its exec bit.
+        if let Some(permissions) = original_permissions {
+            fs_err::set_permissions(&tmp, permissions)?;
+        }
+        fs_err::rename(&tmp, path)?;
+        Ok(())
+    })();
+    if written.is_err() {
         let _ = fs_err::remove_file(&tmp);
-        return Err(error.into());
     }
-    Ok(())
+    written
+}
+
+/// Best-effort removal of `.*.poly.tmp` files in `dir` older than a day: leftovers of a killed run.
+fn sweep_stale_tmp(dir: &Path) {
+    const STALE: std::time::Duration = std::time::Duration::from_secs(24 * 60 * 60);
+    let Ok(entries) = std::fs::read_dir(dir) else {
+        return;
+    };
+    for entry in entries.flatten() {
+        let name = entry.file_name();
+        let Some(name) = name.to_str() else { continue };
+        if !(name.starts_with('.') && name.ends_with(".poly.tmp")) {
+            continue;
+        }
+        let stale = entry
+            .metadata()
+            .ok()
+            .filter(|meta| meta.is_file())
+            .and_then(|meta| meta.modified().ok())
+            .and_then(|modified| std::time::SystemTime::now().duration_since(modified).ok())
+            .is_some_and(|age| age > STALE);
+        if stale {
+            let _ = std::fs::remove_file(entry.path());
+        }
+    }
 }
 
 #[cfg(all(test, unix))]
@@ -440,6 +469,36 @@ mod tests {
         fs_err::write(&file, "replacement\n").expect("direct write still permitted");
         assert_eq!(fs_err::read_to_string(&file).expect("read back"), "replacement\n");
         fs_err::set_permissions(dir.path(), std::fs::Permissions::from_mode(0o700)).expect("restore");
+    }
+
+    #[test]
+    fn write_atomic_removes_the_temp_file_when_the_rename_fails_and_sweeps_stale_ones() {
+        let dir = TempDir::new().expect("tempdir");
+        let stale = dir.path().join(".old.1.poly.tmp");
+        fs_err::write(&stale, "").expect("seed");
+        let old = std::time::SystemTime::now() - std::time::Duration::from_secs(2 * 24 * 60 * 60);
+        std::fs::File::options()
+            .write(true)
+            .open(&stale)
+            .expect("open")
+            .set_modified(old)
+            .expect("mtime");
+        let destination = dir.path().join("target");
+        fs_err::create_dir(&destination).expect("dir");
+        fs_err::write(destination.join("keep"), "x").expect("seed");
+
+        assert!(
+            write_atomic(&destination, b"x").is_err(),
+            "a file cannot replace a non-empty dir"
+        );
+        assert!(!stale.exists(), "stale temp files are swept");
+        assert!(
+            std::fs::read_dir(dir.path())
+                .expect("read dir")
+                .filter_map(Result::ok)
+                .all(|entry| !entry.file_name().to_string_lossy().ends_with(".poly.tmp")),
+            "the failed write must not leave its temp file"
+        );
     }
 
     #[test]
