@@ -45,6 +45,9 @@ binary drives lint, format, hooks, and commit checks from one `poly.toml`.
   component no longer receives every file twice (a `SkipReason` request, then `Format`), and a component is not loaded
   just to ask. `BatchSupport` is asked once per engine and config instead of once per file. The `uncomment`, `ini`,
   `python-types` and `pyrefly` engines no longer ask any per-file hook. (#190)
+- **Secret scanning on Linux.** The `secrets` component now ships for x86_64 and aarch64 Linux (glibc 2.28 and newer):
+  the release compiles vectorscan from source in its manylinux_2_28 image instead of using the prebuilt archive, which
+  needs glibc 2.32. (#112)
 
 ### Fixed
 

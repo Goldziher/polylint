@@ -542,9 +542,9 @@ jobs:
           test "$passed" -gt 0
       - name: Build the component cdylib (links vectorscan for this triple)
         run: cargo build --locked --release --manifest-path components-secrets/Cargo.toml -p poly-engines-secrets-component
-      # `components:dev` builds the component through alef for the runner's triple, and `secrets` ships for macOS only
-      # among the runners here: Linux gnu is not an alef target until the release container builds vectorscan from
-      # source, and the dev-lock task is untested on Windows (ADR 0054).
+      # `components:dev` builds the component through alef for the runner's triple. Only macOS loads it here: the
+      # Linux gnu release build is covered by `secrets-manylinux` (source build), and the dev-lock task is untested
+      # on Windows (ADR 0054).
       - name: Load the component through the host (macOS only)
         if: runner.os == 'macOS'
         env:
@@ -558,17 +558,15 @@ jobs:
           if grep -q "skipped: POLY_COMPONENT_DEV_LOCK" component-test.log; then echo "::error::the component test skipped"; exit 1; fi
 
   # The release builds the linux gnu components in a pinned manylinux_2_28 image so glibc 2.28 is the floor. The
-  # vectorscan prebuilt archive is built on Ubuntu 22.04 (glibc 2.35), so whether it links against 2.28 is exactly what
-  # the runner jobs above cannot show. The second x86_64 leg builds vectorscan from source (cmake and Boost) as the
-  # fallback should the archive not link; it may fail without failing the workflow. Keep the images in step with
-  # publish.yaml.
+  # vectorscan prebuilt archive is built on Ubuntu 22.04 (glibc 2.35) and does not link against 2.28, so the release
+  # compiles vectorscan from source there (VECTORSCAN_BUILD_FROM_SOURCE=1 with cmake and Boost, #112). The source-build
+  # legs run exactly that, on both release architectures, and are required by publish.yaml's verify_ci; the prebuilt
+  # leg stays informational. Keep the images and the yum packages in step with publish.yaml.
   secrets-manylinux:
-    name: secrets / manylinux ${{ matrix.arch }}${{ matrix.features && ' (source build)' || '' }}
+    name: secrets / manylinux ${{ matrix.arch }}${{ matrix.source && ' (source build)' || '' }}
     runs-on: ${{ matrix.os }}
     timeout-minutes: 90
-    # Informational until the release container builds vectorscan from source (ADR 0054): the prebuilt legs are
-    # expected to fail on glibc 2.28, the source-build leg shows the path that works.
-    continue-on-error: true
+    continue-on-error: ${{ !matrix.source }}
     env:
       RUST_TOOLCHAIN: "1.100.0"
     strategy:
@@ -578,15 +576,15 @@ jobs:
           - arch: x86_64
             os: ubuntu-latest
             image: quay.io/pypa/manylinux_2_28_x86_64:2026.11.01-2@sha256:7e41b1c7fd64dfc69703a1124b43c404382973ee06ec5d764b85c34d2221fded
-            features: ""
-          - arch: aarch64
-            os: ubuntu-24.04-arm
-            image: quay.io/pypa/manylinux_2_28_aarch64:2026.11.01-2@sha256:54b271d9562a3686298880df05367909e949ed317e7b1b79b59c696d75f78676
-            features: ""
+            source: ""
           - arch: x86_64
             os: ubuntu-latest
             image: quay.io/pypa/manylinux_2_28_x86_64:2026.11.01-2@sha256:7e41b1c7fd64dfc69703a1124b43c404382973ee06ec5d764b85c34d2221fded
-            features: vectorscan-source
+            source: "1"
+          - arch: aarch64
+            os: ubuntu-24.04-arm
+            image: quay.io/pypa/manylinux_2_28_aarch64:2026.11.01-2@sha256:54b271d9562a3686298880df05367909e949ed317e7b1b79b59c696d75f78676
+            source: "1"
     steps:
       - uses: actions/checkout@v7
       - uses: xberg-io/actions/setup-mise@v1
@@ -599,29 +597,25 @@ jobs:
           echo "RUSTUP_INIT_IN_CONTAINER=/work/${rustup_init#"$PWD"/}" >> "$GITHUB_ENV"
       - name: Build and test in the manylinux_2_28 image
         env:
-          FEATURES: ${{ matrix.features }}
+          SOURCE: ${{ matrix.source }}
         run: |
           set -euo pipefail
           docker run --rm -v "$PWD":/work -w /work \
-            -e RUST_TOOLCHAIN -e FEATURES -e RUSTUP_INIT_IN_CONTAINER -e HOST_UID="$(id -u)" -e HOST_GID="$(id -g)" \
+            -e RUST_TOOLCHAIN -e SOURCE -e RUSTUP_INIT_IN_CONTAINER -e HOST_UID="$(id -u)" -e HOST_GID="$(id -g)" \
             -e CARGO_HOME=/work/target/secrets-container/cargo -e RUSTUP_HOME=/work/target/secrets-container/rustup \
             -e CARGO_TARGET_DIR=/work/target/secrets-container/target \
             "${{ matrix.image }}" bash -euo pipefail -c '
               git config --global --add safe.directory /work
-              if [ -n "$FEATURES" ]; then
+              if [ -n "$SOURCE" ]; then
                 # The image ships no Boost headers; the source build needs them and cmake. A yum package here, not a
-                # mise tool: the image is the release build environment and installs no tools.
+                # mise tool: the image is the release build environment, and publish.yaml installs the same two.
                 yum install -y boost-devel cmake
-                flags="--features poly-engines-secrets/$FEATURES"
-                test_flags="--features $FEATURES"
-              else
-                flags=""
-                test_flags=""
+                export VECTORSCAN_BUILD_FROM_SOURCE=1
               fi
               "$RUSTUP_INIT_IN_CONTAINER" -y --no-modify-path --profile minimal --default-toolchain "$RUST_TOOLCHAIN"
               export PATH="$CARGO_HOME/bin:$PATH"
-              cargo test --locked --manifest-path components-secrets/Cargo.toml -p poly-engines-secrets --no-fail-fast $test_flags
-              cargo build --locked --release --manifest-path components-secrets/Cargo.toml -p poly-engines-secrets-component $flags
+              cargo test --locked --manifest-path components-secrets/Cargo.toml -p poly-engines-secrets --no-fail-fast
+              cargo build --locked --release --manifest-path components-secrets/Cargo.toml -p poly-engines-secrets-component
               chown -R "$HOST_UID:$HOST_GID" target
             '
 

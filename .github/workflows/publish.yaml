@@ -133,6 +133,18 @@ jobs:
             "component parity"
             "go sidecars"
             "sidecar conformance"
+            "sidecar smoke (macos-latest)"
+            "sidecar smoke (windows-latest)"
+            "tsrs / x86_64-unknown-linux-gnu"
+            "tsrs / aarch64-unknown-linux-gnu"
+            "tsrs / aarch64-apple-darwin"
+            "tsrs / x86_64-pc-windows-msvc"
+            "secrets / x86_64-unknown-linux-gnu"
+            "secrets / aarch64-unknown-linux-gnu"
+            "secrets / aarch64-apple-darwin"
+            "secrets / x86_64-pc-windows-msvc"
+            "secrets / manylinux x86_64 (source build)"
+            "secrets / manylinux aarch64 (source build)"
             "alef verify"
             "core links no oxc"
             "core under 14 MiB"
@@ -562,9 +574,12 @@ jobs:
             -e GOTOOLCHAIN=local -e GOFLAGS=-modcacherw \
             -e GOPATH=/work/target/components-release/toolchain/gopath \
             -e GOCACHE=/work/target/components-release/toolchain/gocache \
+            -e VECTORSCAN_BUILD_FROM_SOURCE=1 \
             -e HOST_UID="$(id -u)" -e HOST_GID="$(id -g)" \
             "${{ matrix.image }}" bash -euo pipefail -c '
               git config --global --add safe.directory /work
+              # The secrets component compiles vectorscan here: the prebuilt archive needs glibc 2.32 (#112).
+              yum install -y boost-devel cmake
               "$RUSTUP_INIT_IN_CONTAINER" -y --no-modify-path --profile minimal --default-toolchain "$RUST_TOOLCHAIN" --target "$TARGET"
               export PATH="$CARGO_HOME/bin:/opt/go/bin:$(dirname "$MISE_IN_CONTAINER"):$(dirname "$JQ_IN_CONTAINER"):$PATH"
               mise run components:release plan "$TARGET"
@@ -761,6 +776,7 @@ jobs:
             -e GOTOOLCHAIN=local -e GOFLAGS=-modcacherw \
             -e GOPATH=/work/target/components-release/toolchain/gopath \
             -e GOCACHE=/work/target/components-release/toolchain/gocache \
+            -e VECTORSCAN_BUILD_FROM_SOURCE=1 \
             -e HOST_UID="$(id -u)" -e HOST_GID="$(id -g)" \
             "${{ matrix.image }}" bash -euo pipefail -c '
               git config --global --add safe.directory /work

@@ -38,6 +38,7 @@
 #   REBUILD_COMPONENTS              "true" ignores the previous lock, so every component is rebuilt
 #   POLY_COMPONENT_SIGNING_KEY      Ed25519 private key, PKCS#8 PEM or base64 (package); never defaulted
 #   RUST_TOOLCHAIN                  exact rust version (e.g. 1.99.1) `rustc` must report (plan, build, package)
+#   VECTORSCAN_BUILD_FROM_SOURCE    "1" builds vectorscan from source (cmake and Boost); folded into the input hash
 #   BUILD_IMAGE                     container image the steps run in, folded into the input hash; when set, ALEF
 #                                   must be the binary `fetch-alef` verified, since the image installs no tools
 #                                   and its glibc is too old for the gnu build
@@ -65,7 +66,10 @@ export CARGO_PROFILE_RELEASE_LTO=thin
 
 # The same inputs must reach plan, build and package: alef refuses to build or package once they
 # hash differently from the plan. RUSTFLAGS and CARGO_PROFILE_* are fingerprinted from the environment.
-EXTRA=(--extra "key-id=${KEY_ID}" --extra "image=${BUILD_IMAGE:-host}")
+# VECTORSCAN_BUILD_FROM_SOURCE=1, which publish.yaml sets in the manylinux containers only, makes the
+# secrets component compile vectorscan instead of fetching the prebuilt archive (glibc 2.32, #112); an
+# unset variable is left out of the fingerprint, so the other targets keep their hashes.
+EXTRA=(--extra "key-id=${KEY_ID}" --extra "image=${BUILD_IMAGE:-host}" --env VECTORSCAN_BUILD_FROM_SOURCE)
 
 STEP="${1:?usage: mise run components:release previous-lock|public-keys|fetch-alef|fetch-mise|fetch-jq|fetch-rustup-init|plan|build|stage|unstage|package|lock ...}"
 
