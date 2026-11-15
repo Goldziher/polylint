@@ -28,8 +28,13 @@ thiserror.workspace = true
 toml.workspace = true
 
 [dev-dependencies]
+criterion.workspace = true
 poly-component-protocol = { path = ".", features = ["schemars"] }
 proptest.workspace = true
 
 [lints.rust]
 unsafe_code = "forbid"
+
+[[bench]]
+name = "protocol_codec"
+harness = false

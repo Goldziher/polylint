@@ -29,6 +29,7 @@ serde_json.workspace = true
 tracing.workspace = true
 
 [dev-dependencies]
+criterion.workspace = true
 flate2.workspace = true
 hex.workspace = true
 poly-component-index.workspace = true
@@ -44,3 +45,7 @@ tracing-subscriber.workspace = true
 # pointers; that module alone opts back in with `#[allow(unsafe_code)]`, which `forbid` would not permit.
 [lints.rust]
 unsafe_code = "deny"
+
+[[bench]]
+name = "component_call"
+harness = false
