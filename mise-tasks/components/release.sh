@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #MISE description="Release build of the downloadable components on alef's content-addressed plan (previous-lock, plan, build, package, lock)"
-#USAGE arg "<step>" help="Release step" { choices "previous-lock" "fetch-alef" "fetch-mise" "fetch-jq" "plan" "build" "package" "lock"; }
+#USAGE arg "<step>" help="Release step" { choices "previous-lock" "fetch-alef" "fetch-mise" "fetch-jq" "fetch-rustup-init" "plan" "build" "package" "lock"; }
 #USAGE arg "[args]..." help="plan, build and package take <triple>; lock takes <plans> <records> <out>"
 # Release build of the downloadable components, on alef's content-addressed plan:
 #
@@ -10,6 +10,7 @@
 #   mise run components:release fetch-mise                     download and checksum-verify the musl mise release
 #                                                              binary (for the manylinux container); prints its path
 #   mise run components:release fetch-jq                       download and checksum-verify a static jq (for the container)
+#   mise run components:release fetch-rustup-init              download and checksum-verify rustup-init (for the container)
 #   mise run components:release plan    <triple>               fingerprint each component's inputs; mark each
 #                                                              build or reuse against that lock
 #   mise run components:release build   <triple>               compile the rows marked build (thin LTO, stripped)
@@ -35,6 +36,11 @@
 #
 # The plan, --plan and --reuse commands need the alef release that ships them (alef #869); the pin in
 # mise.toml selects it, and `fetch-alef` needs the musl binaries of #874.
+#
+# The fetch-* steps check each download against a sha256 pinned below, not against a digest read from the
+# release at download time: the signing job runs these binaries with the key, so trusting whatever the
+# upstream release serves on the day would make its integrity the upstream account's. Bumping a version
+# means bumping its digests (`sha256sum` of each asset, cross-checked with the release's own digest).
 
 set -euo pipefail
 
@@ -52,13 +58,13 @@ export CARGO_PROFILE_RELEASE_LTO=thin
 # hash differently from the plan. RUSTFLAGS and CARGO_PROFILE_* are fingerprinted from the environment.
 EXTRA=(--extra "key-id=${KEY_ID}" --extra "image=${BUILD_IMAGE:-host}")
 
-STEP="${1:?usage: mise run components:release previous-lock|fetch-alef|fetch-mise|fetch-jq|plan|build|package|lock ...}"
+STEP="${1:?usage: mise run components:release previous-lock|fetch-alef|fetch-mise|fetch-jq|fetch-rustup-init|plan|build|package|lock ...}"
 
 COMPONENTS_OUT="${ROOT_DIR}/target/components-release"
 PREVIOUS_LOCK="${COMPONENTS_OUT}/previous-lock.json"
 
 usage() {
-  echo "usage: mise run components:release previous-lock | fetch-alef | fetch-mise | fetch-jq | plan|build|package <triple> | lock <plans> <records> <out>" >&2
+  echo "usage: mise run components:release previous-lock | fetch-alef | fetch-mise | fetch-jq | fetch-rustup-init | plan|build|package <triple> | lock <plans> <records> <out>" >&2
   exit 1
 }
 
@@ -72,35 +78,72 @@ pinned_alef_version() {
   echo "${version}"
 }
 
-# Download one release asset with gh and check it against the sha256 digest GitHub recorded for it. The
-# containers that run these binaries also hold the signing key, so an unverified download is not acceptable.
-# Prints the path of the verified file, inside a scratch directory the caller removes.
-download_verified() {
-  local repo="$1" tag="$2" asset="$3" digest actual scratch
-  digest="$(gh api "repos/${repo}/releases/tags/${tag}" --jq ".assets[] | select(.name == \"${asset}\") | .digest")"
-  [[ "${digest}" =~ ^sha256:[0-9a-f]{64}$ ]] || {
-    echo "components-release: no sha256 digest recorded for ${asset} on ${repo} ${tag} (got '${digest}')" >&2
+# Tool pins: version and per-architecture sha256 of every binary the release containers run.
+ALEF_PIN_VERSION="0.129.4"
+MISE_PIN_VERSION="2026.10.24"
+JQ_VERSION="1.8.2"
+RUSTUP_VERSION="1.29.3"
+
+# The pinned sha256 of <tool> for <arch> (x86_64 or aarch64).
+pinned_sha256() {
+  case "$1/$2" in
+  alef/x86_64) echo "c68addaba0901d1454a38b41ffd1ab6ed0510f2b8ef93d7ea44487645d9cd845" ;;
+  alef/aarch64) echo "1c633d45e912008143a4396dd7748ec3bfe97f8b75b0897327a9731eab33f2a5" ;;
+  mise/x86_64) echo "257bc6521a2401470fc38cf6be45bbf5783c0443c80298b61fb13f3354f7e06e" ;;
+  mise/aarch64) echo "c1391f191cce6019ead500b6b22eb50f73bb0ba48f64619cc66bb27ff42840d0" ;;
+  jq/x86_64) echo "b1c22172dd303f3be49e935aa56aa48a8b7a46e0bc838b4997d3bb451495870f" ;;
+  jq/aarch64) echo "8b85c817833814ddca00a144c33705546355afccf0cf39b188f3cdb48b852309" ;;
+  rustup-init/x86_64) echo "b1c8cb14e30889e7e2999e6b69e62d9e9b9ffc0f4df8180564d306d9680e6c55" ;;
+  rustup-init/aarch64) echo "9f608c142e0e38a78957d0661ba1dfaf0b6fb37184cfaa4b9a0aa57af6184282" ;;
+  *)
+    echo "components-release: no pinned sha256 for $1 on $2" >&2
     exit 1
-  }
+    ;;
+  esac
+}
+
+# The host architecture in the spelling the pins use.
+host_arch() {
+  case "$(uname -m)" in
+  x86_64 | amd64) echo "x86_64" ;;
+  aarch64 | arm64) echo "aarch64" ;;
+  *)
+    echo "components-release: no pinned tools for $(uname -m)" >&2
+    exit 1
+    ;;
+  esac
+}
+
+# Download <url> over HTTPS only and check it against <sha256>. Prints the path of the verified file,
+# inside a scratch directory the caller removes.
+download_pinned() {
+  local url="$1" expected="$2" scratch file actual
   scratch="$(mktemp -d)"
-  gh release download "${tag}" --repo "${repo}" --pattern "${asset}" --dir "${scratch}"
-  actual="sha256:$(sha256_of "${scratch}/${asset}")"
-  [[ "${actual}" == "${digest}" ]] || {
-    echo "components-release: ${asset} is ${actual}, GitHub records ${digest}" >&2
+  file="${scratch}/${url##*/}"
+  curl --proto '=https' --tlsv1.2 -fsSL --retry 3 -o "${file}" "${url}"
+  actual="$(sha256_of "${file}")"
+  [[ "${actual}" == "${expected}" ]] || {
+    echo "components-release: ${url} is sha256:${actual}, the pin is sha256:${expected}" >&2
+    rm -rf "${scratch}"
     exit 1
   }
-  echo "${scratch}/${asset}"
+  echo "${file}"
 }
 
 # The musl release binary is static, so it runs on the manylinux_2_28 glibc where the gnu one does not.
-# It is fetched here, on the host, and checked against the digest GitHub recorded for the release asset.
+# The pin must be the alef mise.toml selects, so the host and the containers fingerprint with one alef.
 fetch_alef() {
-  local version triple asset dir archive
+  local version arch asset dir archive
   version="$(pinned_alef_version)"
-  triple="$(uname -m)-unknown-linux-musl"
-  asset="alef-${triple}.tar.gz"
-  dir="${COMPONENTS_OUT}/tools/alef-${version}-${triple}"
-  archive="$(download_verified xberg-io/alef "v${version}" "${asset}")"
+  [[ "${version}" == "${ALEF_PIN_VERSION}" ]] || {
+    echo "components-release: mise.toml pins alef ${version}, the fetch pin is ${ALEF_PIN_VERSION}; bump ALEF_PIN_VERSION and its sha256s" >&2
+    exit 1
+  }
+  arch="$(host_arch)"
+  asset="alef-${arch}-unknown-linux-musl.tar.gz"
+  dir="${COMPONENTS_OUT}/tools/alef-${version}-${arch}-unknown-linux-musl"
+  archive="$(download_pinned "https://github.com/xberg-io/alef/releases/download/v${version}/${asset}" \
+    "$(pinned_sha256 alef "${arch}")")"
   rm -rf "${dir}"
   mkdir -p "${dir}"
   tar -xzf "${archive}" -C "${dir}" --strip-components=1
@@ -112,27 +155,19 @@ fetch_alef() {
   echo "${dir}/alef"
 }
 
-# The same for mise, so the manylinux container can run this very task. The version is the one the host runs,
-# which setup-mise pinned; the musl build of it is static, so it runs on the container's old glibc.
+# The same for mise, so the manylinux container can run this very task. The musl build is static, so it
+# runs on the container's old glibc. It only runs file tasks there, so it need not match the host's mise.
 fetch_mise() {
-  local version arch asset dir archive
-  version="$(mise --version | awk '{print $1}')"
-  version="${version#v}"
-  [[ "${version}" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || {
-    echo "components-release: cannot read a mise version from 'mise --version' (got '${version}')" >&2
-    exit 1
-  }
-  case "$(uname -m)" in
-  x86_64) arch="x64" ;;
-  aarch64 | arm64) arch="arm64" ;;
-  *)
-    echo "components-release: no musl mise release for $(uname -m)" >&2
-    exit 1
-    ;;
+  local arch mise_arch asset dir archive
+  arch="$(host_arch)"
+  case "${arch}" in
+  x86_64) mise_arch="x64" ;;
+  aarch64) mise_arch="arm64" ;;
   esac
-  asset="mise-v${version}-linux-${arch}-musl.tar.gz"
-  dir="${COMPONENTS_OUT}/tools/mise-${version}-linux-${arch}-musl"
-  archive="$(download_verified jdx/mise "v${version}" "${asset}")"
+  asset="mise-v${MISE_PIN_VERSION}-linux-${mise_arch}-musl.tar.gz"
+  dir="${COMPONENTS_OUT}/tools/mise-${MISE_PIN_VERSION}-linux-${mise_arch}-musl"
+  archive="$(download_pinned "https://github.com/jdx/mise/releases/download/v${MISE_PIN_VERSION}/${asset}" \
+    "$(pinned_sha256 mise "${arch}")")"
   rm -rf "${dir}"
   mkdir -p "${dir}"
   tar -xzf "${archive}" -C "${dir}" --strip-components=2 mise/bin/mise
@@ -145,28 +180,42 @@ fetch_mise() {
 }
 
 # jq, which the release steps read plans with and the manylinux image does not ship. jq's release binaries
-# are static, so the host fetches and verifies one and the containers (the package one holds the signing key)
-# run it from the mount rather than installing a package. Bump the version deliberately.
-JQ_VERSION="1.8.2"
+# are static, so the host fetches and verifies one and the containers run it from the mount rather than
+# installing a package.
 fetch_jq() {
-  local arch asset dir file
-  case "$(uname -m)" in
-  x86_64) arch="amd64" ;;
-  aarch64 | arm64) arch="arm64" ;;
-  *)
-    echo "components-release: no static jq release for $(uname -m)" >&2
-    exit 1
-    ;;
+  local arch jq_arch dir file
+  arch="$(host_arch)"
+  case "${arch}" in
+  x86_64) jq_arch="amd64" ;;
+  aarch64) jq_arch="arm64" ;;
   esac
-  asset="jq-linux-${arch}"
-  dir="${COMPONENTS_OUT}/tools/jq-${JQ_VERSION}-linux-${arch}"
-  file="$(download_verified jqlang/jq "jq-${JQ_VERSION}" "${asset}")"
+  dir="${COMPONENTS_OUT}/tools/jq-${JQ_VERSION}-linux-${jq_arch}"
+  file="$(download_pinned "https://github.com/jqlang/jq/releases/download/jq-${JQ_VERSION}/jq-linux-${jq_arch}" \
+    "$(pinned_sha256 jq "${arch}")")"
   rm -rf "${dir}"
   mkdir -p "${dir}"
   mv "${file}" "${dir}/jq"
   rm -rf "$(dirname "${file}")"
   chmod 0755 "${dir}/jq"
   echo "${dir}/jq"
+}
+
+# rustup-init for the manylinux containers, instead of piping https://sh.rustup.rs into a shell. The gnu
+# build targets glibc 2.17, so it runs in manylinux_2_28; rustup then checks every toolchain component
+# against the channel manifest's sha256.
+fetch_rustup_init() {
+  local arch dir file
+  arch="$(host_arch)"
+  dir="${COMPONENTS_OUT}/tools/rustup-init-${RUSTUP_VERSION}-${arch}"
+  file="$(download_pinned \
+    "https://static.rust-lang.org/rustup/archive/${RUSTUP_VERSION}/${arch}-unknown-linux-gnu/rustup-init" \
+    "$(pinned_sha256 rustup-init "${arch}")")"
+  rm -rf "${dir}"
+  mkdir -p "${dir}"
+  mv "${file}" "${dir}/rustup-init"
+  rm -rf "$(dirname "${file}")"
+  chmod 0755 "${dir}/rustup-init"
+  echo "${dir}/rustup-init"
 }
 
 sha256_of() {
@@ -269,6 +318,11 @@ fi
 
 if [[ "${STEP}" == "fetch-jq" ]]; then
   fetch_jq
+  exit 0
+fi
+
+if [[ "${STEP}" == "fetch-rustup-init" ]]; then
+  fetch_rustup_init
   exit 0
 fi
 

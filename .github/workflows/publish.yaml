@@ -25,7 +25,7 @@ on:
 
 # RUST_TOOLCHAIN is pinned in several places that must be bumped together with Cargo.toml's
 # rust-version and rust-toolchain.toml: every `RUST_TOOLCHAIN:` env, the `toolchain:` inputs of
-# dtolnay/rust-toolchain, and the `rust:<minor>-alpine` image tag of the musl leg.
+# dtolnay/rust-toolchain, and the `rust:<minor>-alpine` image tag (and its digest) of the musl leg.
 
 # Component signing: the build-components jobs sign each archive with the Ed25519 private key in the
 # repository secret POLY_COMPONENT_SIGNING_KEY (PKCS#8 PEM, or base64 of the PKCS#8 DER or a raw
@@ -511,8 +511,8 @@ jobs:
           name: component-previous-lock
           path: target/components-release
 
-      # The musl alef and the musl mise are fetched and checksum-verified here, on the host, and
-      # reached through the /work mount. The container has an old glibc and no mise, so it runs the
+      # The musl alef, the musl mise, jq and rustup-init are fetched here, on the host, checked against
+      # the sha256 pinned in mise-tasks/components/release.sh, and reached through the /work mount. The container has an old glibc and no mise, so it runs the
       # same `mise run components:release` task with the static binary and installs no tools
       # (MISE_TASK_RUN_AUTO_INSTALL=false): alef comes from ALEF, cargo and rustc from rustup. The
       # signing key reaches only the package container; rustup, plan and build run in one without
@@ -526,10 +526,12 @@ jobs:
           alef="$(mise run components:release fetch-alef)"
           mise_bin="$(mise run components:release fetch-mise)"
           jq_bin="$(mise run components:release fetch-jq)"
+          rustup_init="$(mise run components:release fetch-rustup-init)"
           {
             echo "ALEF_IN_CONTAINER=/work/${alef#"$PWD"/}"
             echo "MISE_IN_CONTAINER=/work/${mise_bin#"$PWD"/}"
             echo "JQ_IN_CONTAINER=/work/${jq_bin#"$PWD"/}"
+            echo "RUSTUP_INIT_IN_CONTAINER=/work/${rustup_init#"$PWD"/}"
             echo "GOROOT_ON_HOST=$(go env GOROOT)"
           } >> "$GITHUB_ENV"
 
@@ -542,7 +544,8 @@ jobs:
           set -euo pipefail
           docker run --rm -v "$PWD":/work -v "$GOROOT_ON_HOST":/opt/go:ro -w /work \
             -e TARGET="${{ matrix.triple }}" -e RUST_TOOLCHAIN -e BUILD_IMAGE -e ALEF="$ALEF_IN_CONTAINER" \
-            -e MISE_IN_CONTAINER -e JQ_IN_CONTAINER -e MISE_TASK_RUN_AUTO_INSTALL=false -e MISE_AUTO_INSTALL=false -e MISE_YES=1 \
+            -e MISE_IN_CONTAINER -e JQ_IN_CONTAINER -e RUSTUP_INIT_IN_CONTAINER \
+            -e MISE_TASK_RUN_AUTO_INSTALL=false -e MISE_AUTO_INSTALL=false -e MISE_YES=1 \
             -e MISE_TRUSTED_CONFIG_PATHS=/work \
             -e CARGO_HOME=/work/target/components-release/toolchain/cargo \
             -e RUSTUP_HOME=/work/target/components-release/toolchain/rustup \
@@ -552,7 +555,7 @@ jobs:
             -e HOST_UID="$(id -u)" -e HOST_GID="$(id -g)" \
             "${{ matrix.image }}" bash -euo pipefail -c '
               git config --global --add safe.directory /work
-              curl -sSf https://sh.rustup.rs | sh -s -- -y --no-modify-path --profile minimal --default-toolchain "$RUST_TOOLCHAIN" --target "$TARGET"
+              "$RUSTUP_INIT_IN_CONTAINER" -y --no-modify-path --profile minimal --default-toolchain "$RUST_TOOLCHAIN" --target "$TARGET"
               export PATH="$CARGO_HOME/bin:/opt/go/bin:$(dirname "$MISE_IN_CONTAINER"):$(dirname "$JQ_IN_CONTAINER"):$PATH"
               mise run components:release plan "$TARGET"
               mise run components:release build "$TARGET"
@@ -816,6 +819,10 @@ jobs:
 
       - name: Build binary (musl, Alpine container)
         if: ${{ matrix.alpine }}
+        env:
+          # Pinned by digest so a re-pushed tag cannot change the bundled build. Bump tag and digest
+          # together: `docker buildx imagetools inspect rust:<minor>-alpine` prints the index digest.
+          MUSL_BUILD_IMAGE: rust:1.100-alpine@sha256:de1e0058543a81ed7b046629167db587c67a94bdf37cce14eb27f0ec83baaffb
         run: |
           # Build host-native inside rust:1.100-alpine (the image's host target IS x86_64-unknown-linux-musl),
           # dynamically linked against musl (-crt-static off). It must stay dynamic: tree-sitter grammars
@@ -835,7 +842,7 @@ jobs:
           docker run --rm -v "$PWD":/work -w /work \
             -e CARGO_TARGET_DIR=/work/target \
             -e POLY_BUILD_ID="$POLY_BUILD_ID" \
-            rust:1.100-alpine sh -c '
+            "$MUSL_BUILD_IMAGE" sh -c '
               set -e
               apk add --no-cache build-base musl-dev pkgconf git perl
               unwind="$(rustc --print sysroot)/lib/rustlib/$(rustc -vV | sed -n "s/^host: //p")/lib/self-contained/libunwind.a"

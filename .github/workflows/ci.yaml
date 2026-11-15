@@ -589,13 +589,21 @@ jobs:
             features: vectorscan-source
     steps:
       - uses: actions/checkout@v7
+      - uses: xberg-io/actions/setup-mise@v1
+      - name: Fetch rustup-init for the container
+        env:
+          MISE_TASK_RUN_AUTO_INSTALL: "false"
+        run: |
+          set -euo pipefail
+          rustup_init="$(mise run components:release fetch-rustup-init)"
+          echo "RUSTUP_INIT_IN_CONTAINER=/work/${rustup_init#"$PWD"/}" >> "$GITHUB_ENV"
       - name: Build and test in the manylinux_2_28 image
         env:
           FEATURES: ${{ matrix.features }}
         run: |
           set -euo pipefail
           docker run --rm -v "$PWD":/work -w /work \
-            -e RUST_TOOLCHAIN -e FEATURES -e HOST_UID="$(id -u)" -e HOST_GID="$(id -g)" \
+            -e RUST_TOOLCHAIN -e FEATURES -e RUSTUP_INIT_IN_CONTAINER -e HOST_UID="$(id -u)" -e HOST_GID="$(id -g)" \
             -e CARGO_HOME=/work/target/secrets-container/cargo -e RUSTUP_HOME=/work/target/secrets-container/rustup \
             -e CARGO_TARGET_DIR=/work/target/secrets-container/target \
             "${{ matrix.image }}" bash -euo pipefail -c '
@@ -610,7 +618,7 @@ jobs:
                 flags=""
                 test_flags=""
               fi
-              curl -sSf https://sh.rustup.rs | sh -s -- -y --no-modify-path --profile minimal --default-toolchain "$RUST_TOOLCHAIN"
+              "$RUSTUP_INIT_IN_CONTAINER" -y --no-modify-path --profile minimal --default-toolchain "$RUST_TOOLCHAIN"
               export PATH="$CARGO_HOME/bin:$PATH"
               cargo test --locked --manifest-path components-secrets/Cargo.toml -p poly-engines-secrets --no-fail-fast $test_flags
               cargo build --locked --release --manifest-path components-secrets/Cargo.toml -p poly-engines-secrets-component $flags
@@ -692,10 +700,12 @@ jobs:
           alef="$(mise run components:release fetch-alef)"
           mise_bin="$(mise run components:release fetch-mise)"
           jq_bin="$(mise run components:release fetch-jq)"
+          rustup_init="$(mise run components:release fetch-rustup-init)"
           {
             echo "ALEF_IN_CONTAINER=/work/${alef#"$PWD"/}"
             echo "MISE_IN_CONTAINER=/work/${mise_bin#"$PWD"/}"
             echo "JQ_IN_CONTAINER=/work/${jq_bin#"$PWD"/}"
+            echo "RUSTUP_INIT_IN_CONTAINER=/work/${rustup_init#"$PWD"/}"
             echo "GOROOT_ON_HOST=$(go env GOROOT)"
           } >> "$GITHUB_ENV"
       # The sh component is a Go executable: alef fingerprints it with `go version`, so the plan
@@ -706,7 +716,8 @@ jobs:
           set -euo pipefail
           docker run --rm -v "$PWD":/work -v "$GOROOT_ON_HOST":/opt/go:ro -w /work \
             -e TARGET -e RUST_TOOLCHAIN -e BUILD_IMAGE -e ALEF="$ALEF_IN_CONTAINER" \
-            -e MISE_IN_CONTAINER -e JQ_IN_CONTAINER -e MISE_TASK_RUN_AUTO_INSTALL=false -e MISE_AUTO_INSTALL=false -e MISE_YES=1 \
+            -e MISE_IN_CONTAINER -e JQ_IN_CONTAINER -e RUSTUP_INIT_IN_CONTAINER \
+            -e MISE_TASK_RUN_AUTO_INSTALL=false -e MISE_AUTO_INSTALL=false -e MISE_YES=1 \
             -e MISE_TRUSTED_CONFIG_PATHS=/work \
             -e CARGO_HOME=/work/target/components-release/toolchain/cargo \
             -e RUSTUP_HOME=/work/target/components-release/toolchain/rustup \
@@ -715,7 +726,7 @@ jobs:
             -e GOCACHE=/work/target/components-release/toolchain/gocache \
             "$BUILD_IMAGE" bash -euo pipefail -c '
               git config --global --add safe.directory /work
-              curl -sSf https://sh.rustup.rs | sh -s -- -y --no-modify-path --profile minimal --default-toolchain "$RUST_TOOLCHAIN" --target "$TARGET"
+              "$RUSTUP_INIT_IN_CONTAINER" -y --no-modify-path --profile minimal --default-toolchain "$RUST_TOOLCHAIN" --target "$TARGET"
               export PATH="$CARGO_HOME/bin:/opt/go/bin:$(dirname "$MISE_IN_CONTAINER"):$(dirname "$JQ_IN_CONTAINER"):$PATH"
               mise run components:release plan "$TARGET"
             '
