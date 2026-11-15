@@ -19,8 +19,8 @@ tier, and the `poly hooks` engine — see Coverage tiers below).
 
 A tool is consumed as a crate dependency, **from crates.io whenever a usable version is
 published**. That includes ruff, which moved off its git pin on 2026-08-29: `ruff_linter =
-"=0.17.3"` and `ruff_db` / `ruff_formatter` / `ruff_python_ast` / `ruff_python_formatter` /
-`ruff_python_semantic` / `ruff_text_size` = `"=0.0.20"`. The `=` is deliberate — these are unsemvered internals, and an
+"=0.17.4"` and `ruff_db` / `ruff_formatter` / `ruff_python_ast` / `ruff_python_formatter` /
+`ruff_python_semantic` / `ruff_text_size` = `"=0.0.21"`. The `=` is deliberate — these are unsemvered internals, and an
 exact pin preserves the property the git `rev` had. The only remaining **pinned git `rev`** deps
 are **oxc**, **biome**, and **rubyfmt** (oxc and rubyfmt in the separate `components/` workspace), each for a reason recorded in ADR 0003's 2026-08-29
 amendment: four of oxc's crates are `publish = false` and a partial migration is a hard compile
@@ -35,15 +35,16 @@ an installer (see release-versioning).
 
 ## Workspace root
 
-- `Cargo.toml` — `[workspace]` (resolver 3, edition 2024, `rust-version = "1.99"`). Twenty-six
-  members: `poly-core` (the engine library), `poly-cli` (builds the `poly` binary),
+- `Cargo.toml` — `[workspace]` (resolver 3, edition 2024, `rust-version = "1.100"`). Thirty-eight
+  members (plus four excluded workspaces: `components/`, `components-pyrefly/`, `components-secrets/`,
+  `components-tsrs/`): `poly-core` (the engine library), `poly-cli` (builds the `poly` binary),
   `poly-config`, `poly-cache`, `poly-catalog`, `poly-hooks`, `poly-workspace`, `poly-mcp`,
-  `poly-buildinfo`, the engine split (`poly-engine-api`, `poly-engines`, the nine
-  `poly-engines-*` family crates, `poly-grammar` and the three `poly-component-*` crates, below),
+  `poly-buildinfo`, the engine split (`poly-engine-api`, `poly-engines`, the
+  `poly-engines-*` family crates and their `-component` builds, `poly-grammar` and the three `poly-component-*` crates, below),
   and two that do **not** carry the prefix — `dockerfile-parser` (the vendored Dockerfile parser behind the
   `dockerfile` engine) and `conformance` (a dev-only differential formatter-conformance harness
   the shipped binary never depends on). Engine families are split out as `poly-engines-<family>`
-  crates (`sql`, `nix`, `php`, `python`, `typos`, `astgrep`, `uncomment`, `misc` — the last holds
+  crates (`sql`, `nix`, `php`, `python`, `typos`, `astgrep`, `uncomment`, `jsonschema`, `misc` — the last holds
   dockerfile, dotenv, hcl and graphql; `poly-engines-sql-component` is the sql component build),
   and
   `poly-engines` is their feature-gated facade plus the `PolyComponent` contract trait and
@@ -55,7 +56,7 @@ an installer (see release-versioning).
   defaults (`all-engines`, `bundled-mcp`) give the full-engine build; only the
   `x86_64-unknown-linux-musl` release ships a **bundled** build (the `components/` crate
   `poly-bundled`). Every other release triple ships `--no-default-features --features core`,
-  linking only the quality, uncomment and ini engines; the rest, and the MCP server, are downloaded
+  linking only the quality engine (`core = ["engine-quality"]`, ADR 0043); the rest, and the MCP server, are downloaded
   components (`poly-host-services` provides the services a frontend component calls,
   `poly-frontend-api` is its wire contract). `poly-cli`'s `components_cmd/` is `poly components`. `poly commit` is the upstream `gitfluff` library (crates.io) plus the glue in `poly-cli`'s `commit/` module. Shared deps live under `[workspace.dependencies]`; git deps are pinned to a `rev`
   (crates from one monorepo share one `rev`).

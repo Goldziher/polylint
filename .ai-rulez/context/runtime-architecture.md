@@ -37,7 +37,7 @@ pub trait Engine: Send + Sync {
     fn format(&self, src: &SourceFile, cfg: &EngineConfig) -> anyhow::Result<FormatOutput>;
     fn self_manages_enabled(&self) -> bool;
     fn supersedes_generic_formatter(&self) -> bool;
-    // ...plus cache salts (`*_context`, `*_salt`), batching (`*_batch`) and catalog takeover.
+    // ...31 methods in all; the rest are cache salts (`*_context`, `*_salt`), batching (`*_batch`) and catalog takeover.
 }
 pub enum FormatOutput { Unchanged, Formatted(String) }
 ```
@@ -129,9 +129,9 @@ Per-language resolution order:
 
 ### Cross-cutting backends (every language)
 
-The registry appends four backends with `languages() == &[]` to every language, so they are
+The registry appends five backends with `languages() == &[]` to every language, so they are
 orthogonal to the tiers above rather than a step in the resolution order: `typos` (spell-check,
-warning, opt-in via `[engines.typos] enabled = true`), `astgrep`, `uncomment` (opt-in), and `quality`.
+warning, opt-in via `[engines.typos] enabled = true`), `astgrep`, `uncomment` (opt-in), `quality` and `secrets`.
 
 Two of them carry poly's lint coverage for languages no tier-1 backend reaches:
 
