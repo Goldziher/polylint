@@ -1,6 +1,6 @@
 //! Shared helpers for the biome lint backends ([`crate::css`] and [`crate::graphql`]).
 //!
-//! Centralises diagnostic mapping, byte-offset → line/col conversion, and rule
+//! Centralises diagnostic mapping, diagnostic spans and rule
 //! filter construction so that each engine file is focused on its
 //! language-specific parse + analyze call.
 
@@ -9,37 +9,16 @@ use biome_diagnostics::Diagnostic as BiomeDiag;
 
 use poly_engine_api::config::EngineConfig;
 use poly_engine_api::engine::{Diagnostic, Severity, Span};
+use poly_engine_api::line_index::LineIndex;
 use poly_engine_api::rule_config::RuleSelection;
 
-/// Convert a byte offset to 1-based `(line, col)` in a UTF-8 source string.
-///
-/// Mirrors the identical helper in `poly-engines-web`'s oxc backend; centralised here so both biome
-/// engine backends share one copy rather than duplicating the logic.
-pub(crate) fn offset_to_line_col(src: &str, offset: usize) -> (u32, u32) {
-    let safe_offset = offset.min(src.len());
-    let mut line: u32 = 1;
-    let mut col: u32 = 1;
-    for (i, ch) in src.char_indices() {
-        if i >= safe_offset {
-            break;
-        }
-        if ch == '\n' {
-            line += 1;
-            col = 1;
-        } else {
-            col += 1;
-        }
-    }
-    (line, col)
-}
-
 /// Convert a biome [`biome_rowan::TextRange`] (byte offsets, u32-backed) to a
-/// poly 1-based [`Span`].
-pub(crate) fn text_range_to_span(src: &str, range: biome_rowan::TextRange) -> Span {
+/// poly 1-based [`Span`] with character columns.
+pub(crate) fn text_range_to_span(index: &LineIndex<'_>, range: biome_rowan::TextRange) -> Span {
     let start = u32::from(range.start()) as usize;
     let end = u32::from(range.end()) as usize;
-    let (start_line, start_col) = offset_to_line_col(src, start);
-    let (end_line, end_col) = offset_to_line_col(src, end);
+    let (start_line, start_col) = index.line_col(start);
+    let (end_line, end_col) = index.line_col(end);
     Span {
         start_line,
         start_col,
@@ -76,7 +55,11 @@ fn diag_title(diag: &dyn BiomeDiag) -> String {
 /// * **title**: plain description from `AnalyzerDiagnostic::description()`.
 /// * **span**: biome `Location::span` (`TextRange`) converted to 1-based line/col.
 /// * **fix**: empty — lint-only for v1.  `capabilities().fix = false`.
-pub(crate) fn map_biome_diag(diag: &AnalyzerDiagnostic, content: &str, engine_name: &'static str) -> Diagnostic {
+pub(crate) fn map_biome_diag(
+    diag: &AnalyzerDiagnostic,
+    index: &LineIndex<'_>,
+    engine_name: &'static str,
+) -> Diagnostic {
     let code = diag.category().map(|c| c.name().to_owned());
 
     let severity = match diag.severity() {
@@ -88,7 +71,7 @@ pub(crate) fn map_biome_diag(diag: &AnalyzerDiagnostic, content: &str, engine_na
 
     let title = diag_title(diag);
 
-    let span = diag.location().span.map(|range| text_range_to_span(content, range));
+    let span = diag.location().span.map(|range| text_range_to_span(index, range));
 
     Diagnostic {
         engine: engine_name.to_owned(),

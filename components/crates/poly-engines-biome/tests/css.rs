@@ -58,3 +58,20 @@ fn valid_css_no_diagnostics() {
         "expected no diagnostics for valid CSS; got: {diags:#?}"
     );
 }
+
+#[test]
+fn span_columns_count_characters() {
+    let engine = BiomeCssEngine;
+    let diags = engine
+        .lint(
+            &make_src("/* é日😀 */ a { colr: blue; }\n", Language::Css),
+            &engine_cfg(),
+        )
+        .unwrap();
+    let span = diags
+        .iter()
+        .find_map(|d| d.span.as_ref())
+        .expect("a diagnostic with a span");
+    assert_eq!(span.start_line, 1);
+    assert_eq!(span.start_col, 15, "`colr` follows 14 characters, not 20 bytes");
+}

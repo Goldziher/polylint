@@ -47,6 +47,7 @@ use biome_graphql_parser::parse_graphql;
 use poly_engine_api::config::EngineConfig;
 use poly_engine_api::engine::{Capabilities, Diagnostic, Engine, OptionKeys, OptionTable, SourceFile};
 use poly_engine_api::language::Language;
+use poly_engine_api::line_index::LineIndex;
 
 use crate::common::{build_lint_filter, map_biome_diag, rule_filter_strings, str_to_rule_filter};
 
@@ -113,10 +114,11 @@ impl Engine for BiomeGraphqlEngine {
 
         let options = AnalyzerOptions::default();
         let mut out: Vec<Diagnostic> = Vec::new();
+        let index = LineIndex::new(&src.content);
 
         let (_, _parse_errors) = biome_graphql_analyze::analyze(&root, filter, &options, |signal| {
             if let Some(diag) = signal.diagnostic() {
-                out.push(map_biome_diag(&diag, &src.content, "biome"));
+                out.push(map_biome_diag(&diag, &index, "biome"));
             }
             ControlFlow::<Never>::Continue(())
         });

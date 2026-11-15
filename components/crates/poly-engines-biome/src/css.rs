@@ -49,6 +49,7 @@ use poly_engine_api::config::EngineConfig;
 use poly_engine_api::css_hacks::{IE_PROPERTY_HACK_SKIP, has_ie_property_hack};
 use poly_engine_api::engine::{Capabilities, Diagnostic, Engine, OptionKeys, OptionTable, SourceFile};
 use poly_engine_api::language::Language;
+use poly_engine_api::line_index::LineIndex;
 
 use crate::common::{build_lint_filter, map_biome_diag, rule_filter_strings, str_to_rule_filter};
 
@@ -147,10 +148,11 @@ impl Engine for BiomeCssEngine {
 
         let options = AnalyzerOptions::default();
         let mut out: Vec<Diagnostic> = Vec::new();
+        let index = LineIndex::new(&src.content);
 
         let (_, _parse_errors) = biome_css_analyze::analyze(&root, filter, &options, css_services, &[], |signal| {
             if let Some(diag) = signal.diagnostic() {
-                out.push(map_biome_diag(&diag, &src.content, "biome"));
+                out.push(map_biome_diag(&diag, &index, "biome"));
             }
             ControlFlow::<Never>::Continue(())
         });
