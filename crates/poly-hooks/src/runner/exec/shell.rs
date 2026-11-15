@@ -11,6 +11,7 @@
 //! platform whose `shell_command` calls them.
 
 use std::collections::BTreeMap;
+use std::ffi::{OsStr, OsString};
 use std::path::Path;
 
 #[cfg(any(test, windows))]
@@ -99,6 +100,19 @@ fn appends_positionals(line: &str) -> bool {
     !forwards_positionals(line) && takes_trailing_word(line)
 }
 
+/// A matched path as one argv word: a leading `-` would be parsed as an option
+/// by the hook command, so it is anchored with `./`.
+pub(super) fn argv_path(path: &Path) -> std::borrow::Cow<'_, OsStr> {
+    let raw = path.as_os_str();
+    if raw.as_encoded_bytes().first() == Some(&b'-') {
+        let mut anchored = OsString::from("./");
+        anchored.push(raw);
+        std::borrow::Cow::Owned(anchored)
+    } else {
+        std::borrow::Cow::Borrowed(raw)
+    }
+}
+
 #[cfg(not(windows))]
 pub(super) fn shell_command(
     line: &str,
@@ -121,7 +135,7 @@ pub(super) fn shell_command(
     cmd.arg(SHELL_ARG).arg(script).arg(argv0);
     cmd.args(args);
     if pass_filenames {
-        cmd.args(files.iter().map(|p| p.as_os_str()));
+        cmd.args(files.iter().map(|p| argv_path(p)));
     }
     cmd
 }
@@ -228,7 +242,7 @@ impl CmdEncoding {
             if pass_filenames {
                 for file in files {
                     joined.push(' ');
-                    joined.push_str(&self.token(&file.to_string_lossy()));
+                    joined.push_str(&self.token(&argv_path(file).to_string_lossy()));
                 }
             }
         }
@@ -251,7 +265,7 @@ fn cmd_file_units(encoding: &CmdEncoding, hook: &Hook, file: &Path) -> usize {
         .map_or(Some(file), |cwd| file.strip_prefix(cwd).ok());
     projected.map_or(0, |path| {
         encoding
-            .token(&path.to_string_lossy())
+            .token(&argv_path(path).to_string_lossy())
             .encode_utf16()
             .count()
             .saturating_add(1)

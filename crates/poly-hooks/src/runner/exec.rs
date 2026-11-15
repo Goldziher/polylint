@@ -48,7 +48,7 @@ pub(super) fn build_command(
             };
             cmd.args(&hook.args);
             if hook.pass_filenames {
-                cmd.args(files.iter().map(|p| p.as_os_str()));
+                cmd.args(files.iter().map(|p| shell::argv_path(p)));
             }
             cmd
         }
