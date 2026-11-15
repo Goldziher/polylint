@@ -6,7 +6,9 @@
 //! integer, or `"dynamic"`). Poly's defaults differ from ruff's where it says so
 //! in [`super`]: width 120 and docstring code formatting on.
 
+use std::collections::HashMap;
 use std::path::Path;
+use std::sync::{Arc, Mutex, OnceLock, PoisonError};
 
 use ruff_formatter::printer::LineEnding;
 use ruff_formatter::{IndentStyle, IndentWidth, LineWidth};
@@ -84,8 +86,21 @@ pub(super) fn excluded(path: &Path, cfg: &EngineConfig) -> bool {
     let Some(patterns) = cfg.options.get("exclude").and_then(toml::Value::as_array) else {
         return false;
     };
+    let patterns: Vec<&str> = patterns.iter().filter_map(toml::Value::as_str).collect();
+    exclude_set(&patterns).is_some_and(|set| set.is_match(path))
+}
+
+/// The compiled glob set for `patterns`, built once per distinct pattern list. The memo is cleared
+/// when it outgrows [`EXCLUDE_MEMO_CAP`], which a run's handful of configs never reach.
+fn exclude_set(patterns: &[&str]) -> Option<Arc<globset::GlobSet>> {
+    static MEMO: OnceLock<Mutex<HashMap<Vec<String>, Option<Arc<globset::GlobSet>>>>> = OnceLock::new();
+    let key: Vec<String> = patterns.iter().map(|p| (*p).to_owned()).collect();
+    let memo = MEMO.get_or_init(Mutex::default);
+    if let Some(hit) = memo.lock().unwrap_or_else(PoisonError::into_inner).get(&key) {
+        return hit.clone();
+    }
     let mut builder = globset::GlobSetBuilder::new();
-    for pattern in patterns.iter().filter_map(toml::Value::as_str) {
+    for pattern in patterns {
         let pattern = pattern
             .strip_prefix("./")
             .unwrap_or(pattern)
@@ -97,8 +112,17 @@ pub(super) fn excluded(path: &Path, cfg: &EngineConfig) -> bool {
             }
         }
     }
-    builder.build().is_ok_and(|set| set.is_match(path))
+    let built = builder.build().ok().map(Arc::new);
+    let mut memo = memo.lock().unwrap_or_else(PoisonError::into_inner);
+    if memo.len() >= EXCLUDE_MEMO_CAP {
+        memo.clear();
+    }
+    memo.insert(key, built.clone());
+    built
 }
+
+/// Distinct `exclude` lists remembered before the memo starts over.
+const EXCLUDE_MEMO_CAP: usize = 64;
 
 /// The line ending a `line_ending` value selects for `content`.
 ///
@@ -191,4 +215,36 @@ pub(super) fn build_options(src: &SourceFile, cfg: &EngineConfig) -> PyFormatOpt
         options = options.with_preview(PreviewMode::Enabled);
     }
     options
+}
+
+#[cfg(test)]
+mod exclude_tests {
+    use super::*;
+
+    fn cfg_excluding(patterns: &[&str]) -> EngineConfig {
+        let mut options = toml::Table::new();
+        options.insert(
+            "exclude".into(),
+            toml::Value::Array(patterns.iter().map(|p| toml::Value::String((*p).to_owned())).collect()),
+        );
+        EngineConfig {
+            globals: poly_engine_api::config::GlobalDefaults::default(),
+            indent_width: 4,
+            options,
+        }
+    }
+
+    #[test]
+    fn exclude_matches_at_any_depth_and_repeats_identically() {
+        let cfg = cfg_excluding(&["./migrations/", "gen.py"]);
+        for _ in 0..2 {
+            assert!(excluded(Path::new("app/migrations/0001.py"), &cfg));
+            assert!(excluded(Path::new("a/b/gen.py"), &cfg));
+            assert!(!excluded(Path::new("app/models.py"), &cfg));
+        }
+        assert!(!excluded(
+            Path::new("app/migrations/0001.py"),
+            &cfg_excluding(&["other"])
+        ));
+    }
 }

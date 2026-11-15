@@ -241,19 +241,18 @@ fn settings_for(cfg: &EngineConfig) -> Arc<LinterSettings> {
 }
 
 /// The memo key for `cfg`: everything [`build_settings`] reads.
-fn settings_key(cfg: &EngineConfig) -> String {
-    format!(
-        "{}\u{0}{}",
-        cfg.globals.line_length,
-        toml::to_string(&cfg.options).unwrap_or_default()
-    )
+fn settings_key(cfg: &EngineConfig) -> SettingsKey {
+    (cfg.fingerprint(), None)
 }
+
+/// A config fingerprint plus, for target-pinned settings, the target version.
+type SettingsKey = ([u8; 32], Option<ruff_python_ast::PythonVersion>);
 
 /// The settings for `cfg` with the target the project's own ruff config
 /// declares (see [`target`]) in place of ruff's default, memoized per config
 /// and target.
 fn settings_with_target(cfg: &EngineConfig, version: ruff_python_ast::PythonVersion) -> Arc<LinterSettings> {
-    let key = format!("{}\u{0}target={version}", settings_key(cfg));
+    let key = (settings_key(cfg).0, Some(version));
     settings_memo(key, || {
         let mut settings = if cfg.options.is_empty() {
             default_settings().clone()
@@ -266,8 +265,8 @@ fn settings_with_target(cfg: &EngineConfig, version: ruff_python_ast::PythonVers
 }
 
 /// The process-wide memo behind [`settings_for`] and [`settings_with_target`].
-fn settings_memo(key: String, build: impl FnOnce() -> LinterSettings) -> Arc<LinterSettings> {
-    static MEMO: OnceLock<Mutex<HashMap<String, Arc<LinterSettings>>>> = OnceLock::new();
+fn settings_memo(key: SettingsKey, build: impl FnOnce() -> LinterSettings) -> Arc<LinterSettings> {
+    static MEMO: OnceLock<Mutex<HashMap<SettingsKey, Arc<LinterSettings>>>> = OnceLock::new();
     let memo = MEMO.get_or_init(Mutex::default);
     if let Some(hit) = memo.lock().unwrap_or_else(PoisonError::into_inner).get(&key) {
         return Arc::clone(hit);
