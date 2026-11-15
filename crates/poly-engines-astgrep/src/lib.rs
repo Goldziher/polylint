@@ -59,6 +59,7 @@
 //! `version()` to change dynamically.
 
 pub mod exclusions;
+mod go_arch;
 pub mod language;
 pub mod map;
 pub mod pack;
@@ -75,12 +76,14 @@ use serde::Serialize;
 
 use poly_engine_api::config::EngineConfig;
 use poly_engine_api::engine::{
-    Capabilities, Diagnostic, Engine, FormatOutput, OptionKeys, OptionTable, Severity, SourceFile,
+    Capabilities, Diagnostic, Engine, FormatOutput, OptionKeys, OptionTable, OptionType, Severity, SourceFile,
 };
+use poly_engine_api::host_hooks::HostHook;
 use poly_engine_api::language::Language;
 use poly_engine_api::options::OptionsExt;
 use poly_engine_api::rule_config::RuleSelection;
 
+use go_arch::GoArch;
 use language::{TslpLanguage, grammar_for_language_id};
 use map::{diff_to_diagnostic, match_to_diagnostic};
 use rules::{RuleMap, load_rules};
@@ -127,7 +130,11 @@ pub fn engines_for(_language: &Language) -> Vec<Box<dyn Engine>> {
 /// (`go-no-init`, `go-no-package-mutable-global`,
 /// `go-context-background-outside-main`, `go-forbidden-ambient-call`), all
 /// shipped `off`.
-const ENGINE_VERSION: &str = "ast-grep-core-0.51.2-engine-4+tslp1.25.0+builtin-pack-4";
+///
+/// `engine-5` marks a seventh: the configurable Go architecture rules
+/// (`go-forbidden-call`, `go-forbidden-import`, `go-layer-violation`, see [`go_arch`]) run
+/// after the scan, and a Go file's findings now depend on its `go.mod`.
+const ENGINE_VERSION: &str = "ast-grep-core-0.51.2-engine-5+tslp1.25.0+builtin-pack-4";
 
 /// Cross-cutting custom-rule engine backed by ast-grep + TSLP grammars.
 ///
@@ -168,7 +175,12 @@ impl Engine for AstGrepEngine {
     /// `[rules]` table, not here.
     fn option_keys(&self, table: OptionTable) -> OptionKeys {
         match table {
-            OptionTable::CrossCuttingLint => OptionKeys::declared(&[]).with_rule_selection(),
+            OptionTable::CrossCuttingLint => OptionKeys::declared(&[
+                ("go_forbidden_calls", OptionType::ARRAY),
+                ("go_forbidden_imports", OptionType::ARRAY),
+                ("go_layers", OptionType::ARRAY),
+            ])
+            .with_rule_selection(),
             OptionTable::Lint => OptionKeys::declared(&[]).with_note(
                 "ast-grep is configured in the language-agnostic `[lint.astgrep]` table; \
                  a per-language `[lint.<lang>.astgrep]` table is never read.",
@@ -179,6 +191,11 @@ impl Engine for AstGrepEngine {
 
     fn version(&self) -> &str {
         ENGINE_VERSION
+    }
+
+    /// A Go file's architecture findings depend on the module root and path of its `go.mod`.
+    fn host_hook(&self) -> HostHook {
+        HostHook::GoModLint
     }
 
     /// Cross-cutting by registration, but rules are written *per language* —
@@ -192,13 +209,13 @@ impl Engine for AstGrepEngine {
     /// backing both sources are cached (user rules by content hash, the pack
     /// forever), so this shares the load the per-file pass is about to do.
     fn provides_language_lint(&self, language: &Language, cfg: &EngineConfig) -> bool {
-        resolved_for(grammar_for_language_id(language.id()), cfg).is_ok_and(|r| r.scan.is_some())
+        resolved_for(grammar_for_language_id(language.id()), cfg).is_ok_and(|r| r.scan.is_some() || r.go_arch.is_some())
     }
 
     fn lint(&self, src: &SourceFile, cfg: &EngineConfig) -> anyhow::Result<Vec<Diagnostic>> {
         let lang_name = grammar_for_language_id(src.language.id());
         let resolved = resolved_for(lang_name, cfg)?;
-        let (Some(scan), Some(tslp_lang)) = (resolved.scan.as_ref(), resolved.language.clone()) else {
+        let Some(tslp_lang) = resolved.language.clone() else {
             if builtin_pack_enabled(cfg)
                 && let Some(reason) = pack::unavailable_reason(lang_name)
             {
@@ -224,18 +241,24 @@ impl Engine for AstGrepEngine {
             }
         };
 
-        let result = scan.scan(&root, true);
-
         let mut diagnostics: Vec<Diagnostic> = Vec::new();
 
-        for (rule, node_match) in &result.diffs {
-            diagnostics.push(diff_to_diagnostic(self.name(), rule, node_match, selection));
+        if let Some(scan) = resolved.scan.as_ref() {
+            let result = scan.scan(&root, true);
+
+            for (rule, node_match) in &result.diffs {
+                diagnostics.push(diff_to_diagnostic(self.name(), rule, node_match, selection));
+            }
+
+            for (rule, node_matches) in &result.matches {
+                for node_match in node_matches {
+                    diagnostics.push(match_to_diagnostic(self.name(), rule, node_match, selection));
+                }
+            }
         }
 
-        for (rule, node_matches) in &result.matches {
-            for node_match in node_matches {
-                diagnostics.push(match_to_diagnostic(self.name(), rule, node_match, selection));
-            }
+        if let Some(arch) = resolved.go_arch.as_ref() {
+            diagnostics.extend(arch.check(&root.root(), &src.path, selection));
         }
 
         Ok(diagnostics)
@@ -254,6 +277,8 @@ struct Resolved {
     language: Option<TslpLanguage>,
     /// Prebuilt scan over the active rules; `None` when no rule is active.
     scan: Option<CombinedScan<'static, TslpLanguage>>,
+    /// The configured Go architecture rules; `None` for any other language and when none is configured.
+    go_arch: Option<Arc<GoArch>>,
 }
 
 /// Memo entries kept before the table is dropped and rebuilt; a run uses one
@@ -295,12 +320,21 @@ fn resolved_for(lang_name: &str, cfg: &EngineConfig) -> anyhow::Result<Arc<Resol
         &**pinned
     });
     let (rule_refs, selection) = resolve_rules(lang_name, user_rules, cfg);
-    let language = rule_refs.first().map(|r| r.language.clone());
+    let go_arch = if lang_name == "go" {
+        go_arch_for(&cfg.options)?.map(Arc::new)
+    } else {
+        None
+    };
+    let language = rule_refs
+        .first()
+        .map(|r| r.language.clone())
+        .or_else(|| go_arch.as_ref().and_then(|_| TslpLanguage::new(lang_name)));
     let scan = (!rule_refs.is_empty()).then(|| CombinedScan::new(rule_refs));
     let resolved = Arc::new(Resolved {
         selection,
         language,
         scan,
+        go_arch,
     });
 
     if let Some(key) = key {
@@ -313,6 +347,19 @@ fn resolved_for(lang_name: &str, cfg: &EngineConfig) -> anyhow::Result<Arc<Resol
             .insert(lang_name.to_string(), Arc::clone(&resolved));
     }
     Ok(resolved)
+}
+
+/// The Go architecture settings (`go_forbidden_calls`, `go_forbidden_imports`, `go_layers`) of `options`.
+///
+/// # Errors
+/// A malformed entry, with the key and index named; see [`GoArch::from_values`].
+fn go_arch_for(options: &toml::Table) -> anyhow::Result<Option<GoArch>> {
+    GoArch::from_values(
+        options.get("go_forbidden_calls").and_then(toml::Value::as_array),
+        options.get("go_forbidden_imports").and_then(toml::Value::as_array),
+        options.get("go_layers").and_then(toml::Value::as_array),
+    )
+    .map_err(|error| anyhow::anyhow!("invalid ast-grep Go architecture config: {error}"))
 }
 
 /// Load the user rule map for `dirs`, or `None` when no `[rules] dirs` are

@@ -158,6 +158,68 @@ Each engine also reads its own keys (`[engines.ruff] line_length`, `[engines.mag
 | `rule_dirs` | array | `[".poly/rules"]` | Directories of custom ast-grep `*.yml` rule files, relative to the config. Set to `[]` to disable. |
 | `builtin_pack` | boolean | `true` | Load poly's built-in ast-grep rule pack. |
 
+#### Go architecture rules
+
+Three more keys of `[engines.astgrep]` configure architecture checks for Go. They need no Go toolchain: a call or import
+is resolved from the file's own import block, and module-internal imports against the `go.mod` that governs the file
+(the nearest one, so nested modules work). They report through the same `select`, `extend_select`, `ignore` and
+`[engines.astgrep.rules.<id>] level` as the pack's rules; a configured entry is on by default and reports at `error`
+unless its `level` or a `rules.<id>` override says otherwise. `_test.go` files are skipped unless an entry sets
+`include_tests = true`.
+
+Every glob (`paths`, `allow_in`, a layer's `paths`) is matched against the file's path **relative to its module root**,
+with `/` separators. `*` stays within one path element, `**` crosses elements, and a trailing `/**` also matches the
+directory itself.
+
+| Key | Rule id | Entry fields |
+| --- | --- | --- |
+| `go_forbidden_calls` | `go-forbidden-call` | `call` (`<import path>.<Name>`, `Name` may use wildcards), `paths`, `allow_in`, `message`, `level`, `include_tests` |
+| `go_forbidden_imports` | `go-forbidden-import` | `import` (a glob over import paths), `paths`, `allow_in`, `message`, `level`, `include_tests` |
+| `go_layers` | `go-layer-violation` | `name`, `paths` (directory globs), `may_import` (layer names), `message`, `level`, `include_tests` |
+
+```toml
+[[engines.astgrep.go_forbidden_calls]]
+call = "os.Getenv"                       # the package is an import path: "os/exec.Command", "log/slog.Info"
+paths = ["internal/**"]                  # where it applies (default: everywhere)
+allow_in = ["internal/ambient/**"]       # exemptions inside paths
+message = "read the environment through ambient.Env"
+
+[[engines.astgrep.go_forbidden_calls]]
+call = "log.Fatal*"                      # wildcard on the selector name
+
+[[engines.astgrep.go_forbidden_imports]]
+import = "github.com/sigstore/**"
+paths = ["pkg/**"]
+
+[[engines.astgrep.go_layers]]
+name = "domain"
+paths = ["internal/domain/**"]
+may_import = []                          # may import no other layer
+
+[[engines.astgrep.go_layers]]
+name = "infra"
+paths = ["internal/infra/**"]
+may_import = ["domain"]
+```
+
+A forbidden call is any selector `pkg.Name` whose `pkg` is the local name of a matching import, aliases followed. A dot
+import of a forbidden package is itself the finding, since it hides the selectors. The local name of an unaliased import
+is the last path element minus a major-version suffix (`yaml/v3`, `yaml.v3` and `yaml` all give `yaml`); the check is
+syntactic, so a local variable that shadows the package name is a false positive. A layer is the first `go_layers` entry
+whose `paths` match the file's directory; an import of a module package in another layer is a violation unless the
+importing layer lists it in `may_import`. Imports of packages outside the module, and of module packages in no layer, are
+not layer-checked (`go_forbidden_imports` covers them). A bad entry (unknown field, missing `call`, invalid glob, a
+`may_import` naming no layer) fails the run with a message naming the key and index.
+
+To grandfather existing violations, list the rule id per path in `[per_file_ignores]`.
+
+**Migrating from ai-rulez's archlint test package.** `forbidden` (import path to selectors) becomes one
+`go_forbidden_calls` entry per selector, or a wildcard, with `exempt` prefixes as `allow_in = ["internal/runner/**"]` and
+the `internal/` scope as `paths`. The `allowlist.txt` ratchet becomes `[per_file_ignores]` entries. Differences: archlint
+counts sites per file and fails when an allowlist entry is stale (poly has no stale-entry check); it skips a selector
+whose identifier go/parser resolved to a local object (poly is syntactic and cannot); and its `go list -deps` import test
+follows transitive dependencies, where `go_forbidden_imports` checks direct imports only.
+
 ### Python type checking
 
 `[engines.python-types]` is opt-in Python type checking, a project-check engine. `backend` picks the checker: `"ty"` (in the

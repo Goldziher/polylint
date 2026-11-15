@@ -428,7 +428,8 @@ impl Config {
     /// language-agnostic `[lint.astgrep]` table's `select` / `extend_select` /
     /// `ignore` / `rules` keys — poly's uniform rule-selection vocabulary
     /// (ADR 0016), passed through verbatim for `RuleSelection::from_options` to
-    /// parse inside the engine.
+    /// parse inside the engine, along with the Go architecture rule tables
+    /// (`go_forbidden_calls`, `go_forbidden_imports`, `go_layers`).
     fn build_astgrep_options(&self, layers: &[&toml::Table]) -> toml::Table {
         let mut options = toml::Table::new();
         if !self.rules_dirs.is_empty() {
@@ -443,7 +444,15 @@ impl Config {
             toml::Value::Boolean(self.rules_builtin_pack),
         );
         let selection = engine_first::merge(layers.iter().copied());
-        for key in ["select", "extend_select", "ignore", "rules"] {
+        for key in [
+            "select",
+            "extend_select",
+            "ignore",
+            "rules",
+            "go_forbidden_calls",
+            "go_forbidden_imports",
+            "go_layers",
+        ] {
             if let Some(value) = selection.get(key) {
                 options.insert(key.to_string(), value.clone());
             }
