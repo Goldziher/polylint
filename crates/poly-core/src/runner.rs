@@ -774,6 +774,7 @@ fn format_one(
     if skipped.is_some() {
         return Ok(format_skip_result(f, skipped));
     }
+    let initial = Arc::clone(&src.content);
 
     // Run every format engine once over `input`, returning the chained output.
     // Debug records are collected on the first pass only (`record_debug`) so the
@@ -859,7 +860,7 @@ fn format_one(
         Ok(current)
     };
 
-    let (current, settled) = format_to_fixed_point(Arc::from(original.as_str()), run_pass)?;
+    let (current, settled) = format_to_fixed_point(initial, run_pass)?;
 
     let changed = *current != *original;
     if changed && write {
