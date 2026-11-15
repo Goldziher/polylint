@@ -25,9 +25,9 @@
 mod links;
 
 use std::borrow::Cow;
-use std::collections::{BTreeMap, HashSet};
+use std::collections::{BTreeMap, HashMap, HashSet};
 use std::path::PathBuf;
-use std::sync::{Arc, LazyLock};
+use std::sync::{Arc, LazyLock, Mutex, PoisonError};
 
 use regex::Regex;
 use rumdl_lib::{
@@ -176,22 +176,22 @@ impl Engine for RumdlEngine {
         if contains_go_template_markdown(&src.content) {
             return Ok(Vec::new());
         }
-        let rumdl_cfg = build_rumdl_config(cfg, &src.language);
-        let rules = guarded_rules(&rumdl_cfg, &src.content);
+        let set = rule_set(cfg, &src.language);
+        let rumdl_cfg = &set.config;
         let flavor = rumdl_cfg.markdown_flavor();
-        let format_owned = format_owned_rules(&rules);
+        let format_owned = &set.format_owned;
         rumdl_lib::lint(
             &src.content,
-            &rules,
+            &set.rules,
             false,
             flavor,
             Some(src.path.clone()),
-            Some(&rumdl_cfg),
+            Some(rumdl_cfg),
         )
         .map(|warnings| {
             warnings
                 .iter()
-                .filter(|w| !is_format_owned(w, &format_owned))
+                .filter(|w| !is_format_owned(w, format_owned))
                 .map(|w| map_warning(w, "rumdl"))
                 .collect()
         })
@@ -205,13 +205,19 @@ impl Engine for RumdlEngine {
         if src.language == Language::Markdown && !markdown_fmt::uses_rumdl_formatter(cfg) {
             return markdown_fmt::format(src, cfg);
         }
-        let rumdl_cfg = build_rumdl_config(cfg, &src.language);
-        let mut rules = guarded_rules(&rumdl_cfg, &src.content);
+        let set = rule_set(cfg, &src.language);
+        let rumdl_cfg = &set.config;
+        let mut rules = set.rules.clone();
+        for rule in &mut rules {
+            if rule.name() == MD020 {
+                *rule = Box::new(GuardedMd020::new(Arc::clone(&src.content)));
+            }
+        }
         rules.retain(|rule| rule.name() != MD038);
         let coordinator = FixCoordinator::default();
         let mut content = src.content.to_string();
         coordinator
-            .apply_fixes_iterative(&rules, &[], &mut content, &rumdl_cfg, 10, Some(&src.path))
+            .apply_fixes_iterative(&rules, &[], &mut content, rumdl_cfg, 10, Some(&src.path))
             .map_err(|e| anyhow::anyhow!("rumdl format: {e}"))?;
         if content == *src.content {
             Ok(FormatOutput::Unchanged)
@@ -359,23 +365,37 @@ static HEADING_TEXT_ENDS_IN_HASH: LazyLock<Regex> =
 #[derive(Clone)]
 struct GuardedMd020 {
     inner: MD020NoMissingSpaceClosedAtx,
-    /// The document as the author wrote it, before any fix pass.
-    original: Arc<str>,
+    /// The document as the author wrote it, before any fix pass. `None` for the shared lint rule
+    /// set, which only checks: a check always sees the authored document, so it stands in.
+    original: Option<Arc<str>>,
 }
 
 impl GuardedMd020 {
     fn new(original: Arc<str>) -> Self {
         Self {
             inner: MD020NoMissingSpaceClosedAtx::new(),
-            original,
+            original: Some(original),
+        }
+    }
+
+    /// The guard shared across files by lint runs, taking the document from the check context.
+    fn for_lint() -> Self {
+        Self {
+            inner: MD020NoMissingSpaceClosedAtx::new(),
+            original: None,
         }
     }
 
     /// Whether `line` is a heading MD020 must not touch — see
     /// [`HEADING_TEXT_ENDS_IN_HASH`]. Accepts a line with or without its terminator.
     fn is_guarded(&self, line: &str) -> bool {
+        self.is_guarded_in(line, self.original.as_deref().unwrap_or_default())
+    }
+
+    /// [`Self::is_guarded`] against an explicit authored document.
+    fn is_guarded_in(&self, line: &str, original: &str) -> bool {
         let line = line.trim_end_matches(['\r', '\n']);
-        HEADING_TEXT_ENDS_IN_HASH.is_match(line) && self.original.lines().any(|authored| authored == line)
+        HEADING_TEXT_ENDS_IN_HASH.is_match(line) && original.lines().any(|authored| authored == line)
     }
 }
 
@@ -390,7 +410,10 @@ impl Rule for GuardedMd020 {
 
     fn check(&self, ctx: &LintContext) -> LintResult {
         let mut warnings = self.inner.check(ctx)?;
-        warnings.retain(|warning| !nth_line(ctx.content, warning.line).is_some_and(|line| self.is_guarded(line)));
+        let original = self.original.as_deref().unwrap_or(ctx.content);
+        warnings.retain(|warning| {
+            !nth_line(ctx.content, warning.line).is_some_and(|line| self.is_guarded_in(line, original))
+        });
         Ok(warnings)
     }
 
@@ -453,17 +476,52 @@ impl GuardedMd020 {
 }
 
 /// Resolve the active rule set, with [`GuardedMd020`] standing in for MD020.
-fn guarded_rules(config: &RumdlConfig, original: &Arc<str>) -> Vec<Box<dyn Rule>> {
+fn guarded_rules(config: &RumdlConfig) -> Vec<Box<dyn Rule>> {
     filter_rules(&all_rules(config), &config.global)
         .into_iter()
         .map(|rule| {
             if rule.name() == MD020 {
-                Box::new(GuardedMd020::new(Arc::clone(original))) as Box<dyn Rule>
+                Box::new(GuardedMd020::for_lint()) as Box<dyn Rule>
             } else {
                 rule
             }
         })
         .collect()
+}
+
+/// What a file's rumdl run needs that depends only on the engine config and the Markdown flavor.
+struct RuleSet {
+    config: RumdlConfig,
+    /// The active rules; MD020 is the lint-mode guard, replaced per file by `format`.
+    rules: Vec<Box<dyn Rule>>,
+    format_owned: HashSet<&'static str>,
+}
+
+/// Distinct configs remembered before the memo starts over; a run resolves a handful.
+const RULE_SET_MEMO_CAP: usize = 64;
+
+/// The [`RuleSet`] for `cfg` and `language`, built once per distinct config and flavor: building it
+/// constructs every rumdl rule, which per file dominated linting a small document.
+fn rule_set(cfg: &EngineConfig, language: &Language) -> Arc<RuleSet> {
+    static MEMO: LazyLock<Mutex<HashMap<([u8; 32], bool), Arc<RuleSet>>>> = LazyLock::new(Mutex::default);
+    let key = (cfg.fingerprint(), *language == Language::Mdx);
+    if let Some(hit) = MEMO.lock().unwrap_or_else(PoisonError::into_inner).get(&key) {
+        return Arc::clone(hit);
+    }
+    let config = build_rumdl_config(cfg, language);
+    let rules = guarded_rules(&config);
+    let format_owned = format_owned_rules(&rules);
+    let built = Arc::new(RuleSet {
+        config,
+        rules,
+        format_owned,
+    });
+    let mut memo = MEMO.lock().unwrap_or_else(PoisonError::into_inner);
+    if memo.len() >= RULE_SET_MEMO_CAP {
+        memo.clear();
+    }
+    memo.insert(key, Arc::clone(&built));
+    built
 }
 
 /// The set of rule codes (e.g. `"MD013"`) that belong to rumdl's `Whitespace`
@@ -569,6 +627,29 @@ mod tests {
             build_rumdl_config(&cfg, &Language::Markdown).markdown_flavor(),
             MarkdownFlavor::MDX
         );
+    }
+
+    #[test]
+    fn rule_sets_are_shared_per_config_and_flavor() {
+        let cfg = default_cfg();
+        assert!(Arc::ptr_eq(
+            &rule_set(&cfg, &Language::Markdown),
+            &rule_set(&cfg, &Language::Markdown)
+        ));
+        assert!(!Arc::ptr_eq(
+            &rule_set(&cfg, &Language::Markdown),
+            &rule_set(&cfg, &Language::Mdx)
+        ));
+    }
+
+    #[test]
+    fn the_shared_lint_guard_follows_each_files_own_content() {
+        let engine = RumdlEngine;
+        let cfg = default_cfg();
+        let guarded = engine.lint(&source("### C#\n"), &cfg).unwrap();
+        assert!(guarded.iter().all(|d| d.code.as_deref() != Some(MD020)), "{guarded:?}");
+        let ungated = engine.lint(&source("##Foo##\n"), &cfg).unwrap();
+        assert!(ungated.iter().any(|d| d.code.as_deref() == Some(MD020)), "{ungated:?}");
     }
 
     #[test]
