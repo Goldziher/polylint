@@ -206,15 +206,17 @@ impl Language {
     /// Returns `None` for unknown extensions; the tree-sitter tier (M5) provides a
     /// secondary fallback for those.
     pub fn from_path(path: &Path) -> Option<Language> {
-        if is_helm_template_file(path) {
-            return Some(Language::Other(HELM_TEMPLATE.to_owned()));
-        }
         if let Some(lang) = path
             .extension()
             .and_then(|e| e.to_str())
-            .and_then(|ext| Self::from_extension(&ext.to_ascii_lowercase(), path))
+            .and_then(|ext| with_lowercase(ext, |lower| Self::from_extension(lower, path)))
         {
             return Some(lang);
+        }
+        // Only `.tpl` and `NOTES.txt` can be helm templates, and neither has an
+        // extension mapping above, so checking after the lookup changes nothing.
+        if is_helm_template_file(path) {
+            return Some(Language::Other(HELM_TEMPLATE.to_owned()));
         }
         if let Some(name) = path.file_name().and_then(|n| n.to_str()) {
             let lower = name.to_ascii_lowercase();
@@ -240,6 +242,15 @@ impl Language {
             }
         }
         None
+    }
+
+    /// Whether `path` ends in a well-known binary or data extension that no
+    /// grammar in the tree-sitter pack claims, so the caller can skip the pack's
+    /// lookup for it. Case-insensitive.
+    pub fn has_non_source_extension(path: &Path) -> bool {
+        path.extension().and_then(|e| e.to_str()).is_some_and(|ext| {
+            with_lowercase(ext, |lower| NON_SOURCE_EXTENSIONS.contains(&lower).then_some(())).is_some()
+        })
     }
 
     /// Map a lowercase file extension to a [`Language`], returning `None` for
@@ -434,6 +445,29 @@ fn is_dockerfile_name(lower: &str) -> bool {
 /// plans for it, so nothing else lints or reformats them.
 pub const HELM_TEMPLATE: &str = "helm-template";
 
+/// Extensions of binary and data files that tree-sitter-language-pack 1.25 maps to no grammar.
+const NON_SOURCE_EXTENSIONS: &[&str] = &[
+    "png", "jpg", "jpeg", "gif", "ico", "webp", "bmp", "pdf", "zip", "gz", "tgz", "xz", "bz2", "7z", "jar", "woff",
+    "woff2", "ttf", "otf", "eot", "mp3", "mp4", "mov", "wasm", "exe", "dll", "so", "dylib", "lock", "bin",
+];
+
+/// Longest extension any lookup above can match; longer ones cannot be known.
+const MAX_EXTENSION_LEN: usize = 16;
+
+/// Run `lookup` on the ASCII-lowercased `ext` without allocating. An extension
+/// too long for the buffer matches no table, so it yields `None`.
+fn with_lowercase<T>(ext: &str, lookup: impl FnOnce(&str) -> Option<T>) -> Option<T> {
+    let bytes = ext.as_bytes();
+    if bytes.len() > MAX_EXTENSION_LEN {
+        return None;
+    }
+    let mut buffer = [0u8; MAX_EXTENSION_LEN];
+    let lower = &mut buffer[..bytes.len()];
+    lower.copy_from_slice(bytes);
+    lower.make_ascii_lowercase();
+    lookup(std::str::from_utf8(lower).ok()?)
+}
+
 fn is_helm_template_file(path: &Path) -> bool {
     let Some(name) = path.file_name().and_then(|n| n.to_str()) else {
         return false;
@@ -489,6 +523,32 @@ mod tests {
             "only files under a templates directory belong to a chart"
         );
         assert_eq!(Language::from_path(Path::new("NOTES.txt")), None);
+    }
+
+    #[test]
+    fn extensions_match_case_insensitively_without_changing_results() {
+        for (name, expected) in [
+            ("a/Main.PY", Some(Language::Python)),
+            ("a/x.Rs", Some(Language::Rust)),
+            ("a/page.HTM", Some(Language::Html)),
+            ("a/page.component.HTML", Some(Language::Angular)),
+            ("a/x.Handlebars", Some(Language::Mustache)),
+            ("a/x.averyveryverylongextension", None),
+            ("a/x.png", None),
+            ("a/noext", None),
+        ] {
+            assert_eq!(Language::from_path(Path::new(name)), expected, "{name}");
+        }
+    }
+
+    #[test]
+    fn non_source_extensions_are_recognised_case_insensitively() {
+        for name in ["a/x.png", "a/X.PNG", "Cargo.lock", "a/lib.so", "a/f.WOFF2", "a/z.7z"] {
+            assert!(Language::has_non_source_extension(Path::new(name)), "{name}");
+        }
+        for name in ["a/x.py", "a/x.svg", "a/x.txt", "a/noext", "a/x.png.md", "a/.lock-file"] {
+            assert!(!Language::has_non_source_extension(Path::new(name)), "{name}");
+        }
     }
 
     #[test]

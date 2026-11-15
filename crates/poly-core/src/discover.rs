@@ -532,6 +532,11 @@ pub(crate) fn detect(path: &std::path::Path) -> Option<Language> {
     if let Some(language) = Language::from_path(path) {
         return Some(language);
     }
+    // The pack maps none of these to a grammar, and asking costs a compound-suffix scan and a
+    // table lookup for every `.lock`, image and archive in the tree.
+    if Language::has_non_source_extension(path) {
+        return None;
+    }
     let name = tree_sitter_language_pack::detect_language(&path.to_string_lossy())?;
     // The pack resolves every `*.txt` to `vimdoc`, which mislabels licenses, notices and CMake
     // lists; a build file is CMake, any other `.txt` is plain text.
