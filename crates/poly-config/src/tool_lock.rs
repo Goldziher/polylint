@@ -3,7 +3,8 @@
 //!
 //! Every entry point that builds a run reads `poly.lock` and [`install`]s the
 //! entries once per process (`poly-cli` through its config resolver,
-//! `poly-host-services`, behind `poly mcp`, through [`install_from_repo`]);
+//! `poly-host-services`, behind `poly mcp`, through a scope that serializes runs with
+//! different pins);
 //! the tool provisioner in `poly-core` asks [`get`] before it resolves anything,
 //! so a locked tool needs no network round trip to know what to download.
 
@@ -59,8 +60,20 @@ pub fn install(tools: Vec<LockedTool>) {
 }
 
 /// Install the `[[tools]]` of the `poly.lock` at the root of the repository
-/// holding `start` (the nearest ancestor with a `.git`, else `start` itself),
-/// replacing any earlier set; no `poly.lock` installs an empty set.
+/// holding `start` (see [`read_from_repo`]), replacing any earlier set; no
+/// `poly.lock` installs an empty set.
+///
+/// # Errors
+///
+/// Returns `Err` when `poly.lock` exists but cannot be read or parsed.
+pub fn install_from_repo(start: &Path) -> anyhow::Result<()> {
+    install(read_from_repo(start)?);
+    Ok(())
+}
+
+/// The `[[tools]]` of the `poly.lock` at the root of the repository holding
+/// `start` (the nearest ancestor with a `.git`, else `start` itself); empty when
+/// there is no `poly.lock`. Installs nothing.
 ///
 /// This reads only the tool entries; `poly-cli` owns validating the rest of the
 /// file.
@@ -68,7 +81,7 @@ pub fn install(tools: Vec<LockedTool>) {
 /// # Errors
 ///
 /// Returns `Err` when `poly.lock` exists but cannot be read or parsed.
-pub fn install_from_repo(start: &Path) -> anyhow::Result<()> {
+pub fn read_from_repo(start: &Path) -> anyhow::Result<Vec<LockedTool>> {
     #[derive(Deserialize)]
     struct ToolsOnly {
         #[serde(default)]
@@ -82,13 +95,11 @@ pub fn install_from_repo(start: &Path) -> anyhow::Result<()> {
     let root = start.ancestors().find(|dir| dir.join(".git").exists()).unwrap_or(start);
     let path = root.join("poly.lock");
     if !path.is_file() {
-        install(Vec::new());
-        return Ok(());
+        return Ok(Vec::new());
     }
     let text = std::fs::read_to_string(&path).with_context(|| format!("reading {}", path.display()))?;
     let parsed: ToolsOnly = toml::from_str(&text).with_context(|| format!("parsing {}", path.display()))?;
-    install(parsed.tools);
-    Ok(())
+    Ok(parsed.tools)
 }
 
 /// The locked entry for the tool called `name`, if `poly.lock` pins it.

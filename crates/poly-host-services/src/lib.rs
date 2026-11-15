@@ -11,6 +11,7 @@
 
 pub mod ops;
 mod services;
+pub mod state_cache;
 mod workspace_guard;
 
 pub use poly_frontend_api::ServiceCaller;

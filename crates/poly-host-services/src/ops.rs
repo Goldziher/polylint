@@ -16,6 +16,7 @@
 //! the `poly` CLI. This is a documented v1 limitation (ADR 0020).
 
 use std::path::{Path, PathBuf};
+use std::sync::Arc;
 
 use poly_cache::{ResultCache, root_from_cwd};
 use poly_config::PolyConfig;
@@ -28,42 +29,54 @@ use poly_frontend_api::dto::{
 };
 use poly_frontend_api::wire::InstallMode;
 
-/// Resolve the `poly-core` run configuration the way the CLI does, but
-/// network-free (see the module docs): load an explicit file when supplied,
-/// otherwise discover `poly.toml` from the working directory.
-pub fn resolve_config(explicit: Option<&Path>) -> anyhow::Result<Config> {
-    install_tool_lock(explicit)?;
+use crate::state_cache::{self, StateCache, ToolLockGuard};
+
+static CONFIGS: StateCache<Config> = StateCache::new();
+static POLY_CONFIGS: StateCache<PolyConfig> = StateCache::new();
+
+/// Where a request's config resolution starts: the explicit file, else the working directory.
+fn config_root(explicit: Option<&Path>) -> (PathBuf, bool) {
     match explicit {
-        Some(path) => Config::load_file(path),
-        None => {
-            let cwd = std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
-            Config::load(&cwd)
-        }
+        Some(path) => (path.to_path_buf(), true),
+        None => (std::env::current_dir().unwrap_or_else(|_| PathBuf::from(".")), false),
     }
 }
 
-/// Make the repository's `poly.lock` tool pins visible to the tool provisioner,
-/// as the CLI's config resolver does, so a run served here downloads the locked
-/// releases rather than resolving `latest` afresh.
-fn install_tool_lock(explicit: Option<&Path>) -> anyhow::Result<()> {
-    let start = match explicit {
-        Some(path) => path.to_path_buf(),
-        None => std::env::current_dir().unwrap_or_else(|_| PathBuf::from(".")),
-    };
-    poly_config::tool_lock::install_from_repo(&start)
+/// Resolve the `poly-core` run configuration the way the CLI does, but
+/// network-free (see the module docs): load an explicit file when supplied,
+/// otherwise discover `poly.toml` from the working directory.
+///
+/// The parse is reused across requests while the files it read are unchanged
+/// (see [`crate::state_cache`]).
+pub fn resolve_config(explicit: Option<&Path>) -> anyhow::Result<Arc<Config>> {
+    let (root, is_file) = config_root(explicit);
+    CONFIGS.get_or_load(&root, is_file, || {
+        if is_file {
+            Config::load_file(&root)
+        } else {
+            Config::load(&root)
+        }
+    })
+}
+
+/// Pin the repository's `poly.lock` tools for the duration of a run, as the CLI's config resolver
+/// does, so a run served here downloads the locked releases rather than resolving `latest`
+/// afresh. The guard serializes against concurrent runs holding different pins.
+fn tool_lock_scope(explicit: Option<&Path>) -> anyhow::Result<ToolLockGuard> {
+    state_cache::enter_repo(&config_root(explicit).0)
 }
 
 /// Resolve the full parsed [`PolyConfig`] (needed by `config_show` and the
 /// whole-project tools), network-free — mirroring [`resolve_config`].
-pub fn resolve_poly_config(explicit: Option<&Path>) -> anyhow::Result<PolyConfig> {
-    install_tool_lock(explicit)?;
-    match explicit {
-        Some(path) => PolyConfig::load_file(path),
-        None => {
-            let cwd = std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
-            PolyConfig::load(&cwd)
+pub fn resolve_poly_config(explicit: Option<&Path>) -> anyhow::Result<Arc<PolyConfig>> {
+    let (root, is_file) = config_root(explicit);
+    POLY_CONFIGS.get_or_load(&root, is_file, || {
+        if is_file {
+            PolyConfig::load_file(&root)
+        } else {
+            PolyConfig::load(&root)
         }
-    }
+    })
 }
 
 /// Turn the request's path list into concrete paths, defaulting to the current
@@ -136,6 +149,7 @@ pub fn lint_run_with(
     install: InstallMode,
 ) -> anyhow::Result<LintRun> {
     let explicit_config = config.is_some();
+    let _tool_lock = tool_lock_scope(config.map(Path::new))?;
     let config = resolve_config(config.map(Path::new))?;
     let resolved = resolve_paths(paths);
     poly_core::lint_run(
@@ -168,6 +182,7 @@ pub fn format_run_with(
     install: InstallMode,
 ) -> anyhow::Result<FormatRun> {
     let explicit_config = config.is_some();
+    let _tool_lock = tool_lock_scope(config.map(Path::new))?;
     let config = resolve_config(config.map(Path::new))?;
     let resolved = resolve_paths(paths);
     poly_core::format_run(
@@ -382,6 +397,7 @@ pub fn workspace_lint(
     jobs: Option<usize>,
     no_cache: bool,
 ) -> anyhow::Result<WorkspaceReport> {
+    let _tool_lock = tool_lock_scope(config.map(Path::new))?;
     let resolved = resolve_poly_config(config.map(Path::new))?;
     let outcome = poly_workspace::run_workspace_lint(
         &resolved,
@@ -423,7 +439,7 @@ mod tests {
     }
 
     #[test]
-    fn loading_a_config_installs_the_repositorys_tool_lock() {
+    fn a_run_scope_installs_the_repositorys_tool_lock() {
         let _serial = crate::CONFIG_LOADING
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner);
@@ -437,11 +453,11 @@ mod tests {
              [[tools.assets]]\nplatform = \"any\"\nurl = \"https://example.invalid/t\"\nsha256 = \"aa\"\n",
         )
         .unwrap();
-        resolve_config(Some(&config)).unwrap();
+        let scope = tool_lock_scope(Some(&config)).unwrap();
         let locked = poly_config::tool_lock::get("mcp-locked-tool");
-        resolve_poly_config(Some(&config)).unwrap();
+        drop(scope);
         poly_config::tool_lock::install(Vec::new());
-        assert_eq!(locked.expect("the MCP config path installs poly.lock").version, "3.2.1");
+        assert_eq!(locked.expect("the MCP run scope installs poly.lock").version, "3.2.1");
     }
 
     #[test]
