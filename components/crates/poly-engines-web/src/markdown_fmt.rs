@@ -58,11 +58,14 @@ pub(super) fn format(src: &SourceFile, cfg: &EngineConfig) -> anyhow::Result<For
             ..SessionServices::default()
         },
     );
-    let formatted = oxc_formatter_markdown::format_with_session(&session, &src.content, build_options(cfg))
+    let Ok(formatted) = oxc_formatter_markdown::format_with_session(&session, &src.content, build_options(cfg))
         .map_err(|_| ())
         .and_then(|formatted| formatted.print().map_err(|_| ()))
         .map(|printed| printed.into_code())
-        .map_err(|()| anyhow::anyhow!("the markdown formatter could not parse {}", src.path.display()))?;
+    else {
+        tracing::debug!(path = %src.path.display(), "the markdown formatter declined the file");
+        return Ok(FormatOutput::Unchanged);
+    };
     if formatted == *src.content {
         Ok(FormatOutput::Unchanged)
     } else {
