@@ -1955,6 +1955,14 @@
       "config_files": [
         ".formatter.exs"
       ],
+      "link_dirs": [
+        "deps"
+      ],
+      "fetched": {
+        "dir": "deps",
+        "command": "mix deps.get",
+        "config_mentions": "import_deps"
+      },
       "install": {
         "hint": "install Elixir (brew install elixir, or mise/asdf): poly runs the host `mix` and never bundles the BEAM"
       }

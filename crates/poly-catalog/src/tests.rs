@@ -467,6 +467,19 @@ fn elixir_tools_run_per_mix_project_on_the_host_and_download_nothing() {
         let tool = Catalog::get().tool(name).expect(name);
         assert_eq!(tool.binary, "mix", "{role}");
     }
+    let fetched = recipe_of("mix")
+        .fetched
+        .as_ref()
+        .expect("mix declares the dependencies it needs fetched");
+    assert_eq!(
+        (
+            fetched.dir.as_str(),
+            fetched.command.as_str(),
+            fetched.config_mentions.as_deref()
+        ),
+        ("deps", "mix deps.get", Some("import_deps"))
+    );
+    assert_eq!(recipe_of("mix").link_dirs, ["deps"]);
     assert_eq!(recipe_of("credo").output, Output::CredoJson);
     let credo = Catalog::get().tool("credo").expect("credo");
     let (_, lint) = credo.lint_command().expect("a lint command");

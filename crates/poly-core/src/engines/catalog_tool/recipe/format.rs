@@ -57,7 +57,28 @@ impl RecipeTool {
 
     /// Run `passes` over copies of `members` and return each file's new content,
     /// or `None` where it came out unchanged.
+    ///
+    /// Files outside the working directory are rewritten in a scratch copy of their own: sharing
+    /// one with the project's files would hand them the project's formatter config.
     pub(super) fn rewrite(&self, passes: &[Template], members: &[&Member<'_>]) -> Vec<anyhow::Result<Option<String>>> {
+        let (outside, inside): (Vec<usize>, Vec<usize>) = (0..members.len()).partition(|&i| members[i].is_outside());
+        if outside.is_empty() {
+            return self.rewrite_group(passes, members);
+        }
+        let mut outcomes: Vec<Option<anyhow::Result<Option<String>>>> = members.iter().map(|_| None).collect();
+        for group in [inside, outside] {
+            let subset: Vec<&Member<'_>> = group.iter().map(|&i| members[i]).collect();
+            for (index, outcome) in group.into_iter().zip(self.rewrite_group(passes, &subset)) {
+                outcomes[index] = Some(outcome);
+            }
+        }
+        outcomes
+            .into_iter()
+            .map(|outcome| outcome.unwrap_or_else(|| Err(anyhow!("not rewritten"))))
+            .collect()
+    }
+
+    fn rewrite_group(&self, passes: &[Template], members: &[&Member<'_>]) -> Vec<anyhow::Result<Option<String>>> {
         let mut outcomes: Vec<Option<anyhow::Result<Option<String>>>> = members.iter().map(|_| None).collect();
         if members.is_empty() || passes.is_empty() {
             return members.iter().map(|_| Ok(None)).collect();
@@ -66,8 +87,11 @@ impl RecipeTool {
             Ok(mirror) => mirror,
             Err(error) => return members.iter().map(|_| Err(anyhow!("{error:#}"))).collect(),
         };
-        for member in members {
-            if let Err(error) = mirror.copy_context(&self.cwd, &member.rel, &self.context_names) {
+        for member in members.iter().filter(|member| !member.is_outside()) {
+            let linked = mirror
+                .copy_context(&self.cwd, &member.rel, &self.context_names)
+                .and_then(|()| mirror.link_context(&self.cwd, &member.rel, &self.recipe.link_dirs));
+            if let Err(error) = linked {
                 return members.iter().map(|_| Err(anyhow!("{error:#}"))).collect();
             }
         }

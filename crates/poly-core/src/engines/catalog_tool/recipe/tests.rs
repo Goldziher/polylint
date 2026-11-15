@@ -16,6 +16,7 @@ use super::{RecipeTool, Role};
 use crate::engine::{FormatOutput, Severity, SourceFile};
 use crate::language::Language;
 
+mod fetched;
 mod gau;
 mod go_fix;
 

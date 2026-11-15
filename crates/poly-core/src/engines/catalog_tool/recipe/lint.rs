@@ -36,6 +36,17 @@ pub(super) struct Member<'a> {
     pub(super) rel: PathBuf,
 }
 
+impl Member<'_> {
+    /// Whether the file lives outside the working directory and is mirrored under a stand-in
+    /// name. The project config and dependencies found in the working directory do not govern it.
+    pub(super) fn is_outside(&self) -> bool {
+        self.rel.starts_with(OUTSIDE)
+    }
+}
+
+/// Directory a file outside the working directory is placed under in a scratch copy.
+const OUTSIDE: &str = "_outside";
+
 /// The files that share one invocation root.
 struct UnitGroup {
     /// Where the tool is run from.
@@ -105,7 +116,7 @@ impl RecipeTool {
             .map(|(index, src)| {
                 let rel = paths::relative(&self.cwd, &src.path).unwrap_or_else(|| {
                     let name = src.path.file_name().unwrap_or_default();
-                    PathBuf::from("_outside").join(index.to_string()).join(name)
+                    PathBuf::from(OUTSIDE).join(index.to_string()).join(name)
                 });
                 Member { src, rel }
             })
@@ -127,7 +138,10 @@ impl RecipeTool {
         for &index in indices {
             let member = &members[index];
             mirror.write(&member.rel, &member.src.content)?;
-            mirror.copy_context(&self.cwd, &member.rel, &self.context_names)?;
+            if !member.is_outside() {
+                mirror.copy_context(&self.cwd, &member.rel, &self.context_names)?;
+                mirror.link_context(&self.cwd, &member.rel, &self.recipe.link_dirs)?;
+            }
         }
         let mut results: Vec<Option<anyhow::Result<Vec<Diagnostic>>>> = members.iter().map(|_| None).collect();
         self.lint_tree(mirror.root(), members, indices, &mut results);

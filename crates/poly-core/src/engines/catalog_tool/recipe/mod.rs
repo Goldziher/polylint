@@ -26,6 +26,7 @@
 mod archive;
 mod argv;
 mod exec;
+mod fetched;
 mod format;
 mod gofix;
 mod install;

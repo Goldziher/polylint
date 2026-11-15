@@ -94,6 +94,7 @@ pub(in crate::engines::catalog_tool) fn forget_run_memos() {
     super::unit::PREPARED.clear();
     super::paths::ROOTS.clear();
     super::salt::DIGESTS.clear();
+    super::fetched::UNFETCHED.clear();
 }
 
 #[cfg(test)]

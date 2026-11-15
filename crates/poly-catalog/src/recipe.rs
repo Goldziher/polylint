@@ -225,6 +225,27 @@ pub struct Recipe {
     pub ok_exits: Vec<i32>,
     /// Absence handling and pinned downloads.
     pub install: Option<Install>,
+    /// Directories of the project root a scratch copy links to instead of copying: the tool
+    /// judges a file against them (`deps` for `mix format`'s `import_deps`) and they are far
+    /// too large to copy per run.
+    pub link_dirs: Vec<String>,
+    /// Project dependencies that must be fetched before the tool can run.
+    pub fetched: Option<Fetched>,
+}
+
+/// A dependency directory a tool cannot run without. A project missing it is an environment
+/// state, not a tool failure, so its files are skipped with a reason naming the fix.
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct Fetched {
+    /// Directory of the project root holding the fetched dependencies (`deps`).
+    pub dir: String,
+    /// The command that fetches them, shown in the skip reason (`mix deps.get`).
+    pub command: String,
+    /// Only a project whose config files (`Recipe::config_files`) contain this text needs the
+    /// dependencies (`import_deps`). Every project needs them when absent.
+    #[serde(default)]
+    pub config_mentions: Option<String>,
 }
 
 impl Recipe {

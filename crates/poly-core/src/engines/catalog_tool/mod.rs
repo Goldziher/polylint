@@ -554,8 +554,15 @@ impl Engine for CatalogToolEngine {
         !self.is_lint() && probe_binary(&self.tool.binary).is_some()
     }
 
-    fn skip_reason(&self, _src: &SourceFile) -> Option<Cow<'static, str>> {
-        (!self.is_lint() && self.unavailable.is_some()).then_some(Cow::Borrowed(UNAVAILABLE_SKIP))
+    fn skip_reason(&self, src: &SourceFile) -> Option<Cow<'static, str>> {
+        if self.is_lint() {
+            return None;
+        }
+        if self.unavailable.is_some() {
+            return Some(Cow::Borrowed(UNAVAILABLE_SKIP));
+        }
+        let recipe = self.recipe.as_ref()?;
+        recipe.unfetched_reason(&src.path).map(Cow::Owned)
     }
 
     /// A catalog engine is built for the specific language it was matched to, so
@@ -642,7 +649,9 @@ impl Engine for CatalogToolEngine {
         _cfg: &EngineConfig,
     ) -> anyhow::Result<Vec<anyhow::Result<FormatOutput>>> {
         let recipe = self.recipe.as_ref().context("this tool does not batch")?;
-        let (applicable, positions) = select(batch, |src| recipe.applies_to(&src.path));
+        let (applicable, positions) = select(batch, |src| {
+            recipe.applies_to(&src.path) && recipe.unfetched_reason(&src.path).is_none()
+        });
         let mut formatted = recipe.format_files(&applicable).into_iter();
         Ok(scatter(batch.len(), &positions, &mut formatted, || {
             Ok(FormatOutput::Unchanged)
@@ -716,7 +725,7 @@ impl CatalogToolEngine {
     /// Format one file with a recipe tool: through stdin when the tool has that
     /// form, else through a scratch copy.
     fn format_recipe(&self, recipe: &RecipeTool, src: &SourceFile) -> anyhow::Result<FormatOutput> {
-        if !recipe.applies_to(&src.path) {
+        if !recipe.applies_to(&src.path) || recipe.unfetched_reason(&src.path).is_some() {
             return Ok(FormatOutput::Unchanged);
         }
         if recipe.has_stdin_form() {

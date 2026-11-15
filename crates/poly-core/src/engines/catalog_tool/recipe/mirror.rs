@@ -65,6 +65,42 @@ impl Mirror {
         }
         Ok(())
     }
+
+    /// Link every directory named in `names` found in `rel`'s directory or any ancestor under
+    /// `cwd`, to the same relative place in the mirror. Linked, not copied: a dependency tree is
+    /// read by the tool and never written by it.
+    pub(super) fn link_context(&self, cwd: &Path, rel: &Path, names: &[String]) -> Result<()> {
+        let mut directory = rel.parent().map(Path::to_path_buf);
+        while let Some(current) = directory {
+            for name in names {
+                let source = cwd.join(&current).join(name);
+                let target = self.dir.path().join(&current).join(name);
+                if source.is_dir() && !target.exists() {
+                    if let Some(parent) = target.parent() {
+                        std::fs::create_dir_all(parent).with_context(|| format!("creating {}", parent.display()))?;
+                    }
+                    link_dir(&source, &target)
+                        .with_context(|| format!("linking project directory {} for the tool run", source.display()))?;
+                }
+            }
+            directory = if current.as_os_str().is_empty() {
+                None
+            } else {
+                current.parent().map(Path::to_path_buf)
+            };
+        }
+        Ok(())
+    }
+}
+
+#[cfg(unix)]
+fn link_dir(source: &Path, target: &Path) -> std::io::Result<()> {
+    std::os::unix::fs::symlink(source, target)
+}
+
+#[cfg(windows)]
+fn link_dir(source: &Path, target: &Path) -> std::io::Result<()> {
+    std::os::windows::fs::symlink_dir(source, target)
 }
 
 #[cfg(test)]
