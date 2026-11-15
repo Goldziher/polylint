@@ -69,6 +69,7 @@ use poly_engine_api::config::EngineConfig;
 use poly_engine_api::engine::{
     Capabilities, Diagnostic, Edit, Engine, FormatOutput, OptionKeys, OptionTable, Severity, SourceFile, Span,
 };
+use poly_engine_api::engine_guard::refuse_pathological_nesting;
 use poly_engine_api::language::Language;
 
 /// Opinionated rule selection: string codes resolved by [`RuleSelector::from_str`].
@@ -486,6 +487,7 @@ impl Engine for RuffEngine {
     }
 
     fn lint(&self, src: &SourceFile, cfg: &EngineConfig) -> anyhow::Result<Vec<Diagnostic>> {
+        refuse_pathological_nesting(&src.path, &src.content)?;
         let owned_settings;
         let settings = if let Some(version) = project_target(&src.path, cfg) {
             owned_settings = settings_with_target(cfg, version);
@@ -583,6 +585,7 @@ impl Engine for RuffEngine {
     }
 
     fn format(&self, src: &SourceFile, cfg: &EngineConfig) -> anyhow::Result<FormatOutput> {
+        refuse_pathological_nesting(&src.path, &src.content)?;
         if format::excluded(&src.path, cfg) {
             return Ok(FormatOutput::Unchanged);
         }

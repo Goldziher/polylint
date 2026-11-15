@@ -586,3 +586,16 @@ fn invalid_format_option_does_not_drop_valid_ones() {
         FormatOutput::Unchanged => panic!("expected Formatted"),
     }
 }
+
+#[test]
+fn pathologically_nested_input_is_refused_rather_than_parsed() {
+    let content = format!("<?php\n$a = {}1{};\n", "(".repeat(500), ")".repeat(500));
+    let engine = MagoEngine::default();
+    let src = make_src("deep.php", &content);
+    let lint = engine.lint(&src, &engine_cfg()).expect_err("lint refuses deep nesting");
+    assert!(lint.to_string().contains("not checked"), "{lint}");
+    let format = engine
+        .format(&src, &engine_cfg())
+        .expect_err("format refuses deep nesting");
+    assert!(format.to_string().contains("not checked"), "{format}");
+}

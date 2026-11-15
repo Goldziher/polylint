@@ -60,6 +60,7 @@ use poly_engine_api::config::EngineConfig;
 use poly_engine_api::engine::{
     Capabilities, Diagnostic, Engine, FormatOutput, OptionKeys, OptionTable, OptionType, Severity, SourceFile, Span,
 };
+use poly_engine_api::engine_guard::refuse_pathological_nesting;
 use poly_engine_api::language::Language;
 use poly_engine_api::options::OptionsExt;
 use poly_engine_api::rule_config::{RuleSelection, string_list, union_codes, warn_and_skip_blank};
@@ -233,6 +234,7 @@ impl Engine for SqruffEngine {
     }
 
     fn lint(&self, src: &SourceFile, cfg: &EngineConfig) -> anyhow::Result<Vec<Diagnostic>> {
+        refuse_pathological_nesting(&src.path, &src.content)?;
         with_linter(cfg, Mode::Lint, |linter| {
             let filename = src.path.to_string_lossy().into_owned();
             let linted = linter
@@ -247,6 +249,7 @@ impl Engine for SqruffEngine {
     }
 
     fn format(&self, src: &SourceFile, cfg: &EngineConfig) -> anyhow::Result<FormatOutput> {
+        refuse_pathological_nesting(&src.path, &src.content)?;
         with_linter(cfg, Mode::Format, |linter| {
             let filename = src.path.to_string_lossy().into_owned();
             let linted = linter

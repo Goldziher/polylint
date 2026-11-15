@@ -36,6 +36,7 @@ use poly_engine_api::config::EngineConfig;
 use poly_engine_api::engine::{
     Capabilities, Diagnostic, Engine, FormatOutput, OptionKeys, OptionTable, OptionType, SourceFile,
 };
+use poly_engine_api::engine_guard::refuse_pathological_nesting;
 use poly_engine_api::language::Language;
 
 /// PHP backend using the `mago` linter + formatter.
@@ -99,10 +100,12 @@ impl Engine for MagoEngine {
     }
 
     fn lint(&self, src: &SourceFile, cfg: &EngineConfig) -> anyhow::Result<Vec<Diagnostic>> {
+        refuse_pathological_nesting(&src.path, &src.content)?;
         lint::lint_php(src, cfg, &self.plans)
     }
 
     fn format(&self, src: &SourceFile, cfg: &EngineConfig) -> anyhow::Result<FormatOutput> {
+        refuse_pathological_nesting(&src.path, &src.content)?;
         format::format_php(src, cfg)
     }
 }

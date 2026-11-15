@@ -690,3 +690,16 @@ fn correctness_rules_stay_errors() {
         );
     }
 }
+
+#[test]
+fn pathologically_nested_input_is_refused_rather_than_parsed() {
+    let content = format!("x = {}1{}\n", "(".repeat(500), ")".repeat(500));
+    let engine = RuffEngine;
+    let src = make_src("deep.py", &content);
+    let lint = engine.lint(&src, &engine_cfg()).expect_err("lint refuses deep nesting");
+    assert!(lint.to_string().contains("not checked"), "{lint}");
+    let format = engine
+        .format(&src, &engine_cfg())
+        .expect_err("format refuses deep nesting");
+    assert!(format.to_string().contains("not checked"), "{format}");
+}

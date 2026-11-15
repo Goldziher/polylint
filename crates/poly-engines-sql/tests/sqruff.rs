@@ -590,3 +590,17 @@ fn default_config_keeps_sqruff_own_indentation() {
     );
     assert_ne!(default, two, "an explicit indent_width = 2 must change the layout");
 }
+
+#[test]
+fn pathologically_nested_input_is_refused_rather_than_parsed() {
+    let content = format!("SELECT {}1{};\n", "(".repeat(500), ")".repeat(500));
+    let src = make_source("deep.sql", &content);
+    let lint = SqruffEngine
+        .lint(&src, &lint_cfg())
+        .expect_err("lint refuses deep nesting");
+    assert!(lint.to_string().contains("not checked"), "{lint}");
+    let format = SqruffEngine
+        .format(&src, &fmt_cfg())
+        .expect_err("format refuses deep nesting");
+    assert!(format.to_string().contains("not checked"), "{format}");
+}
