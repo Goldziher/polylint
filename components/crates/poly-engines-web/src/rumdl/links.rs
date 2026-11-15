@@ -21,7 +21,7 @@ use poly_engine_api::template::contains_go_template_markdown;
 use rumdl_lib::config::Config as RumdlConfig;
 use rumdl_lib::rule::Rule;
 use rumdl_lib::rules::{all_rules, filter_rules};
-use rumdl_lib::workspace_index::WorkspaceIndex;
+use rumdl_lib::workspace_index::{FileIndex, WorkspaceIndex};
 
 use super::{build_rumdl_config, map_warning};
 
@@ -73,6 +73,50 @@ impl Flavor {
     }
 }
 
+/// Below this many files the index build stays on the calling thread: spawning costs more than it saves.
+const PARALLEL_MIN_FILES: usize = 32;
+
+/// One [`FileIndex`] per served file, in `served` order, built on up to `threads` worker threads
+/// (every core when `None`). Falls back to the calling thread when a worker cannot be spawned.
+fn build_indexes(served: &[(&ProjectFile, &Flavor)], threads: Option<usize>) -> Vec<FileIndex> {
+    let index_of = |(file, flavor): &(&ProjectFile, &Flavor)| {
+        rumdl_lib::build_file_index_only_with_config(
+            &file.content,
+            &flavor.rules,
+            flavor.config.markdown_flavor(),
+            Some(file.path.clone()),
+            &flavor.config,
+        )
+    };
+    let workers = threads
+        .or_else(|| std::thread::available_parallelism().ok().map(Into::into))
+        .unwrap_or(1)
+        .clamp(1, served.len().max(1));
+    if workers == 1 || served.len() < PARALLEL_MIN_FILES {
+        return served.iter().map(index_of).collect();
+    }
+    let chunk = served.len().div_ceil(workers);
+    std::thread::scope(|scope| {
+        let handles: Vec<_> = served
+            .chunks(chunk)
+            .map(|files| {
+                let spawned = std::thread::Builder::new()
+                    .spawn_scoped(scope, move || files.iter().map(index_of).collect::<Vec<_>>());
+                (files, spawned)
+            })
+            .collect();
+        handles
+            .into_iter()
+            .flat_map(
+                |(files, spawned)| match spawned.map(std::thread::ScopedJoinHandle::join) {
+                    Ok(Ok(indexes)) => indexes,
+                    _ => files.iter().map(index_of).collect(),
+                },
+            )
+            .collect()
+    })
+}
+
 /// Runs `MD051`'s cross-file check over the Markdown in `req.files`, grouped by the linking file.
 pub(super) fn check(req: &ProjectRequest<'_>) -> anyhow::Result<Vec<(PathBuf, Vec<Diagnostic>)>> {
     if !enabled(req.config) {
@@ -92,22 +136,17 @@ pub(super) fn check(req: &ProjectRequest<'_>) -> anyhow::Result<Vec<(PathBuf, Ve
         }
     }
 
+    let indexes = build_indexes(&served, req.threads);
     let mut workspace = WorkspaceIndex::new();
-    let mut indexed = Vec::with_capacity(served.len());
-    for (file, flavor) in served {
-        let index = rumdl_lib::build_file_index_only_with_config(
-            &file.content,
-            &flavor.rules,
-            flavor.config.markdown_flavor(),
-            Some(file.path.clone()),
-            &flavor.config,
-        );
-        workspace.insert_file(file.path.clone(), index.clone());
-        indexed.push((file, flavor, index));
+    for ((file, _), index) in served.iter().zip(indexes) {
+        workspace.insert_file(file.path.clone(), index);
     }
 
     let mut grouped: BTreeMap<PathBuf, Vec<Diagnostic>> = BTreeMap::new();
-    for (file, flavor, index) in &indexed {
+    for (file, flavor) in &served {
+        let Some(index) = workspace.get_file(&file.path) else {
+            continue;
+        };
         let warnings =
             rumdl_lib::run_cross_file_checks(&file.path, index, &flavor.rules, &workspace, Some(&flavor.config))
                 .map_err(|e| anyhow::anyhow!("rumdl cross-file check: {e}"))?;
