@@ -42,7 +42,7 @@ use poly_engine_api::line_index::LineIndex;
 /// Combined cache-key version: `typos` tokeniser + `typos-dict` word list,
 /// plus a marker for the noise-suppression guards below. Bump whenever either
 /// crate is updated OR the guard logic changes (it alters output).
-const TYPOS_VERSION: &str = "0.10.44+dict-0.14.5+guards1+cfg3+warn-noautofix+builtins2+rulecodes2+cols1";
+const TYPOS_VERSION: &str = "0.10.44+dict-0.14.5+guards1+cfg3+warn-noautofix+builtins2+rulecodes2+cols1+extcase1";
 
 /// Skip spell-checking files at least this large: generated/minified bundles
 /// dominate by size and are pure noise word-by-word.
@@ -437,7 +437,9 @@ impl typos::Dictionary for ConfiguredDictionary<'_> {
             .iter()
             .find(|(typo, _)| typo.eq_ignore_ascii_case(token))
         {
-            return Some(typos::Status::Corrections(vec![Cow::Borrowed(correction.as_str())]));
+            let mut adapted = Cow::Borrowed(correction.as_str());
+            case_correct(&mut adapted, word_token.case());
+            return Some(typos::Status::Corrections(vec![adapted]));
         }
 
         let word_case = UniCase::new(token);

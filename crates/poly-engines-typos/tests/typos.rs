@@ -354,6 +354,24 @@ fn extend_words_with_a_different_value_is_the_correction() {
 }
 
 #[test]
+fn extend_words_corrections_follow_the_case_of_the_typo() {
+    let mut words = toml::Table::new();
+    words.insert("teh".to_string(), toml::Value::String("the".to_string()));
+    let mut options = toml::Table::new();
+    options.insert("extend_words".to_string(), toml::Value::Table(words));
+    let cfg = EngineConfig {
+        globals: GlobalDefaults::default(),
+        indent_width: 4,
+        options,
+    };
+    for (typo, expected) in [("Teh", "The"), ("TEH", "THE"), ("teh", "the")] {
+        let diags = TyposEngine.lint(&make_src(&format!("{typo} cat\n")), &cfg).unwrap();
+        assert_eq!(diags.len(), 1, "{typo}: {diags:?}");
+        assert_eq!(diags[0].title, format!("`{typo}` should be `{expected}`"));
+    }
+}
+
+#[test]
 fn masked_regions_are_skipped_even_when_overlapping() {
     let content = "teh one\nteh two\nteh three\n";
     let cfg = options_with_string_array("extend_ignore_re", &["teh one\nteh", "one\nteh two"]);
