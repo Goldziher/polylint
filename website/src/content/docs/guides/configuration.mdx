@@ -871,7 +871,9 @@ cache_dir = ".poly/schemas"
 A file can name its schema itself: `"$schema": "./schema.json"` in JSON, or a `#:schema ./schema.json` or
 `# yaml-language-server: $schema=./schema.json` comment at the top of a YAML or TOML file. Relative paths
 are relative to the file in a reference and to the project root (the nearest `poly.toml`) in `schemas`.
-A `$schema` naming a JSON Schema meta-schema marks the file as a schema and names nothing.
+A `$schema` naming a JSON Schema meta-schema marks the file as a schema and names nothing. Only those
+two comment forms count; any other comment is ignored. A schema file may be YAML (`.yaml`/`.yml`), and
+YAML documents resolve `<<` merge keys before validation.
 
 poly never downloads a schema. An `https://` reference is read from the cache, so
 `https://example.com/schemas/app.json` must be saved at `.poly/schemas/example.com/schemas/app.json`;

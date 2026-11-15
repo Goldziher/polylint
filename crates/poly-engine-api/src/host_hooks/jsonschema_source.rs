@@ -221,8 +221,8 @@ pub fn resolve(file: &Path, in_file: Option<&str>, cfg: &EngineConfig) -> Schema
     }
 }
 
-/// The schema a `#:schema <ref>` or `# yaml-language-server: $schema=<ref>` comment in the leading
-/// comment block of `content` names.
+/// The schema a `#:schema <ref>` (TOML) or `# yaml-language-server: $schema=<ref>` (YAML) comment in
+/// the leading comment block of `content` names. Other comments are ignored, whatever they contain.
 #[must_use]
 pub fn directive_ref(content: &str) -> Option<String> {
     for line in content.lines().take(DIRECTIVE_SCAN_LINES) {
@@ -233,13 +233,20 @@ pub fn directive_ref(content: &str) -> Option<String> {
         if !line.starts_with('#') {
             return None;
         }
-        if let Some(reference) = line.strip_prefix("#:schema") {
+        if let Some(reference) = line
+            .strip_prefix("#:schema")
+            .filter(|rest| rest.starts_with(char::is_whitespace))
+        {
             let reference = reference.trim();
             if !reference.is_empty() {
                 return Some(reference.to_owned());
             }
         }
-        if let Some((_, rest)) = line.split_once("$schema=") {
+        let comment = line.trim_start_matches('#').trim_start();
+        if let Some(rest) = comment
+            .strip_prefix("yaml-language-server:")
+            .and_then(|rest| rest.trim_start().strip_prefix("$schema="))
+        {
             let reference = rest.split_whitespace().next().unwrap_or_default();
             if !reference.is_empty() {
                 return Some(reference.to_owned());
@@ -302,7 +309,11 @@ pub fn salt(cfg: &EngineConfig, path: &Path) -> Option<String> {
             continue;
         };
         let base = file.parent().unwrap_or(&scope.root).to_path_buf();
-        for reference in quoted_values_after(&text, "$ref") {
+        let mut refs = quoted_values_after(&text, "$ref");
+        if is_yaml_file(&file) {
+            refs.extend(yaml_values_after(&text, "$ref"));
+        }
+        for reference in refs {
             if reference.starts_with('#') {
                 continue;
             }
@@ -390,6 +401,31 @@ fn quoted_values_after(text: &str, key: &str) -> Vec<String> {
         values.push(value);
     }
     values
+}
+
+fn is_yaml_file(path: &Path) -> bool {
+    path.extension()
+        .is_some_and(|ext| ext.eq_ignore_ascii_case("yaml") || ext.eq_ignore_ascii_case("yml"))
+}
+
+/// Every value written as `<key>: value` (plain, or single- or double-quoted) in YAML `text`: a
+/// line scan that over-approximates, like [`quoted_values_after`].
+fn yaml_values_after(text: &str, key: &str) -> Vec<String> {
+    text.lines()
+        .filter_map(|line| {
+            let line = line.trim_start().trim_start_matches("- ");
+            let rest = line.strip_prefix(key).or_else(|| {
+                line.strip_prefix('"')
+                    .or_else(|| line.strip_prefix('\''))
+                    .and_then(|quoted| quoted.strip_prefix(key))
+                    .map(|after| after.trim_start_matches(['"', '\'']))
+            })?;
+            let value = rest.trim_start().strip_prefix(':')?.trim();
+            let value = value.split(" #").next().unwrap_or_default().trim();
+            let value = value.trim_matches(['"', '\'']);
+            (!value.is_empty()).then(|| value.to_owned())
+        })
+        .collect()
 }
 
 /// The scheme of an absolute URI-looking `reference` (`https` in `https://x`), if it has one.
@@ -483,6 +519,57 @@ mod tests {
         let dir = tempfile::tempdir().expect("tempdir");
         std::fs::write(dir.path().join("poly.toml"), "").expect("poly.toml");
         dir
+    }
+
+    #[test]
+    fn directive_ref_ignores_other_comments_naming_a_schema() {
+        assert_eq!(
+            directive_ref(
+                "# see $schema=./a.json for details
+k: v
+"
+            ),
+            None
+        );
+        assert_eq!(
+            directive_ref(
+                "#:schemas ./a.json
+k = 1
+"
+            ),
+            None
+        );
+        assert_eq!(
+            directive_ref(
+                "# note
+# yaml-language-server: $schema=./a.json
+"
+            )
+            .as_deref(),
+            Some("./a.json")
+        );
+    }
+
+    #[test]
+    fn yaml_schema_refs_are_scanned() {
+        let text = "a:\n  $ref: ./x.yaml#/d\nb:\n  - \"$ref\": 'y.yaml'\nc: {$refs: z}\n";
+        assert_eq!(yaml_values_after(text, "$ref"), vec!["./x.yaml#/d", "y.yaml"]);
+    }
+
+    #[test]
+    fn salt_follows_refs_of_a_yaml_schema() {
+        let dir = project();
+        std::fs::write(dir.path().join("s.yaml"), "properties:\n  a:\n    $ref: part.yaml\n").expect("s");
+        std::fs::write(dir.path().join("part.yaml"), "type: string\n").expect("part");
+        std::fs::write(
+            dir.path().join("f.yaml"),
+            "# yaml-language-server: $schema=s.yaml\na: x\n",
+        )
+        .expect("f");
+        let before = salt(&cfg(""), &dir.path().join("f.yaml")).expect("salt");
+        std::fs::write(dir.path().join("part.yaml"), "type: integer\n").expect("part");
+        let after = salt(&cfg(""), &dir.path().join("f.yaml")).expect("salt");
+        assert_ne!(before, after);
     }
 
     #[test]

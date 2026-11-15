@@ -220,6 +220,50 @@ fn a_schema_that_is_not_json_is_an_error() {
 }
 
 #[test]
+fn a_yaml_schema_validates_documents() {
+    let dir = project();
+    write(
+        dir.path(),
+        "schema.yaml",
+        "type: object\nrequired: [name]\nproperties:\n  name: {type: string}\n",
+    );
+    let bad = "# yaml-language-server: $schema=./schema.yaml\nname: 3\n";
+    assert_eq!(
+        lint(dir.path(), "app.yaml", Language::Yaml, bad),
+        expect(&[("schema/type", 2, 7)])
+    );
+    let good = "# yaml-language-server: $schema=./schema.yaml\nname: app\n";
+    assert!(lint(dir.path(), "app.yaml", Language::Yaml, good).is_empty());
+}
+
+#[test]
+fn a_yaml_schema_may_use_merge_keys() {
+    let dir = project();
+    write(
+        dir.path(),
+        "schema.yml",
+        "base: &b {type: string}\ntype: object\nproperties:\n  name:\n    <<: *b\n    minLength: 1\n",
+    );
+    let bad = "# yaml-language-server: $schema=./schema.yml\nname: 3\n";
+    assert_eq!(
+        lint(dir.path(), "app.yaml", Language::Yaml, bad),
+        expect(&[("schema/type", 2, 7)])
+    );
+}
+
+#[test]
+fn yaml_merge_keys_satisfy_required_and_additional_properties() {
+    let dir = project();
+    write(
+        dir.path(),
+        "compose.json",
+        r#"{"type":"object","properties":{"x":{"type":"object"},"svc":{"type":"object","required":["name"],"properties":{"name":{"type":"string"}},"additionalProperties":false}}}"#,
+    );
+    let content = "# yaml-language-server: $schema=./compose.json\nx: &d {name: a}\nsvc: {<<: *d}\n";
+    assert!(lint(dir.path(), "c.yaml", Language::Yaml, content).is_empty());
+}
+
+#[test]
 fn a_document_that_does_not_parse_is_an_info_skip() {
     let dir = project();
     let found = lint_with(

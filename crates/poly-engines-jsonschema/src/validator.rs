@@ -27,8 +27,8 @@ struct LocalRetriever {
 impl Retrieve for LocalRetriever {
     fn retrieve(&self, uri: &Uri<String>) -> Result<Value, Box<dyn std::error::Error + Send + Sync>> {
         let path = self.scope.locate(uri.as_str(), &self.scope.root)?;
-        let text = std::fs::read_to_string(&path)?;
-        Ok(serde_json::from_str(&text)?)
+        let bytes = std::fs::read(&path)?;
+        Ok(schema_value(&path, &bytes)?)
     }
 }
 
@@ -71,12 +71,31 @@ pub(crate) fn with_validator<T>(
 }
 
 fn compile(scope: &Scope, schema: &std::path::Path, bytes: &[u8]) -> Result<Validator, String> {
-    let value: Value = serde_json::from_slice(bytes).map_err(|error| format!("is not valid JSON: {error}"))?;
+    let value = schema_value(schema, bytes)?;
     jsonschema::options()
         .with_retriever(LocalRetriever { scope: scope.clone() })
         .with_base_uri(file_uri(schema))
         .build(&value)
         .map_err(|error| format!("is not a usable JSON Schema: {error}"))
+}
+
+/// The schema as a value: YAML for a `.yaml`/`.yml` file, JSON otherwise, with YAML as the fallback
+/// for a file that is not JSON but is valid YAML.
+fn schema_value(schema: &std::path::Path, bytes: &[u8]) -> Result<Value, String> {
+    let yaml_name = schema
+        .extension()
+        .is_some_and(|ext| ext.eq_ignore_ascii_case("yaml") || ext.eq_ignore_ascii_case("yml"));
+    let yaml = |text: &str| crate::yaml::parse_value(text);
+    if yaml_name {
+        let text = std::str::from_utf8(bytes).map_err(|error| format!("is not valid UTF-8: {error}"))?;
+        return yaml(text).map_err(|error| format!("is not valid YAML: {error}"));
+    }
+    serde_json::from_slice(bytes).or_else(|json_error| {
+        std::str::from_utf8(bytes)
+            .ok()
+            .and_then(|text| yaml(text).ok())
+            .ok_or_else(|| format!("is not valid JSON: {json_error}"))
+    })
 }
 
 /// Every violation of the compiled schema in `document`.
