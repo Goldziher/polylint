@@ -28,5 +28,7 @@ fn main() -> ExitCode {
         return ExitCode::from(2);
     }
     register_linked_features(LINKED_FEATURES);
+    // `poly adr` plans through the linked adrlint engine rather than asking the `web` component.
+    poly_cli::adr_cmd::register_linked_planner(poly_engines_web::adrlint::ops::plan);
     poly_cli::cli::main()
 }

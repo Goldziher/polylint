@@ -7,7 +7,7 @@
 use anyhow::Context;
 use poly_component_host::{Availability, ComponentHost};
 use poly_component_index::ComponentIndex;
-use poly_component_protocol::{Payload, Request};
+use poly_component_protocol::{Payload, Request, WireProjectInputs};
 use poly_config::network;
 use poly_config::v2::ComponentInstallPolicy;
 
@@ -32,6 +32,21 @@ pub fn call_engine_component(
     config: &Config,
     engine: &str,
     request: &Request,
+) -> anyhow::Result<Payload> {
+    call_engine_component_with_body(injection, config, engine, request, &[])
+}
+
+/// [`call_engine_component`] for a request whose file slices point into `body` (`Request::Adr`).
+///
+/// # Errors
+///
+/// As [`call_engine_component`].
+pub fn call_engine_component_with_body(
+    injection: Option<&ComponentInjection>,
+    config: &Config,
+    engine: &str,
+    request: &Request,
+    body: &[u8],
 ) -> anyhow::Result<Payload> {
     let index: &ComponentIndex = match injection {
         Some(injected) => &injected.index,
@@ -70,5 +85,21 @@ pub fn call_engine_component(
         Availability::Unavailable(unavailable) => anyhow::bail!("{}", unavailable.reason(name)),
     }
     let slot = host.slot(name, Some(expected_describe(component)))?;
-    slot.connection()?.call_plain(engine, request, &[])
+    slot.connection()?.call_plain(engine, request, body)
+}
+
+/// What `engine` declared in `Engine::project_inputs`, as the component index records it: the option
+/// keys naming its directories and side files, and their defaults. `None` when no component hosts
+/// `engine`. Read from the index in every build, so a host that never loads the engine still resolves
+/// the same directories a run's project check does. `injection` replaces the embedded index (tests).
+#[must_use]
+pub fn engine_project_inputs(injection: Option<&ComponentInjection>, engine: &str) -> Option<WireProjectInputs> {
+    let index: &ComponentIndex = match injection {
+        Some(injected) => &injected.index,
+        None => poly_component_index::index(),
+    };
+    index
+        .engine_descs(engine)
+        .next()
+        .map(|desc| desc.project_inputs.clone())
 }

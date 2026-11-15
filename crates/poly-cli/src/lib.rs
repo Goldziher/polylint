@@ -10,6 +10,7 @@ use poly_core::{Config, LintResult, RunOptions, Severity, Verbosity, report};
 use crate::component_notes::report_blocking_components;
 use crate::config_sources::RemoteExtendsResolver;
 
+pub mod adr_cmd;
 pub mod auto_lock;
 pub mod cache_cmd;
 pub mod cli;
@@ -33,6 +34,7 @@ pub mod trust_cmd;
 pub mod workspace_coverage;
 pub mod workspace_phase;
 
+pub use adr_cmd::{AdrArgs, run_adr};
 pub use cache_cmd::{CacheArgs, run_cache};
 pub use commit::{CommitArgs, run_commit_lint};
 pub use components_cmd::{ComponentsArgs, run_components};

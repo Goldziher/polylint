@@ -255,6 +255,32 @@ fn sample_requests() -> Vec<Request> {
             config: WireValue::Table(vec![("options".into(), WireValue::Table(vec![]))]),
             test: true,
         },
+        Request::Adr {
+            op: WireAdrOp::Lock { all: false },
+            config: WireValue::Table(vec![("options".into(), WireValue::Table(vec![]))]),
+            files: vec![WireFileSlice {
+                path: "docs/adr/0001-use-rust.md".into(),
+                language: "markdown".into(),
+                offset: 0,
+                len: 4,
+            }],
+        },
+        Request::Adr {
+            op: WireAdrOp::Unlock {
+                path: "docs/adr/0001-use-rust.md".into(),
+            },
+            config: WireValue::Table(vec![]),
+            files: vec![],
+        },
+        Request::Adr {
+            op: WireAdrOp::New {
+                dir: "docs/adr".into(),
+                title: "Use Rust".into(),
+                date: "2026-11-15".into(),
+            },
+            config: WireValue::Table(vec![]),
+            files: vec![],
+        },
     ]
 }
 
@@ -294,6 +320,20 @@ fn sample_payloads() -> Vec<Payload> {
         Payload::OptionKeys(Some(vec!["a".into()])),
         Payload::Rules(rules_report(true)),
         Payload::Rules(rules_report(false)),
+        Payload::Adr(WireAdrPlan {
+            writes: vec![WireAdrWrite {
+                path: "adrlint.lock".into(),
+                content: "version = 1\n".into(),
+                create: false,
+            }],
+            changes: vec!["add docs/adr/0001-use-rust.md".into()],
+            summary: "locked 1 ADR(s) in adrlint.lock".into(),
+        }),
+        Payload::Adr(WireAdrPlan {
+            writes: vec![],
+            changes: vec![],
+            summary: "adrlint.lock is up to date".into(),
+        }),
     ]
 }
 
@@ -574,7 +614,8 @@ fn config_mut_names_the_registered_config_of_every_request_that_has_one() {
             | Request::RegisterConfig { .. }
             | Request::LintCacheSalt { .. }
             | Request::DerivedOptionKeys { .. }
-            | Request::Rules { .. } => None,
+            | Request::Rules { .. }
+            | Request::Adr { .. } => None,
             _ => Some(3),
         };
         let name = request.variant_name();

@@ -22,7 +22,7 @@ mod report;
 mod seam;
 mod select;
 
-pub use call::call_engine_component;
+pub use call::{call_engine_component, call_engine_component_with_body, engine_project_inputs};
 pub use needed::register_linked_features;
 pub(crate) use preplan::{ResolvedComponents, resolve};
 pub use report::{ComponentsReport, MissingComponent};

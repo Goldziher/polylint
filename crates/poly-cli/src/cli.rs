@@ -9,9 +9,9 @@ use std::ffi::OsString;
 use std::process::ExitCode;
 
 use crate::{
-    CacheArgs, ComponentsArgs, ConfigArgs, DoctorArgs, FmtArgs, GlobalArgs, HooksArgs, LintArgs, LockArgs, MigrateArgs,
-    RulesArgs, TrustArgs, run_cache, run_components, run_config, run_doctor, run_fmt, run_hooks, run_lint, run_lock,
-    run_migrate, run_rules, run_trust,
+    AdrArgs, CacheArgs, ComponentsArgs, ConfigArgs, DoctorArgs, FmtArgs, GlobalArgs, HooksArgs, LintArgs, LockArgs,
+    MigrateArgs, RulesArgs, TrustArgs, run_adr, run_cache, run_components, run_config, run_doctor, run_fmt, run_hooks,
+    run_lint, run_lock, run_migrate, run_rules, run_trust,
 };
 use clap::{Parser, Subcommand};
 
@@ -58,6 +58,8 @@ enum Command {
     Cache(CacheArgs),
     /// Inspect and test custom ast-grep rule packs (test / list).
     Rules(RulesArgs),
+    /// Maintain an ADR log with the bundled adrlint (lock / unlock / new).
+    Adr(AdrArgs),
     /// Inspect and manage downloadable engine components (list / status / install / sync / prune).
     #[command(alias = "component")]
     Components(ComponentsArgs),
@@ -169,6 +171,10 @@ pub fn main() -> ExitCode {
         Command::Rules(args) => {
             crate::init_logging_with(debug);
             run_rules(args)
+        }
+        Command::Adr(args) => {
+            crate::init_logging_with(debug);
+            run_adr(args)
         }
         Command::Components(args) => {
             crate::init_logging_with(debug);

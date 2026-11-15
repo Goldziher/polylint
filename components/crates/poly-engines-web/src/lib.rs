@@ -69,19 +69,22 @@ pub struct WebComponent(Producer);
 
 impl Default for WebComponent {
     fn default() -> Self {
-        Self(Producer::new(
-            env!("CARGO_PKG_VERSION"),
-            vec![
-                Box::new(AdrlintEngine),
-                Box::new(MalvaEngine),
-                Box::new(MarkupFmtEngine),
-                Box::new(OxcEngine),
-                Box::new(RumdlEngine),
-                Box::new(SkifEngine),
-                Box::new(TaploEngine::new()),
-                Box::new(YamlEngine),
-            ],
-        ))
+        Self(
+            Producer::new(
+                env!("CARGO_PKG_VERSION"),
+                vec![
+                    Box::new(AdrlintEngine),
+                    Box::new(MalvaEngine),
+                    Box::new(MarkupFmtEngine),
+                    Box::new(OxcEngine),
+                    Box::new(RumdlEngine),
+                    Box::new(SkifEngine),
+                    Box::new(TaploEngine::new()),
+                    Box::new(YamlEngine),
+                ],
+            )
+            .with_adr(crate::adrlint::ops::plan),
+        )
     }
 }
 

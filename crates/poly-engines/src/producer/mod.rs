@@ -17,11 +17,11 @@ use std::collections::HashMap;
 use std::sync::{Arc, OnceLock, PoisonError, RwLock};
 
 use poly_component_protocol::{
-    ConfigId, Response, WireError, WireErrorKind, WireLogLevel, WireRulesReport, decode_request, encode_describe,
-    encode_response,
+    ConfigId, Response, WireAdrOp, WireAdrPlan, WireError, WireErrorKind, WireLogLevel, WireRulesReport,
+    decode_request, encode_describe, encode_response,
 };
 use poly_engine_api::config::EngineConfig;
-use poly_engine_api::engine::Engine;
+use poly_engine_api::engine::{Engine, ProjectFile};
 
 pub use poly_engine_api::component_wire::{engine_config_from_wire, engine_config_to_wire};
 
@@ -47,9 +47,15 @@ pub struct InitState {
 /// engine's resolved config and whether to run the rule tests.
 pub type RulesHandler = fn(&[String], &EngineConfig, bool) -> anyhow::Result<WireRulesReport>;
 
+/// Answers `Request::Adr` for the component that hosts the adrlint engine: the operation, the
+/// engine's resolved config and the files the host handed over (paths relative to the project root).
+/// Pure: it reads and writes nothing, and returns what the host should write.
+pub type AdrHandler = fn(&WireAdrOp, &EngineConfig, &[ProjectFile]) -> anyhow::Result<WireAdrPlan>;
+
 /// A [`PolyComponent`] over a fixed set of engines.
 pub struct Producer {
     rules: Option<RulesHandler>,
+    adr: Option<AdrHandler>,
     engines: Vec<Box<dyn Engine>>,
     component_version: String,
     configs: RwLock<HashMap<ConfigId, Arc<EngineConfig>>>,
@@ -61,6 +67,7 @@ impl Producer {
     pub fn new(component_version: impl Into<String>, engines: Vec<Box<dyn Engine>>) -> Self {
         Self {
             rules: None,
+            adr: None,
             engines,
             component_version: component_version.into(),
             configs: RwLock::new(HashMap::new()),
@@ -73,6 +80,14 @@ impl Producer {
     #[must_use]
     pub fn with_rules(mut self, handler: RulesHandler) -> Self {
         self.rules = Some(handler);
+        self
+    }
+
+    /// Let this producer answer `Request::Adr` with `handler`. Without it the request is refused as
+    /// unsupported, so only the component that owns the adrlint engine serves it.
+    #[must_use]
+    pub fn with_adr(mut self, handler: AdrHandler) -> Self {
+        self.adr = Some(handler);
         self
     }
 

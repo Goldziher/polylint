@@ -48,6 +48,7 @@
 //!
 //! [ADR 0016]: ../../../../adrs/0016-uniform-rule-selection.md
 
+pub mod ops;
 mod project;
 
 use std::borrow::Cow;

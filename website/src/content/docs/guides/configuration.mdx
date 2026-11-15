@@ -987,3 +987,28 @@ Two groups stay in the `adrlint` CLI, and the boundary is deliberate:
 `MADR12b` (an anchor resolves to a heading) and `MADR12d` (an absolute path cannot be rendered) are
 pure and do run. See [ADR 0037](https://github.com/Goldziher/polylint/blob/main/adrs/0037-adrlint-madr-linting.md) and
 [ADR 0041](https://github.com/Goldziher/polylint/blob/main/adrs/0041-adrlint-tree-wide-rules-as-project-check.md).
+
+### Locking and new records
+
+`poly adr` maintains the log with the same bundled adrlint and the settings above, so the standalone
+CLI and its `.adrlint.toml` are not needed:
+
+```sh
+poly adr lock                                         # write or refresh adrlint.lock
+poly adr unlock docs/adr/0007-use-x.md --reason "fix a typo"
+poly adr new "Choose a database"                      # docs/adr/NNNN-choose-a-database.md
+```
+
+`lock` records every `accepted` or `rejected` record (`--all`: every numbered one) and refuses while
+`poly lint` reports an adrlint error in the log, so `[per-file-ignores]` decide what blocks it. A
+template that shares number `0000` with the first record is exempted for that pair alone:
+
+```toml
+[per-file-ignores]
+"0000-*.md" = ["MADR43"]
+```
+
+`new` copies `template.md` or `NNNN-template.md` from the ADR directory when there is one (MADR's
+template otherwise), sets `status: proposed` and today's date, and never counts or locks the template.
+See the [CLI reference](/poly/reference/cli/#poly-adr--maintain-an-adr-log) and
+[ADR 0061](https://github.com/Goldziher/polylint/blob/main/adrs/0061-adr-maintenance-commands.md).

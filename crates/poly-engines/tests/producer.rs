@@ -694,3 +694,55 @@ fn the_astgrep_component_answers_rules() {
     };
     assert!(report.rules.iter().any(|rule| rule.source == "builtin"));
 }
+
+fn adr_request() -> Request {
+    Request::Adr {
+        op: poly_component_protocol::WireAdrOp::Lock { all: false },
+        config: engine_config_to_wire(&cfg()),
+        files: vec![WireFileSlice {
+            path: "docs/adr/0001-a.md".into(),
+            language: "markdown".into(),
+            offset: 0,
+            len: 3,
+        }],
+    }
+}
+
+#[test]
+fn adr_is_unsupported_by_a_component_without_adrlint() {
+    let producer = ready();
+    let error = send(&producer, &adr_request(), b"# a").result.unwrap_err();
+    assert_eq!(error.kind, WireErrorKind::Unsupported);
+}
+
+#[test]
+fn adr_reaches_the_handler_with_the_sliced_files() {
+    use poly_component_protocol::{WireAdrOp, WireAdrPlan};
+    use poly_engine_api::engine::ProjectFile;
+
+    fn handler(op: &WireAdrOp, cfg: &EngineConfig, files: &[ProjectFile]) -> anyhow::Result<WireAdrPlan> {
+        anyhow::ensure!(*op == WireAdrOp::Lock { all: false }, "op was {op:?}");
+        anyhow::ensure!(cfg.indent_width == 2, "the config did not arrive");
+        let [file] = files else {
+            anyhow::bail!("{} file(s)", files.len());
+        };
+        Ok(WireAdrPlan {
+            writes: Vec::new(),
+            changes: vec![format!("{}={}", file.path.display(), &*file.content)],
+            summary: "planned".into(),
+        })
+    }
+
+    let producer = producer().with_adr(handler);
+    init(&producer, WireLogLevel::Info);
+    let Ok(Payload::Adr(plan)) = send(&producer, &adr_request(), b"# a").result else {
+        panic!("expected an adr payload");
+    };
+    assert_eq!(plan.changes, ["docs/adr/0001-a.md=# a"]);
+    let outside = send(&producer, &adr_request(), b"#").result.unwrap_err();
+    assert_eq!(
+        outside.kind,
+        WireErrorKind::Protocol,
+        "a slice past the body is refused"
+    );
+}

@@ -9,6 +9,7 @@
 //! Config resolution is network-free here, as it always was for the MCP server: a remote git
 //! `extends` base is not fetched (see [`ops`]).
 
+pub mod adr;
 pub mod ops;
 mod services;
 pub mod state_cache;

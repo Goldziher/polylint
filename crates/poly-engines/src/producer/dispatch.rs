@@ -270,6 +270,24 @@ impl Producer {
                 let report = guarded("rules", || handler(&dirs, &cfg, test))?;
                 Ok(Payload::Rules(report))
             }
+            Request::Adr { op, config, files } => {
+                let handler = self.adr.ok_or_else(|| WireError {
+                    kind: WireErrorKind::Unsupported,
+                    message: "this component hosts no adrlint engine".to_owned(),
+                    chain: Vec::new(),
+                })?;
+                let cfg = engine_config_from_wire(&config)?;
+                let members: Vec<ProjectFile> = slices(&files, body)?
+                    .into_iter()
+                    .map(|src| ProjectFile {
+                        path: src.path,
+                        language: src.language,
+                        content: src.content,
+                    })
+                    .collect();
+                let plan = guarded("adrlint", || handler(&op, &cfg, &members))?;
+                Ok(Payload::Adr(plan))
+            }
             Request::FormatInputSalt { engine, config, path } => {
                 let engine = self.engine(&engine, None)?;
                 let cfg = self.config(config)?;

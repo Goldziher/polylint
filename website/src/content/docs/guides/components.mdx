@@ -24,7 +24,8 @@ component lock and downloads nothing. The other four (Linux gnu x86_64 and aarch
 Windows x86_64) are core builds with the release's signed component lock embedded. Intel macOS
 has no release binary after 0.34.0.
 `poly rules` and the MCP `rules` tool work in a core build by installing the `astgrep` component on
-demand; `--offline` and `[components] install = "never"` stop that download, and the command then fails.
+demand, and `poly adr` by installing the `web` component; `--offline` and `[components] install = "never"`
+stop that download, and the command then fails.
 `poly doctor` has a `components` section with the flavor, the cache root and what the current
 directory needs.
 

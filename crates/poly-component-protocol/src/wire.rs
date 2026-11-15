@@ -531,6 +531,19 @@ pub enum Request {
         /// Also run the user rules' `*-test.yml` snippets.
         test: bool,
     },
+    /// An ADR log maintenance operation (`poly adr`). Only the component that hosts the adrlint
+    /// engine answers it; any other answers [`WireErrorKind::Unsupported`]. The component reads and
+    /// writes nothing: the host hands over the files and writes the answer's
+    /// [`WireAdrPlan::writes`] itself.
+    Adr {
+        /// The operation.
+        op: WireAdrOp,
+        /// The resolved adrlint engine config, as in [`Request::RegisterConfig`].
+        config: WireValue,
+        /// The files the operation reads, relative to the project root; their contents are slices of
+        /// `body`. The lock manifest is the member whose path is the config's `lock` option.
+        files: Vec<WireFileSlice>,
+    },
 }
 
 /// Names of every [`Request`] variant, in declaration order.
@@ -551,6 +564,7 @@ pub const REQUEST_VARIANTS: &[&str] = &[
     "LintInputSalt",
     "FormatInputSalt",
     "Rules",
+    "Adr",
 ];
 
 impl Request {
@@ -573,6 +587,7 @@ impl Request {
             Request::LintInputSalt { .. } => "LintInputSalt",
             Request::FormatInputSalt { .. } => "FormatInputSalt",
             Request::Rules { .. } => "Rules",
+            Request::Adr { .. } => "Adr",
         }
     }
 
@@ -594,7 +609,8 @@ impl Request {
             | Request::RegisterConfig { .. }
             | Request::LintCacheSalt { .. }
             | Request::DerivedOptionKeys { .. }
-            | Request::Rules { .. } => None,
+            | Request::Rules { .. }
+            | Request::Adr { .. } => None,
         }
     }
 }
@@ -702,6 +718,60 @@ pub struct WireRulesReport {
     pub tests: Option<WireRuleTests>,
 }
 
+/// The operation of a [`Request::Adr`].
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
+pub enum WireAdrOp {
+    /// Write or refresh the lock manifest for every record whose status is locked (`accepted`,
+    /// `rejected`), or for every numbered record when `all` is set. `files` holds the log's Markdown
+    /// and the manifest, when it exists.
+    Lock {
+        /// Lock every numbered record whatever its status; also re-locks a manifest written by an
+        /// older canonical serializer.
+        all: bool,
+    },
+    /// Remove one record's entry from the manifest. `files` holds the manifest.
+    Unlock {
+        /// The record, relative to the project root with `/` separators: its manifest key.
+        path: String,
+    },
+    /// Create the next numbered record in `dir`. `files` holds the Markdown directly in `dir`; a
+    /// `template.md` or `NNNN-template.md` among them is the template, otherwise the MADR one is used.
+    New {
+        /// The ADR directory, relative to the project root with `/` separators (empty for the root).
+        dir: String,
+        /// The record's title.
+        title: String,
+        /// The date written into the record's front matter, `YYYY-MM-DD`, chosen by the host.
+        date: String,
+    },
+}
+
+/// One file a [`WireAdrPlan`] asks the host to write.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
+pub struct WireAdrWrite {
+    /// Path relative to the project root, `/` separated.
+    pub path: String,
+    /// The whole new content.
+    pub content: String,
+    /// The file must not exist yet (a new record); otherwise it is replaced (the manifest).
+    pub create: bool,
+}
+
+/// The answer to [`Request::Adr`]: what to write and what to tell the user.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
+pub struct WireAdrPlan {
+    /// Files to write; empty when the log is already in the requested state.
+    pub writes: Vec<WireAdrWrite>,
+    /// One line per changed manifest entry or record (`add <key>`, `update <key>`, `remove <key>`,
+    /// `create <path>`).
+    pub changes: Vec<String>,
+    /// A one-line summary of the outcome.
+    pub summary: String,
+}
+
 /// The successful payload of a [`Response`].
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
@@ -737,6 +807,8 @@ pub enum Payload {
     OptionKeys(Option<Vec<String>>),
     /// Answer to `Rules`.
     Rules(WireRulesReport),
+    /// Answer to `Adr`.
+    Adr(WireAdrPlan),
 }
 
 /// The answer to every call.

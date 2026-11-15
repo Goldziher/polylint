@@ -14,6 +14,7 @@ Commands:
   migrate     Absorb foreign tool configs into poly.toml and remove what poly can honor
   cache       Inspect and maintain the result cache (stats / gc / clean)
   rules       Inspect and test custom ast-grep rule packs (test / list)
+  adr         Maintain an ADR log with the bundled adrlint (lock / unlock / new)
   components  Inspect and manage downloadable engine components (list / status / install / sync /
               prune)
   lock        Pin remote `extends` bases and Git hook sources in `poly.lock`

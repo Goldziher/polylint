@@ -2,7 +2,7 @@
 title: CLI reference
 description: >-
   Every flag on poly lint and poly fmt, the exit-code contract, and the doctor, config, commit,
-  hooks, cache, mcp, migrate and rules subcommands.
+  hooks, cache, mcp, migrate, rules and adr subcommands.
 ---
 
 import { Aside, Tabs, TabItem, Code } from '@astrojs/starlight/components';
@@ -359,6 +359,25 @@ pin already recorded, and prints one line per entry it adds. Pass `--locked` (or
 and the installed git hooks never write `poly.lock`; a missing entry fails them with a pointer to
 `poly lock`. `poly components install` is unaffected: components are pinned by the lock compiled
 into the binary, not by `poly.lock`.
+
+## `poly adr` — maintain an ADR log
+
+```text
+poly adr lock [--all] [--check]               # write or refresh adrlint.lock
+poly adr unlock <FILE> --reason <TEXT>        # release one record for editing
+poly adr new <TITLE> [--dir <DIR>]            # create the next numbered record
+```
+
+The three commands use the bundled adrlint and the `[engines.adrlint]` (v1: `[lint.markdown.adrlint]`)
+settings: `dir`, `paths` and `recursive` name the log, `lock` the manifest and `start` the first number.
+`lock` locks every `accepted` or `rejected` record (`--all`: every numbered record) and refuses, exiting `1`,
+while `poly lint` reports an adrlint error in the log after `[per-file-ignores]` and inline suppressions;
+`--check` writes nothing and exits `1` when the manifest would change. `unlock` takes the record's path from
+the working directory and prints the reason for the commit message. `new` fills the directory's
+`template.md` or `NNNN-template.md` (MADR's template otherwise) with the title, `status: proposed` and
+today's date; `--dir` picks the directory when `paths` names several. Writes stay inside the directory of
+the nearest `poly.toml` and never follow a symlink. A core build asks the `web` component, installing it
+on demand unless `--offline` or `[components] install = "never"`.
 
 ## `poly trust` — allow a repository's programs
 
