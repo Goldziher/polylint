@@ -91,5 +91,5 @@ pub(super) fn resolves_inside_tree(link_path: &Path, target: &Path) -> bool {
     true
 }
 
-#[cfg(test)]
+#[cfg(all(test, unix))]
 mod tests;
