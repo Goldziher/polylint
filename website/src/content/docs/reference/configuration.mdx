@@ -258,9 +258,14 @@ The check is hermetic: tsrs reads those files through an in-memory file system, 
 `node_modules`. An import of an installed package therefore cannot resolve. `TS2307`, `TS2792`, `TS7016` and
 `TS2688`, and the `Cannot find name ... install type definitions` codes, are dropped when a `package.json` of the
 project declares the package (or its `@types` package, or `@types/node` for Node built-ins) and reported when it does
-not, since an undeclared import is a real error. Set `report_unresolved_modules = true` to see them all. Findings in
-declaration files (`.d.ts`), under `node_modules`, and in JavaScript files (unless `allowJs` puts them in the program)
-are never reported, though those files are inputs. Findings follow `tsc`'s order and stop at the first group that has
+not, since an undeclared import is a real error. "Declares" means the `package.json` files in the importing file's
+directory and above, so a sibling package's dependencies do not count. With `react` or `@types/react` declared and the
+`jsx` option set, `TS2875` and `TS7026` are dropped too. Set `report_unresolved_modules = true` to see them all. A
+`tsconfig.json` that `extends` a package the project declares (`@tsconfig/node20/tsconfig.json`) is checked without the
+inherited options and gets one warning saying so; an `extends` of an undeclared package stays an error (`TS6053`).
+Findings under `node_modules`, and in JavaScript files (unless `allowJs` puts them in the program), are never reported,
+though those files are inputs; the project's own declaration files (`.d.ts`) are reported, as `tsc` does unless
+`skipLibCheck` is set. Findings follow `tsc`'s order and stop at the first group that has
 any: config, syntax, then semantic errors.
 
 One program is checked: set `project` to the `tsconfig` of the package you want in a monorepo, one `poly.toml` scope per

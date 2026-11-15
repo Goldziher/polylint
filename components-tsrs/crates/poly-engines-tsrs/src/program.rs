@@ -26,6 +26,7 @@ use tsrs_diagnostics::Category;
 use tsrs_tsoptions::{ParseConfigHost, ParsedCommandLine};
 use tsrs_vfs::FS;
 
+use crate::external::{Declared, package_name};
 use crate::owner::ProgramOwner;
 use crate::settings::Settings;
 use crate::vfs::{self, MemoryFs, tsrs_path};
@@ -36,11 +37,15 @@ const SCRATCH_CHUNK: usize = 1 << 20;
 /// `Cannot read file '{0}'.`
 const CANNOT_READ_FILE: i32 = 5083;
 
+/// `File '{0}' not found.`: tsrs reports an `extends` it cannot resolve with it, the argument being the specifier.
+const FILE_NOT_FOUND: i32 = 6053;
+
 /// What a check needs.
 pub(crate) struct Request<'a> {
     pub root: &'a Path,
     pub files: &'a [ProjectFile],
     pub settings: &'a Settings,
+    pub declared: &'a Declared,
 }
 
 /// A diagnostic, copied out of tsrs.
@@ -65,6 +70,8 @@ pub(crate) struct Outcome {
     pub config: String,
     /// Whether the config's program holds JavaScript files.
     pub allow_js: bool,
+    /// Whether the config sets the `jsx` option.
+    pub jsx: bool,
     pub diagnostics: Vec<Raw>,
 }
 
@@ -84,7 +91,7 @@ pub(crate) fn diagnose(request: &Request<'_>) -> anyhow::Result<Option<Outcome>>
     let region = Region::new_scratch(SCRATCH_CHUNK);
     let entered = region.enter();
     let result = panic::catch_unwind(AssertUnwindSafe(|| {
-        check(&config, memory.into_tsrs(), request.settings, cwd)
+        check(&config, memory.into_tsrs(), request.settings, request.declared, cwd)
     }));
     drop(entered);
     drop(region);
@@ -198,7 +205,49 @@ fn apply_settings(config: &mut ParsedCommandLine, settings: &Settings, config_pa
     Ok(())
 }
 
-fn check(config_path: &str, fs: Arc<dyn FS>, settings: &Settings, cwd: String) -> anyhow::Result<Outcome> {
+/// Drops the `extends` of a package the project declares but the hermetic run does not have from the config's
+/// errors, and returns one warning per such `extends`. An `extends` of a package nothing declares keeps its error.
+///
+/// The config is still read without the extended options, so what it inherits is not applied.
+fn forgive_declared_extends(config: &mut ParsedCommandLine, config_path: &str, declared: &Declared) -> Vec<Raw> {
+    let mut warnings = Vec::new();
+    config.errors.retain(|diagnostic| {
+        if diagnostic.code() != FILE_NOT_FOUND {
+            return true;
+        }
+        let Some(specifier) = diagnostic.message_args().first() else {
+            return true;
+        };
+        let Some(package) = package_name(specifier) else {
+            return true;
+        };
+        if !declared.declares(Path::new(config_path), package) {
+            return true;
+        }
+        warnings.push(Raw {
+            file: None,
+            span: None,
+            code: FILE_NOT_FOUND,
+            error: false,
+            message: format!(
+                "extended config {specifier} is not available without node_modules; compiler options from it were \
+                 not applied"
+            ),
+            chain: Vec::new(),
+            argument: None,
+        });
+        false
+    });
+    warnings
+}
+
+fn check(
+    config_path: &str,
+    fs: Arc<dyn FS>,
+    settings: &Settings,
+    declared: &Declared,
+    cwd: String,
+) -> anyhow::Result<Outcome> {
     let host = ConfigHost {
         fs: Arc::clone(&fs),
         cwd,
@@ -210,10 +259,12 @@ fn check(config_path: &str, fs: Arc<dyn FS>, settings: &Settings, cwd: String) -
             return Ok(Outcome {
                 config: config_path.to_owned(),
                 allow_js: false,
+                jsx: false,
                 diagnostics,
             });
         }
     };
+    let warnings = forgive_declared_extends(&mut config, config_path, declared);
     apply_settings(&mut config, settings, config_path)?;
 
     let threads = settings.threads.get();
@@ -251,14 +302,17 @@ fn check(config_path: &str, fs: Arc<dyn FS>, settings: &Settings, cwd: String) -
         .filter_map(|diagnostic| lines.raw(diagnostic))
         .collect();
     let allow_js = program.options().allow_js.is_true();
+    let jsx = program.options().jsx.0 != 0;
     drop(lines);
     drop(owner);
     drop(loader_regions);
 
+    raw.extend(warnings);
     raw.sort_by(|a, b| (&a.file, a.span, a.code, &a.message).cmp(&(&b.file, b.span, b.code, &b.message)));
     Ok(Outcome {
         config: config_path.to_owned(),
         allow_js,
+        jsx,
         diagnostics: raw,
     })
 }

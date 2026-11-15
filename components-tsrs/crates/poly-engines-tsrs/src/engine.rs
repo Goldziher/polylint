@@ -20,7 +20,7 @@ pub const ENGINE_NAME: &str = "tsrs";
 ///
 /// Bump the suffix whenever the mapping or the filtering of findings changes, and the version whenever the tsrs
 /// crates are upgraded.
-const VERSION: &str = "tsrs-7.1.0-beta.tsrs1+proj1";
+const VERSION: &str = "tsrs-7.1.0-beta.tsrs1+proj2";
 
 /// The stack of the thread tsrs checks on: checking recurses deeply, and tsrs's own binaries give their program
 /// threads the same.
@@ -105,10 +105,12 @@ impl Engine for TsrsEngine {
             return Ok(Vec::new());
         }
         let settings = Settings::from_options(&req.config.options, req.threads)?;
+        let declared = Declared::from_files(req.files);
         let request = Request {
             root: req.root,
             files: req.files,
             settings: &settings,
+            declared: &declared,
         };
         let outcome = std::thread::scope(|scope| {
             std::thread::Builder::new()
@@ -125,7 +127,7 @@ impl Engine for TsrsEngine {
         Ok(findings(
             outcome,
             req.files,
-            &Declared::from_files(req.files),
+            &declared,
             settings.report_unresolved_modules,
         ))
     }

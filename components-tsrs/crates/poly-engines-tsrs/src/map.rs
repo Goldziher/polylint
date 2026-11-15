@@ -1,8 +1,9 @@
 //! The compiler's diagnostics as poly findings, grouped by the file the host knows them by.
 //!
 //! A finding is reported when it is an error or warning in a file the host handed over, that file is a source (not
-//! a declaration file, not under `node_modules`, and not JavaScript unless the program holds JavaScript), and it is
-//! not a package the project declares but the hermetic run lacks ([`Declared`]).
+//! under `node_modules`, and not JavaScript unless the program holds JavaScript), and it is not a package the
+//! project declares but the hermetic run lacks ([`Declared`]). The project's own declaration files are sources: a
+//! checked `.d.ts` that has an error reports it.
 
 use std::collections::{BTreeMap, HashMap};
 use std::path::PathBuf;
@@ -28,12 +29,6 @@ pub(crate) fn findings(
         if !reportable(name, outcome.allow_js) {
             continue;
         }
-        if !report_unresolved_modules {
-            let argument = raw.argument.as_deref().or_else(|| quoted(&raw.message));
-            if declared.is_missing_install(raw.code, argument) {
-                continue;
-            }
-        }
         let Some(file) = by_name.get(name) else {
             tracing::debug!(
                 file = name,
@@ -42,6 +37,12 @@ pub(crate) fn findings(
             );
             continue;
         };
+        if !report_unresolved_modules {
+            let argument = raw.argument.as_deref().or_else(|| quoted(&raw.message));
+            if declared.is_missing_install(&file.path, raw.code, argument, outcome.jsx) {
+                continue;
+            }
+        }
         grouped.entry(file.path.clone()).or_default().push(diagnostic(raw));
     }
     grouped.into_iter().collect()
@@ -53,15 +54,7 @@ fn reportable(name: &str, allow_js: bool) -> bool {
         return false;
     }
     let base = name.rsplit('/').next().unwrap_or(name);
-    if is_declaration_file(base) {
-        return false;
-    }
     allow_js || !is_javascript(base)
-}
-
-/// `x.d.ts`, `x.d.mts`, `x.d.cts` and `x.d.<ext>.ts`.
-fn is_declaration_file(base: &str) -> bool {
-    base.contains(".d.") && [".ts", ".mts", ".cts"].iter().any(|ext| base.ends_with(ext))
 }
 
 fn is_javascript(base: &str) -> bool {
@@ -117,19 +110,21 @@ mod tests {
         Outcome {
             config: tsrs_path(std::path::Path::new("/w/tsconfig.json")),
             allow_js,
+            jsx: false,
             diagnostics,
         }
     }
 
     #[test]
-    fn declaration_files_node_modules_and_unrequested_javascript_are_not_reported() {
+    fn node_modules_and_unrequested_javascript_are_not_reported_but_own_declaration_files_are() {
         for (name, allow_js, reported) in [
             ("/w/src/a.ts", false, true),
             ("/w/src/a.tsx", false, true),
             ("/w/tsconfig.json", false, true),
-            ("/w/src/a.d.ts", false, false),
-            ("/w/src/a.d.mts", true, false),
-            ("/w/src/styles.d.css.ts", true, false),
+            ("/w/src/a.d.ts", false, true),
+            ("/w/src/a.d.mts", true, true),
+            ("/w/src/styles.d.css.ts", true, true),
+            ("/w/node_modules/p/index.d.ts", true, false),
             ("/w/node_modules/p/index.ts", true, false),
             ("/w/src/a.js", false, false),
             ("/w/src/a.js", true, true),

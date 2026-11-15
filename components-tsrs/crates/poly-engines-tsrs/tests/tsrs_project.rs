@@ -240,23 +240,154 @@ fn a_declared_package_that_is_not_installed_is_dropped_unless_asked_for() {
 }
 
 #[test]
-fn declaration_files_are_inputs_and_never_reported() {
+fn a_projects_own_declaration_files_are_checked_and_reported() {
+    let files = [
+        ("tsconfig.json", tsconfig("")),
+        (
+            "src/global.d.ts",
+            "declare const BUILD: string;\ndeclare const BAD: Missing;\n".to_owned(),
+        ),
+        ("src/c.ts", "export const n: number = BUILD;\n".to_owned()),
+        (
+            "node_modules/dep/index.d.ts",
+            "declare const THEIRS: Missing;\nexport {};\n".to_owned(),
+        ),
+    ];
+    let files: Vec<(&str, &str)> = files.iter().map(|(n, c)| (*n, c.as_str())).collect();
+    assert_eq!(
+        triples(&check(&files, "")),
+        [triple("src/c.ts", "TS2322", 1), triple("src/global.d.ts", "TS2304", 2)],
+        "BUILD comes from the declaration file, whose own error is reported; node_modules is not"
+    );
+    let skipped = tsconfig(r#", "skipLibCheck": true"#);
+    let mut lib_skipped = files.clone();
+    lib_skipped[0] = ("tsconfig.json", skipped.as_str());
+    assert_eq!(
+        triples(&check(&lib_skipped, "")),
+        [triple("src/c.ts", "TS2322", 1)],
+        "skipLibCheck skips declaration files, as in tsc"
+    );
+}
+
+fn manifest(dependencies: &str) -> String {
+    format!(r#"{{ "dependencies": {{ {dependencies} }} }}"#)
+}
+
+fn extending(spec: &str) -> String {
+    format!(
+        r#"{{ "extends": "{spec}", "compilerOptions": {{ "target": "es2022", "module": "esnext", "moduleResolution": "bundler" }}, "include": ["src"] }}"#
+    )
+}
+
+#[test]
+fn an_extended_package_the_project_declares_is_skipped_with_a_warning() {
+    let config = extending("@tsconfig/node20/tsconfig.json");
+    let package = manifest(r#""@tsconfig/node20": "1.0.0""#);
     let found = check(
         &[
-            ("tsconfig.json", &tsconfig("")),
+            ("tsconfig.json", &config),
+            ("package.json", &package),
+            ("src/a.ts", "export const a: number = \"x\";\n"),
+        ],
+        "",
+    );
+    let config_findings: Vec<&Diagnostic> = found
+        .iter()
+        .filter(|(path, _)| slashed(path) == "tsconfig.json")
+        .flat_map(|(_, d)| d)
+        .collect();
+    assert_eq!(config_findings.len(), 1, "{found:?}");
+    assert_eq!(config_findings[0].severity, Severity::Warning);
+    assert!(
+        config_findings[0].title.contains("@tsconfig/node20/tsconfig.json")
+            && config_findings[0].title.contains("not available without node_modules"),
+        "{}",
+        config_findings[0].title
+    );
+    let sources: Vec<_> = triples(&found).into_iter().filter(|t| t.0 == "src/a.ts").collect();
+    assert_eq!(
+        sources,
+        [triple("src/a.ts", "TS2322", 1)],
+        "the project is still checked"
+    );
+}
+
+#[test]
+fn an_extended_package_nothing_declares_stays_an_error() {
+    let config = extending("@tsconfig/node20/tsconfig.json");
+    let other = manifest(r#""left-pad": "1.0.0""#);
+    let found = check(
+        &[
+            ("tsconfig.json", &config),
+            ("package.json", &other),
+            ("src/a.ts", "export const a: number = \"x\";\n"),
+        ],
+        "",
+    );
+    assert_eq!(triples(&found), [triple("tsconfig.json", "TS6053", 1)]);
+    let diagnostic = &found[0].1[0];
+    assert_eq!(diagnostic.severity, Severity::Error);
+}
+
+#[test]
+fn declared_packages_are_scoped_to_the_package_that_imports_them() {
+    let config = r#"{ "compilerOptions": { "target": "es2022", "module": "esnext", "moduleResolution": "bundler" }, "include": ["packages"] }"#;
+    let a = manifest(r#""only-a": "1.0.0""#);
+    let b = manifest(r#""only-b": "1.0.0", "@w/a": "workspace:*""#);
+    let found = check(
+        &[
+            ("tsconfig.json", config),
+            ("packages/a/package.json", &a),
+            ("packages/b/package.json", &b),
             (
-                "src/env.d.ts",
-                "declare const BUILD: string;\ndeclare const BAD: Missing;\n",
+                "packages/a/src/a.ts",
+                "import x from \"only-b\";\nimport y from \"only-a\";\nexport const v = [x, y];\n",
             ),
-            ("src/c.ts", "export const n: number = BUILD;\n"),
+            (
+                "packages/b/src/b.ts",
+                "import x from \"only-b\";\nimport y from \"only-a\";\nimport z from \"@w/a\";\nexport const v = [x, y, z];\n",
+            ),
         ],
         "",
     );
     assert_eq!(
         triples(&found),
-        [triple("src/c.ts", "TS2322", 1)],
-        "BUILD comes from the declaration file; its own error is not reported"
+        [
+            triple("packages/a/src/a.ts", "TS2307", 1),
+            triple("packages/b/src/b.ts", "TS2307", 2),
+        ],
+        "each package sees its own dependencies; a workspace dependency is declared"
     );
+}
+
+#[test]
+fn react_jsx_findings_are_dropped_only_when_react_is_declared() {
+    let config = tsconfig(r#", "jsx": "react-jsx""#);
+    let app = "export const App = () => <div className=\"a\" />;\n";
+    let without = check(&[("tsconfig.json", &config), ("src/app.tsx", app)], "");
+    assert!(
+        !without.is_empty(),
+        "the control: without react in a manifest the JSX findings stay"
+    );
+    let package = manifest(r#""react": "19.0.0""#);
+    let with = check(
+        &[
+            ("tsconfig.json", &config),
+            ("package.json", &package),
+            ("src/app.tsx", app),
+        ],
+        "",
+    );
+    assert_eq!(triples(&with), []);
+    let no_jsx = check(
+        &[
+            ("tsconfig.json", &tsconfig("")),
+            ("package.json", &package),
+            ("src/app.tsx", app),
+        ],
+        "",
+    );
+    assert!(!no_jsx.is_empty(), "without the jsx option the findings are real");
 }
 
 #[test]
