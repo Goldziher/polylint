@@ -13,6 +13,8 @@
 //! [`Language::id`]: poly_engine_api::language::Language::id
 
 use std::borrow::Cow;
+use std::cell::RefCell;
+use std::collections::HashMap;
 
 use ast_grep_core::language::Language as AsgLanguage;
 use ast_grep_core::matcher::{Pattern, PatternBuilder, PatternError};
@@ -194,7 +196,21 @@ fn rewrite_sigils(expando: char, query: &str) -> Cow<'_, str> {
 
 impl LanguageExt for TslpLanguage {
     fn get_ts_language(&self) -> TSLanguage {
-        get_language(&self.name).expect("TslpLanguage grammar was validated at construction; get_language must succeed")
+        // ast-grep asks for the grammar on every kind/field lookup and parse; the
+        // global registry lock and hash behind `get_language` are paid once per
+        // thread and name instead.
+        thread_local! {
+            static GRAMMARS: RefCell<HashMap<String, TSLanguage>> = RefCell::new(HashMap::new());
+        }
+        GRAMMARS.with(|cache| {
+            if let Some(lang) = cache.borrow().get(self.name.as_str()) {
+                return lang.clone();
+            }
+            let lang = get_language(&self.name)
+                .expect("TslpLanguage grammar was validated at construction; get_language must succeed");
+            cache.borrow_mut().insert(self.name.clone(), lang.clone());
+            lang
+        })
     }
 }
 

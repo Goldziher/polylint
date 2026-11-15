@@ -66,7 +66,8 @@ pub mod report;
 pub mod rules;
 pub mod test;
 
-use std::collections::{BTreeSet, HashSet};
+use std::collections::{BTreeSet, HashMap, HashSet};
+use std::sync::{Arc, Mutex, OnceLock};
 
 use ast_grep_config::{CombinedScan, RuleConfig, Severity as AsgSeverity};
 use ast_grep_core::tree_sitter::StrDoc;
@@ -190,24 +191,13 @@ impl Engine for AstGrepEngine {
     /// backing both sources are cached (user rules by content hash, the pack
     /// forever), so this shares the load the per-file pass is about to do.
     fn provides_language_lint(&self, language: &Language, cfg: &EngineConfig) -> bool {
-        let dirs = dirs_from_options(&cfg.options);
-        let content_hash = cfg.options.get("rules_hash").and_then(|v| v.as_str()).unwrap_or("");
-        let user_rule_map = match load_user_rule_map(&dirs, content_hash) {
-            Ok(map) => map,
-            Err(_) => return false,
-        };
-        let (rule_refs, _) = resolve_rules(grammar_for_language_id(language.id()), user_rule_map.as_deref(), cfg);
-        !rule_refs.is_empty()
+        resolved_for(grammar_for_language_id(language.id()), cfg).is_ok_and(|r| r.scan.is_some())
     }
 
     fn lint(&self, src: &SourceFile, cfg: &EngineConfig) -> anyhow::Result<Vec<Diagnostic>> {
-        let dirs = dirs_from_options(&cfg.options);
-        let content_hash = cfg.options.get("rules_hash").and_then(|v| v.as_str()).unwrap_or("");
-        let user_rule_map = load_user_rule_map(&dirs, content_hash)?;
-
         let lang_name = grammar_for_language_id(src.language.id());
-        let (rule_refs, selection) = resolve_rules(lang_name, user_rule_map.as_deref(), cfg);
-        let Some(first_rule) = rule_refs.first() else {
+        let resolved = resolved_for(lang_name, cfg)?;
+        let (Some(scan), Some(tslp_lang)) = (resolved.scan.as_ref(), resolved.language.clone()) else {
             if builtin_pack_enabled(cfg)
                 && let Some(reason) = pack::unavailable_reason(lang_name)
             {
@@ -215,14 +205,7 @@ impl Engine for AstGrepEngine {
             }
             return Ok(Vec::new());
         };
-
-        // The grammar comes from a rule rather than from a second
-        // `TslpLanguage::new(lang_name)` lookup. Every rule in `rule_refs` is
-        // keyed under `lang_name` *because* its own `language:` deserialized to
-        // that already-validated grammar, so this cannot fail — where the
-        // lookup could, silently returning no diagnostics for a file poly had
-        // just counted as linted.
-        let tslp_lang = first_rule.language.clone();
+        let selection = &resolved.selection;
 
         // `try_new` owns the parse, and `ast-grep-core` already pools the
         // underlying `tree_sitter::Parser` per thread per language behind it
@@ -240,19 +223,17 @@ impl Engine for AstGrepEngine {
             }
         };
 
-        let scan = CombinedScan::new(rule_refs);
-
         let result = scan.scan(&root, true);
 
         let mut diagnostics: Vec<Diagnostic> = Vec::new();
 
         for (rule, node_match) in &result.diffs {
-            diagnostics.push(diff_to_diagnostic(self.name(), rule, node_match, &selection));
+            diagnostics.push(diff_to_diagnostic(self.name(), rule, node_match, selection));
         }
 
         for (rule, node_matches) in &result.matches {
             for node_match in node_matches {
-                diagnostics.push(match_to_diagnostic(self.name(), rule, node_match, &selection));
+                diagnostics.push(match_to_diagnostic(self.name(), rule, node_match, selection));
             }
         }
 
@@ -262,6 +243,75 @@ impl Engine for AstGrepEngine {
     fn format(&self, _src: &SourceFile, _cfg: &EngineConfig) -> anyhow::Result<FormatOutput> {
         Ok(FormatOutput::Unchanged)
     }
+}
+
+/// One language's resolved rule set under one engine config, built once and
+/// shared by every file of that language.
+struct Resolved {
+    selection: RuleSelection,
+    /// The grammar of the first active rule; `None` when no rule is active.
+    language: Option<TslpLanguage>,
+    /// Prebuilt scan over the active rules; `None` when no rule is active.
+    scan: Option<CombinedScan<'static, TslpLanguage>>,
+}
+
+/// Memo entries kept before the table is dropped and rebuilt; a run uses one
+/// config per directory scope, so this is only a guard against unbounded growth.
+const RESOLVED_MEMO_CAP: usize = 64;
+
+type ResolvedMemo = HashMap<[u8; 32], HashMap<String, Arc<Resolved>>>;
+
+fn resolved_memo() -> &'static Mutex<ResolvedMemo> {
+    static MEMO: OnceLock<Mutex<ResolvedMemo>> = OnceLock::new();
+    MEMO.get_or_init(|| Mutex::new(HashMap::new()))
+}
+
+/// The memoised [`Resolved`] for `lang_name` under `cfg`, keyed by the config
+/// fingerprint (which covers the rules hash, dirs and selection keys).
+///
+/// A config with rule dirs but no `rules_hash` is never memoised: without the
+/// hash the fingerprint cannot see an edit to the rule files.
+fn resolved_for(lang_name: &str, cfg: &EngineConfig) -> anyhow::Result<Arc<Resolved>> {
+    let content_hash = cfg.options.get("rules_hash").and_then(|v| v.as_str()).unwrap_or("");
+    let dirs = dirs_from_options(&cfg.options);
+    let memoise = !(content_hash.is_empty() && !dirs.is_empty());
+    let key = memoise.then(|| cfg.fingerprint());
+    if let Some(key) = &key
+        && let Some(hit) = resolved_memo()
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .get(key)
+            .and_then(|by_lang| by_lang.get(lang_name))
+    {
+        return Ok(Arc::clone(hit));
+    }
+
+    let user_rule_map = load_user_rule_map(&dirs, content_hash)?;
+    // The scan borrows its rules for as long as it lives in the process-wide
+    // memo, so the (already never-evicted) rule map is pinned for `'static`.
+    let user_rules: Option<&'static RuleMap> = user_rule_map.map(|arc| {
+        let pinned: &'static Arc<RuleMap> = Box::leak(Box::new(arc));
+        &**pinned
+    });
+    let (rule_refs, selection) = resolve_rules(lang_name, user_rules, cfg);
+    let language = rule_refs.first().map(|r| r.language.clone());
+    let scan = (!rule_refs.is_empty()).then(|| CombinedScan::new(rule_refs));
+    let resolved = Arc::new(Resolved {
+        selection,
+        language,
+        scan,
+    });
+
+    if let Some(key) = key {
+        let mut memo = resolved_memo().lock().unwrap_or_else(|e| e.into_inner());
+        if memo.len() >= RESOLVED_MEMO_CAP && !memo.contains_key(&key) {
+            memo.clear();
+        }
+        memo.entry(key)
+            .or_default()
+            .insert(lang_name.to_string(), Arc::clone(&resolved));
+    }
+    Ok(resolved)
 }
 
 /// Load the user rule map for `dirs`, or `None` when no `[rules] dirs` are
