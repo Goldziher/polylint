@@ -248,6 +248,19 @@ pub fn get_git_hooks_dir() -> Result<PathBuf, Error> {
     Ok(hooks_dir.clean())
 }
 
+/// The effective `core.hooksPath` (local, worktree or global scope), if set.
+pub fn get_config_hooks_path(root: &Path) -> Result<Option<String>, Error> {
+    let output = git_cmd("get core.hooksPath")?
+        .current_dir(root)
+        .arg("config")
+        .arg("--get")
+        .arg("core.hooksPath")
+        .check(false)
+        .output()?;
+    let value = String::from_utf8_lossy(output.stdout.trim_ascii()).into_owned();
+    Ok((output.status.success() && !value.is_empty()).then_some(value))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

@@ -105,6 +105,14 @@ pub struct InstallArgs {
     #[arg(long)]
     pub replace_lefthook: bool,
 
+    /// Install into a `core.hooksPath` outside this repository.
+    ///
+    /// Such a directory is shared by every repository using the setting, so poly
+    /// refuses by default; also enabled by `POLY_HOOKS_ALLOW_SHARED_PATH=1`.
+    /// Stale shims are never pruned from a shared directory.
+    #[arg(long)]
+    pub force: bool,
+
     /// Never write `poly.lock`: fail when a hook source or remote `extends` base
     /// has no lock entry instead of resolving and recording it. Also set by
     /// `POLY_LOCKED=1`.
@@ -301,6 +309,19 @@ fn install(args: InstallArgs) -> Result<ExitCode> {
     let config = load_config(None)?;
     super::sources::provision(&root, &config.hooks, true).context("provisioning hook sources")?;
     let hooks_dir = poly_hooks::git::get_git_hooks_dir().context("failed to resolve the git hooks directory")?;
+    let repo_roots = vec![
+        root.clone(),
+        poly_hooks::git::get_git_common_dir().unwrap_or_else(|_| root.join(".git")),
+    ];
+    let hooks_path_config = poly_hooks::git::get_config_hooks_path(&root)?;
+    let shared_refusal =
+        poly_hooks::install::shared_hooks_dir_refusal(&hooks_dir, hooks_path_config.as_deref(), &repo_roots);
+    if let Some(reason) = &shared_refusal {
+        let allowed = args.force || std::env::var_os("POLY_HOOKS_ALLOW_SHARED_PATH").is_some_and(|value| value == "1");
+        if !allowed {
+            anyhow::bail!("{reason}");
+        }
+    }
     // An explicit `--hook-type` list is honoured verbatim; otherwise install
     // only the shims the config actually binds work to, rather than all ten
     // (which fire — and provision, and print — on every git operation).
@@ -328,7 +349,7 @@ fn install(args: InstallArgs) -> Result<ExitCode> {
     // stops firing poly on every unrelated git operation. Foreign hooks and any
     // preserved `.legacy` are left untouched by `uninstall`. Skipped for an
     // explicit `--hook-type` list, which is treated as additive.
-    if derived {
+    if derived && shared_refusal.is_none() {
         let kept: BTreeSet<&str> = hook_types.iter().map(|hook_type| hook_type.as_ref()).collect();
         let stale: Vec<poly_hooks::HookType> = poly_hooks::HookType::value_variants()
             .iter()

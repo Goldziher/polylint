@@ -19,11 +19,13 @@
 //! still runs the mise-pinned `poly`, and the hook sees the repository's mise
 //! tools and `[env]`.
 //!
-//! The store/workspace/provisioning machinery, the `core.hooksPath` refusal
-//! logic, and `init_template_dir` are intentionally **not** ported — they are out of scope
-//! for the crate-side shims (and `polyhooks` is removed in B4). The caller
-//! (`poly-cli`) resolves the hooks directory via [`crate::git::get_git_hooks_dir`]
-//! and passes it in.
+//! The store/workspace/provisioning machinery and `init_template_dir` are
+//! intentionally **not** ported — they are out of scope for the crate-side shims
+//! (and `polyhooks` is removed in B4). The caller (`poly-cli`) resolves the hooks
+//! directory via [`crate::git::get_git_hooks_dir`] and passes it in, after
+//! checking it with [`shared_hooks_dir_refusal`]: a `core.hooksPath` outside the
+//! repository is shared by other repositories, so writing or pruning shims there
+//! would touch their hooks.
 
 use std::io::Write as _;
 use std::path::{Path, PathBuf};
@@ -393,6 +395,61 @@ pub fn install_with(hooks_dir: &Path, hook_types: &[HookType], options: InstallO
     Ok(report)
 }
 
+/// Whether `hooks_dir` lies inside one of `repo_roots` (the worktree and the git
+/// common dir), compared after resolving symlinks and `..`.
+///
+/// A directory that does not exist yet is judged by its nearest existing
+/// ancestor, so a not-yet-created `.githooks` still counts as in-repo.
+#[must_use]
+pub fn hooks_dir_within_repo(hooks_dir: &Path, repo_roots: &[PathBuf]) -> bool {
+    let resolved = canonical_or_ancestor(hooks_dir);
+    repo_roots
+        .iter()
+        .any(|root| root.canonicalize().is_ok_and(|root| resolved.starts_with(root)))
+}
+
+fn canonical_or_ancestor(path: &Path) -> PathBuf {
+    let mut tail = Vec::new();
+    let mut current = path;
+    loop {
+        if let Ok(resolved) = current.canonicalize() {
+            return tail.iter().rev().fold(resolved, |acc, part| acc.join(part));
+        }
+        match (current.parent(), current.file_name()) {
+            (Some(parent), Some(name)) => {
+                tail.push(name.to_os_string());
+                current = parent;
+            }
+            _ => return path.to_path_buf(),
+        }
+    }
+}
+
+/// The reason to refuse installing into `hooks_dir`, or `None` when it is safe.
+///
+/// Unsafe means `core.hooksPath` is configured (`hooks_path_config` is its value)
+/// and resolves outside `repo_roots`: that directory is shared with every
+/// repository using the same setting, so shims written there fire for all of
+/// them, and pruning would delete theirs.
+#[must_use]
+pub fn shared_hooks_dir_refusal(
+    hooks_dir: &Path,
+    hooks_path_config: Option<&str>,
+    repo_roots: &[PathBuf],
+) -> Option<String> {
+    let configured = hooks_path_config?;
+    if hooks_dir_within_repo(hooks_dir, repo_roots) {
+        return None;
+    }
+    Some(format!(
+        "`core.hooksPath` is set to `{configured}`, outside this repository ({}); other repositories \
+         share that directory, so poly will not write or remove hooks there. Unset it with `git config \
+         --unset core.hooksPath` (or `--global`), or pass --force / set POLY_HOOKS_ALLOW_SHARED_PATH=1 \
+         to install into it anyway",
+        hooks_dir.display()
+    ))
+}
+
 /// Uninstall poly git-hook shims from `hooks_dir`, restoring any preserved
 /// `<name>.legacy` hook.
 ///
@@ -502,6 +559,56 @@ mod tests {
             .permissions()
             .mode();
         assert_eq!(mode & 0o111, 0o111, "shim is not executable: {mode:o}");
+    }
+
+    #[test]
+    fn core_hooks_path_outside_the_repo_is_refused() {
+        let repo = TempDir::new().expect("tempdir");
+        let shared = TempDir::new().expect("tempdir");
+        let roots = vec![repo.path().to_path_buf()];
+        let outside = shared.path().join("hooks");
+
+        let reason = shared_hooks_dir_refusal(&outside, Some("/shared/hooks"), &roots).expect("refused");
+        assert!(reason.contains("core.hooksPath"), "{reason}");
+        assert!(
+            shared_hooks_dir_refusal(&outside, None, &roots).is_none(),
+            "unset is the default hooks dir"
+        );
+    }
+
+    #[test]
+    fn core_hooks_path_inside_the_repo_is_allowed_even_before_it_exists() {
+        let repo = TempDir::new().expect("tempdir");
+        let roots = vec![repo.path().to_path_buf()];
+        let inside = repo.path().join(".githooks");
+        assert!(shared_hooks_dir_refusal(&inside, Some(".githooks"), &roots).is_none());
+    }
+
+    #[test]
+    fn git_reports_a_configured_hooks_path() {
+        let repo = TempDir::new().expect("tempdir");
+        let git = |args: &[&str]| {
+            let status = std::process::Command::new("git")
+                .args(args)
+                .current_dir(repo.path())
+                .status()
+                .expect("git");
+            assert!(status.success());
+        };
+        git(&["init", "-q"]);
+        assert_eq!(
+            crate::git::get_config_hooks_path(repo.path())
+                .expect("query")
+                .as_deref(),
+            None
+        );
+        git(&["config", "core.hooksPath", "/somewhere/shared"]);
+        assert_eq!(
+            crate::git::get_config_hooks_path(repo.path())
+                .expect("query")
+                .as_deref(),
+            Some("/somewhere/shared")
+        );
     }
 
     #[test]
