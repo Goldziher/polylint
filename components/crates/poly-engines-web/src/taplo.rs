@@ -61,6 +61,7 @@ use poly_engine_api::{
     engine::OptionType,
     engine::{Capabilities, Diagnostic, Engine, FormatOutput, Severity, SourceFile, Span},
     language::Language,
+    line_index::LineIndex,
 };
 
 /// The taplo crate version this backend wraps; used as part of the cache key.
@@ -169,12 +170,13 @@ impl Engine for TaploEngine {
 
     fn lint(&self, src: &SourceFile, _cfg: &EngineConfig) -> anyhow::Result<Vec<Diagnostic>> {
         let mut diags = Vec::new();
+        let index = LineIndex::new(&src.content);
 
         let parse = parser::parse(&src.content);
         for error in &parse.errors {
             let start_byte = u32::from(error.range.start()) as usize;
             let end_byte = u32::from(error.range.end()) as usize;
-            let span = byte_range_to_span(&src.content, start_byte, end_byte);
+            let span = byte_range_to_span(&index, start_byte, end_byte);
             diags.push(Diagnostic {
                 engine: "taplo".to_string(),
                 code: Some("syntax-error".to_string()),
@@ -191,7 +193,7 @@ impl Engine for TaploEngine {
         let dom = parse.into_dom();
         if let Err(errors) = dom.validate() {
             for error in errors {
-                let span = semantic_error_span(&src.content, &error);
+                let span = semantic_error_span(&index, &error);
                 diags.push(Diagnostic {
                     engine: "taplo".to_string(),
                     code: Some(semantic_error_code(&error).to_string()),
@@ -309,11 +311,11 @@ fn build_options(cfg: &EngineConfig) -> Options {
     opts
 }
 
-/// Convert a byte range `[start_byte, end_byte)` within `source` into a
-/// 1-based [`Span`].
-fn byte_range_to_span(source: &str, start_byte: usize, end_byte: usize) -> Span {
-    let (start_line, start_col) = byte_to_line_col(source, start_byte);
-    let (end_line, end_col) = byte_to_line_col(source, end_byte.max(start_byte));
+/// Convert a byte range `[start_byte, end_byte)` of `index`'s text into a
+/// 1-based [`Span`] with character columns.
+fn byte_range_to_span(index: &LineIndex<'_>, start_byte: usize, end_byte: usize) -> Span {
+    let (start_line, start_col) = index.line_col(start_byte);
+    let (end_line, end_col) = index.line_col(end_byte.max(start_byte));
     Span {
         start_line,
         start_col,
@@ -322,27 +324,8 @@ fn byte_range_to_span(source: &str, start_byte: usize, end_byte: usize) -> Span 
     }
 }
 
-/// Convert a byte offset into a 1-based `(line, column)` pair.
-fn byte_to_line_col(source: &str, byte_offset: usize) -> (u32, u32) {
-    let offset = byte_offset.min(source.len());
-    let mut line: u32 = 1;
-    let mut col: u32 = 1;
-    for (i, ch) in source.char_indices() {
-        if i >= offset {
-            break;
-        }
-        if ch == '\n' {
-            line += 1;
-            col = 1;
-        } else {
-            col += 1;
-        }
-    }
-    (line, col)
-}
-
 /// Extract a [`Span`] from a DOM [`dom::Error`], if any key has syntax.
-fn semantic_error_span(source: &str, error: &dom::Error) -> Option<Span> {
+fn semantic_error_span(index: &LineIndex<'_>, error: &dom::Error) -> Option<Span> {
     let range = match error {
         dom::Error::ConflictingKeys { key, .. } => key.text_ranges().next(),
         dom::Error::ExpectedTable { not_table, .. } => not_table.text_ranges().next(),
@@ -356,7 +339,7 @@ fn semantic_error_span(source: &str, error: &dom::Error) -> Option<Span> {
     range.map(|r| {
         let start_byte = u32::from(r.start()) as usize;
         let end_byte = u32::from(r.end()) as usize;
-        byte_range_to_span(source, start_byte, end_byte)
+        byte_range_to_span(index, start_byte, end_byte)
     })
 }
 
@@ -495,12 +478,22 @@ mod tests {
     }
 
     #[test]
-    fn byte_to_line_col_first_char() {
-        assert_eq!(byte_to_line_col("foo\nbar\n", 0), (1, 1));
+    fn span_columns_count_characters() {
+        let src = "é = \"日😀\"\nb = [\n";
+        let index = LineIndex::new(src);
+        let start = src.find('"').unwrap();
+        let span = byte_range_to_span(&index, start, start + "\"日😀\"".len());
+        assert_eq!((span.start_line, span.start_col), (1, 5));
+        assert_eq!((span.end_line, span.end_col), (1, 9));
     }
 
     #[test]
-    fn byte_to_line_col_second_line() {
-        assert_eq!(byte_to_line_col("foo\nbar\n", 4), (2, 1));
+    fn span_crossing_a_newline_ends_on_the_later_line() {
+        let src = "foo\nbar\n";
+        let span = byte_range_to_span(&LineIndex::new(src), 0, 5);
+        assert_eq!(
+            (span.start_line, span.start_col, span.end_line, span.end_col),
+            (1, 1, 2, 2)
+        );
     }
 }
