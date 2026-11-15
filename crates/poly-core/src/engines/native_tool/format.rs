@@ -166,13 +166,13 @@ mod tests {
         let tool = crate::tool_run::fake_tool::script(
             dir.path(),
             "badfmt",
-            "cat >/dev/null; echo 'unknown key max_wdth' >&2; echo more >&2; exit 2",
+            "cat >/dev/null; echo 'unknown key bogus_key' >&2; echo more >&2; exit 2",
         );
         let binary: &'static str = Box::leak(tool.to_string_lossy().into_owned().into_boxed_str());
         let err = super::format_via_tool(&spec_for(binary), &rust_source(), 4, false).expect_err("exit 2 is an error");
         let text = format!("{err:#}");
         assert!(
-            text.contains("status 2") && text.contains("unknown key max_wdth"),
+            text.contains("status 2") && text.contains("unknown key bogus_key"),
             "{text}"
         );
         assert!(!text.contains("more"), "only the first stderr line is quoted: {text}");
