@@ -53,7 +53,7 @@ use poly_config::ToolConfig;
 
 use self::argv::Template;
 use self::launch::{Launcher, Resolved};
-pub(super) use self::memo::forget_run_memos;
+pub(in crate::engines::catalog_tool) use self::memo::forget_run_memos;
 use self::unit::UnitOptions;
 
 /// Which role a tool is built for.
