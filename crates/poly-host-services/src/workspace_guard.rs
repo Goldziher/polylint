@@ -45,10 +45,44 @@ impl WorkspaceGuard {
     ///
     /// # Errors
     ///
-    /// When the working directory or `trusted_config` cannot be resolved.
+    /// When the working directory or `trusted_config` cannot be resolved, or when confinement is on
+    /// and the working directory is a filesystem root or the user's home directory, which would
+    /// confine nothing.
     pub fn for_cwd(trusted_config: Option<&Path>, allow_outside: bool) -> anyhow::Result<Self> {
+        let home = std::env::var_os("HOME").or_else(|| std::env::var_os("USERPROFILE"));
+        Self::for_cwd_with_home(trusted_config, allow_outside, home.as_deref().map(Path::new))
+    }
+
+    /// [`WorkspaceGuard::for_cwd`] with the home directory supplied by the caller.
+    ///
+    /// # Errors
+    ///
+    /// As [`WorkspaceGuard::for_cwd`].
+    pub fn for_cwd_with_home(
+        trusted_config: Option<&Path>,
+        allow_outside: bool,
+        home: Option<&Path>,
+    ) -> anyhow::Result<Self> {
         let cwd = std::env::current_dir().context("cannot resolve the working directory")?;
-        Self::new(&cwd, trusted_config, allow_outside)
+        let guard = Self::new(&cwd, trusted_config, allow_outside)?;
+        if !allow_outside {
+            guard.refuse_unconfining_root(home)?;
+        }
+        Ok(guard)
+    }
+
+    fn refuse_unconfining_root(&self, home: Option<&Path>) -> anyhow::Result<()> {
+        let is_home = home
+            .and_then(|home| home.canonicalize().ok())
+            .is_some_and(|home| home == self.root);
+        anyhow::ensure!(
+            self.root.parent().is_some() && !is_home,
+            "the working directory `{}` is {}, so confining requests to it would confine nothing; start \
+             `poly mcp` in the project directory, or pass `--allow-outside-workspace`",
+            self.root.display(),
+            if is_home { "the home directory" } else { "a filesystem root" }
+        );
+        Ok(())
     }
 
     /// Check every requested path.
@@ -82,9 +116,7 @@ impl WorkspaceGuard {
         if self.allow_outside {
             return Ok(());
         }
-        let resolved = Path::new(requested)
-            .canonicalize()
-            .with_context(|| format!("cannot resolve {what} `{requested}`"))?;
+        let resolved = resolve(requested).with_context(|| format!("cannot resolve {what} `{requested}`"))?;
         anyhow::ensure!(
             resolved.starts_with(&self.root),
             "{what} `{requested}` is outside the workspace `{}`; start `poly mcp` with \
@@ -92,6 +124,29 @@ impl WorkspaceGuard {
             self.root.display()
         );
         Ok(())
+    }
+}
+
+/// Canonicalize `requested`; a path that does not exist yet resolves through its longest existing
+/// ancestor, so the guard judges where it would land rather than refusing it.
+fn resolve(requested: &str) -> anyhow::Result<PathBuf> {
+    if let Ok(resolved) = Path::new(requested).canonicalize() {
+        return Ok(resolved);
+    }
+    let mut current = std::path::absolute(requested)?;
+    let mut tail = Vec::new();
+    loop {
+        // A dangling symlink exists but does not resolve; its target is unknown, so refuse it.
+        anyhow::ensure!(std::fs::symlink_metadata(&current).is_err(), "`{}` does not resolve", current.display());
+        let name = current.file_name().map(std::ffi::OsStr::to_owned);
+        let (Some(name), Some(parent)) = (name, current.parent().map(Path::to_path_buf)) else {
+            anyhow::bail!("`{requested}` has no resolvable ancestor");
+        };
+        tail.push(name);
+        current = parent;
+        if let Ok(existing) = current.canonicalize() {
+            return Ok(tail.iter().rev().fold(existing, |path, name| path.join(name)));
+        }
     }
 }
 
@@ -166,5 +221,47 @@ mod tests {
         let (_root, outside, guard) = guard(true);
         guard.check_paths(&[outside.path().to_str().unwrap()]).unwrap();
         guard.check_config(Some("/nonexistent/poly.toml")).unwrap();
+    }
+
+    #[test]
+    fn a_path_that_does_not_exist_yet_is_judged_by_its_ancestor() {
+        let (root, outside, guard) = guard(false);
+        let fresh = root.path().join("src").join("new").join("file.rs");
+        guard.check_paths(&[fresh.to_str().unwrap()]).unwrap();
+        let elsewhere = outside.path().join("new.rs");
+        assert!(guard.check_paths(&[elsewhere.to_str().unwrap()]).is_err());
+    }
+
+    #[test]
+    fn a_missing_path_climbing_out_with_dotdot_is_rejected() {
+        let (root, _outside, guard) = guard(false);
+        let sneaky = root.path().join("missing").join("..").join("..").join("elsewhere");
+        assert!(guard.check_paths(&[sneaky.to_str().unwrap()]).is_err());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn a_missing_path_under_an_escaping_symlink_is_rejected() {
+        let (root, outside, guard) = guard(false);
+        let link = root.path().join("escape");
+        std::os::unix::fs::symlink(outside.path(), &link).unwrap();
+        let fresh = link.join("new.rs");
+        assert!(guard.check_paths(&[fresh.to_str().unwrap()]).is_err());
+        let dangling = root.path().join("dangling");
+        std::os::unix::fs::symlink(outside.path().join("nothing"), &dangling).unwrap();
+        assert!(guard.check_paths(&[dangling.to_str().unwrap()]).is_err());
+    }
+
+    #[test]
+    fn a_filesystem_root_or_home_root_is_refused() {
+        let root = tempfile::tempdir().unwrap();
+        let top = WorkspaceGuard::new(Path::new(std::path::MAIN_SEPARATOR_STR), None, false).unwrap();
+        let error = top.refuse_unconfining_root(None).unwrap_err();
+        assert!(error.to_string().contains("filesystem root"), "{error}");
+        let home = WorkspaceGuard::new(root.path(), None, false).unwrap();
+        let error = home.refuse_unconfining_root(Some(root.path())).unwrap_err();
+        assert!(error.to_string().contains("--allow-outside-workspace"), "{error}");
+        home.refuse_unconfining_root(Some(Path::new("/definitely/not/home"))).unwrap();
+        home.refuse_unconfining_root(None).unwrap();
     }
 }
