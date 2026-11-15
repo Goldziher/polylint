@@ -182,7 +182,7 @@ thread_local! {
 /// does not bundle an `indents.scm` for `name`). Returns `Some(formatted)` when
 /// a built-in query exists and parsing succeeds; returns `None` to signal the
 /// caller to fall back to whitespace normalization.
-pub fn try_reindent_builtin(name: &str, src: &SourceFile, cfg: &EngineConfig) -> Option<String> {
+pub(crate) fn try_reindent_builtin(name: &str, src: &SourceFile, cfg: &EngineConfig) -> Option<String> {
     let query_src = BUILTIN_QUERIES.iter().find(|(n, _)| *n == name).map(|(_, q)| *q)?;
 
     let (adjustments, protected) = builtin_facts(name, query_src, src)?;

@@ -70,7 +70,7 @@ use crate::language::Language;
 /// grammar and resolves `*.jsx` to `javascript` (pinned by a test below), so
 /// answering with `"jsx"` here would deny coverage to files the engine
 /// structurally analyses as JavaScript.
-pub fn grammar_for(language: &Language) -> &str {
+pub(crate) fn grammar_for(language: &Language) -> &str {
     match language {
         Language::Jsx => "javascript",
         other => other.id(),
