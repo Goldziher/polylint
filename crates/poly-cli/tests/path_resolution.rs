@@ -109,3 +109,31 @@ fn per_file_ignores_apply_to_a_bare_directory_from_a_subdirectory() {
     let dir = repo("");
     assert_ignored(&dir.path().join("docs"), &["adr", "other"], "adr/x.c", "other/y.c");
 }
+
+#[test]
+fn a_relative_run_from_a_subdirectory_uses_the_poly_toml_above() {
+    let dir = repo("file_too_long = false\n");
+    let report = lint_json(&dir.path().join("docs/other"), &["."]);
+    assert!(
+        flagged(&report).is_empty(),
+        "the parent poly.toml disables file-too-long: {report}"
+    );
+}
+
+#[test]
+fn the_reported_root_of_config_zero_is_the_poly_toml_directory() {
+    let dir = repo("");
+    for (cwd, args) in [
+        (dir.path().to_path_buf(), vec!["docs/adr"]),
+        (dir.path().to_path_buf(), vec!["."]),
+        (dir.path().join("docs/other"), vec!["."]),
+        (dir.path().join("docs/other"), vec!["y.c"]),
+    ] {
+        let report = lint_json(&cwd, &args);
+        let root = &report["configs"][0]["root"];
+        assert!(
+            root.is_null(),
+            "{args:?} from {cwd:?}: config 0 is the run root and reports none, got {root}"
+        );
+    }
+}

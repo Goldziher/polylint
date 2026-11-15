@@ -163,7 +163,13 @@ impl ConfigSet {
         // must have its nested configs found there too.
         let no_prune = root_config.no_prune.clone();
         let mut configs = vec![root_config];
-        let mut dirs: Vec<Option<PathBuf>> = vec![Some(root_dir)];
+        // Config 0's directory is where its `poly.toml` was found, or the working directory when none
+        // was; never the directory of the first path the run named.
+        let root = root_config_dir
+            .clone()
+            .or_else(|| canon.canonicalize(Path::new(".")))
+            .unwrap_or(root_dir);
+        let mut dirs: Vec<Option<PathBuf>> = vec![Some(root)];
         let mut lookup: Vec<(PathBuf, usize)> = Vec::new();
         let mut seen: HashSet<PathBuf> = HashSet::new();
 
@@ -239,10 +245,12 @@ impl ConfigSet {
         self.dirs.get(id).and_then(Option::as_deref)
     }
 
-    /// The directory the run's root config resolved from, used to report every
-    /// other config's directory relative to it.
+    /// The run's project root: the directory holding the `poly.toml` that governs
+    /// it, else the working directory. Config 0's directory, so every consumer of
+    /// "the root" reads one value whatever path the run named first. `None` only
+    /// for the `--config` bypass.
     pub fn root_dir(&self) -> Option<&Path> {
-        self.root_config_dir.as_deref()
+        self.config_dir(0)
     }
 
     pub fn config(&self, id: usize) -> &Config {
@@ -592,8 +600,15 @@ fn config_dirs_governing(
         if !frames.insert(frame.clone()) {
             continue;
         }
+        // A relative frame's upward walk bottoms out at the working directory, so a run from a
+        // subdirectory never saw the configs above it. Walk the absolute path, as for an absolute root.
+        let walk = if frame.is_relative() {
+            std::env::current_dir().map_or_else(|_| frame.clone(), |cwd| cwd.join(&frame))
+        } else {
+            frame.clone()
+        };
         dirs.extend(
-            poly_config::config_chain_dirs_with(&frame, resolver)?
+            poly_config::config_chain_dirs_with(&walk, resolver)?
                 .into_iter()
                 .map(normalize_dir),
         );

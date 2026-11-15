@@ -697,7 +697,7 @@ impl<'a> Governing<'a> {
             // Outside every nested config: the root config governs what sits under the root, and a
             // file elsewhere (an engine `dir` pointing out of the tree) takes the plan's own config.
             match self.configs.config_dir(0) {
-                Some(root) if path.starts_with(root) => 0,
+                Some(root) if path.starts_with(root) || scope::canonical(path).starts_with(scope::canonical(root)) => 0,
                 _ => self.plan.config_id,
             }
         });
