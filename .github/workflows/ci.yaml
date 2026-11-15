@@ -142,12 +142,22 @@ jobs:
       - uses: dtolnay/rust-toolchain@v1
         with:
           toolchain: stable
+          components: rustfmt
       - uses: Swatinem/rust-cache@v2
         with:
           workspaces: |
             .
             components
             components-pyrefly
+      # The native-tool tests skip a tool that is absent; on Linux the four default-on tools must be
+      # present, and POLY_REQUIRE_NATIVE_TOOLS (set on the test step) fails the run if one is missing.
+      # shellcheck comes with the runner image. The others (zig, java, kotlin, R, swift, dart, gleam)
+      # may still skip.
+      - name: Install gofmt and shfmt
+        if: runner.os == 'Linux'
+        uses: xberg-io/actions/setup-mise@v1
+        with:
+          tools: go shfmt
         # --no-fail-fast is not optional: cargo stops at the first failing test
         # binary, so a run with failures in three crates reports only the first
         # and the rest are rediscovered one CI round at a time.
@@ -170,10 +180,77 @@ jobs:
           echo "Native CMD regression tests collected: $count/8"
           test "$count" -eq 8
       - run: cargo test --workspace --exclude conformance --no-fail-fast
+        env:
+          POLY_REQUIRE_NATIVE_TOOLS: ${{ runner.os == 'Linux' && 'gofmt,rustfmt,shfmt,shellcheck' || '' }}
       - name: test (components workspace)
         run: cargo test --locked --manifest-path components/Cargo.toml --workspace --no-fail-fast
       - name: test (pyrefly workspace)
         run: cargo test --locked --manifest-path components-pyrefly/Cargo.toml --workspace --no-fail-fast
+
+  test-core:
+    # The released flavour links only the quality, uncomment and ini engines; the workspace test run
+    # builds poly-core with every engine, so this is the only job that tests the code as shipped.
+    name: test core flavour
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    env:
+      CARGO_PROFILE_DEV_DEBUG: "0"
+      CARGO_PROFILE_TEST_DEBUG: "0"
+    steps:
+      - uses: actions/checkout@v7
+      - uses: dtolnay/rust-toolchain@v1
+        with:
+          toolchain: stable
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo test --locked -p poly-core -p poly-cli --no-default-features --features core --no-fail-fast
+
+  features:
+    # Every poly-core feature must build on its own, not only in the all-engines combination.
+    name: feature matrix
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v7
+      - uses: dtolnay/rust-toolchain@v1
+        with:
+          toolchain: stable
+      - uses: Swatinem/rust-cache@v2
+      - uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-hack
+      - run: cargo hack check --locked -p poly-core --each-feature --no-dev-deps
+
+  plugin-tests:
+    name: plugin tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+      - uses: xberg-io/actions/setup-mise@v1
+      - run: mise run plugin:test
+        env:
+          MISE_TASK_RUN_AUTO_INSTALL: "false"
+
+  msrv:
+    # Cargo.toml's rust-version is the floor the workspace promises; `stable` everywhere else would let
+    # a newer API slip in unnoticed.
+    name: msrv
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v7
+      - name: Read rust-version from Cargo.toml
+        id: msrv
+        run: |
+          set -euo pipefail
+          version="$(sed -n 's/^rust-version = "\(.*\)"$/\1/p' Cargo.toml | head -n1)"
+          [[ "$version" =~ ^[0-9]+\.[0-9]+(\.[0-9]+)?$ ]] || { echo "::error::no rust-version in Cargo.toml"; exit 1; }
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+      - uses: dtolnay/rust-toolchain@v1
+        with:
+          toolchain: ${{ steps.msrv.outputs.version }}
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo check --locked --workspace --exclude conformance
 
   dogfood:
     # poly is a linter, and the repository is a real polyglot tree — Rust, TOML,
