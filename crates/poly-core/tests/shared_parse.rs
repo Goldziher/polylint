@@ -30,7 +30,7 @@ fn fixtures() -> [(&'static str, Language, &'static str, &'static [&'static str]
             "app/show.go",
             Language::Go,
             "package app\n\nimport . \"fmt\"\n\nfunc show(a, b, c, d, e, f, g int) {\n\tPrintln(a)\n}\n",
-            &["dot-import", "too-many-parameters"],
+            &["go-dot-import", "too-many-parameters"],
         ),
     ]
 }

@@ -182,7 +182,10 @@ where
             if !value.is_table() {
                 bail!("{at}: expected a table, found {}", value.type_str());
             }
-            let raw: Raw = value.clone().try_into().map_err(|e| anyhow::anyhow!("{at}: {e}"))?;
+            let raw: Raw = value
+                .clone()
+                .try_into()
+                .map_err(|e: toml::de::Error| anyhow::anyhow!("{at}: {}", e.to_string().trim_end()))?;
             compile(&at, raw)
         })
         .collect()
