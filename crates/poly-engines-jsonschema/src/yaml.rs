@@ -17,6 +17,7 @@ use serde_json::{Map, Number, Value};
 use crate::doc::{Document, MAX_DEPTH, child, element, span_between};
 
 /// Where an event sits in the source.
+#[derive(Clone)]
 struct Loc {
     bytes: Option<Range<usize>>,
     start: (usize, usize),
@@ -100,6 +101,19 @@ pub(crate) fn parse(src: &str) -> Result<Vec<Document>, String> {
     Ok(documents)
 }
 
+/// The value of the first document of `src`, for a schema written in YAML.
+///
+/// # Errors
+///
+/// The parser's message when `src` is not valid YAML, or a note that it holds no document.
+pub(crate) fn parse_value(src: &str) -> Result<Value, String> {
+    parse(src)?
+        .into_iter()
+        .next()
+        .map(|document| document.value)
+        .ok_or_else(|| "invalid YAML: no document".to_owned())
+}
+
 impl Walker<'_> {
     fn pull(&mut self) -> Option<(Kind, Loc)> {
         let event = self.events.get_mut(self.at)?.take();
@@ -150,8 +164,10 @@ impl Walker<'_> {
             }
             Kind::MapStart(anchor) => {
                 let mut members = Map::new();
+                let mut merged: Vec<(Map<String, Value>, Loc)> = Vec::new();
                 loop {
                     let (kind, key_loc) = self.pull().ok_or_else(truncated)?;
+                    let merge_key = matches!(&kind, Kind::Scalar { text, plain: true, .. } if text == "<<");
                     let key = match kind {
                         Kind::MapEnd => break,
                         Kind::Scalar { text, .. } => text,
@@ -161,8 +177,30 @@ impl Walker<'_> {
                         }
                     };
                     let (kind, value_loc) = self.pull().ok_or_else(truncated)?;
+                    if merge_key {
+                        let value = self.node(kind, &value_loc, "/~merge", depth + 1)?;
+                        match merge_sources(&value) {
+                            Some(sources) => {
+                                merged.extend(sources.into_iter().map(|source| (source, key_loc.clone())));
+                                continue;
+                            }
+                            None => {
+                                self.record(&child(pointer, &key), &value_loc);
+                                members.insert(key, value);
+                                continue;
+                            }
+                        }
+                    }
                     let value = self.node(kind, &value_loc, &child(pointer, &key), depth + 1)?;
                     members.insert(key, value);
+                }
+                for (source, merge_loc) in merged {
+                    for (key, value) in source {
+                        if !members.contains_key(&key) {
+                            self.record(&child(pointer, &key), &merge_loc);
+                            members.insert(key, value);
+                        }
+                    }
                 }
                 (Value::Object(members), anchor)
             }
@@ -175,6 +213,16 @@ impl Walker<'_> {
         }
         self.record(pointer, loc);
         Ok(value)
+    }
+}
+
+/// The mappings a `<<` merge key pulls in: the mapping itself, or each mapping of a sequence of
+/// them. `None` when the value is neither, so the key stays an ordinary one.
+fn merge_sources(value: &Value) -> Option<Vec<Map<String, Value>>> {
+    match value {
+        Value::Object(map) => Some(vec![map.clone()]),
+        Value::Array(items) => items.iter().map(|item| item.as_object().cloned()).collect(),
+        _ => None,
     }
 }
 
@@ -254,6 +302,47 @@ mod tests {
     fn anchors_and_aliases_resolve_to_the_anchored_value() {
         let docs = parse("base: &b {x: 1}\ncopy: *b\n").expect("parses");
         assert_eq!(docs[0].value["copy"], serde_json::json!({"x": 1}));
+    }
+
+    fn merged(src: &str) -> Value {
+        parse(src).expect("parses").remove(0).value
+    }
+
+    #[test]
+    fn a_merge_key_pulls_in_an_aliased_mapping() {
+        let value = merged("x: &d {name: a, n: 1}\nsvc: {<<: *d, n: 2}\n");
+        assert_eq!(value["svc"], serde_json::json!({"name": "a", "n": 2}));
+    }
+
+    #[test]
+    fn a_merge_sequence_prefers_earlier_mappings() {
+        let value = merged("a: &a {k: 1}\nb: &b {k: 2, m: 3}\nsvc:\n  <<: [*a, *b]\n");
+        assert_eq!(value["svc"], serde_json::json!({"k": 1, "m": 3}));
+    }
+
+    #[test]
+    fn an_explicit_key_wins_over_a_merged_one_wherever_it_sits() {
+        let value = merged("a: &a {k: 1}\nsvc:\n  k: 9\n  <<: *a\n");
+        assert_eq!(value["svc"], serde_json::json!({"k": 9}));
+    }
+
+    #[test]
+    fn a_merged_mapping_may_itself_merge() {
+        let value = merged("a: &a {x: 1}\nb: &b\n  <<: *a\n  y: 2\nc:\n  <<: *b\n");
+        assert_eq!(value["c"], serde_json::json!({"x": 1, "y": 2}));
+    }
+
+    #[test]
+    fn a_quoted_or_non_mapping_merge_key_stays_literal() {
+        let value = merged("a: &a {k: 1}\nq: {\"<<\": *a}\ns: {<<: 5}\n");
+        assert_eq!(value["q"], serde_json::json!({"<<": {"k": 1}}));
+        assert_eq!(value["s"], serde_json::json!({"<<": 5}));
+    }
+
+    #[test]
+    fn merged_keys_point_at_the_merge_key() {
+        let docs = parse("a: &a {k: 1}\nsvc:\n  <<: *a\n").expect("parses");
+        assert_eq!(at(&docs[0], "/svc/k"), (3, 3));
     }
 
     #[test]
