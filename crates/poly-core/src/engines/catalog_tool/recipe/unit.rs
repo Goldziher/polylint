@@ -2,9 +2,8 @@
 //! files a chart is checked with, the charts the tool skips, and the prepare
 //! step (`helm dependency build`) that makes a root checkable.
 
-use std::collections::HashMap;
 use std::path::{Path, PathBuf};
-use std::sync::{Arc, Mutex, OnceLock};
+use std::sync::{Arc, OnceLock};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use globset::{Glob, GlobMatcher};
@@ -12,6 +11,7 @@ use poly_catalog::{Recipe, Tool};
 use poly_config::ToolConfig;
 
 use super::argv::Template;
+use super::memo::Memo;
 use super::paths;
 
 /// The per-root options of one recipe tool, resolved from its recipe and config.
@@ -364,22 +364,17 @@ pub(super) fn dependencies_in_place(root: &Path) -> bool {
 /// Outcome of one root's prepare step, shared by everything that asks.
 type Prepared = Arc<OnceLock<Result<(), String>>>;
 
-/// Run `step` once per `(root, argv)` for the process, however many tools or
+pub(super) static PREPARED: Memo<String, Prepared> = Memo::new();
+
+/// Run `step` once per `(root, argv)` for the run, however many tools or
 /// files ask.
 pub(super) fn once_per_root(
     root: &Path,
     argv: &[String],
     step: impl FnOnce() -> Result<(), String>,
 ) -> Result<(), String> {
-    static MEMO: OnceLock<Mutex<HashMap<String, Prepared>>> = OnceLock::new();
     let key = format!("{}\u{1e}{}", root.display(), argv.join("\u{1f}"));
-    let cell = {
-        let mut memo = MEMO
-            .get_or_init(Default::default)
-            .lock()
-            .expect("prepare memo poisoned");
-        Arc::clone(memo.entry(key).or_default())
-    };
+    let cell = PREPARED.get_or_insert_with(key, Default::default);
     cell.get_or_init(step).clone()
 }
 

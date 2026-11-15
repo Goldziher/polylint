@@ -7,9 +7,9 @@
 //! echo the argument, some print the resolved absolute path (and on macOS
 //! `/tmp` resolves to `/private/tmp`).
 
-use std::collections::HashMap;
 use std::path::{Component, Path, PathBuf};
-use std::sync::{Mutex, OnceLock};
+
+use super::memo::Memo;
 
 /// Fold `.` and `..` components without consulting the filesystem.
 pub(super) fn normalize(path: &Path) -> PathBuf {
@@ -67,18 +67,17 @@ pub(super) fn slashed(path: &Path) -> String {
         .join("/")
 }
 
+pub(super) static ROOTS: Memo<(PathBuf, Vec<String>), Option<PathBuf>> = Memo::new();
+
 /// The nearest ancestor directory of `file` (searching from its own directory)
 /// holding any of the `markers`, stopping after the repository root (a directory
-/// containing `.git`). Memoized: a monorepo run asks the same directories
-/// thousands of times.
+/// containing `.git`). Memoized for the run: a monorepo run asks the same
+/// directories thousands of times.
 pub(super) fn project_root(file: &Path, markers: &[String]) -> Option<PathBuf> {
-    type Memo = Mutex<HashMap<(PathBuf, Vec<String>), Option<PathBuf>>>;
-    static MEMO: OnceLock<Memo> = OnceLock::new();
     let start = file.parent()?.to_path_buf();
-    let memo = MEMO.get_or_init(Default::default);
     let key = (start.clone(), markers.to_vec());
-    if let Some(known) = memo.lock().expect("root memo poisoned").get(&key) {
-        return known.clone();
+    if let Some(known) = ROOTS.get(&key) {
+        return known;
     }
     let mut found = None;
     for directory in start.ancestors() {
@@ -90,7 +89,7 @@ pub(super) fn project_root(file: &Path, markers: &[String]) -> Option<PathBuf> {
             break;
         }
     }
-    memo.lock().expect("root memo poisoned").insert(key, found.clone());
+    ROOTS.insert(key, found.clone());
     found
 }
 

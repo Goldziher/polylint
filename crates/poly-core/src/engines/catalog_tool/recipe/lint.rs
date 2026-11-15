@@ -4,7 +4,7 @@
 use std::collections::{BTreeMap, HashMap};
 use std::ops::Range;
 use std::path::{Component, Path, PathBuf};
-use std::sync::{Arc, Mutex, OnceLock};
+use std::sync::{Arc, OnceLock};
 use std::time::Instant;
 
 use anyhow::anyhow;
@@ -12,10 +12,16 @@ use poly_catalog::{Findings, Group};
 use rayon::prelude::*;
 
 use super::argv::{Items, Template};
+use super::memo::Memo;
 use super::mirror::Mirror;
 use super::output::{self, Finding};
 use super::{RecipeTool, exec, paths, progress, unit};
 use crate::engine::{Diagnostic, Edit, SourceFile, Span};
+
+/// The outcome of one invocation, shared by everything that asks for it.
+type InvocationCell = Arc<OnceLock<Outcome>>;
+
+pub(super) static INVOCATIONS: Memo<String, InvocationCell> = Memo::new();
 
 /// One answer per input file, in order.
 pub(in crate::engines::catalog_tool) type LintResults = Vec<anyhow::Result<Vec<Diagnostic>>>;
@@ -391,11 +397,9 @@ impl RecipeTool {
         }
     }
 
-    /// One invocation, memoized for the process so the same project root asked
+    /// One invocation, memoized for the run so the same project root asked
     /// about from several files (or several shards) is run once.
     fn invoke(&self, template: &Template, unit: &UnitGroup, items: &[String]) -> Outcome {
-        type Cell = Arc<OnceLock<Outcome>>;
-        static MEMO: OnceLock<Mutex<HashMap<String, Cell>>> = OnceLock::new();
         let mut argv = template.render(items);
         argv.extend(self.units.extra_arguments(&unit.dir));
         let key = format!(
@@ -405,13 +409,7 @@ impl RecipeTool {
             argv.join("\u{1f}"),
             self.version
         );
-        let cell = {
-            let mut memo = MEMO
-                .get_or_init(Default::default)
-                .lock()
-                .expect("invocation memo poisoned");
-            Arc::clone(memo.entry(key).or_default())
-        };
+        let cell = INVOCATIONS.get_or_insert_with(key, Default::default);
         cell.get_or_init(|| {
             progress::unit_started(&self.tool.name, template.items(), items.len(), &unit.dir);
             let started = Instant::now();

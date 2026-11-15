@@ -528,6 +528,16 @@ impl Engine for CatalogToolEngine {
         &self.version
     }
 
+    /// Planning a run is the one per-run call an engine gets before any file is
+    /// linted: a recipe tool forgets what it learned in earlier runs there, so a
+    /// long-lived host never replays a report for files edited since.
+    fn run_context(&self, _cfg: &EngineConfig) -> String {
+        if self.recipe.is_some() {
+            recipe::forget_run_memos();
+        }
+        String::new()
+    }
+
     fn supersedes_generic_formatter(&self) -> bool {
         if self.tool.recipe.is_some() {
             // Even when the tool is missing: the generic reindenter's opinions are

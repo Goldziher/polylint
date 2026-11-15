@@ -11,12 +11,12 @@
 //!   file* (it varies with the file's project root), so it travels through
 //!   `Engine::lint_cache_salt`.
 
-use std::collections::HashMap;
 use std::path::{Path, PathBuf};
-use std::sync::{Mutex, OnceLock};
 
 use globset::{Glob, GlobSetBuilder};
 use ignore::WalkBuilder;
+
+use super::memo::Memo;
 
 /// Directories never worth walking for dependencies.
 const SKIPPED_DIRECTORIES: &[&str] = &[".git", "node_modules", "target", ".terraform", "__pycache__"];
@@ -104,20 +104,14 @@ fn hash_file(hasher: &mut blake3::Hasher, path: &Path) {
     };
 }
 
+pub(super) static DIGESTS: Memo<(PathBuf, Vec<String>), String> = Memo::new();
+
 /// Digest of the files under `root` matching `globs` (relative to `root`).
-/// Memoized per `(root, globs)` for the process: a run asks once per file of
-/// the root, and the tree does not change underneath it.
+/// Memoized per `(root, globs)` for the run: a run asks once per file of the
+/// root, and the tree does not change underneath it.
 pub(super) fn dependency_digest(root: &Path, globs: &[String]) -> String {
-    type Memo = Mutex<HashMap<(PathBuf, Vec<String>), String>>;
-    static MEMO: OnceLock<Memo> = OnceLock::new();
-    let memo = MEMO.get_or_init(Default::default);
     let key = (root.to_path_buf(), globs.to_vec());
-    if let Some(known) = memo.lock().expect("digest memo poisoned").get(&key) {
-        return known.clone();
-    }
-    let digest = compute_digest(root, globs);
-    memo.lock().expect("digest memo poisoned").insert(key, digest.clone());
-    digest
+    DIGESTS.get_or_insert_with(key, || compute_digest(root, globs))
 }
 
 fn compute_digest(root: &Path, globs: &[String]) -> String {
