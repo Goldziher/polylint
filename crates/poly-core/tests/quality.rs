@@ -1,5 +1,5 @@
 //! Insta snapshot fixture for the `quality` cross-cutting metric engine
-//! (ADR 0027, phase 3a).
+//! (ADR 0027).
 //!
 //! - `known_bad_quality_diagnostics` — a Rust fixture (Rust has no tier-1
 //!   lint backend, so every rule in the OTHER family runs at its default or

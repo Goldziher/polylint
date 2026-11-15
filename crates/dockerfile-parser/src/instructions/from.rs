@@ -130,9 +130,8 @@ impl FromInstruction {
         })
     }
 
-    // TODO: util for converting to an ImageRef while resolving ARG
-    // per the docs, ARG instructions are only honored in FROMs if they occur
-    // before the *first* FROM (but this should be verified)
+    // Missing: resolving ARG into an ImageRef. Per the docs, ARG instructions are only
+    // honored in FROMs if they occur before the *first* FROM (unverified).
     // fn image_ref(&self) -> ImageRef { ... }
 }
 

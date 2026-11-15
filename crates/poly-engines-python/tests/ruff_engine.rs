@@ -430,7 +430,7 @@ fn e501_honors_configured_line_length() {
     );
 }
 
-// ── Opinionated default rule set (Phase 3.0) ─────────────────────────────────
+// ── Opinionated default rule set  ─────────────────────────────────
 //
 // Each of these asserts a representative member of a newly-selected category
 // actually fires with *no* engine config — the default path — and each was

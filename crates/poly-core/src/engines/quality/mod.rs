@@ -1,4 +1,4 @@
-//! `quality`: cross-cutting code-quality metric engine (ADR 0027, phase 3a).
+//! `quality`: cross-cutting code-quality metric engine (ADR 0027).
 //!
 //! Modelled on [`crate::engines::uncomment`]: `languages() == &[]`, so the
 //! registry appends it to every language, and each rule's own on/off state

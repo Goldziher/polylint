@@ -291,8 +291,7 @@ impl TryFrom<Pair<'_>> for Instruction {
 
             Rule::misc => MiscInstruction::from_record(record)?.into(),
 
-            // TODO: consider exposing comments
-            // Rule::comment => ...,
+            // Comments are not exposed as instructions.
             _ => return Err(unexpected_token(record)),
         };
 
@@ -355,7 +354,7 @@ fn parse_dockerfile(input: &str) -> Result<Dockerfile> {
     let mut from_index = 0;
 
     for record in dockerfile.into_inner() {
-        // TODO: consider exposing comments in the parse result
+        // Comments are dropped from the parse result.
         if matches!(record.as_rule(), Rule::EOI | Rule::comment) {
             continue;
         }

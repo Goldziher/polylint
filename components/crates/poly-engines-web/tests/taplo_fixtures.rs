@@ -4,8 +4,8 @@
 //!   [`Diagnostic`]s (duplicate key).
 //! - `known_unformatted_snapshot` — a known-unformatted TOML file asserts the
 //!   exact formatted output produced by the taplo formatter.
-//! - `reorder_keys_changes_output` — proves the `reorder_keys` option wired in
-//!   Phase 2 actually changes output vs the default (default = preserve order).
+//! - `reorder_keys_changes_output` — proves the `reorder_keys` option actually
+//!   changes output vs the default (default = preserve order).
 
 use poly_engine_api::{
     config::{EngineConfig, GlobalDefaults},

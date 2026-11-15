@@ -207,7 +207,7 @@ fn oxc_format_jsonc_preserves_comments() {
     );
 }
 
-// ── Opinionated default rule set (Phase 3.0) ─────────────────────────────────
+// ── Opinionated default rule set  ─────────────────────────────────
 //
 // `ConfigStoreBuilder::default()` upstream means the `correctness` category
 // only. These assert the widened default — `suspicious` + `pedantic` plus three

@@ -1,4 +1,4 @@
-//! oxc backend (M2): JS, TS, JSX, TSX lint + format via `oxc_linter` /
+//! oxc backend: JS, TS, JSX, TSX lint + format via `oxc_linter` /
 //! `oxc_formatter`, plus JSON/JSONC format via `oxc_formatter_json`.
 //!
 //! Lint path uses `oxc_linter` (oxlint) to run the full correctness rule set

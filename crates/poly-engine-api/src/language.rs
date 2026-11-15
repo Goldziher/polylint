@@ -203,7 +203,7 @@ impl Language {
     }
 
     /// Detect a language from a file path (special filenames first, then extension).
-    /// Returns `None` for unknown extensions; the tree-sitter tier (M5) provides a
+    /// Returns `None` for unknown extensions; the tree-sitter tier provides a
     /// secondary fallback for those.
     pub fn from_path(path: &Path) -> Option<Language> {
         if let Some(lang) = path
