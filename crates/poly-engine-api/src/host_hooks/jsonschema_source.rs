@@ -408,24 +408,44 @@ fn is_yaml_file(path: &Path) -> bool {
         .is_some_and(|ext| ext.eq_ignore_ascii_case("yaml") || ext.eq_ignore_ascii_case("yml"))
 }
 
-/// Every value written as `<key>: value` (plain, or single- or double-quoted) in YAML `text`: a
-/// line scan that over-approximates, like [`quoted_values_after`].
+/// Every value written as `<key>: value` (plain, or single- or double-quoted) in YAML `text`, as a
+/// block entry or inside a one-line flow mapping (`{ $ref: x }`, `{"$ref": "x"}`): a line scan that
+/// over-approximates, like [`quoted_values_after`].
 fn yaml_values_after(text: &str, key: &str) -> Vec<String> {
-    text.lines()
-        .filter_map(|line| {
-            let line = line.trim_start().trim_start_matches("- ");
-            let rest = line.strip_prefix(key).or_else(|| {
-                line.strip_prefix('"')
-                    .or_else(|| line.strip_prefix('\''))
-                    .and_then(|quoted| quoted.strip_prefix(key))
-                    .map(|after| after.trim_start_matches(['"', '\'']))
-            })?;
-            let value = rest.trim_start().strip_prefix(':')?.trim();
-            let value = value.split(" #").next().unwrap_or_default().trim();
-            let value = value.trim_matches(['"', '\'']);
-            (!value.is_empty()).then(|| value.to_owned())
-        })
-        .collect()
+    let mut found = Vec::new();
+    for line in text.lines() {
+        let block = line.trim_start().trim_start_matches("- ");
+        if let Some(value) = value_after_key(block, key) {
+            found.push(unquote(value.split(" #").next().unwrap_or_default()));
+        }
+        for (at, _) in line.match_indices(key) {
+            let head = line[..at].trim_end_matches(['"', '\'']).trim_end();
+            if !head.ends_with(['{', ',']) {
+                continue;
+            }
+            if let Some(value) = value_after_key(&line[at..], key) {
+                let value = value.split(['}', ',']).next().unwrap_or_default();
+                found.push(unquote(value));
+            }
+        }
+    }
+    found.retain(|value| !value.is_empty());
+    found
+}
+
+/// The text after `key:` when `line` starts with the key (bare or quoted), else `None`.
+fn value_after_key<'a>(line: &'a str, key: &str) -> Option<&'a str> {
+    let rest = line.strip_prefix(key).or_else(|| {
+        line.strip_prefix('"')
+            .or_else(|| line.strip_prefix('\''))
+            .and_then(|quoted| quoted.strip_prefix(key))
+            .map(|after| after.trim_start_matches(['"', '\'']))
+    })?;
+    Some(rest.trim_start().strip_prefix(':')?.trim())
+}
+
+fn unquote(value: &str) -> String {
+    value.trim().trim_matches(['"', '\'']).to_owned()
 }
 
 /// The scheme of an absolute URI-looking `reference` (`https` in `https://x`), if it has one.
@@ -554,6 +574,15 @@ k = 1
     fn yaml_schema_refs_are_scanned() {
         let text = "a:\n  $ref: ./x.yaml#/d\nb:\n  - \"$ref\": 'y.yaml'\nc: {$refs: z}\n";
         assert_eq!(yaml_values_after(text, "$ref"), vec!["./x.yaml#/d", "y.yaml"]);
+    }
+
+    #[test]
+    fn yaml_flow_mapping_refs_are_scanned() {
+        let text = "a: { $ref: ./x.yaml }\nb: [{\"$ref\": \"y.yaml\"}, {$ref: z.yaml, x: 1}]\n- - $ref: n.yaml\nc: {$refs: w}\n";
+        assert_eq!(
+            yaml_values_after(text, "$ref"),
+            vec!["./x.yaml", "y.yaml", "z.yaml", "n.yaml"]
+        );
     }
 
     #[test]
