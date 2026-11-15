@@ -14,6 +14,8 @@
 //! These shell out to the built binary so they cover arg parsing → runner →
 //! report → exit code, which is the layer the guarantee lives at.
 #![cfg(unix)]
+// The helpers serve tests gated on `all-engines`, which a core build compiles out.
+#![cfg_attr(not(feature = "all-engines"), allow(dead_code))]
 
 use std::path::Path;
 use std::process::{Command, Output};
@@ -95,6 +97,8 @@ fn unmatched_explicit_path_keeps_exit_zero() {
 
 /// Five paths in, four linted — the shape that took bisecting one path at a
 /// time to diagnose.
+// Needs engine components a lockless core test build cannot fetch; the full build covers it.
+#[cfg(feature = "all-engines")]
 #[test]
 fn five_paths_four_linted_names_the_fifth() {
     let dir = repo();
@@ -176,6 +180,8 @@ fn deny_skips_covers_engine_declined_files_in_fmt() {
 
 /// Without the flag a skip is still reported, but the run keeps its previous
 /// exit code — the strict mode is opt-in.
+// Needs engine components a lockless core test build cannot fetch; the full build covers it.
+#[cfg(feature = "all-engines")]
 #[test]
 fn skips_alone_do_not_change_the_exit_code() {
     let dir = repo();
@@ -291,6 +297,8 @@ fn no_rules_repo() -> TempDir {
 
 /// The reported defect end to end: the Zig file leaves the linted count and
 /// arrives in the summary with the language named.
+// Needs engine components a lockless core test build cannot fetch; the full build covers it.
+#[cfg(feature = "all-engines")]
 #[test]
 fn language_with_no_lint_rules_leaves_the_linted_count_and_is_named() {
     let dir = no_rules_repo();
@@ -310,6 +318,8 @@ fn language_with_no_lint_rules_leaves_the_linted_count_and_is_named() {
 
 /// A language with no rules is ordinary coverage, not a failure: the default
 /// verdict stays 0 and the strictness flags are how a consumer opts into caring.
+// Needs engine components a lockless core test build cannot fetch; the full build covers it.
+#[cfg(feature = "all-engines")]
 #[test]
 fn language_with_no_lint_rules_keeps_exit_zero_by_default() {
     let dir = no_rules_repo();
@@ -326,6 +336,8 @@ fn language_with_no_lint_rules_keeps_exit_zero_by_default() {
 /// `--deny-skips` must fire on a no-rules language and name it — this is the
 /// whole reason the file has to be in the skipped set rather than merely
 /// mentioned somewhere.
+// Needs engine components a lockless core test build cannot fetch; the full build covers it.
+#[cfg(feature = "all-engines")]
 #[test]
 fn deny_skips_fails_on_a_language_with_no_lint_rules() {
     let dir = no_rules_repo();
@@ -348,6 +360,8 @@ fn deny_skips_fails_on_a_language_with_no_lint_rules() {
 
 /// `--max-skips` budgets the same set, so a repo with a known set of unlintable
 /// languages can hold the number steady instead of letting it grow unnoticed.
+// Needs engine components a lockless core test build cannot fetch; the full build covers it.
+#[cfg(feature = "all-engines")]
 #[test]
 fn max_skips_budgets_languages_with_no_lint_rules() {
     let dir = no_rules_repo();
@@ -371,6 +385,8 @@ fn max_skips_budgets_languages_with_no_lint_rules() {
 /// ADR 0053: a file only the `quality` metric tier measures (C: no tier-1
 /// backend, no pack rule) is not checked. `--max-skips 0` fails on it, the
 /// reason says so, and the JSON `summary.checked` counts only the Python file.
+// Needs engine components a lockless core test build cannot fetch; the full build covers it.
+#[cfg(feature = "all-engines")]
 #[test]
 fn a_quality_only_file_is_skipped_and_gated_by_max_skips() {
     let dir = tempfile::tempdir().expect("tempdir");
@@ -398,6 +414,8 @@ fn a_quality_only_file_is_skipped_and_gated_by_max_skips() {
 
 /// The machine-readable path: the reason travels in the JSON document, so a
 /// consumer can assert on the uncovered set structurally.
+// Needs engine components a lockless core test build cannot fetch; the full build covers it.
+#[cfg(feature = "all-engines")]
 #[test]
 fn json_carries_the_no_lint_rules_reason() {
     let dir = no_rules_repo();
@@ -421,6 +439,8 @@ fn json_carries_the_no_lint_rules_reason() {
 /// a skip: itemising every snapshot, lockfile and image a walk passes over would
 /// fire `--deny-skips` in every repository and bury the skips that mean
 /// something.
+// Needs engine components a lockless core test build cannot fetch; the full build covers it.
+#[cfg(feature = "all-engines")]
 #[test]
 fn unknown_extension_in_a_walk_is_counted_not_skipped() {
     let dir = tempfile::tempdir().expect("tempdir");
@@ -473,6 +493,8 @@ fn force_excluded_path_is_not_reported_as_unmatched() {
     );
 }
 
+// Needs engine components a lockless core test build cannot fetch; the full build covers it.
+#[cfg(feature = "all-engines")]
 #[test]
 fn explicit_paths_honor_excludes_unless_the_caller_overrides_them() {
     let dir = repo();
@@ -515,6 +537,8 @@ fn multiroot_repo() -> (TempDir, std::path::PathBuf) {
     (dir, excluded)
 }
 
+// Needs engine components a lockless core test build cannot fetch; the full build covers it.
+#[cfg(feature = "all-engines")]
 #[test]
 fn excluded_directory_stays_excluded_in_every_multiroot_order() {
     for paths in [["docs/snippets", "included.py"], ["included.py", "docs/snippets"]] {
@@ -538,6 +562,8 @@ fn excluded_directory_stays_excluded_in_every_multiroot_order() {
     }
 }
 
+// Needs engine components a lockless core test build cannot fetch; the full build covers it.
+#[cfg(feature = "all-engines")]
 #[test]
 fn unanchored_rule_excludes_a_named_root_it_matches() {
     let (dir, excluded) = multiroot_repo();
@@ -558,6 +584,8 @@ fn unanchored_rule_excludes_a_named_root_it_matches() {
     assert!(text.contains("matched exclusions (use --include-excluded to check them)"));
 }
 
+// Needs engine components a lockless core test build cannot fetch; the full build covers it.
+#[cfg(feature = "all-engines")]
 #[test]
 fn include_excluded_overrides_an_explicit_excluded_directory() {
     let (dir, excluded) = multiroot_repo();
@@ -577,6 +605,8 @@ fn include_excluded_overrides_an_explicit_excluded_directory() {
     assert_eq!(std::fs::read_to_string(excluded).unwrap(), "x = 1\n");
 }
 
+// Needs engine components a lockless core test build cannot fetch; the full build covers it.
+#[cfg(feature = "all-engines")]
 #[test]
 fn include_excluded_keeps_descendant_exclusions_active() {
     let (dir, excluded) = multiroot_repo();

@@ -33,6 +33,8 @@ fn stderr(output: &Output) -> String {
     String::from_utf8_lossy(&output.stderr).into_owned()
 }
 
+// Needs engine components a lockless core test build cannot fetch; the full build covers it.
+#[cfg(feature = "all-engines")]
 #[test]
 fn fix_that_changed_files_exits_zero() {
     let dir = repo();
@@ -41,6 +43,8 @@ fn fix_that_changed_files_exits_zero() {
     assert!(rewritten(dir.path()));
 }
 
+// Needs engine components a lockless core test build cannot fetch; the full build covers it.
+#[cfg(feature = "all-engines")]
 #[test]
 fn fix_with_exit_nonzero_on_fix_that_changed_files_exits_one() {
     let dir = repo();
@@ -49,6 +53,8 @@ fn fix_with_exit_nonzero_on_fix_that_changed_files_exits_one() {
     assert!(rewritten(dir.path()), "the files are still rewritten");
 }
 
+// Needs engine components a lockless core test build cannot fetch; the full build covers it.
+#[cfg(feature = "all-engines")]
 #[test]
 fn dry_run_with_changes_exits_one_and_writes_nothing() {
     let dir = repo();
@@ -57,6 +63,8 @@ fn dry_run_with_changes_exits_one_and_writes_nothing() {
     assert!(!rewritten(dir.path()));
 }
 
+// Needs engine components a lockless core test build cannot fetch; the full build covers it.
+#[cfg(feature = "all-engines")]
 #[test]
 fn clean_tree_exits_zero_in_every_mode() {
     let dir = repo();
@@ -103,6 +111,8 @@ fn check_is_removed_with_a_hint() {
     assert!(!rewritten(dir.path()));
 }
 
+// Needs engine components a lockless core test build cannot fetch; the full build covers it.
+#[cfg(feature = "all-engines")]
 #[test]
 fn an_empty_file_stays_empty() {
     let dir = tempfile::tempdir().expect("tempdir");

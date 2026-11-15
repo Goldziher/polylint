@@ -47,6 +47,8 @@ fn combined(output: &Output) -> String {
     )
 }
 
+// Needs engine components a lockless core test build cannot fetch; the full build covers it.
+#[cfg(feature = "all-engines")]
 #[test]
 fn a_narrowed_run_is_not_charged_for_what_it_deselected() {
     let dir = repo();
@@ -109,6 +111,8 @@ fn only_and_skip_are_mutually_exclusive() {
 }
 
 /// The list form is one flag, comma-separated — the shape the issue asked for.
+// Needs engine components a lockless core test build cannot fetch; the full build covers it.
+#[cfg(feature = "all-engines")]
 #[test]
 fn a_comma_separated_list_selects_every_name_in_it() {
     let dir = repo();
@@ -139,6 +143,8 @@ fn a_toml_file_needs_the_web_component_which_a_lockless_build_cannot_serve() {
 }
 
 /// A component whose every engine is skipped is not needed, so nothing asks the missing lock for it.
+// Needs engine components a lockless core test build cannot fetch; the full build covers it.
+#[cfg(feature = "all-engines")]
 #[test]
 fn skipping_every_engine_of_a_component_does_not_need_it() {
     let dir = repo_with_poly_toml();
@@ -157,6 +163,8 @@ fn skipping_every_engine_of_a_component_does_not_need_it() {
 }
 
 /// `--only` naming no engine of the component drops it the same way.
+// Needs engine components a lockless core test build cannot fetch; the full build covers it.
+#[cfg(feature = "all-engines")]
 #[test]
 fn only_naming_no_engine_of_a_component_does_not_need_it() {
     let dir = repo_with_poly_toml();
@@ -209,6 +217,8 @@ fn an_explicit_path_left_unselected_is_skipped_once() {
 }
 
 /// A file the selected engine ran on is not also reported as skipped.
+// Needs engine components a lockless core test build cannot fetch; the full build covers it.
+#[cfg(feature = "all-engines")]
 #[test]
 fn a_file_the_selected_engine_ran_on_is_counted_as_checked() {
     let dir = repo();

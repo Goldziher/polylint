@@ -63,6 +63,8 @@ fn workspace_accepts_auto_always_and_never() {
     }
 }
 
+// A lockless core build cannot fetch the components a lint or format run needs, so the run exits 2.
+#[cfg(feature = "all-engines")]
 #[test]
 fn workspace_never_skips_the_phase_without_a_note() {
     let dir = repo();
@@ -85,6 +87,8 @@ fn workspace_rejects_other_values_and_the_old_forms() {
     }
 }
 
+// A lockless core build cannot fetch the components a lint or format run needs, so the run exits 2.
+#[cfg(feature = "all-engines")]
 #[test]
 fn color_takes_three_values_and_replaces_no_color() {
     let dir = repo();
@@ -119,6 +123,8 @@ fn color_never_strips_escapes_even_when_always_would_add_them() {
     );
 }
 
+// A lockless core build cannot fetch the components a lint or format run needs, so the run exits 2.
+#[cfg(feature = "all-engines")]
 #[test]
 fn global_flags_are_accepted_before_and_after_the_subcommand() {
     let dir = repo();
@@ -143,6 +149,8 @@ fn quiet_conflicts_with_verbose_and_debug() {
     }
 }
 
+// A lockless core build cannot fetch the components a lint or format run needs, so the run exits 2.
+#[cfg(feature = "all-engines")]
 #[test]
 fn poly_offline_env_is_read_as_a_boolean() {
     let dir = repo();
@@ -162,6 +170,8 @@ fn poly_offline_env_is_read_as_a_boolean() {
     }
 }
 
+// A lockless core build cannot fetch the components a lint or format run needs, so the run exits 2.
+#[cfg(feature = "all-engines")]
 #[test]
 fn on_missing_is_accepted_and_validated() {
     let dir = repo();
@@ -181,6 +191,8 @@ fn on_missing_is_accepted_and_validated() {
     assert_eq!(output.status.code(), Some(2));
 }
 
+// A lockless core build cannot fetch the components a lint or format run needs, so the run exits 2.
+#[cfg(feature = "all-engines")]
 #[test]
 fn set_overrides_poly_toml_for_one_run() {
     let dir = repo();

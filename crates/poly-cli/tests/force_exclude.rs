@@ -13,6 +13,8 @@
 //! observable effect (was the file rewritten?) and pairs the excluded file with
 //! a non-excluded one to prove the run did work at all.
 #![cfg(unix)]
+// The helpers serve tests gated on `all-engines`, which a core build compiles out.
+#![cfg_attr(not(feature = "all-engines"), allow(dead_code))]
 
 use std::path::Path;
 use std::process::{Command, Output};
@@ -82,6 +84,8 @@ fn format_both(dir: &TempDir, extra: &[&str]) -> String {
 /// The key test: `[discovery] force_exclude = false` makes an explicitly named
 /// excluded path checked again. Before the wiring this key parsed and had no
 /// reader, so the path stayed excluded and this failed.
+// Needs engine components a lockless core test build cannot fetch; the full build covers it.
+#[cfg(feature = "all-engines")]
 #[test]
 fn config_force_exclude_false_checks_an_explicitly_named_excluded_path() {
     let dir = repo("force_exclude = false\n");
@@ -99,6 +103,8 @@ fn config_force_exclude_false_checks_an_explicitly_named_excluded_path() {
 }
 
 /// `--set` is the run-scoped override and beats a config `false`.
+// Needs engine components a lockless core test build cannot fetch; the full build covers it.
+#[cfg(feature = "all-engines")]
 #[test]
 fn set_force_exclude_beats_config_force_exclude_false() {
     let dir = repo("force_exclude = false\n");
@@ -123,6 +129,8 @@ fn the_force_exclude_flag_is_removed() {
 
 /// `--include-excluded` is the opposite-direction explicit override and beats a
 /// config `true` (and the built-in default).
+// Needs engine components a lockless core test build cannot fetch; the full build covers it.
+#[cfg(feature = "all-engines")]
 #[test]
 fn include_excluded_beats_config_force_exclude_true() {
     let dir = repo("force_exclude = true\n");
@@ -137,6 +145,8 @@ fn include_excluded_beats_config_force_exclude_true() {
 
 /// With neither flag nor key set, the built-in default holds: the named
 /// excluded path is dropped, and the note says so.
+// Needs engine components a lockless core test build cannot fetch; the full build covers it.
+#[cfg(feature = "all-engines")]
 #[test]
 fn default_force_excludes_an_explicitly_named_excluded_path() {
     let dir = repo("");
@@ -153,6 +163,8 @@ fn default_force_excludes_an_explicitly_named_excluded_path() {
 /// `force_exclude` governs only *explicitly named* roots. The directory walk
 /// applies `exclude` either way, so `force_exclude = false` must not turn
 /// `poly fmt .` into a run over excluded files.
+// Needs engine components a lockless core test build cannot fetch; the full build covers it.
+#[cfg(feature = "all-engines")]
 #[test]
 fn config_force_exclude_false_does_not_widen_the_directory_walk() {
     let dir = repo("force_exclude = false\n");

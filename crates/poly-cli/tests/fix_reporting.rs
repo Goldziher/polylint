@@ -10,7 +10,7 @@
 //!
 //! These assert on the *effect* — the printed summary — because a test that only
 //! checked the file contents would have passed against the broken output.
-#![cfg(unix)]
+#![cfg(all(unix, feature = "all-engines"))]
 
 use std::path::Path;
 use std::process::{Command, Output};

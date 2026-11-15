@@ -76,6 +76,8 @@ fn read(dir: &Path, name: &str) -> String {
 /// provenance, not a checksum, so every phase treats the file as ordinary
 /// source. `lint --fix` used to be the odd one out here — it withheld on any
 /// generated marker while `fmt` happily reformatted the same file.
+// Needs engine components a lockless core test build cannot fetch; the full build covers it.
+#[cfg(feature = "all-engines")]
 #[test]
 fn a_banner_only_generated_file_is_linted_formatted_and_fixed() {
     let dir = repo(None);
@@ -110,6 +112,8 @@ fn a_banner_only_generated_file_is_linted_formatted_and_fixed() {
 /// by either phase. Reformatting invalidates the hash, so the generator's verify
 /// step reports drift on a file no human touched and the remedy is a regen that
 /// discards the change.
+// Needs engine components a lockless core test build cannot fetch; the full build covers it.
+#[cfg(feature = "all-engines")]
 #[test]
 fn a_hash_stamped_file_is_reported_but_never_rewritten() {
     let dir = repo(None);
@@ -191,6 +195,8 @@ fn the_config_opt_out_skips_generated_files_in_both_phases() {
 
 /// The flags override the config in both directions, and `--fix-generated` —
 /// which is about rewriting a *stamped* file — is not a way back in.
+// Needs engine components a lockless core test build cannot fetch; the full build covers it.
+#[cfg(feature = "all-engines")]
 #[test]
 fn the_flags_override_the_config_in_both_directions() {
     let opted_out = repo(Some("[discovery]\ngenerated = false\n"));
@@ -256,6 +262,8 @@ fn the_flags_override_the_config_in_both_directions() {
 /// `--fix-generated` is an accepted flag whose meaning narrowed rather than
 /// vanishing: an existing invocation must keep working, on a banner-only file
 /// (where it is now a no-op) as well as on a stamped one.
+// Needs engine components a lockless core test build cannot fetch; the full build covers it.
+#[cfg(feature = "all-engines")]
 #[test]
 fn fix_generated_remains_accepted_on_a_banner_only_file() {
     let dir = repo(None);

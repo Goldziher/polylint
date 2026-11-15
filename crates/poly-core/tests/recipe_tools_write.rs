@@ -3,7 +3,7 @@
 //! tool's own fixes, and `poly fmt --fix` (what a `[hooks.builtin] fmt = { fix =
 //! true }` hook runs) writing a recipe formatter's output back.
 
-#![cfg(unix)]
+#![cfg(all(unix, feature = "all-engines"))]
 
 use std::os::unix::fs::PermissionsExt;
 use std::path::Path;

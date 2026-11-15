@@ -51,6 +51,8 @@ fn color_always_styles_debug_logs_even_when_piped() {
 
 /// A `.txt` file goes to the generic tier as `text`, which has no grammar in the
 /// pack. Asking the pack to prefetch it failed and logged a warning on every run.
+// Needs engine components a lockless core test build cannot fetch; the full build covers it.
+#[cfg(feature = "all-engines")]
 #[test]
 fn a_language_without_a_grammar_is_not_prefetched() {
     let dir = tempfile::tempdir().expect("tempdir");

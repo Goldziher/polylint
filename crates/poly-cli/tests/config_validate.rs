@@ -61,6 +61,8 @@ fn engine_of_a_disabled_component_exits_two() {
     assert!(stdout_of(&output).contains("disabled"), "{}", stdout_of(&output));
 }
 
+// Needs engine components a lockless core test build cannot fetch; the full build covers it.
+#[cfg(feature = "all-engines")]
 #[test]
 fn a_linked_engine_checks_derived_keys_and_reports_nothing_partial() {
     // This binary links mago, so its serde-derived format keys are probed in-process; the

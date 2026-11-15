@@ -11,6 +11,8 @@
 //! that a skip is visible, and the summary already carries every count and
 //! reason. A `--quiet` that hid those would turn the guarantee off.
 #![cfg(unix)]
+// The helpers serve tests gated on `all-engines`, which a core build compiles out.
+#![cfg_attr(not(feature = "all-engines"), allow(dead_code))]
 
 use std::path::Path;
 use std::process::{Command, Output};
@@ -70,6 +72,8 @@ fn summary_block(text: &str) -> String {
 /// The headline test. Skip detail is present by default and gone under
 /// `--quiet`, while the summary line — counts, reasons and all — does not move
 /// by a single byte.
+// Needs engine components a lockless core test build cannot fetch; the full build covers it.
+#[cfg(feature = "all-engines")]
 #[test]
 fn quiet_suppresses_skip_detail_and_keeps_the_summary_line_byte_identical() {
     let dir = repo();

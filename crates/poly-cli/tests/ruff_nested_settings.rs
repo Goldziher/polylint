@@ -1,7 +1,7 @@
 //! Ruff settings are memoized per process, so the memo key must be the *resolved*
 //! per-directory config. Two directories with different nested ruff configs, linted
 //! in one run (one process, one memo), must each get their own rule set.
-#![cfg(unix)]
+#![cfg(all(unix, feature = "all-engines"))]
 
 use std::fs;
 use std::process::Command;

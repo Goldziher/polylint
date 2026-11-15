@@ -34,6 +34,8 @@
 //! These shell out to the built binary because the contradiction only exists in
 //! the assembled output — both phases, one stream.
 #![cfg(unix)]
+// The helpers serve tests gated on `all-engines`, which a core build compiles out.
+#![cfg_attr(not(feature = "all-engines"), allow(dead_code))]
 
 use std::path::Path;
 use std::process::{Command, Output};
@@ -198,6 +200,8 @@ fn a_run_that_lints_rust_in_the_whole_project_phase_does_not_call_rust_unlinted(
 /// the JSON payload and `--deny-skips` all describe the same run. Suppressing
 /// the line while leaving the count at one would be the display-only fix this
 /// release exists to rule out.
+// Needs engine components a lockless core test build cannot fetch; the full build covers it.
+#[cfg(feature = "all-engines")]
 #[test]
 fn a_rust_file_covered_by_the_whole_project_phase_is_counted_as_linted() {
     let dir = repo_with_clippy();
@@ -213,6 +217,8 @@ fn a_rust_file_covered_by_the_whole_project_phase_is_counted_as_linted() {
 
 /// The same claim, machine-readable: the JSON document must not carry a skip
 /// entry the human output has stopped printing.
+// Needs engine components a lockless core test build cannot fetch; the full build covers it.
+#[cfg(feature = "all-engines")]
 #[test]
 fn json_carries_no_rust_skip_when_the_whole_project_phase_covers_it() {
     let dir = repo_with_clippy();
@@ -240,6 +246,8 @@ fn json_carries_no_rust_skip_when_the_whole_project_phase_covers_it() {
 
 /// `--deny-skips` must agree with the note. A skip suppressed for display only
 /// would still fail this gate, which is how a display-only fix gets caught.
+// Needs engine components a lockless core test build cannot fetch; the full build covers it.
+#[cfg(feature = "all-engines")]
 #[test]
 fn deny_skips_passes_when_the_whole_project_phase_covers_the_language() {
     let dir = repo_with_clippy();
@@ -255,6 +263,8 @@ fn deny_skips_passes_when_the_whole_project_phase_covers_the_language() {
 
 /// The other half. With the phase off nothing in the run lints Rust, so the skip
 /// is accurate and must still appear, name the file, and stay out of the count.
+// Needs engine components a lockless core test build cannot fetch; the full build covers it.
+#[cfg(feature = "all-engines")]
 #[test]
 fn no_workspace_keeps_the_rust_skip_because_nothing_lints_rust_then() {
     let dir = repo_with_clippy();
@@ -279,6 +289,8 @@ fn no_workspace_keeps_the_rust_skip_because_nothing_lints_rust_then() {
 /// A repo that configures no whole-project tools at all reaches the same state
 /// without the flag: the phase does not run, so nothing lints Rust — and with
 /// nothing left to count, the headline says so rather than reading as clean.
+// Needs engine components a lockless core test build cannot fetch; the full build covers it.
+#[cfg(feature = "all-engines")]
 #[test]
 fn a_repo_with_no_hooks_config_keeps_the_rust_skip() {
     let dir = repo_without_workspace_phase();
@@ -299,6 +311,8 @@ fn a_repo_with_no_hooks_config_keeps_the_rust_skip() {
 
 /// `--deny-skips` fires on the accurate skip, so the strict gate keeps working
 /// for the case it was built for.
+// Needs engine components a lockless core test build cannot fetch; the full build covers it.
+#[cfg(feature = "all-engines")]
 #[test]
 fn deny_skips_still_fires_on_rust_without_the_whole_project_phase() {
     let dir = repo_with_clippy();
@@ -327,6 +341,8 @@ fn deny_skips_still_fires_on_rust_without_the_whole_project_phase() {
 /// A language *nothing* in the run lints keeps its skip even while the
 /// whole-project phase covers another language. Crediting the phase must not
 /// become a blanket amnesty.
+// Needs engine components a lockless core test build cannot fetch; the full build covers it.
+#[cfg(feature = "all-engines")]
 #[test]
 fn a_language_nothing_lints_keeps_its_skip_beside_a_covered_one() {
     let dir = repo_with_clippy();
@@ -348,6 +364,8 @@ fn a_language_nothing_lints_keeps_its_skip_beside_a_covered_one() {
 
 /// …and `--deny-skips` still sees it, which is the whole reason an uncovered
 /// language has to stay in the skipped set rather than merely be mentioned.
+// Needs engine components a lockless core test build cannot fetch; the full build covers it.
+#[cfg(feature = "all-engines")]
 #[test]
 fn deny_skips_fires_on_zig_while_the_whole_project_phase_covers_rust() {
     let dir = repo_with_clippy();
@@ -381,6 +399,8 @@ fn uncovered_repo() -> TempDir {
 
 /// The note groups by reason: many files sharing one reason collapse to a count
 /// and a sample instead of one line each. 229 identical lines is not a report.
+// Needs engine components a lockless core test build cannot fetch; the full build covers it.
+#[cfg(feature = "all-engines")]
 #[test]
 fn a_bulk_reason_is_aggregated_in_the_end_to_end_note() {
     let dir = uncovered_repo();
@@ -406,6 +426,8 @@ fn a_bulk_reason_is_aggregated_in_the_end_to_end_note() {
 
 /// `--verbose` opts out of the grouping and names every file, so the aggregated
 /// view never becomes the only view.
+// Needs engine components a lockless core test build cannot fetch; the full build covers it.
+#[cfg(feature = "all-engines")]
 #[test]
 fn verbose_expands_the_aggregated_note() {
     let dir = uncovered_repo();

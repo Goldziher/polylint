@@ -9,7 +9,7 @@
 //!
 //! The tool is a shell stub served from a local HTTP server and pinned with
 //! `version` + `url` + `sha256`, so nothing touches the network.
-#![cfg(unix)]
+#![cfg(all(unix, feature = "all-engines"))]
 
 use std::io::{Read, Write};
 use std::net::TcpListener;

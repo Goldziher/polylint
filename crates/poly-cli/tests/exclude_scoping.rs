@@ -96,6 +96,8 @@ fn parent_anchored_exclude_holds_for_a_named_file() {
 
 /// The counterweight: a named file the exclude set does *not* match is still
 /// formatted, so none of the above can be satisfied by excluding everything.
+// Needs engine components a lockless core test build cannot fetch; the full build covers it.
+#[cfg(feature = "all-engines")]
 #[test]
 fn a_file_outside_the_exclude_is_still_formatted() {
     let dir = repo("packages/other/**");
