@@ -120,6 +120,10 @@ pub fn applies_to(language: &Language) -> bool {
 }
 
 pub fn scan(content: &str) -> Vec<Diagnostic> {
+    // Markers never span a newline, so a file holding none of them has no line to scan.
+    if !MARKERS.iter().any(|marker| content.contains(marker.prefix)) {
+        return Vec::new();
+    }
     let mut out = Vec::new();
     for (line_no, raw_line) in content.split('\n').enumerate() {
         let line = raw_line.strip_suffix('\r').unwrap_or(raw_line);
@@ -227,6 +231,12 @@ mod tests {
             let findings = scan(source);
             assert!(findings.is_empty(), "{source:?} produced {findings:?}");
         }
+    }
+
+    #[test]
+    fn marker_free_content_short_circuits_and_marked_content_still_scans() {
+        assert!(scan("fn main() {}\n// plain comment\n").is_empty());
+        assert_eq!(codes(&scan("a\nb\nx = 1  # noqa\n")), vec!["lazy-ignore"]);
     }
 
     #[test]
