@@ -69,6 +69,11 @@ const OPTION_KEYS: &[(&str, OptionType)] = &[
 pub struct TyEngine;
 
 impl Engine for TyEngine {
+    // No per-file hook is overridden, so a component host never loads the component to ask one.
+    fn overridden_hooks(&self) -> u32 {
+        0
+    }
+
     fn name(&self) -> &'static str {
         ENGINE_NAME
     }
