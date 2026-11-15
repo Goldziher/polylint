@@ -13,7 +13,8 @@ use std::borrow::Cow;
 
 use crate::config::EngineConfig;
 use crate::engine::{
-    BatchSupport, Capabilities, Diagnostic, Engine, FormatOutput, OptionKeys, OptionTable, SourceFile,
+    BatchSupport, Capabilities, Diagnostic, Engine, FormatOutput, OptionKeys, OptionTable, ProjectInputs,
+    ProjectRequest, SourceFile, WireSelection,
 };
 use crate::language::Language;
 
@@ -141,6 +142,50 @@ impl Engine for FormatScope {
     fn supersedes_generic_formatter(&self) -> bool {
         self.inner.supersedes_generic_formatter()
     }
+
+    fn overridden_hooks(&self) -> u32 {
+        self.inner.overridden_hooks()
+    }
+
+    fn run_context(&self, cfg: &EngineConfig) -> String {
+        self.inner.run_context(cfg)
+    }
+
+    fn host_hook(&self) -> crate::host_hooks::HostHook {
+        self.inner.host_hook()
+    }
+
+    fn lint_input_salt(&self, path: &std::path::Path, cfg: &EngineConfig) -> Option<String> {
+        self.inner.lint_input_salt(path, cfg)
+    }
+
+    fn lint_cache_version(&self, src: &SourceFile) -> Cow<'_, str> {
+        self.inner.lint_cache_version(src)
+    }
+
+    fn project_check(&self, req: &ProjectRequest<'_>) -> anyhow::Result<Vec<(std::path::PathBuf, Vec<Diagnostic>)>> {
+        self.inner.project_check(req)
+    }
+
+    fn project_inputs(&self) -> ProjectInputs {
+        self.inner.project_inputs()
+    }
+
+    fn selection(&self) -> Option<WireSelection> {
+        self.inner.selection()
+    }
+
+    fn takes_over_tier_one(&self) -> bool {
+        self.inner.takes_over_tier_one()
+    }
+
+    fn claimed_paths(&self) -> Vec<String> {
+        self.inner.claimed_paths()
+    }
+
+    fn supplements_tier_one(&self) -> bool {
+        self.inner.supplements_tier_one()
+    }
 }
 
 #[cfg(test)]
@@ -234,6 +279,298 @@ mod tests {
         assert!(matches!(&out[0], Ok(FormatOutput::Formatted(_))));
         assert!(matches!(&out[1], Ok(FormatOutput::Unchanged)));
         assert!(matches!(&out[2], Ok(FormatOutput::Formatted(_))));
+    }
+
+    /// Records the name of every trait method called on it, answering each with a non-default value
+    /// where the type allows so a dropped forward is also visible in the result.
+    struct Recorder(Arc<std::sync::Mutex<Vec<&'static str>>>);
+
+    impl Recorder {
+        fn note(&self, method: &'static str) {
+            self.0.lock().expect("lock").push(method);
+        }
+    }
+
+    impl Engine for Recorder {
+        fn name(&self) -> &'static str {
+            self.note("name");
+            "recorder"
+        }
+        fn languages(&self) -> &'static [Language] {
+            self.note("languages");
+            &[Language::Toml]
+        }
+        fn capabilities(&self) -> Capabilities {
+            self.note("capabilities");
+            Capabilities {
+                lint: true,
+                format: true,
+                fix: false,
+                project: false,
+            }
+        }
+        fn option_keys(&self, _table: OptionTable) -> OptionKeys {
+            self.note("option_keys");
+            OptionKeys::UNCHECKED
+        }
+        fn overridden_hooks(&self) -> u32 {
+            self.note("overridden_hooks");
+            0
+        }
+        fn version(&self) -> &str {
+            self.note("version");
+            "recorder"
+        }
+        fn run_context(&self, _cfg: &EngineConfig) -> String {
+            self.note("run_context");
+            String::new()
+        }
+        fn file_context(&self, _path: &std::path::Path, _cfg: &EngineConfig) -> Option<String> {
+            self.note("file_context");
+            None
+        }
+        fn host_hook(&self) -> crate::host_hooks::HostHook {
+            self.note("host_hook");
+            crate::host_hooks::HostHook::None
+        }
+        fn provides_language_lint(&self, _language: &Language, _cfg: &EngineConfig) -> bool {
+            self.note("provides_language_lint");
+            true
+        }
+        fn provides_language_format(&self, _language: &Language, _cfg: &EngineConfig) -> bool {
+            self.note("provides_language_format");
+            true
+        }
+        fn skip_reason(&self, _src: &SourceFile) -> Option<Cow<'static, str>> {
+            self.note("skip_reason");
+            None
+        }
+        fn lint_input_salt(&self, _path: &std::path::Path, _cfg: &EngineConfig) -> Option<String> {
+            self.note("lint_input_salt");
+            None
+        }
+        fn format_config<'a>(&self, _src: &SourceFile, cfg: &'a EngineConfig) -> Cow<'a, EngineConfig> {
+            self.note("format_config");
+            Cow::Borrowed(cfg)
+        }
+        fn format_input_salt(&self, _path: &std::path::Path, _cfg: &EngineConfig) -> Option<String> {
+            self.note("format_input_salt");
+            None
+        }
+        fn lint(&self, _src: &SourceFile, _cfg: &EngineConfig) -> anyhow::Result<Vec<Diagnostic>> {
+            self.note("lint");
+            Ok(Vec::new())
+        }
+        fn project_check(
+            &self,
+            _req: &ProjectRequest<'_>,
+        ) -> anyhow::Result<Vec<(std::path::PathBuf, Vec<Diagnostic>)>> {
+            self.note("project_check");
+            Ok(Vec::new())
+        }
+        fn project_inputs(&self) -> ProjectInputs {
+            self.note("project_inputs");
+            ProjectInputs::default()
+        }
+        fn format(&self, _src: &SourceFile, _cfg: &EngineConfig) -> anyhow::Result<FormatOutput> {
+            self.note("format");
+            Ok(FormatOutput::Unchanged)
+        }
+        fn batch_support(&self, _cfg: &EngineConfig) -> BatchSupport {
+            self.note("batch_support");
+            BatchSupport::default()
+        }
+        fn format_batch(
+            &self,
+            batch: &[SourceFile],
+            _cfg: &EngineConfig,
+        ) -> anyhow::Result<Vec<anyhow::Result<FormatOutput>>> {
+            self.note("format_batch");
+            Ok(batch.iter().map(|_| Ok(FormatOutput::Unchanged)).collect())
+        }
+        fn lint_batch(
+            &self,
+            batch: &[SourceFile],
+            _cfg: &EngineConfig,
+        ) -> anyhow::Result<Vec<anyhow::Result<Vec<Diagnostic>>>> {
+            self.note("lint_batch");
+            Ok(batch.iter().map(|_| Ok(Vec::new())).collect())
+        }
+        fn lint_cache_salt(&self, _src: &SourceFile) -> Option<String> {
+            self.note("lint_cache_salt");
+            None
+        }
+        fn lint_cache_version(&self, _src: &SourceFile) -> Cow<'_, str> {
+            self.note("lint_cache_version");
+            Cow::Borrowed("recorder")
+        }
+        fn batch_shard_floor(&self) -> usize {
+            self.note("batch_shard_floor");
+            2
+        }
+        fn selection(&self) -> Option<WireSelection> {
+            self.note("selection");
+            None
+        }
+        fn takes_over_tier_one(&self) -> bool {
+            self.note("takes_over_tier_one");
+            false
+        }
+        fn claimed_paths(&self) -> Vec<String> {
+            self.note("claimed_paths");
+            Vec::new()
+        }
+        fn supplements_tier_one(&self) -> bool {
+            self.note("supplements_tier_one");
+            false
+        }
+        fn self_manages_enabled(&self) -> bool {
+            self.note("self_manages_enabled");
+            false
+        }
+        fn supersedes_generic_formatter(&self) -> bool {
+            self.note("supersedes_generic_formatter");
+            false
+        }
+    }
+
+    /// Calls the named trait method on `engine`; a name `ENGINE_METHODS` gains without an arm here
+    /// fails the test below, so a new method cannot be left unchecked.
+    fn call(engine: &dyn Engine, method: &str) {
+        let path = std::path::Path::new("a.toml");
+        let src = source("a.toml");
+        let cfg = cfg();
+        match method {
+            "name" => {
+                let _ = engine.name();
+            }
+            "languages" => {
+                let _ = engine.languages();
+            }
+            "capabilities" => {
+                let _ = engine.capabilities();
+            }
+            "option_keys" => {
+                let _ = engine.option_keys(OptionTable::Format);
+            }
+            "overridden_hooks" => {
+                let _ = engine.overridden_hooks();
+            }
+            "version" => {
+                let _ = engine.version();
+            }
+            "run_context" => {
+                let _ = engine.run_context(&cfg);
+            }
+            "file_context" => {
+                let _ = engine.file_context(path, &cfg);
+            }
+            "host_hook" => {
+                let _ = engine.host_hook();
+            }
+            "provides_language_lint" => {
+                let _ = engine.provides_language_lint(&Language::Toml, &cfg);
+            }
+            "provides_language_format" => {
+                let _ = engine.provides_language_format(&Language::Toml, &cfg);
+            }
+            "skip_reason" => {
+                let _ = engine.skip_reason(&src);
+            }
+            "lint_input_salt" => {
+                let _ = engine.lint_input_salt(path, &cfg);
+            }
+            "format_config" => {
+                let _ = engine.format_config(&src, &cfg);
+            }
+            "format_input_salt" => {
+                let _ = engine.format_input_salt(path, &cfg);
+            }
+            "lint" => {
+                let _ = engine.lint(&src, &cfg);
+            }
+            "project_check" => {
+                let environment = crate::engine::ProjectEnvironment::default();
+                let request = ProjectRequest {
+                    root: path,
+                    files: &[],
+                    config: &cfg,
+                    environment: &environment,
+                    threads: None,
+                };
+                let _ = engine.project_check(&request);
+            }
+            "project_inputs" => {
+                let _ = engine.project_inputs();
+            }
+            "format" => {
+                let _ = engine.format(&src, &cfg);
+            }
+            "batch_support" => {
+                let _ = engine.batch_support(&cfg);
+            }
+            "format_batch" => {
+                let _ = engine.format_batch(std::slice::from_ref(&src), &cfg);
+            }
+            "lint_batch" => {
+                let _ = engine.lint_batch(std::slice::from_ref(&src), &cfg);
+            }
+            "lint_cache_salt" => {
+                let _ = engine.lint_cache_salt(&src);
+            }
+            "lint_cache_version" => {
+                let _ = engine.lint_cache_version(&src);
+            }
+            "batch_shard_floor" => {
+                let _ = engine.batch_shard_floor();
+            }
+            "selection" => {
+                let _ = engine.selection();
+            }
+            "takes_over_tier_one" => {
+                let _ = engine.takes_over_tier_one();
+            }
+            "claimed_paths" => {
+                let _ = engine.claimed_paths();
+            }
+            "supplements_tier_one" => {
+                let _ = engine.supplements_tier_one();
+            }
+            "self_manages_enabled" => {
+                let _ = engine.self_manages_enabled();
+            }
+            "supersedes_generic_formatter" => {
+                let _ = engine.supersedes_generic_formatter();
+            }
+            other => panic!("Engine method `{other}` has no call in this test; add it here and to Recorder"),
+        }
+    }
+
+    #[test]
+    fn every_engine_method_reaches_the_wrapped_engine() {
+        let calls = Arc::new(std::sync::Mutex::new(Vec::new()));
+        let engine = FormatScope::new(
+            Box::new(Recorder(Arc::clone(&calls))),
+            GlobSetBuilder::new().build().expect("set"),
+        );
+        let methods: Vec<&str> = poly_component_protocol::coverage::ENGINE_METHODS
+            .iter()
+            .map(|(name, _)| *name)
+            .collect();
+        assert!(
+            methods.len() > 20,
+            "the method table must not be empty: {}",
+            methods.len()
+        );
+        for method in &methods {
+            calls.lock().expect("lock").clear();
+            call(&engine, method);
+            let seen = calls.lock().expect("lock").clone();
+            assert!(
+                seen.contains(method),
+                "FormatScope does not forward `{method}` to the wrapped engine (saw {seen:?})"
+            );
+        }
     }
 
     #[test]
