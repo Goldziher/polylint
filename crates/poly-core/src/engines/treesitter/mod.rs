@@ -34,6 +34,7 @@
 //!   unparsable input (it only trims trailing whitespace and fixes line
 //!   endings / the final newline).
 
+mod clang_format;
 mod indent;
 mod kinds;
 
@@ -176,7 +177,30 @@ impl Engine for TreeSitterEngine {
         "13+tslp1.25.0"
     }
 
+    fn run_context(&self, _cfg: &EngineConfig) -> String {
+        clang_format::forget();
+        String::new()
+    }
+
+    /// A `.clang-format` takes the file out of this formatter's hands, so adding or removing one
+    /// must invalidate cached results.
+    fn file_context(&self, path: &std::path::Path, _cfg: &EngineConfig) -> Option<String> {
+        clang_format::governs(path).then(|| "clang-format".to_owned())
+    }
+
+    fn format_input_salt(&self, path: &std::path::Path, cfg: &EngineConfig) -> Option<String> {
+        self.file_context(path, cfg)
+    }
+
+    fn skip_reason(&self, src: &SourceFile) -> Option<Cow<'static, str>> {
+        (clang_format::is_clang_language(&src.language) && clang_format::governs(&src.path))
+            .then_some(Cow::Borrowed(clang_format::SKIP))
+    }
+
     fn format(&self, src: &SourceFile, cfg: &EngineConfig) -> anyhow::Result<FormatOutput> {
+        if self.skip_reason(src).is_some() {
+            return Ok(FormatOutput::Unchanged);
+        }
         let name = grammar_name(src);
         if name.as_deref().is_some_and(|n| LEAVE_UNTOUCHED.contains(&n)) {
             return Ok(FormatOutput::Unchanged);

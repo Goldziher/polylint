@@ -1573,3 +1573,34 @@ fn proguard_rules_are_left_untouched_not_formatted_as_prolog() {
         FormatOutput::Unchanged
     ));
 }
+
+#[test]
+fn a_clang_format_file_takes_c_family_sources_out_of_the_generic_formatter() {
+    let input = "int main(void) {\nreturn 0;\n}\n";
+    let styled = tempfile::tempdir().unwrap();
+    std::fs::write(styled.path().join(".clang-format"), "BasedOnStyle: LLVM\n").unwrap();
+    let plain = tempfile::tempdir().unwrap();
+    let engine = TreeSitterEngine;
+
+    let governed = src(styled.path().join("main.c").to_str().unwrap(), Language::C, input);
+    assert_eq!(
+        engine.skip_reason(&governed).as_deref(),
+        Some("formatted by clang-format (.clang-format present); enable [tools.clang-format] to format it")
+    );
+    assert!(matches!(
+        engine.format(&governed, &cfg(4)).unwrap(),
+        FormatOutput::Unchanged
+    ));
+    assert_eq!(
+        engine.format_input_salt(&governed.path, &cfg(4)).as_deref(),
+        Some("clang-format")
+    );
+
+    let free = src(plain.path().join("main.c").to_str().unwrap(), Language::C, input);
+    assert_eq!(engine.skip_reason(&free), None);
+    assert_eq!(engine.format_input_salt(&free.path, &cfg(4)), None);
+    assert!(matches!(
+        engine.format(&free, &cfg(4)).unwrap(),
+        FormatOutput::Formatted(_)
+    ));
+}
