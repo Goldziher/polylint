@@ -428,7 +428,7 @@ fn collect_swift_case_adjustments(
 
 /// Visit `root` and every descendant in pre-order without recursing, so a tree nested hundreds of
 /// thousands of levels deep cannot overflow the stack.
-fn for_each_node<'t>(root: &Node<'t>, mut visit: impl FnMut(&Node<'t>)) {
+fn for_each_node(root: &Node, mut visit: impl FnMut(&Node)) {
     let mut cursor = root.walk();
     loop {
         visit(&cursor.node());
