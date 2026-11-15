@@ -441,8 +441,11 @@ jobs:
           grep -q "test result: ok. 4 passed" secrets-test.log
       - name: Build the component cdylib (links vectorscan for this triple)
         run: cargo build --locked --release --manifest-path components-secrets/Cargo.toml -p poly-engines-secrets-component
-      - name: Load the component through the host (skipped on Windows, where the dev-lock task is untested)
-        if: runner.os != 'Windows'
+      # `components:dev` builds the component through alef for the runner's triple, and `secrets` ships for macOS only
+      # among the runners here: Linux gnu is not an alef target until the release container builds vectorscan from
+      # source, and the dev-lock task is untested on Windows (ADR 0054).
+      - name: Load the component through the host (macOS only)
+        if: runner.os == 'macOS'
         env:
           MISE_TASK_RUN_AUTO_INSTALL: "false"
         run: |

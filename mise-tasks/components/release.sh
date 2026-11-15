@@ -198,6 +198,17 @@ check_rustc() {
   }
 }
 
+# The components alef.toml configures for a target, one per line. alef refuses to plan a component for a target it
+# does not list, so the plan names exactly these (a component may ship for fewer targets than the rest). Plain awk,
+# because the manylinux container has no tomllib.
+components_for_target() {
+  awk -v t="$1" '
+    /^\[\[crates\.components\]\]/ { name = ""; next }
+    /^name = "/ { name = $0; sub(/^name = "/, "", name); sub(/".*$/, "", name); next }
+    /^targets = / && index($0, "\"" t "\"") && name != "" { print name }
+  ' alef.toml
+}
+
 # Number of rows the plan marks `build`.
 build_rows() {
   jq '[.rows[] | select(.action == "build")] | length' "$1"
@@ -301,7 +312,13 @@ plan)
   mkdir -p "${DIST}" "$(dirname "${PLAN}")"
   previous=()
   ! has_previous_lock || previous=(--previous-lock "${PREVIOUS_LOCK}")
-  alef component plan --target "${TARGET}" ${previous[@]+"${previous[@]}"} "${EXTRA[@]}" --output "${PLAN}"
+  selected=()
+  while IFS= read -r name; do selected+=(--component "${name}"); done < <(components_for_target "${TARGET}")
+  [[ ${#selected[@]} -gt 0 ]] || {
+    echo "components-release: alef.toml lists no component for ${TARGET}" >&2
+    exit 1
+  }
+  alef component plan --target "${TARGET}" "${selected[@]}" ${previous[@]+"${previous[@]}"} "${EXTRA[@]}" --output "${PLAN}"
   rows="$(jq '.rows | length' "${PLAN}")"
   [[ "${rows}" -gt 0 ]] || {
     echo "components-release: alef.toml lists no component for ${TARGET}" >&2
