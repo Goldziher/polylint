@@ -75,12 +75,11 @@ pub enum HostHook {
 #[must_use]
 pub fn run_context(hook: HostHook, cfg: &EngineConfig) -> String {
     match hook {
-        HostHook::None
-        | HostHook::OxfmtScope
-        | HostHook::Oxc
-        | HostHook::Editorconfig
-        | HostHook::GoMod
-        | HostHook::JsonSchema => String::new(),
+        HostHook::Editorconfig => {
+            editorconfig::forget();
+            String::new()
+        }
+        HostHook::None | HostHook::OxfmtScope | HostHook::Oxc | HostHook::GoMod | HostHook::JsonSchema => String::new(),
         HostHook::RuffContext => {
             let src_roots: Vec<std::path::PathBuf> = cfg
                 .options

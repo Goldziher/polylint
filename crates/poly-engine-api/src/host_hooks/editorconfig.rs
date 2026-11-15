@@ -15,8 +15,8 @@
 
 use std::borrow::Cow;
 use std::collections::HashMap;
-use std::path::{Path, PathBuf};
-use std::sync::{Arc, Mutex, OnceLock};
+use std::path::{Component, Path, PathBuf};
+use std::sync::{Arc, OnceLock, RwLock};
 
 use globset::{GlobBuilder, GlobMatcher};
 
@@ -85,35 +85,69 @@ fn parse(text: &str) -> EditorConfig {
     EditorConfig { root, sections }
 }
 
-/// The parsed `.editorconfig` in `dir`, once per directory.
-fn load(dir: &Path) -> Option<Arc<EditorConfig>> {
-    static MEMO: OnceLock<Mutex<HashMap<PathBuf, Option<Arc<EditorConfig>>>>> = OnceLock::new();
-    let memo = MEMO.get_or_init(Mutex::default);
-    if let Some(known) = memo.lock().unwrap_or_else(std::sync::PoisonError::into_inner).get(dir) {
-        return known.clone();
-    }
-    let parsed = std::fs::read_to_string(dir.join(".editorconfig"))
-        .ok()
-        .map(|text| Arc::new(parse(&text)));
-    memo.lock()
-        .unwrap_or_else(std::sync::PoisonError::into_inner)
-        .insert(dir.to_path_buf(), parsed.clone());
-    parsed
+type Chain = Arc<Vec<(PathBuf, Arc<EditorConfig>)>>;
+
+#[derive(Default)]
+struct Memo {
+    parsed: HashMap<PathBuf, Option<Arc<EditorConfig>>>,
+    chains: HashMap<PathBuf, Chain>,
 }
 
-/// The indentation `.editorconfig` asks for `path`, when it asks for one.
-pub fn indent_for(path: &Path) -> Option<Indent> {
-    let absolute = std::path::absolute(path).ok()?;
+fn memo() -> &'static RwLock<Memo> {
+    static MEMO: OnceLock<RwLock<Memo>> = OnceLock::new();
+    MEMO.get_or_init(RwLock::default)
+}
+
+/// Drops every memoised `.editorconfig` so the next run rereads them from disk.
+pub fn forget() {
+    *memo().write().unwrap_or_else(std::sync::PoisonError::into_inner) = Memo::default();
+}
+
+/// The `.editorconfig` files that apply to files in `dir`, nearest first, resolved once per directory
+/// (sibling files and the salt/apply pair share it).
+fn chain_for(dir: &Path) -> Chain {
+    if let Some(hit) = memo()
+        .read()
+        .unwrap_or_else(std::sync::PoisonError::into_inner)
+        .chains
+        .get(dir)
+    {
+        return Arc::clone(hit);
+    }
     let mut chain: Vec<(PathBuf, Arc<EditorConfig>)> = Vec::new();
-    for dir in absolute.parent()?.ancestors() {
-        if let Some(config) = load(dir) {
+    let mut guard = memo().write().unwrap_or_else(std::sync::PoisonError::into_inner);
+    for ancestor in dir.ancestors() {
+        let parsed = match guard.parsed.get(ancestor) {
+            Some(known) => known.clone(),
+            None => {
+                let parsed = std::fs::read_to_string(ancestor.join(".editorconfig"))
+                    .ok()
+                    .map(|text| Arc::new(parse(&text)));
+                guard.parsed.insert(ancestor.to_path_buf(), parsed.clone());
+                parsed
+            }
+        };
+        if let Some(config) = parsed {
             let root = config.root;
-            chain.push((dir.to_path_buf(), config));
+            chain.push((ancestor.to_path_buf(), config));
             if root {
                 break;
             }
         }
     }
+    let chain = Arc::new(chain);
+    guard.chains.insert(dir.to_path_buf(), Arc::clone(&chain));
+    chain
+}
+
+/// The indentation `.editorconfig` asks for `path`, when it asks for one.
+pub fn indent_for(path: &Path) -> Option<Indent> {
+    let absolute: Cow<'_, Path> = if path.is_absolute() && !path.components().any(|c| matches!(c, Component::CurDir)) {
+        Cow::Borrowed(path)
+    } else {
+        Cow::Owned(std::path::absolute(path).ok()?)
+    };
+    let chain = chain_for(absolute.parent()?);
     let mut style: Option<String> = None;
     let mut size: Option<String> = None;
     for (dir, config) in chain.iter().rev() {
@@ -279,5 +313,20 @@ mod tests {
         assert!(matches!(apply(&cfg("use_tabs = false"), &path), Cow::Borrowed(_)));
         assert_eq!(salt(&cfg("indent_width = 2"), &path), None);
         assert_eq!(salt(&cfg(""), &path).as_deref(), Some("editorconfig:Spaces(4)"));
+    }
+
+    #[test]
+    fn the_chain_is_memoised_per_directory_until_forgotten() {
+        let repo = repo(&[(".editorconfig", "[*.sh]\nindent_style = tab\n")]);
+        let path = repo.path().join("run.sh");
+        assert_eq!(indent_for(&path), Some(Indent::Tabs));
+        std::fs::write(
+            repo.path().join(".editorconfig"),
+            "[*.sh]\nindent_style = space\nindent_size = 2\n",
+        )
+        .unwrap();
+        assert_eq!(indent_for(&path), Some(Indent::Tabs));
+        forget();
+        assert_eq!(indent_for(&path), Some(Indent::Spaces(2)));
     }
 }
