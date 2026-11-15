@@ -38,12 +38,79 @@ const SCAN_LIMIT: usize = 8000;
 /// `invalid-utf8` diagnostic that
 /// `tests/invalid_utf8.rs` pins.
 pub(crate) fn is_binary(bytes: &[u8]) -> bool {
-    bytes.iter().take(SCAN_LIMIT).any(|&byte| byte == 0)
+    let window = &bytes[..bytes.len().min(SCAN_LIMIT)];
+    let mut words = window.chunks_exact(8);
+    // Exact for "some byte is zero": the borrow only reaches a byte's high bit
+    // from a zero byte or from a lower byte that already borrowed, and the first
+    // zero byte in a word has no lower zero to borrow from.
+    const LOW: u64 = 0x0101_0101_0101_0101;
+    const HIGH: u64 = 0x8080_8080_8080_8080;
+    let word_has_nul = words.any(|chunk| {
+        let word = u64::from_ne_bytes(chunk.try_into().unwrap_or_default());
+        word.wrapping_sub(LOW) & !word & HIGH != 0
+    });
+    word_has_nul || words.remainder().contains(&0)
 }
 
 #[cfg(test)]
 mod tests {
-    use super::is_binary;
+    use super::{SCAN_LIMIT, is_binary};
+
+    fn naive(bytes: &[u8]) -> bool {
+        bytes.iter().take(SCAN_LIMIT).any(|&byte| byte == 0)
+    }
+
+    fn lcg(state: &mut u64) -> u8 {
+        *state = state
+            .wrapping_mul(6364136223846793005)
+            .wrapping_add(1442695040888963407);
+        (*state >> 33) as u8
+    }
+
+    #[test]
+    fn a_nul_at_every_position_matches_the_naive_scan() {
+        for length in [0, 1, 7, 8, 9, 15, 16, 7999, 8000, 8001, 8008] {
+            let clean = vec![b'a'; length];
+            assert_eq!(is_binary(&clean), naive(&clean), "clean, length {length}");
+            for position in 0..length {
+                let mut content = clean.clone();
+                content[position] = 0;
+                assert_eq!(
+                    is_binary(&content),
+                    naive(&content),
+                    "length {length}, NUL at {position}"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn high_bytes_around_a_borrow_do_not_confuse_the_scan() {
+        for pattern in [0x01u8, 0x80, 0xff, 0x7f, 0x81] {
+            let content = vec![pattern; 8100];
+            assert_eq!(is_binary(&content), naive(&content), "pattern {pattern:#x}");
+        }
+    }
+
+    #[test]
+    fn random_buffers_match_the_naive_scan() {
+        let mut state = 0x2545_f491_4f6c_dd1d_u64;
+        for round in 0..2000 {
+            let length = usize::from(lcg(&mut state)) * 40 + usize::from(lcg(&mut state));
+            let nul_density = 1 + usize::from(lcg(&mut state)) % 255;
+            let content: Vec<u8> = (0..length)
+                .map(|_| {
+                    let byte = lcg(&mut state);
+                    if usize::from(byte) % 251 < nul_density / 64 {
+                        0
+                    } else {
+                        byte | 1
+                    }
+                })
+                .collect();
+            assert_eq!(is_binary(&content), naive(&content), "round {round}");
+        }
+    }
 
     #[test]
     fn a_nul_byte_marks_the_content_binary() {
