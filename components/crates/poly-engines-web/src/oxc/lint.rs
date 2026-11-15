@@ -385,13 +385,13 @@ fn looks_minified(src: &SourceFile, cfg: &EngineConfig) -> bool {
 /// made any `[lint.*.oxc]` setting cost far more than the linting itself.
 fn configured_service(cfg: &EngineConfig) -> anyhow::Result<Arc<SourceLinter>> {
     type Slot = Arc<OnceLock<Result<Arc<SourceLinter>, String>>>;
-    static SERVICES: OnceLock<Mutex<HashMap<String, Slot>>> = OnceLock::new();
+    static SERVICES: OnceLock<Mutex<HashMap<[u8; 32], Slot>>> = OnceLock::new();
     let slot = {
         let mut services = SERVICES
             .get_or_init(Mutex::default)
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner);
-        Arc::clone(services.entry(cfg.options.to_string()).or_default())
+        Arc::clone(services.entry(cfg.fingerprint()).or_default())
     };
     slot.get_or_init(|| {
         build_configured_service(cfg)
