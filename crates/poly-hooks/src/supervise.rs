@@ -773,7 +773,13 @@ mod tests {
                         } else {
                             SPENT + RAMP_STEP * u32::try_from(index % RAMP_STEPS).expect("ramp index fits")
                         };
-                        let supervised = run(&mut exits_immediately(), budget(Some(limit)), &|_, _| {}).expect("run");
+                        let supervised = super::run_streaming(
+                            &mut exits_immediately(),
+                            budget(Some(limit)),
+                            &mut |_| {},
+                            &|_, _| {},
+                        )
+                        .expect("run");
                         match (supervised.output.status.code(), supervised.timed_out) {
                             (Some(0), true) => false_reports.fetch_add(1, Relaxed),
                             (Some(0), false) => own_exit.fetch_add(1, Relaxed),

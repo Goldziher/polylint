@@ -65,6 +65,7 @@ impl Stage {
     pub const STAGE_COUNT: usize = 11;
 
     /// All stages in their canonical order.
+    #[cfg(test)]
     const ORDER: [Self; Self::STAGE_COUNT] = [
         Self::Manual,
         Self::CommitMsg,
