@@ -108,7 +108,7 @@ pub struct MigrateArgs {
 
     /// After the foreign-config importers, rewrite `poly.toml` (and `poly.local.toml`) from the
     /// v1 schema to the v2 schema, keeping comments (ADR 0038). With `--recurse`, nested
-    /// configs are rewritten too. Opt-in until the loader reads v2.
+    /// configs are rewritten too.
     #[arg(long, conflicts_with = "verify")]
     pub to_v2: bool,
 }
@@ -144,8 +144,10 @@ pub struct MigrationPlan {
     pub actions: Vec<Action>,
     /// KEEP / REPORT-ONLY actions for delegated and publisher files.
     pub kept: Vec<Action>,
-    /// Conflict notes (existing keys left untouched).
+    /// Conflict notes (existing keys left untouched; their sources are kept).
     pub conflicts: Vec<String>,
+    /// Source configs that exist but could not be parsed; they are kept.
+    pub parse_errors: Vec<String>,
     /// The v1 to v2 rewrite of `poly.toml`, when `--to-v2` ran.
     pub v2: Option<v2::V2Outcome>,
     /// The v1 to v2 rewrite of a sibling `poly.local.toml`, when it needed one.
@@ -211,6 +213,7 @@ fn run(args: MigrateArgs) -> Result<ExitCode> {
         if plan.results.iter().any(|r| r.absorb != Absorb::None)
             || !plan.kept.is_empty()
             || !plan.actions.is_empty()
+            || !plan.parse_errors.is_empty()
             || plan.has_v2_changes()
         {
             print!("{}", report::render_plan(&plan, args.write));
@@ -259,9 +262,10 @@ pub fn build_plan(dir: &Path) -> Result<MigrationPlan> {
     results.extend(importers::hooks::import(dir));
 
     let mut conflicts = Vec::new();
-    for result in &results {
-        conflicts.extend(importers::apply(&mut doc, &result.fragments));
+    for result in &mut results {
+        conflicts.extend(importers::apply_result(&mut doc, result));
     }
+    let parse_errors = importers::unparsable_sources(dir, &results, MIGRATABLE_SOURCES);
 
     let actions = deletion::plan_actions(&results);
     let kept = deletion::scan_kept(dir);
@@ -275,6 +279,7 @@ pub fn build_plan(dir: &Path) -> Result<MigrationPlan> {
         actions,
         kept,
         conflicts,
+        parse_errors,
         v2: None,
         local_v2: None,
     })
@@ -352,10 +357,10 @@ fn set_replace_marker(root: &mut toml_edit::Table, path: &[&str]) -> bool {
 
 /// Apply a plan: write `poly.toml`, then delete/strip absorbed sources.
 fn apply_plan(plan: &MigrationPlan) -> Result<()> {
-    std::fs::write(&plan.poly_toml_path, plan.doc.to_string())
+    write_atomic(&plan.poly_toml_path, &plan.doc.to_string())
         .with_context(|| format!("writing {}", plan.poly_toml_path.display()))?;
     if let Some(local) = &plan.local_v2 {
-        std::fs::write(&local.path, local.doc.to_string())
+        write_atomic(&local.path, &local.doc.to_string())
             .with_context(|| format!("writing {}", local.path.display()))?;
     }
     for action in &plan.actions {
@@ -404,7 +409,26 @@ fn strip_pyproject(path: &Path, sections: &[Vec<String>]) -> Result<()> {
     for section in sections {
         remove_dotted(doc.as_table_mut(), section);
     }
-    std::fs::write(path, doc.to_string()).with_context(|| format!("writing {}", path.display()))?;
+    write_atomic(path, &doc.to_string()).with_context(|| format!("writing {}", path.display()))?;
+    Ok(())
+}
+
+/// Write `contents` to `path` through a temp file in the same directory and a
+/// rename, so an interrupted write never leaves a truncated config. The target's
+/// permissions are kept.
+fn write_atomic(path: &Path, contents: &str) -> Result<()> {
+    use std::io::Write as _;
+    let dir = path
+        .parent()
+        .filter(|p| !p.as_os_str().is_empty())
+        .unwrap_or(Path::new("."));
+    let mut temp = tempfile::NamedTempFile::new_in(dir)?;
+    temp.write_all(contents.as_bytes())?;
+    temp.as_file().sync_all()?;
+    if let Ok(meta) = std::fs::metadata(path) {
+        std::fs::set_permissions(temp.path(), meta.permissions())?;
+    }
+    temp.persist(path).map_err(|e| e.error)?;
     Ok(())
 }
 
@@ -424,18 +448,28 @@ fn remove_dotted(table: &mut toml_edit::Table, path: &[String]) {
 }
 
 /// Refuse to write when the git working tree under `dir` has uncommitted
-/// changes. A non-git directory (or missing `git`) is treated as clean.
+/// changes, or when `dir` is not in a git work tree at all (or `git` is missing):
+/// without git, deleted source configs cannot be recovered.
 fn guard_clean_tree(dir: &Path) -> Result<()> {
-    let output = Command::new("git")
-        .arg("-C")
-        .arg(dir)
-        .args(["status", "--porcelain"])
-        .output();
-    match output {
+    let git = |args: &[&str]| Command::new("git").arg("-C").arg(dir).args(args).output();
+    let inside = git(&["rev-parse", "--is-inside-work-tree"])
+        .is_ok_and(|out| out.status.success() && String::from_utf8_lossy(&out.stdout).trim() == "true");
+    if !inside {
+        bail!(
+            "{} is not in a git work tree (or git is unavailable), so deleted configs could not be recovered; \
+             pass --allow-dirty to override",
+            dir.display()
+        );
+    }
+    match git(&["status", "--porcelain"]) {
         Ok(out) if out.status.success() && !out.stdout.is_empty() => {
             bail!("git working tree is dirty; commit or stash first, or pass --allow-dirty to override");
         }
-        _ => Ok(()),
+        Ok(out) if out.status.success() => Ok(()),
+        _ => bail!(
+            "could not read the git status of {}; pass --allow-dirty to override",
+            dir.display()
+        ),
     }
 }
 
@@ -520,6 +554,15 @@ fn verify_options() -> poly_core::RunOptions {
     }
 }
 
+/// One line per file an engine failed on during verification.
+fn verify_errors(lint: &[poly_core::LintError], format: &[poly_core::FormatError]) -> Vec<String> {
+    let lint = lint.iter().map(|e| format!("lint {}: {}", e.path.display(), e.message));
+    let format = format
+        .iter()
+        .map(|e| format!("fmt {}: {}", e.path.display(), e.message));
+    lint.chain(format).collect()
+}
+
 /// Opt-in verification: load the freshly written config and run lint + format
 /// (dry-run) to confirm every engine executes without error.
 fn verify(dir: &Path) -> Result<()> {
@@ -528,8 +571,16 @@ fn verify(dir: &Path) -> Result<()> {
         .with_context(|| format!("loading config in {}", dir.display()))?;
     let options = verify_options();
     let paths = [dir.to_path_buf()];
-    poly_core::lint(&paths, &config, &options, false, false).context("verify: poly lint failed")?;
-    poly_core::format(&paths, &config, &options, false, false).context("verify: poly fmt failed")?;
+    let lint = poly_core::lint_run(&paths, &config, &options, false, false).context("verify: poly lint failed")?;
+    let format = poly_core::format_run(&paths, &config, &options, false, false).context("verify: poly fmt failed")?;
+    let errors = verify_errors(&lint.errors, &format.errors);
+    if !errors.is_empty() {
+        bail!(
+            "verify: engines failed in {}:\n  {}",
+            dir.display(),
+            errors.join("\n  ")
+        );
+    }
     println!("verify: config loaded and engines ran cleanly in {}", dir.display());
     Ok(())
 }
@@ -590,6 +641,33 @@ mod superseded_tests {
 #[cfg(test)]
 mod verify_tests {
     use super::*;
+
+    #[test]
+    fn verify_reports_every_file_an_engine_failed_on() {
+        let lint = [poly_core::LintError {
+            path: PathBuf::from("a.py"),
+            message: "bad config".to_string(),
+        }];
+        let format = [poly_core::FormatError {
+            path: PathBuf::from("b.rs"),
+            message: "parse error".to_string(),
+        }];
+        assert_eq!(
+            verify_errors(&lint, &format),
+            ["lint a.py: bad config", "fmt b.rs: parse error"]
+        );
+        assert!(verify_errors(&[], &[]).is_empty());
+    }
+
+    #[test]
+    fn write_atomic_replaces_the_file_and_leaves_no_temp_file() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("poly.toml");
+        std::fs::write(&path, "old").unwrap();
+        write_atomic(&path, "new").unwrap();
+        assert_eq!(std::fs::read_to_string(&path).unwrap(), "new");
+        assert_eq!(std::fs::read_dir(dir.path()).unwrap().count(), 1);
+    }
 
     /// `--verify` must still reach the directory it was pointed at when an
     /// ancestor config excludes that whole subtree — the `--recurse` monorepo

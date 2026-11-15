@@ -412,7 +412,7 @@ a problem was found or a file could not be read. `extends` bases are not resolve
 `poly config schema` prints the JSON Schema for `poly.toml` — derived from the same config types
 the parser uses, with each backend's declared `[engines.<id>]` option keys included. Use it for
 editor validation and autocomplete; the schema is also published at
-`https://goldziher.github.io/poly/poly.schema.json`. `--output <PATH>` writes it to a file. See the
+`https://goldziher.github.io/polylint/poly.schema.json`. `--output <PATH>` writes it to a file. See the
 [configuration reference](/poly/reference/configuration/#editor-setup-json-schema).
 
 ## `poly commit`, `poly hooks`, `poly cache`, `poly mcp`
@@ -495,6 +495,12 @@ Anything it cannot map — a placeholder poly does not substitute (`{push_files}
 git-operation conditions, an unknown pre-commit hook, an `exclude` that cannot be translated, a
 `root` or guard on a job that became a builtin — is listed as `unrepresented` in the plan, and the
 source file is kept.
+
+A setting that conflicts with an existing `poly.toml` value is not applied: the plan names the key
+and the source file is kept (an existing array that differs counts as a conflict, never a union).
+Into a `poly.toml` that already uses the v2 `[engines.*]` schema the settings are written as
+`[engines.<id>]` tables. A source file that cannot be parsed is listed as `could not parse` and
+kept. `--write` outside a git work tree needs `--allow-dirty`, and writes `poly.toml` atomically.
 
 | Flag | Effect |
 | --- | --- |

@@ -17,6 +17,7 @@ pub fn render_plan(plan: &MigrationPlan, write: bool) -> String {
     render_tools(&mut out, plan);
     render_actions(&mut out, plan);
     render_conflicts(&mut out, plan);
+    render_parse_errors(&mut out, plan);
     render_poly_toml(&mut out, plan, write);
     render_v2(&mut out, plan, write);
     out
@@ -72,9 +73,22 @@ fn render_conflicts(out: &mut String, plan: &MigrationPlan) {
     if plan.conflicts.is_empty() {
         return;
     }
-    let _ = writeln!(out, "\nConflicts (existing poly.toml values kept):");
+    let _ = writeln!(
+        out,
+        "\nConflicts (existing poly.toml values kept; the source files are kept too):"
+    );
     for conflict in &plan.conflicts {
         let _ = writeln!(out, "  {conflict}");
+    }
+}
+
+fn render_parse_errors(out: &mut String, plan: &MigrationPlan) {
+    if plan.parse_errors.is_empty() {
+        return;
+    }
+    let _ = writeln!(out, "\nUnparsable source configs (not migrated):");
+    for error in &plan.parse_errors {
+        let _ = writeln!(out, "  {error}");
     }
 }
 
