@@ -52,20 +52,20 @@
 //! set at the cost of crediting any `echo "run golangci-lint"`, which trades the
 //! benign error for the harmful one.
 
-use poly_config::PolyConfig;
 use poly_core::Language;
 
-/// The languages the whole-project phase will lint for `config`, for the caller
-/// to declare to the per-file tier.
+/// The languages the whole-project phase will lint for a plan from
+/// [`poly_workspace::plan_workspace_lint`], for the caller to declare to the
+/// per-file tier.
 ///
-/// Resolves the phase's planned tool set without running it. A failure to
-/// resolve it is *not* fatal here: the phase itself runs moments later and
-/// reports the same failure with its own context, and answering "nothing" leaves
-/// the per-file tier's skip accounting exactly as it was before this feature —
-/// cautious, not wrong.
-pub fn workspace_lint_languages(config: &PolyConfig) -> Vec<Language> {
-    let tool_ids = match poly_workspace::planned_workspace_tool_ids(config) {
-        Ok(ids) => ids,
+/// A failure to resolve the plan is *not* fatal here: the phase itself runs
+/// moments later and reports the same failure with its own context, and
+/// answering "nothing" leaves the per-file tier's skip accounting exactly as it
+/// was before this feature — cautious, not wrong.
+pub fn workspace_lint_languages(plan: &anyhow::Result<Option<poly_workspace::PlannedWorkspace>>) -> Vec<Language> {
+    let tool_ids = match plan {
+        Ok(Some(planned)) => planned.tool_ids(),
+        Ok(None) => Vec::new(),
         Err(error) => {
             tracing::debug!("could not resolve the whole-project tool set: {error:#}");
             return Vec::new();

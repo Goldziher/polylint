@@ -27,6 +27,7 @@ pub mod progress;
 pub mod remote;
 pub mod rules_cmd;
 pub mod workspace_coverage;
+pub mod workspace_phase;
 
 pub use cache_cmd::{CacheArgs, run_cache};
 pub use commit::{CommitArgs, run_commit_lint};
@@ -336,7 +337,7 @@ pub fn run_lint(args: LintArgs) -> ExitCode {
     init_logging_at(flags.debug, flags.quiet);
     apply_color();
     let verbosity = Verbosity::from_flags(flags.quiet, flags.verbose, flags.debug);
-    let (paths, config, mut opts) = match prepare(&common) {
+    let (paths, config, mut opts, poly_config) = match prepare_with_poly(&common) {
         Ok(triple) => triple,
         Err(code) => return code,
     };
@@ -372,19 +373,43 @@ pub fn run_lint(args: LintArgs) -> ExitCode {
     // told Rust was linted elsewhere and would have suppressed the skip for
     // every `.rs` file nothing looked at.
     let engines_selected = !common.only.is_empty() || !common.skip.is_empty();
-    let workspace_config = (!no_workspace && !path_scoped && !engines_selected)
-        .then(|| hooks::commands::load_config(flags.config.as_deref()));
-    opts.externally_linted_languages = match &workspace_config {
-        Some(Ok(config)) => workspace_coverage::workspace_lint_languages(config),
-        _ => Vec::new(),
+    let workspace_config = (!no_workspace && !path_scoped && !engines_selected).then_some(&poly_config);
+    // Planned once: the languages declared to the per-file tier below and the
+    // tools the phase runs come from the same lowering.
+    let workspace_plan = workspace_config.map(poly_workspace::plan_workspace_lint);
+    opts.externally_linted_languages = match &workspace_plan {
+        Some(plan) => workspace_coverage::workspace_lint_languages(plan),
+        None => Vec::new(),
+    };
+
+    let pretty = matches!(common.format, OutputFormat::Pretty);
+    // The whole-project tools are child processes and share nothing with the
+    // per-file tier, so under a read-only run they overlap with it. Under
+    // `--fix` both tiers write to the tree, so they stay sequential.
+    let overlap_phase = workspace_plan.is_some() && !common.fix;
+    let phase_options = poly_workspace::WorkspaceLintOptions {
+        fix: common.fix,
+        jobs: common.jobs,
+        no_cache: common.no_cache,
+        report_to_stdout: pretty,
     };
 
     // A run over a large repository prints nothing for ten seconds or more,
     // which reads as a hang. The indicator is transient, stderr-only, and never
     // reaches the worker threads — see `progress`.
-    let spinner = progress::Progress::start("linting", animations_enabled(&common));
-    let run = poly_core::lint_run(&paths, &config, &opts, common.fix, flags.debug);
-    spinner.finish();
+    let mut workspace_plan = workspace_plan;
+    let (run, overlapped_phase) = workspace_phase::overlapped(
+        workspace_config.filter(|_| overlap_phase),
+        &mut workspace_plan,
+        &phase_options,
+        animations_enabled(&common),
+        || {
+            let spinner = progress::Progress::start("linting", animations_enabled(&common));
+            let run = poly_core::lint_run(&paths, &config, &opts, common.fix, flags.debug);
+            spinner.finish();
+            run
+        },
+    );
     let run = match run {
         Ok(run) => run,
         Err(e) => {
@@ -394,7 +419,6 @@ pub fn run_lint(args: LintArgs) -> ExitCode {
     };
     let results = &run.results;
 
-    let pretty = matches!(common.format, OutputFormat::Pretty);
     let _ = match common.format {
         OutputFormat::Pretty => report::report_lint_pretty_run(&run, verbosity),
         OutputFormat::Json => {
@@ -422,7 +446,7 @@ pub fn run_lint(args: LintArgs) -> ExitCode {
     let skips_over_budget = report_skip_budget(&common, &run.skipped);
     let components_blocking = report_blocking_components(&run.components);
 
-    let workspace_ok = match &workspace_config {
+    let workspace_ok = match workspace_config {
         // Only explain the skip when path scoping caused it. `--workspace never`
         // is an explicit opt-out and needs no narration.
         None => {
@@ -437,7 +461,7 @@ pub fn run_lint(args: LintArgs) -> ExitCode {
             }
             true
         }
-        Some(Ok(config)) => {
+        Some(config) => {
             // The mirror of the skip note above: `--workspace always` reverses the
             // scoping the paths asked for, and the phase then covers the whole
             // repository — a whole-project tool has no file list to narrow (the
@@ -452,17 +476,19 @@ pub fn run_lint(args: LintArgs) -> ExitCode {
                      (and not filtered by [discovery] exclude)"
                 );
             }
-            match run_workspace_phase(config, &common, pretty) {
+            match workspace_phase::run(
+                config,
+                workspace_plan,
+                overlapped_phase,
+                &phase_options,
+                animations_enabled(&common),
+            ) {
                 Ok(ok) => ok,
                 Err(e) => {
                     eprintln!("error: whole-project lint phase failed: {e:#}");
                     return ExitCode::from(2);
                 }
             }
-        }
-        Some(Err(e)) => {
-            eprintln!("error: whole-project lint phase failed: {e:#}");
-            return ExitCode::from(2);
         }
     };
 
@@ -541,35 +567,6 @@ fn report_skip_budget(common: &CommonArgs, skipped: &[poly_core::SkippedFile]) -
         report::files(skipped.len())
     );
     true
-}
-
-/// Run `poly lint`'s whole-project phase and render its report.
-///
-/// `config` is the poly config loaded exactly as `poly hooks` loads it —
-/// honouring git-remote `extends` bases via the CLI's resolver — and is the same
-/// value [`workspace_coverage::workspace_lint_languages`] was asked about before
-/// the per-file run, so the tool set predicted there is the tool set run here.
-/// Delegates the orchestration to the shared [`poly_workspace`] crate and prints
-/// the outcome. Returns whether the phase passed (the caller folds a `false`
-/// into a non-zero exit code). The `--workspace never` short-circuit is handled by
-/// the caller, before this runs.
-fn run_workspace_phase(config: &poly_config::PolyConfig, common: &CommonArgs, pretty: bool) -> anyhow::Result<bool> {
-    // `cargo clippy` over a cold target directory is the longest silence poly
-    // ever produces, and the phase renders only once every tool has finished.
-    let spinner = progress::Progress::start("running whole-project checks", animations_enabled(common));
-    let outcome = poly_workspace::run_workspace_lint(
-        config,
-        &poly_workspace::WorkspaceLintOptions {
-            fix: common.fix,
-            jobs: common.jobs,
-            no_cache: common.no_cache,
-            report_to_stdout: pretty,
-        },
-    );
-    spinner.finish();
-    let outcome = outcome?;
-    poly_workspace::render_workspace_outcome(&outcome, pretty);
-    Ok(outcome.passed)
 }
 
 /// Whether this run may draw a progress indicator.
@@ -699,6 +696,15 @@ fn resolve_force_exclude(common: &CommonArgs, config: &Config) -> bool {
 /// Resolve paths, load config, and build run options; on config failure return
 /// the exit code to propagate.
 fn prepare(common: &CommonArgs) -> Result<(Vec<PathBuf>, Config, RunOptions), ExitCode> {
+    prepare_with_poly(common).map(|(paths, config, opts, _)| (paths, config, opts))
+}
+
+/// [`prepare`], also handing back the parsed [`poly_config::PolyConfig`] so a
+/// caller that needs the `[hooks]`/`[workspace]` sections does not parse the
+/// same file again.
+fn prepare_with_poly(
+    common: &CommonArgs,
+) -> Result<(Vec<PathBuf>, Config, RunOptions, poly_config::PolyConfig), ExitCode> {
     let paths = if common.paths.is_empty() {
         vec![PathBuf::from(".")]
     } else {
@@ -715,13 +721,14 @@ fn prepare(common: &CommonArgs) -> Result<(Vec<PathBuf>, Config, RunOptions), Ex
             return Err(ExitCode::from(2));
         }
     };
-    let config = match load_config(global().config.as_deref(), resolver.as_ref()) {
+    let poly_config = match load_poly_config(global().config.as_deref(), resolver.as_ref()) {
         Ok(c) => c,
         Err(e) => {
             eprintln!("error: failed to load config: {e:#}");
             return Err(ExitCode::from(2));
         }
     };
+    let config = Config::from(poly_config.clone());
     let opts = RunOptions {
         no_cache: common.no_cache,
         jobs: common.jobs,
@@ -742,7 +749,7 @@ fn prepare(common: &CommonArgs) -> Result<(Vec<PathBuf>, Config, RunOptions), Ex
         on_missing: common.on_missing.map(Into::into),
         ..RunOptions::default()
     };
-    Ok((paths, config, opts))
+    Ok((paths, config, opts, poly_config))
 }
 
 /// Parse every `--set KEY=VALUE` and install the merged layer so each config
@@ -803,12 +810,15 @@ fn reject_missing_paths(paths: &[PathBuf]) -> Result<(), ExitCode> {
     Err(ExitCode::from(2))
 }
 
-fn load_config(explicit: Option<&Path>, resolver: &dyn BaseConfigResolver) -> anyhow::Result<Config> {
+fn load_poly_config(
+    explicit: Option<&Path>,
+    resolver: &dyn BaseConfigResolver,
+) -> anyhow::Result<poly_config::PolyConfig> {
     match explicit {
-        Some(p) => Config::load_file_with(p, resolver),
+        Some(p) => Ok(poly_config::PolyConfig::load_file_with(p, resolver)?),
         None => {
             let cwd = std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
-            Config::load_with(&cwd, resolver)
+            Ok(poly_config::PolyConfig::load_with(&cwd, resolver)?)
         }
     }
 }

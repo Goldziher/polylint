@@ -135,7 +135,52 @@ impl WorkspaceLintOutcome {
 /// Returns `Err` if the project root or running binary cannot be resolved, the
 /// hooks config fails to lower, or the cache/runner setup fails.
 pub fn run_workspace_lint(config: &PolyConfig, opts: &WorkspaceLintOptions) -> Result<WorkspaceLintOutcome> {
-    let Some((root, mut spec)) = planned_workspace_stage(config)? else {
+    run_planned_workspace_lint(config, plan_workspace_lint(config)?, opts, show_progress())
+}
+
+/// A resolved whole-project tool set and the root it runs against, computed once
+/// so the tool ids a caller asks about and the run that follows share one
+/// lowering (and one `git rev-parse`).
+#[derive(Debug)]
+pub struct PlannedWorkspace {
+    root: PathBuf,
+    spec: poly_hooks::StageSpec,
+}
+
+impl PlannedWorkspace {
+    /// The ids of the tools that would run.
+    #[must_use]
+    pub fn tool_ids(&self) -> Vec<String> {
+        self.spec.hooks.iter().map(|hook| hook.id.clone()).collect()
+    }
+}
+
+/// Resolve the whole-project tool set without running it. `None` when the phase
+/// would not run at all.
+///
+/// # Errors
+///
+/// Returns `Err` for the same reasons [`run_workspace_lint`] does.
+pub fn plan_workspace_lint(config: &PolyConfig) -> Result<Option<PlannedWorkspace>> {
+    Ok(planned_workspace_stage(config)?.map(|(root, spec)| PlannedWorkspace { root, spec }))
+}
+
+/// [`run_workspace_lint`] over a plan from [`plan_workspace_lint`].
+///
+/// `live_progress` draws the per-tool progress bars on stderr; a caller running
+/// the phase beside another stderr indicator passes `false` so they do not
+/// overdraw.
+///
+/// # Errors
+///
+/// Returns `Err` if the cache or runner setup fails.
+pub fn run_planned_workspace_lint(
+    config: &PolyConfig,
+    planned: Option<PlannedWorkspace>,
+    opts: &WorkspaceLintOptions,
+    live_progress: bool,
+) -> Result<WorkspaceLintOutcome> {
+    let Some(PlannedWorkspace { root, mut spec }) = planned else {
         return Ok(WorkspaceLintOutcome::skipped());
     };
     if opts.fix {
@@ -163,7 +208,7 @@ pub fn run_workspace_lint(config: &PolyConfig, opts: &WorkspaceLintOptions) -> R
         concurrency: opts.jobs,
         cache,
         sccache,
-        progress: show_progress(),
+        progress: live_progress,
         verbose: false,
         restage_partial: false,
     };
@@ -353,8 +398,29 @@ fn append_output(buffer: &mut String, output: &[u8], color: bool) {
 #[cfg(test)]
 mod tests {
     use super::{
-        append_output, force_child_color, retain_workspace_hooks, workspace_lint_disabled, workspace_phase_disabled,
+        PlannedWorkspace, append_output, force_child_color, plan_workspace_lint, retain_workspace_hooks,
+        workspace_lint_disabled, workspace_phase_disabled,
     };
+
+    #[test]
+    fn a_plan_reports_its_tool_ids_in_run_order() {
+        use poly_hooks::{Hook, StageSpec};
+        let planned = PlannedWorkspace {
+            root: std::path::PathBuf::from("."),
+            spec: StageSpec {
+                hooks: vec![Hook::run("cargo-clippy", "x"), Hook::run("cargo-deny", "y")],
+                ..StageSpec::default()
+            },
+        };
+        assert_eq!(planned.tool_ids(), vec!["cargo-clippy", "cargo-deny"]);
+    }
+
+    #[test]
+    fn a_disabled_phase_plans_nothing() {
+        let mut config = poly_config::PolyConfig::default();
+        config.workspace.run = Some(poly_config::v2::RunMode::Never);
+        assert!(plan_workspace_lint(&config).expect("plan").is_none());
+    }
 
     const RED_HELLO: &str = "\x1b[31mhello\x1b[0m";
 
