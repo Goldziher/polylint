@@ -15,6 +15,8 @@ cargo bench -p poly-core
 cargo bench -p poly-core --bench generic_formatter
 cargo bench -p poly-core --bench cache_key
 cargo bench -p poly-core --bench runner_e2e
+cargo bench -p poly-core --bench runner_modes
+cargo bench -p poly-core --bench discover_walk
 
 # quick pass (less wall-clock; what the baseline below was captured with)
 cargo bench -p poly-core -- --warm-up-time 1 --measurement-time 3
@@ -23,6 +25,12 @@ cargo bench -p poly-core -- --warm-up-time 1 --measurement-time 3
 Inputs are synthetic and deterministic (no dependency on `../xberg-io` or any
 external corpus) so the benches run anywhere. `runner_e2e` writes a synthetic
 Rust corpus into a `tempfile::TempDir` and runs with the cache disabled.
+
+`runner_modes` adds lint, cache cold versus warm, 5k tiny files, one 2 MB file, a mixed-language
+tree and `jobs = 1` versus all cores; `discover_walk` walks 50k files with and without
+`.gitignore` files. The component host and protocol benches live in their own crates, and the
+hyperfine scenarios over real corpora are described in `docs/benchmarking.md`. Report results as
+instructions retired plus wall time, the median of 3.
 
 ## What each bench covers
 
@@ -40,6 +48,10 @@ Rust corpus into a `tempfile::TempDir` and runs with the cache disabled.
 | `cache_get/parallel_miss_after_put_1024` | 1,024 misses through rayon | contention guard |
 | `cache_open/10000_entries` | `ResultCache::open` with 10k entries | presence-index startup cost |
 | `runner_e2e/format_64_rust_files_dry_run` | `runner::format`, 64 files, `no_cache` | discover → rayon → tier-2 |
+| `runner_modes/{lint,fmt}_no_cache/*` | 5k tiny, one 2 MB, 700 mixed files | whole pipeline per workload |
+| `runner_modes/lint_mixed_700/jobs_{1,default}` | one thread versus all cores | rayon scaling |
+| `runner_modes/{lint,fmt}_cache_{cold,warm}/*` | result cache enabled | cache write versus stat-path replay |
+| `discover_walk/50k_*` | `discover` over 50k nested files | walk + ignore + language detection |
 
 ## Baseline (Apple Silicon, release profile, `--measurement-time 3`)
 
