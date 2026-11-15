@@ -24,19 +24,70 @@ then `-- --baseline before` after the change.
 
 ## Binary scenarios (hyperfine)
 
+### Build a binary that runs every engine
+
+The root `poly-cli` build links only the core engines. The web (TOML, Markdown, JSON, YAML, JS/TS,
+CSS), biome and ruby engines are components, and a build without an embedded component lock prints
+`this build embeds no component lock` and skips them: timings of such a binary measure almost
+nothing. Benchmark the **bundled** binary, which links every engine statically and needs no lock:
+
 ```sh
-mise run bench:corpus /tmp/poly-corpora            # rust-lang/book and django/django
-mise run bench:corpus /tmp/poly-corpora --large    # adds kubernetes, vscode, home-assistant
-mise run bench:hyperfine target/release/poly /tmp/poly-corpora/django /tmp/poly-bench-out
+cargo build --release --locked --manifest-path components/Cargo.toml -p poly-bundled
+# binary: components/target/release/poly
 ```
 
-`bench:hyperfine` runs `-N -i --warmup 2 --runs 10` with `POLY_CACHE_HOME` in a fresh temp dir and
-writes one JSON file per scenario: `startup` (`--version`, `config show`), `cold-lint` and
-`cold-fmt` (`--no-cache`), `warm-lint` (cache primed by a first run), and `threads`
-(`-j 1,2,4,8,<ncpu>`). It prints the peak RSS of one run per scenario from `/usr/bin/time`.
+To compare two revisions, build each the same way from its own `mise run worktree:add` checkout and
+keep the binaries (`cp components/target/release/poly /tmp/poly-old`). A released core binary
+(`poly-<version>-<triple>`) also works: it embeds a signed lock and downloads the components on first
+use, which is network-dependent, so warm its component cache with one `poly lint <corpus>` first.
+`bench:hyperfine` refuses any binary that prints `embeds no component lock` for the corpus unless
+`--allow-missing-components` is passed.
 
-Corpora without a pinned commit are cloned from the branch tip (`bench:corpus` prints the commit
-it got). Pin the SHA before comparing numbers across days.
+### Run
+
+```sh
+mise run bench:corpus /tmp/poly-corpora            # rust-lang/book and django/django at pinned commits
+mise run bench:corpus /tmp/poly-corpora --large    # adds kubernetes, vscode, home-assistant
+mise run bench:corpus /tmp/poly-corpora --latest   # default-branch tips instead (not comparable across days)
+mise run bench:corpus /tmp/poly-corpora --local ~/work/repo-a ~/work/repo-b   # git archive HEAD copies
+
+mise run bench:hyperfine /tmp/poly-corpora/django /tmp/poly-bench-out \
+  --old /tmp/poly-old --new components/target/release/poly
+```
+
+The corpus is scratch (the touched scenario rewrites mtimes); never point it at a working tree.
+`--old` is optional; `--new` alone prints a plain table. Runs use `-N -i` with `--warmup 3 --runs 30`
+(`--warmup`/`--runs` or `POLY_BENCH_WARMUP`/`POLY_BENCH_RUNS`) and a throwaway `POLY_CACHE_HOME`.
+Per binary, `OUT_DIR/{old,new}/` gets one JSON per scenario plus `rss.txt`, and `OUT_DIR/summary.md`
+the side-by-side table (mean ± σ, wall delta, instructions delta where hyperfine reports them; a
+delta smaller than the combined σ is labelled `within noise`).
+
+| Scenario | What it exercises |
+|----------|-------------------|
+| `startup` | `--version`, `config show` |
+| `cold-lint`, `cold-fmt` | `--no-cache`, every file through its engine |
+| `warm-lint`, `warm-fmt` | cache primed, stat fast path replay |
+| `touched-lint` | cache primed, then every mtime changed with identical bytes: the content-digest path |
+| `hooks` | `poly hooks run pre-commit --all-files`, only when the corpus `poly.toml` has `[hooks]` |
+| `threads` | cold lint at `-j 1,2,4,8,<ncpu>` |
+
+Corpora are pinned to commits in `mise-tasks/bench/corpus.sh`; repin with `git ls-remote <repo> <branch>`.
+
+## Profiling
+
+```sh
+mise run profile:samply /tmp/poly-corpora/django               # CPU profile, bundled binary
+mise run profile:samply /tmp/poly-corpora/django --cli -- fmt  # poly-cli alone, custom args
+samply load target/profile/poly-samply.json.gz
+mise run profile:dhat /tmp/poly-corpora/django                 # heap profile: target/profile/dhat-heap.json
+```
+
+Both build `[profile.profiling]` (release plus line tables, unstripped). `samply` is not pinned by
+mise (like `hyperfine`): `cargo binstall samply` or `brew install samply`. `profile:dhat` builds
+`poly-cli` with the `dhat-heap` feature (core engines only), which swaps the global allocator for
+dhat's and excludes the musl mimalloc one; open the JSON in
+[dh_view](https://nnethercote.github.io/dh_view/dh_view.html) (it loads the file locally). dhat writes on a
+normal return from `main`, not on `process::exit` paths.
 
 ## Reporting a result
 

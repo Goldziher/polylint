@@ -90,25 +90,22 @@ total — i.e. the per-file tier-2 cost amortized across all cores via rayon.
 
 ## Profiling
 
-samply works without sudo on cargo-compiled (locally-signed) binaries; it
-**cannot** profile system binaries (`/bin/echo`, system python). Profile the
-already-built bench binary in criterion's `--profile-time` loop:
+Whole-binary profiling over a real corpus: `mise run profile:samply <corpus>` (CPU, symbolised via
+`[profile.profiling]`) and `mise run profile:dhat <corpus>` (heap); see `docs/benchmarking.md`. Real-corpus
+timings need a component-enabled binary (`cargo build --release --manifest-path components/Cargo.toml
+-p poly-bundled`), otherwise the web and biome engines are silently skipped.
+
+To profile one criterion bench, samply works without sudo on cargo-compiled (locally-signed)
+binaries; it **cannot** profile system binaries. Profile the built bench binary in criterion's
+`--profile-time` loop, with line tables from `CARGO_PROFILE_BENCH_DEBUG=line-tables-only`:
 
 ```sh
-cargo bench -p poly-core --bench generic_formatter --no-run   # build it
+CARGO_PROFILE_BENCH_DEBUG=line-tables-only cargo bench -p poly-core --bench generic_formatter --no-run
 BIN=$(ls -t target/release/deps/generic_formatter-* | grep -v '\.d$' | head -1)
 samply record --save-only -o /tmp/poly_fmt_profile.json.gz -- \
     "$BIN" --bench --profile-time 8 format_rust
 # then: samply load /tmp/poly_fmt_profile.json.gz   (opens Firefox Profiler UI)
 ```
-
-`cargo flamegraph` is also installed but on macOS needs dtrace/sudo — prefer
-samply. Note: the release profile (`lto = "thin"`, `codegen-units = 1`, no
-debuginfo) strips most Rust symbols, so the raw profile shows addresses rather
-than names for inlined Rust code; the captured baseline profile had **~16 % of
-self-time concentrated in a 4-address cluster inside the tree-sitter parse
-module**, matching the `parse_only` ≈ 54 % split above. For symbol-level Rust
-attribution, add `debug = 1` to `[profile.bench]` before profiling.
 
 ## Ranked hotspots + optimization hypotheses (drives the follow-up)
 
