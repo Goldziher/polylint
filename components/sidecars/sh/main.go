@@ -56,16 +56,10 @@ func serve(in io.Reader, out io.Writer, manifest componentManifest, srv *server)
 		if err != nil {
 			return err
 		}
-		body, err := json.Marshal(answer)
-		if err != nil {
-			return fmt.Errorf("encode reply: %w", err)
-		}
+		body := answer.appendJSON(nil)
 		if len(body) > maxFrame {
 			// The host would reject the frame and stop this process; a per-call error keeps it serving.
-			body, err = json.Marshal(failed("reply of %d bytes exceeds the %d-byte frame limit", len(body), maxFrame))
-			if err != nil {
-				return fmt.Errorf("encode reply: %w", err)
-			}
+			body = failed("reply of %d bytes exceeds the %d-byte frame limit", len(body), maxFrame).appendJSON(nil)
 		}
 		if err := writeFrame(out, body); err != nil {
 			return err
