@@ -730,6 +730,9 @@ jobs:
     # variable for.
     env:
       POLY_BUILD_ID: ${{ needs.meta.outputs.tag }}
+      # The toolchain build-components uses and the musl leg's rust:1.100-alpine image; Cargo.toml's
+      # rust-version is the floor (the ci msrv job). Bump them together.
+      RUST_TOOLCHAIN: "1.100.0"
     strategy:
       fail-fast: false
       matrix:
@@ -769,7 +772,7 @@ jobs:
         if: ${{ !matrix.alpine }}
         uses: dtolnay/rust-toolchain@v1
         with:
-          toolchain: stable
+          toolchain: ${{ env.RUST_TOOLCHAIN }}
           targets: ${{ matrix.triple }}
 
       - name: Setup cache
