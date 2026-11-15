@@ -21,6 +21,34 @@ use poly_engine_api::language::Language;
 
 use crate::slot::{ComponentSlot, Connection, wire_error_to_anyhow};
 
+/// The most file content one `FormatBatch` request to a sidecar carries.
+///
+/// alef's stdio envelope writes each byte as up to four characters and bounds a frame at 16 MiB in
+/// both directions, so a request or its reply of more than about 4 MiB of content cannot be
+/// framed. 2 MiB leaves room for output that grows and for the request header; a file over it is
+/// a request of its own.
+const SIDECAR_BATCH_BYTES: usize = 2 * 1024 * 1024;
+
+/// Split members of the given content lengths into consecutive ranges of at most `budget` bytes.
+/// A member over `budget` is a range of its own, and no range is empty.
+fn batch_ranges(lens: &[usize], budget: usize) -> Vec<std::ops::Range<usize>> {
+    let mut ranges = Vec::new();
+    let mut start = 0;
+    let mut bytes = 0usize;
+    for (index, &len) in lens.iter().enumerate() {
+        if index > start && bytes.saturating_add(len) > budget {
+            ranges.push(start..index);
+            start = index;
+            bytes = 0;
+        }
+        bytes = bytes.saturating_add(len);
+    }
+    if start < lens.len() {
+        ranges.push(start..lens.len());
+    }
+    ranges
+}
+
 /// Hex digits of the lock digest folded into [`Engine::version`].
 const LOCK_DIGEST_LEN: usize = 16;
 
@@ -578,34 +606,24 @@ impl Engine for ComponentEngine {
         batch: &[SourceFile],
         cfg: &EngineConfig,
     ) -> anyhow::Result<Vec<anyhow::Result<FormatOutput>>> {
-        let connection = self.connect()?;
-        let (files, body) = slices(batch);
-        let payload = connection.call(
-            self.name,
-            cfg,
-            |config| Request::FormatBatch {
-                engine: self.engine(),
-                config,
-                files: files.clone(),
-            },
-            &body,
-        )?;
-        let Payload::FormatBatch(items) = payload else {
-            return Err(self.unexpected("FormatBatch"));
+        let Some(max) = self.max_file_bytes else {
+            return self.format_chunk(batch, cfg);
         };
-        anyhow::ensure!(
-            items.len() == batch.len(),
-            "component returned {} results for a batch of {}",
-            items.len(),
-            batch.len()
-        );
-        Ok(items
-            .into_iter()
-            .map(|item| match item {
-                poly_component_protocol::WireFormatItem::Ok(output) => Ok(format_output(output)),
-                poly_component_protocol::WireFormatItem::Err(error) => Err(wire_error_to_anyhow(self.name, error)),
-            })
-            .collect())
+        let lens: Vec<usize> = batch.iter().map(|file| file.content.len()).collect();
+        let mut results = Vec::with_capacity(batch.len());
+        for range in batch_ranges(&lens, SIDECAR_BATCH_BYTES) {
+            let chunk = &batch[range];
+            // A file over the frame limit travels alone (it exceeds the budget), and is declined
+            // like `format` declines it, rather than sent in a frame the component cannot read.
+            if let [only] = chunk
+                && only.content.len() > max
+            {
+                results.push(Ok(FormatOutput::Unchanged));
+                continue;
+            }
+            results.extend(self.format_chunk(chunk, cfg)?);
+        }
+        Ok(results)
     }
 
     fn lint_batch(
@@ -700,6 +718,41 @@ impl Engine for ComponentEngine {
 }
 
 impl ComponentEngine {
+    fn format_chunk(
+        &self,
+        batch: &[SourceFile],
+        cfg: &EngineConfig,
+    ) -> anyhow::Result<Vec<anyhow::Result<FormatOutput>>> {
+        let connection = self.connect()?;
+        let (files, body) = slices(batch);
+        let payload = connection.call(
+            self.name,
+            cfg,
+            |config| Request::FormatBatch {
+                engine: self.engine(),
+                config,
+                files: files.clone(),
+            },
+            &body,
+        )?;
+        let Payload::FormatBatch(items) = payload else {
+            return Err(self.unexpected("FormatBatch"));
+        };
+        anyhow::ensure!(
+            items.len() == batch.len(),
+            "component returned {} results for a batch of {}",
+            items.len(),
+            batch.len()
+        );
+        Ok(items
+            .into_iter()
+            .map(|item| match item {
+                poly_component_protocol::WireFormatItem::Ok(output) => Ok(format_output(output)),
+                poly_component_protocol::WireFormatItem::Err(error) => Err(wire_error_to_anyhow(self.name, error)),
+            })
+            .collect())
+    }
+
     fn provides_language(&self, language: &Language, cfg: &EngineConfig, kind: WireKind) -> bool {
         let call = || -> anyhow::Result<bool> {
             let payload = self.connect()?.call(
@@ -723,5 +776,30 @@ impl ComponentEngine {
             tracing::warn!(engine = self.name, "provides_language unavailable: {error:#}");
             false
         })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::batch_ranges;
+
+    #[test]
+    fn batch_ranges_partition_the_members_within_the_budget() {
+        let lens = [10, 20, 5, 100, 1, 1, 60, 60];
+        let ranges = batch_ranges(&lens, 50);
+        assert_eq!(ranges, vec![0..3, 3..4, 4..6, 6..7, 7..8]);
+        let covered: usize = ranges.iter().map(std::ops::Range::len).sum();
+        assert_eq!(covered, lens.len(), "no member is lost or repeated");
+    }
+
+    #[test]
+    fn batch_ranges_keep_everything_together_under_the_budget() {
+        assert_eq!(batch_ranges(&[1, 2, 3], 100), vec![0..3]);
+        assert!(batch_ranges(&[], 100).is_empty());
+    }
+
+    #[test]
+    fn an_oversize_member_is_a_range_of_its_own() {
+        assert_eq!(batch_ranges(&[1, 500, 1], 50), vec![0..1, 1..2, 2..3]);
     }
 }
