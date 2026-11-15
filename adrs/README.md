@@ -70,6 +70,7 @@ Context, Decision, Consequences (positive and negative/risks), and Alternatives 
 | [0053](0053-quality-coverage-is-not-lint-coverage.md) | Quality Metrics Are Not Lint Coverage | Accepted |
 | [0054](0054-secret-scanning-kingfisher.md) | Secret Scanning with kingfisher, as a Download-Only Component | Accepted |
 | [0055](0055-tsrs-hermetic-run-refinements.md) | tsrs Check: Declared Extends, Scoped Manifests and Project Declaration Files | Accepted |
+| [0056](0056-sidecar-batching.md) | Sidecar Batching and Frame Encoding | Accepted |
 
 ## Conventions
 
