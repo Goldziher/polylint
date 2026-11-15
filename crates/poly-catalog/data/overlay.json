@@ -1572,7 +1572,7 @@
         "zizmor.yaml"
       ],
       "install": {
-        "hint": "brew install zizmor, or set [tools.zizmor] version to a pinned release poly can download (Linux builds need glibc)",
+        "hint": "brew install zizmor, cargo install zizmor, or set [tools.zizmor] version to a pinned release poly can download (glibc Linux only: on musl hosts install it yourself and it is used from PATH)",
         "source": {
           "kind": "binary",
           "github": "zizmorcore/zizmor",

@@ -15,6 +15,9 @@
 //!    release, else the `PATH` binary, with a warning, because the user pinned
 //!    nothing that a fallback could violate.
 //!
+//! On a musl host a tool whose only Linux downloads are glibc builds is never
+//! downloaded: it is taken from `PATH` or reported missing (see [`glibc_only`]).
+//!
 //! A tool that is nowhere is [`Resolved::Missing`] with a message that says what
 //! to run, never a silent no-op: a linter that did not run must not look like a
 //! linter that found nothing.
@@ -46,12 +49,27 @@ pub(in crate::engines::catalog_tool) enum Resolved {
 }
 
 pub(in crate::engines::catalog_tool) fn resolve(tool: &Tool, recipe: &Recipe, config: &ToolConfig) -> Resolved {
+    resolve_on(tool, recipe, config, host_is_musl())
+}
+
+/// [`resolve`] with the host's libc passed in, so the musl path is testable.
+fn resolve_on(tool: &Tool, recipe: &Recipe, config: &ToolConfig, musl: bool) -> Resolved {
     if !recipe.java
         && let Some(bin) = &config.bin
     {
         return match locate(bin) {
             Some(path) => ready(path, Vec::new(), "bin"),
             None => Resolved::Missing(format!("`bin = \"{bin}\"` for tool `{}` does not exist", tool.name)),
+        };
+    }
+    if musl && config.url.is_none() && glibc_only(recipe) {
+        return match which::which(&tool.binary) {
+            Ok(path) => ready(path, Vec::new(), "path"),
+            Err(_) => Resolved::Missing(format!(
+                "tool `{name}` has no musl build; install it with `cargo install {name}` or via your package manager \
+                 and it will be used from PATH",
+                name = tool.name
+            )),
         };
     }
     let pinned = match pinned_release(Resolver::shared(), tool, recipe, config) {
@@ -71,6 +89,49 @@ pub(in crate::engines::catalog_tool) fn resolve(tool: &Tool, recipe: &Recipe, co
         Ok(path) => ready(path, Vec::new(), "path"),
         Err(_) => Resolved::Missing(missing_message(tool, recipe, pinned.as_ref())),
     }
+}
+
+/// Whether the recipe's Linux download for this host is a glibc build with no musl
+/// alternative: its asset name carries the `-gnu` target environment and no Linux
+/// asset of the recipe names musl.
+fn glibc_only(recipe: &Recipe) -> bool {
+    let Some(source) = recipe.install.as_ref().and_then(|install| install.source.as_ref()) else {
+        return false;
+    };
+    let linux: Vec<&str> = source
+        .assets
+        .iter()
+        .filter(|(platform, _)| platform.starts_with("linux-"))
+        .map(|(_, spec)| spec.name.as_str())
+        .collect();
+    !linux.is_empty()
+        && linux.iter().all(|name| name.contains("-gnu"))
+        && !linux.iter().any(|name| name.contains("musl"))
+}
+
+/// Whether the host's C library is musl (Alpine). poly's own libc says nothing:
+/// the musl release of poly runs on glibc hosts. The dynamic loaders on disk do:
+/// a musl loader and no glibc one.
+fn host_is_musl() -> bool {
+    static MUSL: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
+    *MUSL.get_or_init(|| {
+        let names = |dir: &str| -> Vec<String> {
+            std::fs::read_dir(dir)
+                .into_iter()
+                .flatten()
+                .flatten()
+                .map(|entry| entry.file_name().to_string_lossy().into_owned())
+                .collect()
+        };
+        cfg!(target_os = "linux") && musl_from_loaders(&names("/lib"), &names("/lib64"))
+    })
+}
+
+/// Whether loader names found in `/lib` and `/lib64` describe a musl-only host.
+fn musl_from_loaders(lib: &[String], lib64: &[String]) -> bool {
+    let musl = lib.iter().any(|name| name.starts_with("ld-musl-"));
+    let glibc = lib.iter().chain(lib64).any(|name| name.starts_with("ld-linux"));
+    musl && !glibc
 }
 
 fn resolve_jvm(tool: &Tool, recipe: &Recipe, config: &ToolConfig, pinned: Option<Pinned>) -> Resolved {
@@ -827,5 +888,57 @@ mod tests {
         let a = identity(&java_a, &prefix, "1.0");
         assert_ne!(a, identity(&java_b, &prefix, "1.0"));
         assert_eq!(a, identity(&java_a, &prefix, "1.0"));
+    }
+
+    #[test]
+    fn musl_is_a_musl_loader_without_a_glibc_one() {
+        let names = |list: &[&str]| list.iter().map(|name| (*name).to_owned()).collect::<Vec<_>>();
+        assert!(musl_from_loaders(&names(&["ld-musl-x86_64.so.1"]), &[]));
+        assert!(!musl_from_loaders(
+            &names(&["ld-musl-x86_64.so.1"]),
+            &names(&["ld-linux-x86-64.so.2"])
+        ));
+        assert!(!musl_from_loaders(&names(&["ld-linux-aarch64.so.1"]), &[]));
+        assert!(!musl_from_loaders(&[], &[]));
+    }
+
+    #[test]
+    fn a_recipe_with_only_gnu_linux_assets_is_glibc_only() {
+        let (_, zizmor, _) = setup("zizmor");
+        assert!(glibc_only(zizmor));
+        let (_, shellcheck, _) = setup("shellcheck");
+        assert!(!glibc_only(shellcheck), "static builds run on musl");
+        let (_, jarl, _) = setup("jarl");
+        assert!(!glibc_only(jarl), "a musl asset exists");
+    }
+
+    #[test]
+    fn a_glibc_only_tool_on_a_musl_host_is_skipped_with_a_clear_note() {
+        let _lock = LockGuard::new();
+        let (tool, recipe, _) = setup("zizmor");
+        let Resolved::Missing(message) = resolve_on(tool, recipe, &auto(None), true) else {
+            panic!("a glibc binary cannot run on musl");
+        };
+        assert!(
+            message.contains("no musl build") && message.contains("cargo install zizmor") && message.contains("PATH"),
+            "{message}"
+        );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn a_glibc_only_tool_on_a_musl_host_still_uses_a_path_binary() {
+        let _lock = LockGuard::new();
+        let (tool, recipe, _) = setup("zizmor");
+        let dir = tempfile::tempdir().expect("dir");
+        let fake = crate::tool_run::fake_tool::script(dir.path(), "zizmor", "exit 0");
+        let config = ToolConfig {
+            bin: Some(fake.to_string_lossy().into_owned()),
+            ..auto(None)
+        };
+        let Resolved::Ready(launcher) = resolve_on(tool, recipe, &config, true) else {
+            panic!("an explicit bin must win");
+        };
+        assert_eq!(launcher.program, fake);
     }
 }
