@@ -148,13 +148,13 @@ fn poly_trust_env_honours_the_keys_for_one_run() {
     let sandbox = Sandbox::new();
     let fixture = WorkspaceFixture::new(&hostile_hooks(&sandbox));
     let output = fixture.lint(&sandbox, &[("POLY_TRUST", "1")]);
-    let text = text(&output);
-    assert!(sandbox.marker("job-ran").exists(), "the trusted job must run:\n{text}");
+    let shown = text(&output);
+    assert!(sandbox.marker("job-ran").exists(), "the trusted job must run:\n{shown}");
     assert!(
         sandbox.marker("guard-ran").exists(),
-        "the trusted guard must run:\n{text}"
+        "the trusted guard must run:\n{shown}"
     );
-    assert!(!text.contains("is not trusted"), "{text}");
+    assert!(!shown.contains("is not trusted"), "{shown}");
 
     std::fs::remove_file(sandbox.marker("job-ran")).expect("reset marker");
     let without = fixture.lint(&sandbox, &[]);

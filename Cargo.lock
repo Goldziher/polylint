@@ -3726,9 +3726,12 @@ name = "poly-config"
 version = "0.35.0"
 dependencies = [
  "anyhow",
+ "blake3",
+ "etcetera",
  "json5",
  "poly-catalog",
  "poly-component-index",
+ "rustix",
  "schemars 1.2.3",
  "semver",
  "serde",

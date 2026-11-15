@@ -50,13 +50,20 @@ fn staged_blob(repo: &Path, name: &str) -> String {
     git(repo, &["show", &format!(":{name}")])
 }
 
+/// A trust store private to this test binary. Not under `.git`: in a linked worktree that is a
+/// file, not a directory.
+fn config_home() -> &'static Path {
+    static HOME: std::sync::OnceLock<TempDir> = std::sync::OnceLock::new();
+    HOME.get_or_init(|| tempfile::tempdir().expect("config home")).path()
+}
+
 fn poly_hooks(repo: &Path, args: &[&str]) -> Output {
     Command::new(POLY)
         .arg("hooks")
         .args(args)
         .current_dir(repo)
         // `poly hooks install` records trust; keep it out of the user's own store.
-        .env("POLY_CONFIG_HOME", repo.join(".git/poly-config"))
+        .env("POLY_CONFIG_HOME", config_home())
         .env("POLY_TRUST", "1")
         .output()
         .expect("poly invocation")
@@ -298,7 +305,7 @@ run = "touch {}"
         .args(["commit", "-q", "-m", "feat: trigger hook"])
         .current_dir(root)
         // The shim's hook-impl must find the trust `poly hooks install` recorded.
-        .env("POLY_CONFIG_HOME", root.join(".git/poly-config"))
+        .env("POLY_CONFIG_HOME", config_home())
         .env("PATH", augmented_path)
         .output()
         .expect("git commit");
