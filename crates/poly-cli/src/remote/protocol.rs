@@ -10,7 +10,8 @@ use std::process::Command;
 
 use anyhow::bail;
 
-/// Environment variable that replaces the default allowed transports.
+/// Environment variable that replaces the default allowed transports, or extends them when the
+/// value starts with `+` (`+http:git`).
 pub const ALLOW_PROTOCOLS_ENV: &str = "POLY_GIT_ALLOW_PROTOCOLS";
 
 /// Transports allowed when [`ALLOW_PROTOCOLS_ENV`] is unset.
@@ -64,13 +65,23 @@ fn protocol_name(transport: &Transport) -> Option<&str> {
     }
 }
 
+/// The allow-list an [`ALLOW_PROTOCOLS_ENV`] value names: a leading `+` adds its entries to the
+/// defaults, anything else replaces them.
+fn expand(opt_in: Option<&str>) -> Option<String> {
+    opt_in.map(|value| match value.strip_prefix('+') {
+        Some(extra) => format!("{DEFAULT_ALLOWED}:{}", extra.trim_matches(':')),
+        None => value.to_owned(),
+    })
+}
+
 /// Reject `url` unless its transport is allowed, with `opt_in` the value of
 /// [`ALLOW_PROTOCOLS_ENV`] when set.
 pub fn check_url_with(url: &str, opt_in: Option<&str>) -> anyhow::Result<()> {
     if url.starts_with('-') {
         bail!("git source URL {url:?} must not start with `-`");
     }
-    let allowed = opt_in.unwrap_or(DEFAULT_ALLOWED);
+    let expanded = expand(opt_in);
+    let allowed = expanded.as_deref().unwrap_or(DEFAULT_ALLOWED);
     let Some(name) = protocol_name(&classify(url)).map(str::to_owned) else {
         return Ok(());
     };
@@ -101,7 +112,8 @@ pub fn check_url(url: &str) -> anyhow::Result<()> {
 /// A plain local path is the file transport, so it is the one case where `file` is let through;
 /// every other URL gets the allow-list alone, plus `file` refused outright by default.
 pub fn git_policy(url: &str, opt_in: Option<&str>) -> (String, bool) {
-    let list = opt_in.unwrap_or(DEFAULT_ALLOWED);
+    let expanded = expand(opt_in);
+    let list = expanded.as_deref().unwrap_or(DEFAULT_ALLOWED);
     if classify(url) == Transport::Local {
         return (format!("{list}:file"), false);
     }
@@ -122,6 +134,17 @@ pub fn restrict(command: &mut Command, url: &str) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_leading_plus_extends_the_defaults_instead_of_replacing_them() {
+        assert!(check_url_with("http://example.com/a.git", Some("+http:git")).is_ok());
+        assert!(check_url_with("git://example.com/a.git", Some("+http:git")).is_ok());
+        assert!(check_url_with("https://example.com/a.git", Some("+http")).is_ok());
+        assert!(check_url_with("ssh://git@example.com/a.git", Some("+http")).is_ok());
+        assert!(check_url_with("ext::sh -c id", Some("+http")).is_err());
+        assert!(check_url_with("https://example.com/a.git", Some("http")).is_err());
+        assert_eq!(git_policy("https://x/y", Some("+http")).0, "https:ssh:http");
+    }
 
     #[test]
     fn classifies_common_url_shapes() {

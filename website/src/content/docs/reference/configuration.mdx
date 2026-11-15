@@ -439,7 +439,9 @@ ref must be locked first: `poly lock` records it (so does `poly hooks install`).
 Remote `git` bases and `[[hooks.sources]]` are fetched over `https` or `ssh` (including scp-like
 `host:path`) only; `git://`, `http://`, `file://` and `ext::` URLs are rejected. Plain local paths are
 unaffected. `POLY_GIT_ALLOW_PROTOCOLS` (a `:`-separated list, passed to git as `GIT_ALLOW_PROTOCOL`,
-for example `https:ssh:git`) replaces the default list.
+for example `https:ssh:git`) replaces the default list; a leading `+` extends it instead
+(`+http:git` allows `https`, `ssh`, `http` and `git`). A `GIT_ALLOW_PROTOCOL` already set in the
+environment is overridden by poly's own list for these fetches.
 
 <Aside type="tip" title="What did poly actually resolve?">
     `poly config show` prints the effective, fully-merged config after `extends`,
