@@ -753,9 +753,6 @@ fn glob_set(patterns: &[String]) -> Option<globset::GlobSet> {
     if patterns.is_empty() {
         return None;
     }
-    let mut builder = globset::GlobSetBuilder::new();
-    for pattern in patterns {
-        builder.add(globset::Glob::new(pattern).ok()?);
-    }
-    builder.build().ok()
+    // An invalid pattern is skipped with a warning; the remaining patterns still scope the formatter.
+    Some(poly_engine_api::glob_set::build_glob_set_lossy(patterns))
 }

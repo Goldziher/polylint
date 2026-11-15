@@ -10,6 +10,7 @@ pub mod css_hacks;
 pub mod desc;
 pub mod engine;
 pub mod engine_guard;
+pub mod glob_set;
 pub mod host_hooks;
 pub mod language;
 pub mod line_index;

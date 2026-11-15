@@ -47,7 +47,7 @@ mod unit;
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 
-use globset::{Glob, GlobSet, GlobSetBuilder};
+use globset::GlobSet;
 use poly_catalog::{Command, Findings, Group, Recipe, Tool};
 use poly_config::ToolConfig;
 
@@ -136,13 +136,7 @@ fn glob_set(patterns: &[String]) -> Option<GlobSet> {
     if patterns.is_empty() {
         return None;
     }
-    let mut builder = GlobSetBuilder::new();
-    for pattern in patterns {
-        if let Ok(glob) = Glob::new(pattern) {
-            builder.add(glob);
-        }
-    }
-    builder.build().ok()
+    Some(poly_engine_api::glob_set::build_glob_set_lossy(patterns))
 }
 
 impl RecipeTool {
