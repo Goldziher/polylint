@@ -81,6 +81,8 @@ const PROBE_INTERVAL: Duration = Duration::from_millis(100);
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum LockState {
     /// Nobody holds it: a cargo hook spawned now will not queue on this lock.
+    // Only the unix probe can observe a free lock; elsewhere every probe is `Unobservable`.
+    #[cfg_attr(not(unix), allow(dead_code))]
     Free,
     /// Somebody holds it. Since poly is not that somebody (its own cargo hooks
     /// are serialised and none is running), the holder is outside this run.
