@@ -20,7 +20,7 @@ pub const ENGINE_NAME: &str = "tsrs";
 ///
 /// Bump the suffix whenever the mapping or the filtering of findings changes, and the version whenever the tsrs
 /// crates are upgraded.
-const VERSION: &str = "tsrs-7.1.0-beta.tsrs1+proj2";
+const VERSION: &str = "tsrs-7.1.0-beta.tsrs1+proj3";
 
 /// The stack of the thread tsrs checks on: checking recurses deeply, and tsrs's own binaries give their program
 /// threads the same.

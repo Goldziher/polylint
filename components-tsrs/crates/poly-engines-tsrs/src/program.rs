@@ -10,7 +10,7 @@
 
 use std::collections::HashMap;
 use std::panic::{self, AssertUnwindSafe};
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use anyhow::{anyhow, bail, ensure};
@@ -88,10 +88,18 @@ pub(crate) fn diagnose(request: &Request<'_>) -> anyhow::Result<Option<Outcome>>
         return Ok(None);
     };
     let cwd = tsrs_path(&request.root.join(&request.settings.dir));
+    let host_config = host_path_of(request.files, &config);
     let region = Region::new_scratch(SCRATCH_CHUNK);
     let entered = region.enter();
     let result = panic::catch_unwind(AssertUnwindSafe(|| {
-        check(&config, memory.into_tsrs(), request.settings, request.declared, cwd)
+        check(
+            &config,
+            &host_config,
+            memory.into_tsrs(),
+            request.settings,
+            request.declared,
+            cwd,
+        )
     }));
     drop(entered);
     drop(region);
@@ -99,6 +107,15 @@ pub(crate) fn diagnose(request: &Request<'_>) -> anyhow::Result<Option<Outcome>>
         Ok(outcome) => outcome.map(Some),
         Err(payload) => Err(anyhow!("tsrs panicked: {}", panic_text(payload.as_ref()))),
     }
+}
+
+/// The host's path of the file tsrs names `name`, which is how [`Declared`] scopes manifests: tsrs normalises
+/// separators and drive prefixes, so its names do not share a prefix with the host's manifest directories on Windows.
+fn host_path_of(files: &[ProjectFile], name: &str) -> PathBuf {
+    files
+        .iter()
+        .find(|file| tsrs_path(&file.path) == name)
+        .map_or_else(|| PathBuf::from(name), |file| file.path.clone())
 }
 
 /// The `tsconfig` to check: `project`, else the nearest `tsconfig.json` from `dir` up to the project root.
@@ -209,7 +226,7 @@ fn apply_settings(config: &mut ParsedCommandLine, settings: &Settings, config_pa
 /// errors, and returns one warning per such `extends`. An `extends` of a package nothing declares keeps its error.
 ///
 /// The config is still read without the extended options, so what it inherits is not applied.
-fn forgive_declared_extends(config: &mut ParsedCommandLine, config_path: &str, declared: &Declared) -> Vec<Raw> {
+fn forgive_declared_extends(config: &mut ParsedCommandLine, host_config: &Path, declared: &Declared) -> Vec<Raw> {
     let mut warnings = Vec::new();
     config.errors.retain(|diagnostic| {
         if diagnostic.code() != FILE_NOT_FOUND {
@@ -221,7 +238,7 @@ fn forgive_declared_extends(config: &mut ParsedCommandLine, config_path: &str, d
         let Some(package) = package_name(specifier) else {
             return true;
         };
-        if !declared.declares(Path::new(config_path), package) {
+        if !declared.declares(host_config, package) {
             return true;
         }
         warnings.push(Raw {
@@ -243,6 +260,7 @@ fn forgive_declared_extends(config: &mut ParsedCommandLine, config_path: &str, d
 
 fn check(
     config_path: &str,
+    host_config: &Path,
     fs: Arc<dyn FS>,
     settings: &Settings,
     declared: &Declared,
@@ -264,7 +282,7 @@ fn check(
             });
         }
     };
-    let warnings = forgive_declared_extends(&mut config, config_path, declared);
+    let warnings = forgive_declared_extends(&mut config, host_config, declared);
     apply_settings(&mut config, settings, config_path)?;
 
     let threads = settings.threads.get();
@@ -397,4 +415,30 @@ fn panic_text(payload: &(dyn std::any::Any + Send)) -> String {
         .map(|message| (*message).to_owned())
         .or_else(|| payload.downcast_ref::<String>().cloned())
         .unwrap_or_else(|| "a panic without a message".to_owned())
+}
+
+#[cfg(test)]
+mod tests {
+    use poly_engine_api::language::Language;
+
+    use super::*;
+
+    fn file(path: &str) -> ProjectFile {
+        ProjectFile {
+            path: PathBuf::from(path),
+            language: Language::Other("tsconfig.json".into()),
+            content: "".into(),
+        }
+    }
+
+    #[test]
+    fn the_host_path_of_a_tsrs_name_is_the_path_the_host_handed_over() {
+        let files = [file("/w/a/tsconfig.json"), file("/w/b/tsconfig.json")];
+        let name = tsrs_path(Path::new("/w/b/tsconfig.json"));
+        assert_eq!(host_path_of(&files, &name), PathBuf::from("/w/b/tsconfig.json"));
+        assert_eq!(
+            host_path_of(&files, "/x/tsconfig.json"),
+            PathBuf::from("/x/tsconfig.json")
+        );
+    }
 }

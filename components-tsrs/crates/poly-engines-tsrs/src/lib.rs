@@ -27,8 +27,9 @@
 //! the project declares the package in a `package.json`, and reported when it does not. Set
 //! `report_unresolved_modules = true` to keep them all.
 //!
-//! Findings in declaration files (`.d.ts`), in files under `node_modules` and in JavaScript files (unless the
-//! program holds them through `allowJs`) are never reported, though the files are inputs. Findings the host did
+//! Findings in files under `node_modules` and in JavaScript files (unless the program holds them through
+//! `allowJs`) are never reported, though the files are inputs. The project's own declaration files (`.d.ts`)
+//! are reported like any source (ADR 0055). Findings the host did
 //! not hand over a path for, such as the bundled `lib.*.d.ts`, are dropped.
 //!
 //! # Process constraints

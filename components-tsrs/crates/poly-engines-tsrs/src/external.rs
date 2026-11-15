@@ -206,7 +206,8 @@ impl Scope<'_> {
             return package_name(argument) == Some("react") && REACT_PACKAGES.iter().any(|package| self.has(package));
         }
         if code == TYPE_FILE_CODE {
-            return self.has_package(argument);
+            // `types="vite/client"` names a file inside the package `vite`.
+            return package_name(argument).is_some_and(|name| self.has_package(name)) || self.has_package(argument);
         }
         if !MODULE_CODES.contains(&code) {
             return false;
@@ -328,6 +329,16 @@ mod tests {
         assert!(declared(&["vitest"]).is_missing(2582, None));
         assert!(node.is_missing(2688, Some("node")));
         assert!(!declared(&[]).is_missing(2688, Some("node")));
+    }
+
+    #[test]
+    fn type_file_references_resolve_to_their_package() {
+        let found = declared(&["vite", "vitest", "@scope/pkg"]);
+        for argument in ["vite/client", "vitest/globals", "@scope/pkg/sub", "vite"] {
+            assert!(found.is_missing(2688, Some(argument)), "{argument}");
+        }
+        assert!(!found.is_missing(2688, Some("foo/bar")), "an undeclared package is reported");
+        assert!(!found.is_missing(2688, Some("@other/pkg/sub")));
     }
 
     #[test]
