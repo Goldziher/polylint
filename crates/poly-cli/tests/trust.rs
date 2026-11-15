@@ -348,6 +348,27 @@ fn poly_hooks_run_refuses_an_untrusted_repository() {
 }
 
 #[test]
+fn an_untrusted_prepare_commit_msg_hook_warns_instead_of_blocking_the_commit() {
+    let sandbox = Sandbox::new();
+    let repo = hooks_repo(&sandbox);
+    let message = repo.path().join(".git/COMMIT_EDITMSG");
+    write(&message, "feat: x\n");
+    let message = message.display().to_string();
+    let output = sandbox.poly(
+        repo.path(),
+        &["hooks", "hook-impl", "--hook-type=prepare-commit-msg", "--", &message],
+        &[],
+    );
+    assert_eq!(output.status.code(), Some(0), "{}", text(&output));
+    assert!(
+        text(&output).contains("skipping prepare-commit-msg"),
+        "{}",
+        text(&output)
+    );
+    assert!(!sandbox.marker("hook-ran").exists(), "{}", text(&output));
+}
+
+#[test]
 fn poly_hooks_install_records_trust() {
     let sandbox = Sandbox::new();
     let repo = hooks_repo(&sandbox);

@@ -54,7 +54,8 @@ it is written atomically with owner-only permissions.
   a hook spawns see `POLY_TRUST` but not the flag.
 - **Git hooks:** `poly hooks install` records trust, because installing the hooks is the decision
   to run them. When a later pull changes a gated key, the next commit stops with a message pointing
-  at `poly trust --show`.
+  at `poly trust --show` (`prepare-commit-msg`, which git cannot skip with `--no-verify`, only
+  warns).
 - **MCP:** `poly mcp` honours a repository's gated keys only when it is trusted in the store;
   neither `--trust` nor `POLY_TRUST` applies to it. The server reads the store when it starts.
 

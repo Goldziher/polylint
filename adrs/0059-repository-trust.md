@@ -41,6 +41,8 @@ an MCP `lint` call steered by text a model read, executed whatever the repositor
 - **Hooks.** `poly hooks install` records trust, since installing the shims is the user's explicit decision to run
   the repository's `[hooks]` on every commit. `poly hooks run` and the installed `hook-impl` refuse an untrusted
   config, including a nested one, with a message pointing at `poly trust --show`; they do not silently run a subset.
+  The one exception is `prepare-commit-msg`, which git offers no `--no-verify` for (issue #15): an untrusted
+  repository warns there and the hook passes, as a failed hook-source fetch already does.
 - **One-run overrides.** `--trust` and `POLY_TRUST=1` honour every key for one process, for CI and throwaway
   checkouts; neither writes a record. `--trust` is a flag of this process only: the `poly lint`/`poly fmt` children a
   hook spawns see it only through `POLY_TRUST`.

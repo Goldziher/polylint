@@ -575,7 +575,9 @@ fn hook_impl(args: HookImplArgs) -> Result<ExitCode> {
     let root = repository_root()?;
     let explicit_config = crate::global().config.as_deref();
     let config = load_config(explicit_config)?;
-    crate::trust_cmd::require_trusted(&config, "the git hook")?;
+    if !hook_trusted(&config, args.hook_type)? {
+        return Ok(ExitCode::SUCCESS);
+    }
     let sources = provision_for_hook(args.hook_type, &root, &config.hooks)?;
     let Some(inputs) = poly_hooks::hook_impl::hook_impl(args.hook_type, &args.git_args, &root)? else {
         return Ok(ExitCode::SUCCESS);
@@ -646,6 +648,20 @@ fn hook_impl(args: HookImplArgs) -> Result<ExitCode> {
         restage_partial: config.hooks.partial_stage == poly_config::PartialStage::Restage,
     };
     run_and_report(request)
+}
+
+/// Whether a git hook may run `config`'s hooks: refuse an untrusted config, except under
+/// `prepare-commit-msg`, which git offers no `--no-verify` for (issue #15) and which only shapes the
+/// message, so it warns and lets the commit through instead.
+fn hook_trusted(config: &PolyConfig, hook_type: poly_hooks::HookType) -> Result<bool> {
+    match crate::trust_cmd::require_trusted(config, "the git hook") {
+        Ok(()) => Ok(true),
+        Err(error) if matches!(hook_type, poly_hooks::HookType::PrepareCommitMsg) => {
+            eprintln!("poly hooks: warning: {error:#}; skipping prepare-commit-msg");
+            Ok(false)
+        }
+        Err(error) => Err(error),
+    }
 }
 
 /// Whether the working directory is the repository root, where the root
