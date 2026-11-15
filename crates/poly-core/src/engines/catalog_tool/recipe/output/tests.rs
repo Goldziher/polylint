@@ -648,3 +648,57 @@ fn credo_output_that_is_not_its_report_is_an_error_not_a_clean_run() {
         assert!(parse(Output::CredoJson, stdout, "").is_err(), "{why}");
     }
 }
+
+fn sarif_with(uri: &str, extra: &str) -> String {
+    format!(
+        r#"{{"version":"2.1.0","runs":[{{"tool":{{"driver":{{"name":"t"}}}}{extra},"results":[{{"ruleId":"r","level":"error","message":{{"text":"m"}},"locations":[{{"physicalLocation":{{"artifactLocation":{uri},"region":{{"startLine":2}}}}}}]}}]}}]}}"#
+    )
+}
+
+fn sarif_path(uri: &str, extra: &str) -> Option<String> {
+    one(parse(Output::Sarif, &sarif_with(uri, extra), "").expect("parses")).path
+}
+
+#[test]
+fn sarif_uris_are_percent_decoded_and_file_uris_become_paths() {
+    assert_eq!(
+        sarif_path(r#"{"uri":"file:///repo/my%20dir/a%C3%A9.go"}"#, "").as_deref(),
+        Some("/repo/my dir/aé.go")
+    );
+    assert_eq!(
+        sarif_path(r#"{"uri":"file:///C:/work/a%20b.go"}"#, "").as_deref(),
+        Some("C:/work/a b.go")
+    );
+    assert_eq!(sarif_path(r#"{"uri":"100%.go"}"#, "").as_deref(), Some("100%.go"));
+    assert_eq!(sarif_path(r#"{"uri":"a%FF.go"}"#, "").as_deref(), Some("a%FF.go"));
+}
+
+#[test]
+fn sarif_uri_base_ids_are_resolved_through_original_uri_base_ids() {
+    let bases = r#","originalUriBaseIds":{"ROOT":{"uri":"file:///C:/repo/"},"SRC":{"uri":"src/","uriBaseId":"ROOT"}}"#;
+    assert_eq!(
+        sarif_path(r#"{"uri":"a%20b.R","uriBaseId":"SRC"}"#, bases).as_deref(),
+        Some("C:/repo/src/a b.R")
+    );
+    assert_eq!(
+        sarif_path(r#"{"uri":"a.R","uriBaseId":"UNKNOWN"}"#, bases).as_deref(),
+        Some("a.R")
+    );
+}
+
+#[test]
+fn sarif_reads_later_locations_only_when_the_first_has_no_file_and_falls_back_to_markdown() {
+    let log = r#"{"version":"2.1.0","runs":[{"results":[{"message":{"markdown":"**md**"},"locations":[{"physicalLocation":{"region":{"startLine":1}}},{"physicalLocation":{"artifactLocation":{"uri":"b.go"},"region":{"startLine":4}}},{"physicalLocation":{"artifactLocation":{"uri":"c.go"}}}]}]}]}"#;
+    let finding = one(parse(Output::Sarif, log, "").expect("parses"));
+    assert_eq!(finding.path.as_deref(), Some("b.go"));
+    assert_eq!(finding.line, Some(4));
+    assert_eq!(finding.message, "**md**");
+}
+
+#[test]
+fn path_line_reports_keep_a_windows_drive_prefix_in_the_path() {
+    let finding = one(parse(Output::PathLine, "C:/work/a.yaml:3:7: bad value", "").expect("parses"));
+    assert_eq!(finding.path.as_deref(), Some("C:/work/a.yaml"));
+    assert_eq!((finding.line, finding.column), (Some(3), Some(7)));
+    assert_eq!(finding.message, "bad value");
+}

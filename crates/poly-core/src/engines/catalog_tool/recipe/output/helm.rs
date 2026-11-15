@@ -27,7 +27,7 @@ fn template_position() -> &'static Regex {
 
 fn path_line() -> &'static Regex {
     static RE: OnceLock<Regex> = OnceLock::new();
-    RE.get_or_init(|| Regex::new(r"^([^\s:][^:]*):(\d+)(?::(\d+))?: (.*)$").expect("static regex"))
+    RE.get_or_init(|| Regex::new(r"^((?:[A-Za-z]:)?[^\s:][^:]*):(\d+)(?::(\d+))?: (.*)$").expect("static regex"))
 }
 
 /// Findings from helm's combined output. Lint lines and `Error:` lines are
