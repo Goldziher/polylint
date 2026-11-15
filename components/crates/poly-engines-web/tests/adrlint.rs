@@ -115,3 +115,37 @@ Good.
     assert_eq!(fixable.fix[0].replacement, "#");
     assert!(fixable.severity == Severity::Error || fixable.severity == Severity::Warning);
 }
+
+fn formatted_adr() -> SourceFile {
+    SourceFile {
+        path: PathBuf::from("adrs/0001-use-rust.md"),
+        language: Language::Markdown,
+        content: "# Use Rust\n\n## Context and Problem Statement\n\nText.\n\n## Considered Options\n\n- Rust\n- Go\n\n## Decision Outcome\n\nChosen option: Rust, because it is fast.\n"
+            .into(),
+    }
+}
+
+fn marker_findings(extra: Option<(&str, &str)>) -> usize {
+    let mut config = cfg(true);
+    if let Some((key, code)) = extra {
+        config
+            .options
+            .insert(key.to_string(), toml::Value::Array(vec![code.into()]));
+    }
+    AdrlintEngine
+        .lint(&formatted_adr(), &config)
+        .expect("lint succeeded")
+        .iter()
+        .filter(|d| d.code.as_deref() == Some("MADR31"))
+        .count()
+}
+
+#[test]
+fn poly_formatted_adr_has_no_list_marker_finding() {
+    assert_eq!(marker_findings(None), 0);
+}
+
+#[test]
+fn explicit_extend_select_reports_the_list_marker_rule() {
+    assert!(marker_findings(Some(("extend_select", "MADR31"))) > 0);
+}

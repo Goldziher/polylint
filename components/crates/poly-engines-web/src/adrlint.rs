@@ -32,6 +32,12 @@
 //! enabling MADR enforcement unasked would turn a green run red on the upgrade. Enable it with
 //! `[lint.markdown.adrlint] enabled = true`.
 //!
+//! `MADR31` (`*` list markers) is the one document rule that is **default-off**: poly's Markdown
+//! formatter (`oxc_formatter_markdown`) writes `-` and exposes no bullet-style option, so the two
+//! could never both pass. The lint call receives only this engine's own options, not the
+//! formatter's, so the rule cannot follow whether the file is formatted; it stays off unless
+//! `select`/`extend_select` names it or a `rules.MADR31` table exists.
+//!
 //! # Configuration
 //!
 //! Rule selection follows poly's uniform vocabulary ([ADR 0016]): `select` replaces the active
@@ -63,7 +69,7 @@ use poly_engine_api::rule_config::string_list;
 ///
 /// Bump the suffix whenever the diagnostic/edit mapping below changes, and the version whenever
 /// `adrlint` is upgraded — either alters output, and a stale cache entry would survive both.
-const VERSION: &str = "adrlint-0.5.0+poly3";
+const VERSION: &str = "adrlint-0.5.0+poly4";
 
 /// Why a Markdown file is routed past this backend.
 const NOT_AN_ADR: &str = "not a numbered ADR file";
@@ -282,6 +288,9 @@ struct Selection {
     select: Vec<String>,
     extend_select: Vec<String>,
     ignore: Vec<String>,
+    /// Rule ids that carry a `[...adrlint.rules.<id>]` table not set to `level = "off"`, which
+    /// counts as naming the rule.
+    configured: Vec<String>,
 }
 
 impl Selection {
@@ -294,6 +303,18 @@ impl Selection {
             select: if select.is_empty() { rules } else { select },
             extend_select: string_list(cfg, "extend_select"),
             ignore: string_list(cfg, "ignore"),
+            configured: cfg
+                .options
+                .get("rules")
+                .and_then(toml::Value::as_table)
+                .map(|rules| {
+                    rules
+                        .iter()
+                        .filter(|(_, rule)| rule.get("level").and_then(toml::Value::as_str) != Some("off"))
+                        .map(|(id, _)| id.clone())
+                        .collect()
+                })
+                .unwrap_or_default(),
         }
     }
 
@@ -303,8 +324,10 @@ impl Selection {
     /// `select` narrowed the set. A code matches a pattern when the pattern is a case-insensitive
     /// prefix, so `MADR07` covers both `MADR07a` and `MADR07b`.
     ///
-    /// `MADR31` (list marker `*`) is off unless a `select` / `extend_select` pattern names it: poly's
-    /// Markdown formatter writes `-` and has no marker option, so a default-on `MADR31` would flag
+    /// `MADR31` (list marker `*`) is off unless a `select` / `extend_select` pattern or a
+    /// `rules.MADR31` table names it. poly's Markdown formatter writes `-` and has no marker
+    /// option, and this lint call cannot see whether the formatter is enabled for the file, so the
+    /// rule is default-off rather than following the formatter: a default-on `MADR31` would flag
     /// the formatter's own output with no fix that survives `fmt`.
     fn keeps(&self, code: &str) -> bool {
         let matches = |patterns: &[String]| patterns.iter().any(|pattern| matches_code(pattern, code));
@@ -321,6 +344,7 @@ impl Selection {
         self.select
             .iter()
             .chain(&self.extend_select)
+            .chain(&self.configured)
             .any(|pattern| pattern.trim() != "*" && matches_code(pattern, LIST_MARKER_CODE))
     }
 }
@@ -498,6 +522,24 @@ Chosen option: Rust, because it is fast.
         assert!(run(&[]).iter().all(|f| f.code.as_deref() != Some("MADR31")));
         let extended = run(&[("extend_select", toml::Value::Array(vec!["MADR31".into()]))]);
         assert!(extended.iter().any(|f| f.code.as_deref() == Some("MADR31")));
+    }
+
+    #[test]
+    fn should_keep_the_list_marker_rule_when_it_has_a_rules_table() {
+        let mut rule = toml::Table::new();
+        rule.insert("level".to_owned(), "error".into());
+        let mut rules = toml::Table::new();
+        rules.insert("MADR31".to_owned(), toml::Value::Table(rule));
+        let findings = AdrlintEngine
+            .lint(
+                &source("adrs/0001-use-rust.md", &format!("{MADR}\n- extra\n")),
+                &config(&[
+                    ("enabled", toml::Value::Boolean(true)),
+                    ("rules", toml::Value::Table(rules)),
+                ]),
+            )
+            .expect("lint");
+        assert!(findings.iter().any(|f| f.code.as_deref() == Some("MADR31")));
     }
 
     #[test]
