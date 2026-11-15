@@ -331,7 +331,25 @@ pub struct DiscoveryConfig {
     /// question that only a content-hash stamp can answer `no` to — see
     /// `--fix-generated`.
     pub generated: bool,
+    /// Largest file, in bytes, that poly reads. A bigger file is not opened: it is
+    /// reported as skipped (`file too large`), which counts toward `--deny-skips`.
+    /// `0` means no limit.
+    ///
+    /// Defaults to 32 MiB (33554432). Machine-written bundles and data dumps beyond
+    /// that cost more to read and parse than a result is worth.
+    ///
+    /// ```toml
+    /// [discovery]
+    /// max_file_size = 0
+    /// ```
+    ///
+    /// The resolved value is per-config: a nested `poly.toml` (ADR 0018) may set it
+    /// for its own subtree.
+    pub max_file_size: u64,
 }
+
+/// The default for `[discovery] max_file_size`: 32 MiB.
+pub const DEFAULT_MAX_FILE_SIZE: u64 = 32 * 1024 * 1024;
 
 impl Default for DiscoveryConfig {
     /// Written out rather than derived because [`force_exclude`] and
@@ -348,6 +366,7 @@ impl Default for DiscoveryConfig {
             force_exclude: true,
             no_prune: Patterns::default(),
             generated: true,
+            max_file_size: DEFAULT_MAX_FILE_SIZE,
         }
     }
 }

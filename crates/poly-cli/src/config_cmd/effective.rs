@@ -198,6 +198,10 @@ fn overlay_resolved_sections(config: &PolyConfig, table: &mut toml::Table) {
             ("no_prune", strings(discovery.no_prune.as_slice())),
             ("force_exclude", toml::Value::Boolean(discovery.force_exclude)),
             ("generated", toml::Value::Boolean(discovery.generated)),
+            (
+                "max_file_size",
+                toml::Value::Integer(i64::try_from(discovery.max_file_size).unwrap_or(i64::MAX)),
+            ),
         ],
     );
 

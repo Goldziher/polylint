@@ -7,6 +7,11 @@ binary drives lint, format, hooks, and commit checks from one `poly.toml`.
 
 ## [Unreleased]
 
+### Added
+
+- **`[discovery] max_file_size`.** A file larger than this many bytes (default 32 MiB, `0` for no limit) is not read and
+  is reported as skipped (`file too large`), which counts toward `--deny-skips`. (#207)
+
 ## [0.35.0] - 2026-11-15
 
 ### Added

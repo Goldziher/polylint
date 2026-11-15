@@ -65,6 +65,8 @@ pub struct Config {
     /// ([`crate::runner::GENERATED_SKIP`]). See
     /// [`poly_config::DiscoveryConfig::generated`] for the full rationale.
     pub generated: bool,
+    /// `[discovery] max_file_size` — bytes above which a file is skipped unread; `0` is no limit.
+    pub max_file_size: u64,
     /// v2 `[engines.<id>]` tables. When non-empty the engines resolve engine-first
     /// (see [`Config::engine_config`]) and `lint` / `fmt` are not consulted for them.
     pub engines: BTreeMap<String, poly_config::v2::EngineTable>,
@@ -107,6 +109,7 @@ impl Default for Config {
             // Matches `poly_config::DiscoveryConfig`'s own default: poly acts on
             // generated files unless a user explicitly opts out.
             generated: true,
+            max_file_size: poly_config::DEFAULT_MAX_FILE_SIZE,
             engines: Default::default(),
             lint: Default::default(),
             fmt: Default::default(),
@@ -498,6 +501,7 @@ impl From<poly_config::PolyConfig> for Config {
             force_exclude: pc.discovery.force_exclude,
             no_prune: pc.discovery.no_prune.as_slice().to_vec(),
             generated: pc.discovery.generated,
+            max_file_size: pc.discovery.max_file_size,
             lint: pc.lint,
             fmt: pc.fmt,
             tools: pc.tools,
