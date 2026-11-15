@@ -378,13 +378,16 @@ fn read_regular_file(path: &Path) -> Option<Vec<u8>> {
 /// nothing to roll back to. `rename` is atomic, and it replaces the directory
 /// entry rather than writing through it, so it cannot traverse a symlink either.
 fn write_atomic(path: &Path, contents: &[u8]) -> anyhow::Result<()> {
+    use std::io::Write as _;
+
     let parent = path.parent().unwrap_or_else(|| Path::new("."));
     let file_name = path.file_name().and_then(|name| name.to_str()).unwrap_or("poly");
-    let tmp = parent.join(format!(".{file_name}.{}.poly.tmp", std::process::id()));
     sweep_stale_tmp(parent);
     let original_permissions = fs_err::symlink_metadata(path).ok().map(|meta| meta.permissions());
+    let (mut file, tmp) = create_tmp(parent, file_name)?;
     let written = (|| -> anyhow::Result<()> {
-        fs_err::write(&tmp, contents)?;
+        file.write_all(contents)?;
+        drop(file);
         // The rename replaces the original inode with a freshly created temp file,
         // whose mode is `0666 & !umask` and has no relationship to the file being
         // fixed. Without this, fixing an executable script clears its exec bit.
@@ -400,9 +403,47 @@ fn write_atomic(path: &Path, contents: &[u8]) -> anyhow::Result<()> {
     written
 }
 
+/// Directories already swept this process: one `read_dir` per directory, not one per written file.
+static SWEPT: std::sync::Mutex<std::collections::HashSet<PathBuf>> =
+    std::sync::Mutex::new(std::collections::HashSet::new());
+
+/// Distinct temp names tried before giving up when each is already taken.
+const TMP_ATTEMPTS: u32 = 8;
+
+fn tmp_candidate(parent: &Path, file_name: &str, pid: u32, attempt: u32) -> PathBuf {
+    if attempt == 0 {
+        parent.join(format!(".{file_name}.{pid}.poly.tmp"))
+    } else {
+        parent.join(format!(".{file_name}.{pid}.{attempt}.poly.tmp"))
+    }
+}
+
+/// Exclusively create the sibling temp file: the name is predictable (pid), so `create_new` keeps a
+/// pre-planted file or symlink at that name from being followed or truncated.
+fn create_tmp(parent: &Path, file_name: &str) -> anyhow::Result<(std::fs::File, PathBuf)> {
+    let pid = std::process::id();
+    for attempt in 0..TMP_ATTEMPTS {
+        let tmp = tmp_candidate(parent, file_name, pid, attempt);
+        match std::fs::OpenOptions::new().write(true).create_new(true).open(&tmp) {
+            Ok(file) => return Ok((file, tmp)),
+            Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => {}
+            Err(error) => return Err(anyhow::Error::new(error).context(format!("creating {}", tmp.display()))),
+        }
+    }
+    anyhow::bail!("could not create a temp file next to {file_name}: every candidate name is taken")
+}
+
 /// Best-effort removal of `.*.poly.tmp` files in `dir` older than a day: leftovers of a killed run.
+/// Runs at most once per directory per process.
 fn sweep_stale_tmp(dir: &Path) {
     const STALE: std::time::Duration = std::time::Duration::from_hours(24);
+    let first = SWEPT
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner)
+        .insert(dir.to_path_buf());
+    if !first {
+        return;
+    }
     let Ok(entries) = std::fs::read_dir(dir) else {
         return;
     };
@@ -562,5 +603,36 @@ mod tests {
         assert_eq!(hash_file(&link), None, "hashing must not read through the link");
         assert_eq!(read_regular_file(&link), None, "reading must not follow the link");
         assert_eq!(read_regular_file(&target).as_deref(), Some(&b"content\n"[..]));
+    }
+
+    #[test]
+    fn sweeps_each_directory_once() {
+        let dir = TempDir::new().expect("tempdir");
+        sweep_stale_tmp(dir.path());
+        let stale = dir.path().join(".late.1.poly.tmp");
+        fs_err::write(&stale, "").expect("seed");
+        let old = std::time::SystemTime::now() - std::time::Duration::from_hours(48);
+        std::fs::File::options()
+            .write(true)
+            .open(&stale)
+            .expect("open")
+            .set_modified(old)
+            .expect("mtime");
+        sweep_stale_tmp(dir.path());
+        assert!(stale.exists(), "the second sweep of a directory must not run");
+    }
+
+    #[test]
+    fn a_planted_symlink_at_the_first_temp_name_is_not_followed() {
+        let dir = TempDir::new().expect("tempdir");
+        let file = dir.path().join("a.txt");
+        let victim = dir.path().join("victim.txt");
+        fs_err::write(&file, "old\n").expect("seed");
+        fs_err::write(&victim, "victim\n").expect("seed");
+        let planted = tmp_candidate(dir.path(), "a.txt", std::process::id(), 0);
+        std::os::unix::fs::symlink(&victim, &planted).expect("symlink");
+        write_atomic(&file, b"new\n").expect("write");
+        assert_eq!(fs_err::read_to_string(&victim).expect("read"), "victim\n");
+        assert_eq!(fs_err::read_to_string(&file).expect("read"), "new\n");
     }
 }
