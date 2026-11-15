@@ -15,6 +15,8 @@
 //! the syntax error) and when the formatted output is identical to the input.
 
 use std::borrow::Cow;
+use std::collections::HashSet;
+use std::sync::Mutex;
 
 use mago_formatter::Formatter;
 use mago_formatter::settings::{FormatSettings, RawFormatSettings};
@@ -62,10 +64,9 @@ pub(super) fn format_php(src: &SourceFile, cfg: &EngineConfig) -> anyhow::Result
 ///
 /// 1. Start with `FormatSettings::default()` (mago's defaults).
 /// 2. Apply poly's `line_length` and `indent_width` as the opinionated base.
-/// 3. Deserialise `cfg.options` into [`RawFormatSettings`] (all-`Option`).
-///    Only fields the user explicitly set are `Some`; the rest are `None`.
-/// 4. `raw.merge_with(base)` — user's `Some` fields override the base; `None`
-///    fields keep the base value.
+/// 3. Deserialise each `cfg.options` entry on its own into [`RawFormatSettings`]
+///    and merge it over the settings so far, so one invalid value drops only
+///    that field (with a warning) instead of every user option.
 fn build_format_settings(cfg: &EngineConfig) -> FormatSettings {
     let base = FormatSettings {
         print_width: cfg.globals.line_length,
@@ -77,12 +78,22 @@ fn build_format_settings(cfg: &EngineConfig) -> FormatSettings {
         return base;
     }
 
-    let raw: RawFormatSettings = toml::Value::Table(cfg.options.clone())
-        .try_into()
-        .unwrap_or_else(|error| {
-            tracing::warn!(%error, "[fmt.php.mago] options could not be parsed; using defaults");
-            RawFormatSettings::default()
-        });
+    let mut settings = base;
+    for (key, value) in &cfg.options {
+        let single = toml::Table::from_iter([(key.clone(), value.clone())]);
+        match toml::Value::Table(single).try_into::<RawFormatSettings>() {
+            Ok(raw) => settings = raw.merge_with(settings),
+            Err(error) => warn_invalid_option(key, &error.to_string()),
+        }
+    }
+    settings
+}
 
-    raw.merge_with(base)
+/// Warn once per process for each distinct invalid option, not once per file.
+fn warn_invalid_option(key: &str, error: &str) {
+    static WARNED: Mutex<Option<HashSet<String>>> = Mutex::new(None);
+    let mut guard = WARNED.lock().unwrap_or_else(|e| e.into_inner());
+    if guard.get_or_insert_with(HashSet::new).insert(format!("{key}\0{error}")) {
+        tracing::warn!(option = key, %error, "[fmt.php.mago] option ignored: invalid value");
+    }
 }

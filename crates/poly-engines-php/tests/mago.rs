@@ -571,3 +571,18 @@ fn different_configs_on_one_instance_get_different_registries() {
     assert!(!security.contains(&"strict-types".to_string()), "{security:?}");
     assert!(default.contains(&"strict-types".to_string()) && default.contains(&"no-debug-symbols".to_string()));
 }
+
+/// An invalid format option must not discard the valid ones beside it.
+#[test]
+fn invalid_format_option_does_not_drop_valid_ones() {
+    let engine = MagoEngine::default();
+    let src = make_src("fn.php", FUNCTION_PHP);
+    let cfg = cfg_from_str("function-brace-style = \"same_line\"\nprint-width = \"not a number\"");
+    match engine.format(&src, &cfg).unwrap() {
+        FormatOutput::Formatted(text) => assert!(
+            text.contains("function foo() {"),
+            "valid option must still apply; got:\n{text}"
+        ),
+        FormatOutput::Unchanged => panic!("expected Formatted"),
+    }
+}
