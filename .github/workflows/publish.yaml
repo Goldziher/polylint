@@ -18,6 +18,10 @@ on:
         description: "Rebuild every component instead of reusing the previous release's unchanged assets"
         type: boolean
         default: false
+      skip_ci_check:
+        description: "Skip the check that CI succeeded on the release commit (emergency re-publish only)"
+        type: boolean
+        default: false
 
 # Component signing: the build-components jobs sign each archive with the Ed25519 private key in the
 # repository secret POLY_COMPONENT_SIGNING_KEY (PKCS#8 PEM, or base64 of the PKCS#8 DER or a raw
@@ -71,7 +75,95 @@ jobs:
               output.write(f'version={core}\n')
           PY
 
+  verify_ci:
+    # Publishing is gated on CI: a tag pushed ahead of, or onto a commit that failed, the ci workflow
+    # must not release. Tag pushes race CI, so the check polls for up to 30 minutes.
+    if: ${{ !inputs.plugins-only }}
+    name: Verify CI passed on the release commit
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    permissions:
+      checks: read
+      contents: read
+    steps:
+      - name: Require the ci workflow's checks to be green
+        if: ${{ !inputs.skip_ci_check }}
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          EVENT_NAME: ${{ github.event_name }}
+          DISPATCH_TAG: ${{ github.event.inputs.tag }}
+          PUSH_SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          # A dispatch runs on a branch head; the release is built from the tag, so check the tag's commit.
+          if [ "$EVENT_NAME" = "workflow_dispatch" ]; then
+            if ! [[ "$DISPATCH_TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+([.-][0-9A-Za-z.]+)?$ ]]; then
+              echo "::error::release tag is not a valid version tag"
+              exit 1
+            fi
+            sha="$(gh api "repos/$GITHUB_REPOSITORY/commits/$DISPATCH_TAG" --jq .sha)"
+          else
+            sha="$PUSH_SHA"
+          fi
+          echo "Checking CI on $sha"
+
+          # Check-run names from .github/workflows/ci.yaml (matrix legs included). Keep in step with it.
+          required=(
+            "toolchain baseline"
+            "fmt"
+            "clippy (ubuntu-latest)"
+            "clippy (macos-26)"
+            "clippy (windows-latest)"
+            "test / ubuntu-latest"
+            "test / macos-26"
+            "test / windows-latest"
+            "test core flavour"
+            "feature matrix"
+            "plugin tests"
+            "msrv"
+            "dogfood / ubuntu-latest"
+            "dogfood / windows-latest"
+            "component parity"
+            "go sidecars"
+            "sidecar conformance"
+            "alef verify"
+            "core links no oxc"
+            "core under 14 MiB"
+            "cargo-deny"
+          )
+
+          for attempt in $(seq 1 31); do
+            gh api --paginate "repos/$GITHUB_REPOSITORY/commits/$sha/check-runs?per_page=100" \
+              --jq '.check_runs[] | [.name, .status, (.conclusion // "")] | @tsv' > runs.tsv
+            pending=()
+            for name in "${required[@]}"; do
+              # The newest run of a name wins, so a re-run after a failure counts.
+              row="$(awk -F'\t' -v n="$name" '$1 == n { r = $0 } END { print r }' runs.tsv)"
+              if [ -z "$row" ]; then
+                pending+=("$name (not started)")
+                continue
+              fi
+              status="$(cut -f2 <<< "$row")"
+              conclusion="$(cut -f3 <<< "$row")"
+              if [ "$status" != "completed" ]; then
+                pending+=("$name ($status)")
+              elif [ "$conclusion" != "success" ]; then
+                echo "::error::CI check '$name' concluded '$conclusion' on $sha"
+                exit 1
+              fi
+            done
+            if [ "${#pending[@]}" -eq 0 ]; then
+              echo "All ${#required[@]} required CI checks succeeded on $sha"
+              exit 0
+            fi
+            echo "Waiting for CI (attempt $attempt/31): ${pending[*]}"
+            [ "$attempt" -lt 31 ] && sleep 60
+          done
+          echo "::error::CI did not finish green on $sha within 30 minutes"
+          exit 1
+
   meta:
+    needs: verify_ci
     if: ${{ !inputs.plugins-only }}
     name: Resolve release metadata
     runs-on: ubuntu-latest
@@ -1165,6 +1257,14 @@ jobs:
           fi
           version="${{ needs.meta.outputs.version }}"
           tag="${{ needs.meta.outputs.tag }}"
+          # Only the newest release may move a "latest" pointer: a dispatch re-run of an older tag
+          # must not roll it back.
+          newest="$(git ls-remote --tags origin 'v*' | awk '{ sub("refs/tags/", "", $2); print $2 }' |
+            grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' | sort -V | tail -n1)"
+          if [ "$tag" != "$newest" ]; then
+            echo "::notice::$tag is not the newest release tag ($newest); leaving the Homebrew formula unchanged"
+            exit 0
+          fi
 
           # Prebuilt-binary formula: it points at the same release archives every
           # other channel serves, with the hashes read from the release's own
@@ -1243,6 +1343,14 @@ jobs:
           set -euo pipefail
           version="${{ needs.meta.outputs.version }}"
           tag="${{ needs.meta.outputs.tag }}"
+          # Only the newest release may move a "latest" pointer: a dispatch re-run of an older tag
+          # must not roll it back.
+          newest="$(git ls-remote --tags origin 'v*' | awk '{ sub("refs/tags/", "", $2); print $2 }' |
+            grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' | sort -V | tail -n1)"
+          if [ "$tag" != "$newest" ]; then
+            echo "::notice::$tag is not the newest release tag ($newest); leaving the Scoop bucket unchanged"
+            exit 0
+          fi
 
           if [ -z "${HOMEBREW_TOKEN:-}" ]; then
             echo "::error::HOMEBREW_TOKEN is not set, so Goldziher/scoop-bucket cannot be updated." >&2
@@ -1703,6 +1811,14 @@ jobs:
           tag="${{ needs.meta.outputs.tag }}"
           major="v${version%%.*}"
           sha="$(git rev-list -n1 "$tag")"
+          # Only the newest release may move a "latest" pointer: a dispatch re-run of an older tag
+          # must not roll it back.
+          newest="$(git ls-remote --tags origin 'v*' | awk '{ sub("refs/tags/", "", $2); print $2 }' |
+            grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' | sort -V | tail -n1)"
+          if [ "$tag" != "$newest" ]; then
+            echo "::notice::$tag is not the newest release tag ($newest); leaving the major tag unchanged"
+            exit 0
+          fi
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git tag -f "$major" "$sha"
