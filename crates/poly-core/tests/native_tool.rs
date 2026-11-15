@@ -412,9 +412,16 @@ fn r_native_known_unformatted_snapshot() {
         return;
     }
     let src = make_src("script.R", Language::R, R_UNFORMATTED);
-    let result = engine.format(&src, &enabled_cfg()).unwrap();
+    let result = match engine.format(&src, &enabled_cfg()) {
+        Ok(result) => result,
+        Err(error) if error.to_string().contains("styler") => {
+            eprintln!("R styler is not installed ({error}) — skipping r_native_known_unformatted_snapshot");
+            return;
+        }
+        Err(error) => panic!("Rscript failed unexpectedly: {error}"),
+    };
     let FormatOutput::Formatted(formatted) = result else {
-        eprintln!("R styler did not reformat (package likely absent) — skipping r_native_known_unformatted_snapshot");
+        eprintln!("R styler did not reformat — skipping r_native_known_unformatted_snapshot");
         return;
     };
     insta::assert_snapshot!("r_native_known_unformatted", formatted);
