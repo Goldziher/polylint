@@ -469,6 +469,7 @@ pub fn format_run(
     })
 }
 
+// The per-run inputs are independent borrowed values; bundling them would only add a struct.
 #[allow(clippy::too_many_arguments)]
 fn lint_one(
     f: &DiscoveredFile,
@@ -675,6 +676,7 @@ fn should_cache_result(elapsed: std::time::Duration) -> bool {
     elapsed >= MIN_CACHE_DURATION
 }
 
+// The per-run inputs are independent borrowed values; bundling them would only add a struct.
 #[allow(clippy::too_many_arguments)]
 fn format_one(
     f: &DiscoveredFile,

@@ -21,6 +21,7 @@ impl EnvVars {
 impl EnvVars {
     /// Read an environment variable, falling back to pre-commit corresponding variable if not found.
     pub(crate) fn var_os(name: &str) -> Option<OsString> {
+        // This wrapper is the sanctioned place to read the process environment directly.
         #[allow(clippy::disallowed_methods)]
         std::env::var_os(name).or_else(|| {
             let name = Self::pre_commit_name(name)?;

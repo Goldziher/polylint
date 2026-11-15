@@ -98,6 +98,7 @@ impl Template {
     /// Split `items` into the ranges that each become one invocation.
     pub(super) fn chunks(&self, items: &[String]) -> Vec<Range<usize>> {
         if self.items == Items::Nothing {
+            // One invocation covering the empty range is the intent, not a range-per-item vec.
             #[allow(clippy::single_range_in_vec_init)]
             return vec![0..0];
         }

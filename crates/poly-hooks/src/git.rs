@@ -134,6 +134,7 @@ fn zsplit(s: &[u8]) -> Result<Vec<PathBuf>, std::str::Utf8Error> {
 }
 
 #[cfg(unix)]
+// The Result keeps the signature identical to the non-unix variant, which can fail.
 #[expect(clippy::unnecessary_wraps)]
 pub(crate) fn path_from_git_bytes(bytes: &[u8]) -> Result<PathBuf, std::str::Utf8Error> {
     use std::ffi::OsStr;
