@@ -39,11 +39,13 @@ impl<K: Hash + Eq, V: Clone> Memo<K, V> {
         }
     }
 
+    /// Recovers a poisoned lock: each operation leaves the map valid, so one engine's panic must not
+    /// fail every later file.
     fn lock(&self) -> MutexGuard<'_, HashMap<K, V>> {
         self.entries
             .get_or_init(Default::default)
             .lock()
-            .expect("recipe memo poisoned")
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
     }
 
     pub(super) fn get(&self, key: &K) -> Option<V> {
@@ -97,6 +99,24 @@ pub(in crate::engines::catalog_tool) fn forget_run_memos() {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_panic_while_the_memo_is_locked_does_not_fail_later_askers() {
+        use std::sync::Arc;
+        let memo: Arc<Memo<String, u32>> = Arc::new(Memo::new());
+        memo.insert("a".to_owned(), 1);
+        let poisoner = Arc::clone(&memo);
+        let crashed = std::thread::spawn(move || {
+            let _held = poisoner.lock();
+            panic!("engine panic while the memo is held");
+        })
+        .join();
+        assert!(crashed.is_err());
+        // Every map operation leaves the table valid, so the entries survive the poison.
+        assert_eq!(memo.get(&"a".to_owned()), Some(1));
+        memo.insert("b".to_owned(), 2);
+        assert_eq!(memo.get(&"b".to_owned()), Some(2));
+    }
 
     #[test]
     fn clearing_forgets_answers_and_the_next_ask_recomputes() {

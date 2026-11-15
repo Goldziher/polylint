@@ -36,14 +36,18 @@ fn cache() -> &'static Mutex<HashMap<std::path::PathBuf, &'static str>> {
 pub(crate) fn resolve_edition(path: &Path) -> &'static str {
     let start_dir = path.parent().unwrap_or(path);
 
-    if let Some(found) = cache().lock().expect("edition cache mutex poisoned").get(start_dir) {
+    if let Some(found) = cache()
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner)
+        .get(start_dir)
+    {
         return found;
     }
 
     let resolved = intern(&compute_edition(start_dir));
     cache()
         .lock()
-        .expect("edition cache mutex poisoned")
+        .unwrap_or_else(std::sync::PoisonError::into_inner)
         .insert(start_dir.to_path_buf(), resolved);
     resolved
 }
@@ -54,7 +58,7 @@ pub(crate) fn resolve_edition(path: &Path) -> &'static str {
 fn intern(edition: &str) -> &'static str {
     static INTERNED: OnceLock<Mutex<HashMap<String, &'static str>>> = OnceLock::new();
     let table = INTERNED.get_or_init(|| Mutex::new(HashMap::new()));
-    let mut guard = table.lock().expect("edition intern mutex poisoned");
+    let mut guard = table.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
     if let Some(existing) = guard.get(edition) {
         return existing;
     }

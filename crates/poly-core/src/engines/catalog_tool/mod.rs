@@ -233,13 +233,17 @@ fn probe_cache() -> &'static Mutex<HashMap<String, Option<String>>> {
 /// Probe a binary's presence (and best-effort version), memoised for the process
 /// lifetime. `None` means the binary is not on `PATH`.
 fn probe_binary(binary: &str) -> Option<String> {
-    if let Some(cached) = probe_cache().lock().expect("probe cache poisoned").get(binary) {
+    if let Some(cached) = probe_cache()
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner)
+        .get(binary)
+    {
         return cached.clone();
     }
     let result = which::which(binary).ok().map(|_| version_of(binary));
     probe_cache()
         .lock()
-        .expect("probe cache poisoned")
+        .unwrap_or_else(std::sync::PoisonError::into_inner)
         .insert(binary.to_string(), result.clone());
     result
 }
@@ -728,7 +732,7 @@ fn warn_unavailable_once(name: &str, message: &str) {
     let first = SEEN
         .get_or_init(Default::default)
         .lock()
-        .expect("unavailable-tool set poisoned")
+        .unwrap_or_else(std::sync::PoisonError::into_inner)
         .insert(name.to_owned());
     if first {
         tracing::warn!(tool = name, "{message}");
