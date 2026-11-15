@@ -54,6 +54,10 @@ while [ $# -gt 0 ]; do
   shift
 done
 
+case "$INSTALL_DIR" in
+"" | -*) die "invalid install directory: '${INSTALL_DIR}'" ;;
+esac
+
 command -v curl >/dev/null 2>&1 || die "curl is required"
 command -v tar >/dev/null 2>&1 || die "tar is required"
 
@@ -101,6 +105,9 @@ if [ "$VERSION" = "latest" ]; then
   esac
   [ -n "$VERSION" ] || die "could not resolve the latest release"
 fi
+
+printf '%s\n' "${VERSION#v}" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+([.-][0-9A-Za-z.]+)?$' ||
+  die "invalid version: ${VERSION}"
 
 tag="v${VERSION#v}"
 version="${tag#v}"

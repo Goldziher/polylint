@@ -130,6 +130,10 @@ runs:
           fi
         fi
         version="${version#v}"
+        if ! [[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+([.-][0-9A-Za-z.]+)?$ ]]; then
+          echo "::error::invalid poly version: $version" >&2
+          exit 1
+        fi
         install_dir="${RUNNER_TEMP}/poly-install"
         mkdir -p "$install_dir"
         {
@@ -150,18 +154,23 @@ runs:
       shell: bash
       env:
         POLY_INSTALL_DIR: ${{ steps.resolve.outputs.install-dir }}
+        POLY_RESOLVED_VERSION: ${{ steps.resolve.outputs.version }}
       run: |
         set -euo pipefail
         # --no-modify-path: this action wires PATH via $GITHUB_PATH below, so the
         # installer must not also edit the runner's shell profiles.
-        bash "${GITHUB_ACTION_PATH}/install.sh" --no-modify-path "${{ steps.resolve.outputs.version }}"
+        bash "${GITHUB_ACTION_PATH}/install.sh" --no-modify-path "$POLY_RESOLVED_VERSION"
 
     - shell: bash
-      run: echo "${{ steps.resolve.outputs.install-dir }}" >> "$GITHUB_PATH"
+      env:
+        POLY_INSTALL_DIR: ${{ steps.resolve.outputs.install-dir }}
+      run: echo "$POLY_INSTALL_DIR" >> "$GITHUB_PATH"
 
     - shell: bash
+      env:
+        POLY_INSTALL_DIR: ${{ steps.resolve.outputs.install-dir }}
       run: |
-        "${{ steps.resolve.outputs.install-dir }}/poly" --version
+        "$POLY_INSTALL_DIR/poly" --version
 
     - id: components-cache-key
       if: inputs.components != 'none'
