@@ -1,8 +1,9 @@
 //! Compiles a local schema and runs it over a document, with a retriever that never leaves the disk.
 
-use std::cell::RefCell;
 use std::collections::HashMap;
-use std::rc::Rc;
+use std::path::{Path, PathBuf};
+use std::sync::{Arc, Mutex, OnceLock};
+use std::time::SystemTime;
 
 use jsonschema::{Retrieve, Uri, Validator};
 use poly_engine_api::host_hooks::jsonschema_source::{Scope, file_uri};
@@ -32,45 +33,73 @@ impl Retrieve for LocalRetriever {
     }
 }
 
-type Compiled = Rc<Result<Validator, String>>;
+type Compiled = Arc<Result<Validator, String>>;
 
-thread_local! {
-    /// Compiled validators by schema path, bytes and cache directory. Compiling is the costly step
-    /// and a run validates many files against one schema; a validator is per thread, so nothing
-    /// here has to be shared across the rayon pool.
-    static COMPILED: RefCell<HashMap<String, Compiled>> = RefCell::new(HashMap::new());
+/// Most compiled schemas kept; the map is cleared when it fills.
+const MAX_COMPILED: usize = 64;
+
+/// What identifies one compiled schema: where it is, which directories its `$ref`s may read, and the
+/// modification time and length it had when compiled.
+#[derive(PartialEq, Eq, Hash)]
+struct CompiledKey {
+    schema: PathBuf,
+    root: PathBuf,
+    cache_dir: PathBuf,
+    modified: SystemTime,
+    len: u64,
+}
+
+/// Compiled validators, shared by every rayon worker: compiling is the costly step and a run
+/// validates many files against one schema. `Validator` is `Send + Sync`.
+fn compiled_memo() -> &'static Mutex<HashMap<CompiledKey, Compiled>> {
+    static MEMO: OnceLock<Mutex<HashMap<CompiledKey, Compiled>>> = OnceLock::new();
+    MEMO.get_or_init(Mutex::default)
 }
 
 /// Runs `check` with the validator compiled from the schema at `schema`, or with the reason it
 /// could not be compiled.
-pub(crate) fn with_validator<T>(
-    scope: &Scope,
-    schema: &std::path::Path,
-    check: impl FnOnce(Result<&Validator, &str>) -> T,
-) -> T {
-    let bytes = match std::fs::read(schema) {
-        Ok(bytes) => bytes,
-        Err(error) => return check(Err(&format!("cannot be read: {error}"))),
+pub(crate) fn with_validator<T>(scope: &Scope, schema: &Path, check: impl FnOnce(Result<&Validator, &str>) -> T) -> T {
+    let key = std::fs::metadata(schema)
+        .ok()
+        .and_then(|meta| Some((meta.modified().ok()?, meta.len())))
+        .map(|(modified, len)| CompiledKey {
+            schema: schema.to_path_buf(),
+            root: scope.root.clone(),
+            cache_dir: scope.cache_dir.clone(),
+            modified,
+            len,
+        });
+    let lock = || {
+        compiled_memo()
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
     };
-    let key = format!(
-        "{}\0{}\0{}",
-        schema.display(),
-        blake3::hash(&bytes).to_hex(),
-        scope.cache_dir.display()
-    );
-    let cached = COMPILED.with(|compiled| compiled.borrow().get(&key).cloned());
-    let compiled = cached.unwrap_or_else(|| {
-        let built = Rc::new(compile(scope, schema, &bytes));
-        COMPILED.with(|compiled| compiled.borrow_mut().insert(key, Rc::clone(&built)));
-        built
-    });
+    let cached = key.as_ref().and_then(|key| lock().get(key).cloned());
+    let compiled = match cached {
+        Some(compiled) => compiled,
+        None => {
+            let bytes = match std::fs::read(schema) {
+                Ok(bytes) => bytes,
+                Err(error) => return check(Err(&format!("cannot be read: {error}"))),
+            };
+            let built: Compiled = Arc::new(compile(scope, schema, &bytes));
+            if let Some(key) = key {
+                let mut memo = lock();
+                if memo.len() >= MAX_COMPILED {
+                    memo.clear();
+                }
+                memo.insert(key, Arc::clone(&built));
+            }
+            built
+        }
+    };
     match compiled.as_ref() {
         Ok(validator) => check(Ok(validator)),
         Err(reason) => check(Err(reason.as_str())),
     }
 }
 
-fn compile(scope: &Scope, schema: &std::path::Path, bytes: &[u8]) -> Result<Validator, String> {
+fn compile(scope: &Scope, schema: &Path, bytes: &[u8]) -> Result<Validator, String> {
     let value = schema_value(schema, bytes)?;
     jsonschema::options()
         .with_retriever(LocalRetriever { scope: scope.clone() })
@@ -83,7 +112,7 @@ fn compile(scope: &Scope, schema: &std::path::Path, bytes: &[u8]) -> Result<Vali
 /// extension JSON, falling back to YAML when the text does not open like JSON (`{` or `[`).
 ///
 /// A `.json` file never falls back, so its real JSON error is not masked by a lenient YAML read.
-fn schema_value(schema: &std::path::Path, bytes: &[u8]) -> Result<Value, String> {
+fn schema_value(schema: &Path, bytes: &[u8]) -> Result<Value, String> {
     let extension = |wanted: &[&str]| {
         schema
             .extension()
