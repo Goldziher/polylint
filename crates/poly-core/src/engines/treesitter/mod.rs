@@ -110,6 +110,7 @@ const LEAVE_UNTOUCHED: &[&str] = &[
     "properties",
     "po",
     "diff",
+    "proguard",
 ];
 
 /// Grammar names whose block structure **is** the leading whitespace: a line's
@@ -207,6 +208,10 @@ impl Engine for TreeSitterEngine {
 /// own path-based detection (so `.sh` → `bash`), then the explicit
 /// [`Language::Other`] id, then the tier-1 [`Language::id`].
 fn grammar_name(src: &SourceFile) -> Option<String> {
+    // The pack resolves every `*.pro` to Prolog; poly's own detection already decided this is ProGuard.
+    if matches!(&src.language, Language::Other(name) if name == crate::language::PROGUARD) {
+        return Some(crate::language::PROGUARD.to_owned());
+    }
     let path = src.path.to_string_lossy();
     if let Some(name) = detect_language(&path) {
         return Some(name.to_string());

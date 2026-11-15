@@ -1563,3 +1563,13 @@ fn deeply_nested_rust_macros_format_on_a_small_stack_in_linear_time() {
         "token-tree parent lookups must not be quadratic"
     );
 }
+
+#[test]
+fn proguard_rules_are_left_untouched_not_formatted_as_prolog() {
+    let input = "-keep class com.example.** { *; }   \n\n\n-dontwarn okio.**\n";
+    let s = src("consumer-rules.pro", Language::Other("proguard".into()), input);
+    assert!(matches!(
+        TreeSitterEngine.format(&s, &cfg(4)).unwrap(),
+        FormatOutput::Unchanged
+    ));
+}

@@ -182,6 +182,9 @@ impl Engine for QualityEngine {
 /// grammar a file is parsed with and the grammar coverage was claimed for
 /// can never disagree.
 fn grammar_name(src: &SourceFile) -> Option<String> {
+    if matches!(&src.language, Language::Other(name) if name == crate::language::PROGUARD) {
+        return Some(crate::language::PROGUARD.to_owned());
+    }
     let path = src.path.to_string_lossy();
     if let Some(name) = detect_language(&path) {
         return Some(name.to_owned());

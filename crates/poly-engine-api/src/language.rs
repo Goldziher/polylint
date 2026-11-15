@@ -246,6 +246,9 @@ impl Language {
             if is_starlark_name(&lower) {
                 return Some(Language::Other("starlark".to_string()));
             }
+            if is_proguard_name(&lower) {
+                return Some(Language::Other(PROGUARD.to_owned()));
+            }
         }
         None
     }
@@ -488,6 +491,17 @@ fn is_helm_template_file(path: &Path) -> bool {
         && path
             .parent()
             .is_some_and(|parent| parent.components().any(|c| c.as_os_str() == "templates"))
+}
+
+/// Language id of Android ProGuard / R8 keep-rule files; no grammar or engine exists for it.
+pub const PROGUARD: &str = "proguard";
+
+/// Android shrinker config. The tree-sitter pack maps every `*.pro` to Prolog, which
+/// mislabels `proguard-rules.pro` and `consumer-rules.pro`; genuine Prolog keeps `.pro`.
+fn is_proguard_name(lower: &str) -> bool {
+    lower
+        .strip_suffix(".pro")
+        .is_some_and(|stem| stem.contains("proguard") || stem.contains("consumer-rules"))
 }
 
 /// Bazel's extensionless and dot-suffixed Starlark files, which no extension
@@ -744,6 +758,21 @@ mod tests {
             Language::from_path(std::path::Path::new("Foo.cs")),
             Some(Language::CSharp)
         );
+    }
+
+    #[test]
+    fn android_shrinker_rules_are_proguard_not_prolog() {
+        let proguard = Some(Language::Other("proguard".to_string()));
+        for name in [
+            "proguard-rules.pro",
+            "consumer-rules.pro",
+            "app/Proguard-Android.PRO",
+            "android/lib/consumer-rules.pro",
+        ] {
+            assert_eq!(Language::from_path(Path::new(name)), proguard, "{name}");
+        }
+        assert_eq!(Language::from_path(Path::new("family.pro")), None);
+        assert_eq!(Language::from_path(Path::new("proguard.txt")), None);
     }
 
     #[test]
