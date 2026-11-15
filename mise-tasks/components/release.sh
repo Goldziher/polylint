@@ -1,10 +1,12 @@
 #!/usr/bin/env bash
 #MISE description="Release build of the downloadable components on alef's content-addressed plan (previous-lock, plan, build, package, lock)"
-#USAGE arg "<step>" help="Release step" { choices "previous-lock" "fetch-alef" "fetch-mise" "fetch-jq" "fetch-rustup-init" "plan" "build" "package" "lock"; }
+#USAGE arg "<step>" help="Release step" { choices "previous-lock" "public-keys" "fetch-alef" "fetch-mise" "fetch-jq" "fetch-rustup-init" "plan" "build" "package" "lock"; }
 #USAGE arg "[args]..." help="plan, build and package take <triple>; lock takes <plans> <records> <out>"
 # Release build of the downloadable components, on alef's content-addressed plan:
 #
-#   mise run components:release previous-lock                  fetch the lock the newest earlier release shipped
+#   mise run components:release previous-lock                  fetch the lock the newest earlier release shipped and
+#                                                              verify it (sha256sums.txt, attestation, signing keys)
+#   mise run components:release public-keys                    print alef.toml's trusted public keys as JSON {id: key}
 #   mise run components:release fetch-alef                     download and checksum-verify the musl alef release
 #                                                              binary (for the manylinux container); prints its path
 #   mise run components:release fetch-mise                     download and checksum-verify the musl mise release
@@ -58,13 +60,13 @@ export CARGO_PROFILE_RELEASE_LTO=thin
 # hash differently from the plan. RUSTFLAGS and CARGO_PROFILE_* are fingerprinted from the environment.
 EXTRA=(--extra "key-id=${KEY_ID}" --extra "image=${BUILD_IMAGE:-host}")
 
-STEP="${1:?usage: mise run components:release previous-lock|fetch-alef|fetch-mise|fetch-jq|fetch-rustup-init|plan|build|package|lock ...}"
+STEP="${1:?usage: mise run components:release previous-lock|public-keys|fetch-alef|fetch-mise|fetch-jq|fetch-rustup-init|plan|build|package|lock ...}"
 
 COMPONENTS_OUT="${ROOT_DIR}/target/components-release"
 PREVIOUS_LOCK="${COMPONENTS_OUT}/previous-lock.json"
 
 usage() {
-  echo "usage: mise run components:release previous-lock | fetch-alef | fetch-mise | fetch-jq | fetch-rustup-init | plan|build|package <triple> | lock <plans> <records> <out>" >&2
+  echo "usage: mise run components:release previous-lock | public-keys | fetch-alef | fetch-mise | fetch-jq | fetch-rustup-init | plan|build|package <triple> | lock <plans> <records> <out>" >&2
   exit 1
 }
 
@@ -263,6 +265,71 @@ build_rows() {
   jq '[.rows[] | select(.action == "build")] | length' "$1"
 }
 
+# alef.toml's trusted public keys ([crates.component_distribution.public_keys]) as a JSON object {id: key}.
+# Plain awk: the manylinux container has no tomllib.
+public_keys() {
+  awk '
+    /^\[/ { in_keys = ($0 == "[crates.component_distribution.public_keys]"); next }
+    in_keys && /^[A-Za-z0-9_.-]+[[:space:]]*=[[:space:]]*"[^"]*"/ {
+      id = $0; sub(/[[:space:]]*=.*/, "", id)
+      key = $0; sub(/^[^"]*"/, "", key); sub(/".*$/, "", key)
+      printf "%s\t%s\n", id, key
+    }
+  ' alef.toml | jq -Rn '[inputs | split("\t") | {(.[0]): .[1]}] | add // {}'
+}
+
+# The digest sha256sums.txt records for <asset>, or nothing. Its paths carry the ./ that `find .` wrote.
+listed_sha256() {
+  awk -v a="$2" '{ n = $NF; sub(/^[*]/, "", n); sub(/^\.\//, "", n); if (n == a) print $1 }' "$1" | head -1
+}
+
+# Check a previous release's lock before anything reuses its entries: its bytes must be the ones that
+# release's sha256sums.txt lists, its build-provenance attestation (releases since attestations began)
+# must verify against this repository's publish workflow, and every key an entry is signed with must be a
+# key alef.toml still trusts, with the same value, not just the same id.
+verify_previous_lock() {
+  local tag="$1" lock="$2" scratch expected actual digest attested keys
+  scratch="$(mktemp -d)"
+  gh release download "${tag}" --repo "${GITHUB_REPOSITORY}" --pattern sha256sums.txt --dir "${scratch}"
+  expected="$(listed_sha256 "${scratch}/sha256sums.txt" "${LOCK_ASSET}")"
+  rm -rf "${scratch}"
+  actual="$(sha256_of "${lock}")"
+  [[ -n "${expected}" && "${expected}" == "${actual}" ]] || {
+    echo "components-release: ${tag}'s ${LOCK_ASSET} is sha256:${actual}; its sha256sums.txt lists '${expected}'" >&2
+    exit 1
+  }
+  digest="sha256:${actual}"
+  # Only a 404 means "no attestation"; any other failure (auth, network) must not read as one.
+  if attested="$(gh api "repos/${GITHUB_REPOSITORY}/attestations/${digest}" --jq '.attestations | length' 2>&1)"; then
+    :
+  elif [[ "${attested}" == *'"status":"404"'* ]]; then
+    attested=0
+  else
+    echo "components-release: cannot list attestations for ${tag}'s ${LOCK_ASSET}: ${attested}" >&2
+    exit 1
+  fi
+  if [[ "${attested}" -gt 0 ]]; then
+    gh attestation verify "${lock}" --repo "${GITHUB_REPOSITORY}" \
+      --signer-workflow "${GITHUB_REPOSITORY}/.github/workflows/publish.yaml" >/dev/null || {
+      echo "components-release: ${tag}'s ${LOCK_ASSET} has an attestation that does not verify" >&2
+      exit 1
+    }
+    echo "previous lock: attestation verified"
+  else
+    echo "::warning::${tag}'s ${LOCK_ASSET} has no build-provenance attestation (released before attestations); checked against its sha256sums.txt only"
+  fi
+  keys="$(public_keys)"
+  jq -e --argjson keys "${keys}" '
+    . as $lock
+    | ($lock.artifacts | length) > 0
+    and all($lock.artifacts[]; .key_id as $k | ($keys[$k] // null) != null and $lock.public_keys[$k] == $keys[$k])
+  ' "${lock}" >/dev/null || {
+    echo "components-release: ${tag}'s lock signs entries with a key alef.toml does not trust (by id and value)" >&2
+    jq '{public_keys, key_ids: ([.artifacts[].key_id] | unique)}' "${lock}" >&2
+    exit 1
+  }
+}
+
 # The newest other published release that shipped a lock decides: an older one says nothing about
 # what the newest shipped. The file is `{}` when there is none, so every component builds. A failing
 # gh call (auth, network) is an error, never "no lock".
@@ -284,6 +351,7 @@ previous_lock() {
     assets="$(gh release view "${tag}" --repo "${GITHUB_REPOSITORY}" --json assets --jq '.assets[].name')"
     if grep -qx "${LOCK_ASSET}" <<<"${assets}"; then
       gh release download "${tag}" --repo "${GITHUB_REPOSITORY}" --pattern "${LOCK_ASSET}" --dir "${scratch}"
+      verify_previous_lock "${tag}" "${scratch}/${LOCK_ASSET}"
       mv "${scratch}/${LOCK_ASSET}" "${PREVIOUS_LOCK}"
       echo "previous lock: ${tag}"
       break
@@ -303,6 +371,11 @@ has_previous_lock() {
 
 if [[ "${STEP}" == "previous-lock" ]]; then
   previous_lock
+  exit 0
+fi
+
+if [[ "${STEP}" == "public-keys" ]]; then
+  public_keys
   exit 0
 fi
 

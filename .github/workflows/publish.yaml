@@ -342,6 +342,10 @@ jobs:
     if: >-
       !inputs.plugins-only && (needs.meta.outputs.release_assets_exist != 'true')
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      # Reads the previous release lock's attestation before reusing its entries.
+      attestations: read
     steps:
       - name: Checkout
         uses: actions/checkout@v7
@@ -705,14 +709,21 @@ jobs:
             exit 1
           }
           prefix="https://github.com/${GITHUB_REPOSITORY}/releases/download/"
-          jq -e --argjson total "$total" --argjson built "$to_build" --arg prefix "$prefix" --arg tag_prefix "${prefix}${RELEASE_TAG}/" '
+          # The lock must carry exactly alef.toml's trusted keys, by value: a lock whose key id matches
+          # but whose key does not would make every binary embedding it trust a key nobody reviewed.
+          keys="$(mise run components:release public-keys)"
+          signing="$(sed -n 's/^KEY_ID="\(.*\)"$/\1/p' mise-tasks/components/release.sh)"
+          jq -e --argjson total "$total" --argjson built "$to_build" --arg prefix "$prefix" --arg tag_prefix "${prefix}${RELEASE_TAG}/" \
+            --argjson keys "$keys" --arg signing "$signing" '
             (.artifacts | length) == $total
             and ([.artifacts[] | select(.url | startswith($tag_prefix))] | length) == $built
-            and ((.public_keys | keys) == ["poly-release-1"])
-            and all(.artifacts[]; .key_id == "poly-release-1" and (.url | startswith($prefix)))
+            and ($keys | has($signing))
+            and (.public_keys == $keys)
+            and all(.artifacts[]; .key_id as $k | ($keys | has($k)) and (.url | startswith($prefix)))
+            and all(.artifacts[] | select(.url | startswith($tag_prefix)); .key_id == $signing)
           ' poly-components.lock.json >/dev/null || {
             echo "::error::component lock is incomplete, unsigned, or does not match the plan ($total entries, $to_build built for $RELEASE_TAG)"
-            jq '{keys: (.public_keys | keys), artifacts: [.artifacts[] | {c: .identity.component, t: .identity.target, key: .key_id, url}]}' poly-components.lock.json
+            jq '{public_keys, artifacts: [.artifacts[] | {c: .identity.component, t: .identity.target, key: .key_id, url}]}' poly-components.lock.json
             exit 1
           }
           echo "lock carries $total signed artifacts ($to_build built for $RELEASE_TAG, $((total - to_build)) reused)"
