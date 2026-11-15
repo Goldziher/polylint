@@ -32,8 +32,9 @@
 //! hard error so typos are caught early.
 
 use std::borrow::Cow;
+use std::collections::HashMap;
 use std::str::FromStr as _;
-use std::sync::{Arc, OnceLock};
+use std::sync::{Arc, Mutex};
 
 use mago_allocator::LocalArena;
 use mago_database::file::File;
@@ -67,72 +68,30 @@ fn file_name(src: &SourceFile) -> Vec<u8> {
         .map_or_else(|| b"input.php".to_vec(), |name| name.as_encoded_bytes().to_vec())
 }
 
-/// Lint a single PHP source file.
-///
-/// `registry_cache` is the engine's [`OnceLock`]-backed registry slot.  On the
-/// first call the registry is built and stored; subsequent calls reuse the
-/// cached [`Arc<RuleRegistry>`] so [`RuleRegistry::build`] runs at most once
-/// per engine instance (i.e. once per language per run in production).
-///
-/// All arena-backed objects are scoped to this function so the engine struct
-/// itself stays `Send + Sync` even though [`LocalArena`] is `!Sync`.
-pub(super) fn lint_php(
-    src: &SourceFile,
-    cfg: &EngineConfig,
-    registry_cache: &OnceLock<Arc<RuleRegistry>>,
-) -> anyhow::Result<Vec<Diagnostic>> {
-    let arena = LocalArena::new();
+/// Everything derived from a config's options that does not vary per file.
+pub(super) struct LintPlan {
+    registry: Arc<RuleRegistry>,
+    selection: RuleSelection,
+    php_version: PHPVersion,
+}
 
-    let file = File::ephemeral(Cow::Owned(file_name(src)), Cow::Owned(src.content.as_bytes().to_vec()));
+/// Plans keyed by [`EngineConfig::fingerprint`]: nested `poly.toml` files can hand one engine
+/// instance different `select`/`ignore`/`php_version`, each needing its own registry.
+pub(super) type PlanCache = Mutex<HashMap<[u8; 32], Arc<LintPlan>>>;
 
-    let program = parse_file(&arena, &file);
-    let mut diags: Vec<Diagnostic> = Vec::new();
+/// Most distinct configurations cached before the map is reset.
+const PLAN_CACHE_CAP: usize = 32;
 
-    for error in program.errors {
-        let mago_span = error.span();
-        let span = convert_span(mago_span, &file);
-        diags.push(Diagnostic {
-            engine: "mago".to_string(),
-            code: Some(parse_error_code(error)),
-            severity: Severity::Error,
-            title: error.to_string(),
-            description: None,
-            span: Some(span),
-            url: None,
-            fix: vec![],
-            metadata: Default::default(),
-        });
-    }
-
-    let selection = RuleSelection::from_options(cfg);
-    let php_version = rules::parse_php_version(cfg)?.unwrap_or(PHP_VERSION);
-    let integrations = parse_integrations(cfg)?;
-
-    let settings = Settings {
-        php_version,
-        integrations,
-        ..Settings::default()
-    };
-
-    let only_list: Option<Vec<String>> = if selection.is_empty() {
-        None
-    } else {
-        Some(build_only_list(&selection, php_version, integrations)?)
-    };
-    let only_ref: Option<&[String]> = only_list.as_deref();
-
-    // NOTE: The `OnceLock` initialises with the FIRST call's `settings` and
-    let registry = registry_cache
-        .get_or_init(|| Arc::new(RuleRegistry::build(&settings, only_ref, false)))
-        .clone();
+fn build_plan(cfg: &EngineConfig) -> anyhow::Result<LintPlan> {
+    let registry = Arc::clone(&plan.registry);
 
     let names = NameResolver::new(&arena).resolve(program);
-    let linter = Linter::from_registry(&arena, registry, php_version);
+    let linter = Linter::from_registry(&arena, registry, plan.php_version);
     let issues = linter.lint(&file, program, &names);
     let file_id = file.file_id();
 
     for issue in issues.iter() {
-        let severity = issue_severity(issue, &selection);
+        let severity = issue_severity(issue, selection);
         let span = issue.primary_span().map(|s| convert_span(s, &file));
         let fix = extract_safe_fixes(issue, file_id, &src.content);
         let description = issue

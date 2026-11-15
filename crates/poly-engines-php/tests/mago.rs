@@ -261,7 +261,7 @@ fn format_option_function_brace_style_same_line() {
 /// Two consecutive `lint` calls on the same [`MagoEngine`] instance with
 /// identical config must produce identical diagnostic lists.
 ///
-/// This validates that the [`OnceLock<Arc<RuleRegistry>>`] cache is
+/// This validates that the per-configuration plan cache is
 /// transparent: the second call reuses the cached registry without changing
 /// output.
 #[test]
@@ -542,4 +542,32 @@ fn file_name_diagnostic_names_the_real_file() {
         "the file-name rule must have fired and named b.php: {text}"
     );
     assert!(!text.contains("input.php"), "placeholder file name leaked: {text}");
+}
+
+/// One engine instance, two configs: each must get a registry built from its own `select`.
+#[test]
+fn different_configs_on_one_instance_get_different_registries() {
+    let engine = MagoEngine::default();
+    let src = make_src("multi.php", MULTI_CATEGORY_PHP);
+    let codes = |cfg: &EngineConfig| -> Vec<String> {
+        engine
+            .lint(&src, cfg)
+            .unwrap()
+            .into_iter()
+            .filter_map(|d| d.code)
+            .collect()
+    };
+
+    let correctness = codes(&cfg_from_str(r#"select = ["correctness"]"#));
+    let security = codes(&cfg_from_str(r#"select = ["security"]"#));
+    let default = codes(&engine_cfg());
+
+    assert!(correctness.contains(&"strict-types".to_string()), "{correctness:?}");
+    assert!(
+        !correctness.contains(&"no-debug-symbols".to_string()),
+        "{correctness:?}"
+    );
+    assert!(security.contains(&"no-debug-symbols".to_string()), "{security:?}");
+    assert!(!security.contains(&"strict-types".to_string()), "{security:?}");
+    assert!(default.contains(&"strict-types".to_string()) && default.contains(&"no-debug-symbols".to_string()));
 }
