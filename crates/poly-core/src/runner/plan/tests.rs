@@ -86,6 +86,23 @@ fn a_config_without_enabled_tools_plans_no_catalog_engines() {
     }
 }
 
+/// A catalog tool that names no language applies to every language once enabled, instead of
+/// matching none of them.
+#[test]
+fn a_language_agnostic_catalog_tool_is_planned_for_every_language() {
+    let config = Config {
+        tools: toml::from_str("[editorconfig-checker]\nenabled = true\n").expect("valid tool config"),
+        ..Config::default()
+    };
+    for language in [Language::Python, Language::Rust, Language::Markdown] {
+        assert_eq!(
+            catalog_engines_for(&language, &config, Kind::Lint).len(),
+            1,
+            "editorconfig-checker should lint {language:?}"
+        );
+    }
+}
+
 #[test]
 fn tier_one_formatter_prevents_catalog_formatter_chaining() {
     let config = Config {

@@ -635,10 +635,13 @@ fn catalog_engines_for(language: &Language, config: &Config, kind: Kind) -> Vec<
         let Some(tool) = catalog.tool(name) else {
             continue;
         };
-        let serves_language = tool
-            .languages
-            .iter()
-            .any(|catalog_lang| &Language::from_catalog_name(catalog_lang) == language);
+        // A tool that names no language (a spell checker, editorconfig-checker, dprint) is
+        // language-agnostic: enabling it applies it to every file the run discovers.
+        let serves_language = tool.languages.is_empty()
+            || tool
+                .languages
+                .iter()
+                .any(|catalog_lang| &Language::from_catalog_name(catalog_lang) == language);
         if !serves_language {
             continue;
         }

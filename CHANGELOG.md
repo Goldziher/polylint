@@ -19,6 +19,10 @@ binary drives lint, format, hooks, and commit checks from one `poly.toml`.
 - **`[discovery] max_file_size`.** A file larger than this many bytes (default 32 MiB, `0` for no limit) is not read and
   is reported as skipped (`file too large`), which counts toward `--deny-skips`. (#207)
 
+### Fixed
+
+- **Language-agnostic catalog tools now run when enabled.** A catalog tool that names no language (codespell, typos, proselint, dprint, editorconfig-checker and similar) matched no file, so `[tools.<name>] enabled = true` did nothing. It now applies to every discovered file.
+
 ## [0.35.0] - 2026-11-15
 
 ### Added
