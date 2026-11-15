@@ -132,6 +132,8 @@ mod tests {
         assert_eq!(normalize_newlines("x <- 1\ny <- 2\n".to_string()), "x <- 1\ny <- 2\n");
     }
 
+    // Only the unix fake-tool tests build a spec.
+    #[cfg(unix)]
     fn spec_for(binary: &'static str) -> super::super::spec::ToolSpec {
         super::super::spec::ToolSpec {
             engine_name: "test-fake",

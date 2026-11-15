@@ -186,7 +186,10 @@ fn extract_tree_capped<R: Read + Seek>(source: R, format: Format, dest: &Path, l
             for index in 0..archive.len() {
                 let mut file = archive.by_index(index).context("reading a zip entry")?;
                 let Some(path) = file.enclosed_name() else {
-                    bail!("the zip entry `{}` escapes the archive root", String::from_utf8_lossy(file.name_raw()));
+                    bail!(
+                        "the zip entry `{}` escapes the archive root",
+                        String::from_utf8_lossy(file.name_raw())
+                    );
                 };
                 if file.is_symlink() {
                     bail!("`{}` in the archive is a symlink", path.display());
@@ -453,7 +456,7 @@ mod tests {
                         path.strip_prefix(root)
                             .expect("under root")
                             .to_string_lossy()
-                            .into_owned(),
+                            .replace('\\', "/"),
                     );
                 }
             }

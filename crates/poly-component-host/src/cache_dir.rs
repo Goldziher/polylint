@@ -102,8 +102,9 @@ fn require_private(path: &Path) -> anyhow::Result<()> {
         Some(Violation::SharedWrite) => {
             // Our own directory that is merely shared (a 0775 CI mount): tighten it, and refuse it if
             // that fails, since a component cached there could be replaced by another user.
-            std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o700))
-                .map_err(|error| refuse(Violation::SharedWrite.describe()).context(format!("tightening failed: {error}")))?;
+            std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o700)).map_err(|error| {
+                refuse(Violation::SharedWrite.describe()).context(format!("tightening failed: {error}"))
+            })?;
             match check(path)? {
                 None => Ok(()),
                 Some(left) => Err(refuse(left.describe())),
@@ -231,6 +232,9 @@ mod tests {
             return;
         }
         let error = resolve(PathBuf::from("/tmp"), None).err().expect("refused");
-        assert!(format!("{error:#}").contains("refusing the component cache"), "{error:#}");
+        assert!(
+            format!("{error:#}").contains("refusing the component cache"),
+            "{error:#}"
+        );
     }
 }
