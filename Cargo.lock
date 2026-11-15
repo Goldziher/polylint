@@ -3378,6 +3378,7 @@ dependencies = [
  "dunce",
  "etcetera",
  "poly-buildinfo",
+ "rustc-hash 2.1.3",
  "rustix",
  "tempfile",
  "toml 1.2.1+spec-1.1.0",
@@ -3408,6 +3409,7 @@ dependencies = [
  "insta",
  "json5",
  "libc",
+ "mimalloc",
  "owo-colors",
  "poly-buildinfo",
  "poly-cache",
@@ -3441,6 +3443,7 @@ dependencies = [
  "alef-component-abi",
  "alef-component-runtime",
  "anyhow",
+ "criterion",
  "flate2",
  "hex",
  "poly-component-index",
@@ -3473,6 +3476,7 @@ dependencies = [
 name = "poly-component-protocol"
 version = "0.35.0"
 dependencies = [
+ "criterion",
  "poly-component-protocol",
  "proptest",
  "rmp-serde",

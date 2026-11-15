@@ -219,7 +219,7 @@ mod tests {
 
     #[test]
     fn insert_at_start_and_end() {
-        let edits = vec![edit(0, 0, "<"), edit(3, 3, ">")];
+        let edits = [edit(0, 0, "<"), edit(3, 3, ">")];
         let groups: Vec<&[Edit]> = edits.chunks(1).collect();
         let (result, applied) = apply_edits("abc", &groups).unwrap();
         assert_eq!(result, "<abc>");

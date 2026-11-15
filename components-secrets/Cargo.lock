@@ -3446,6 +3446,7 @@ dependencies = [
  "dunce",
  "etcetera 0.11.0",
  "poly-buildinfo",
+ "rustc-hash 2.1.3",
  "rustix",
  "toml 1.2.1+spec-1.1.0",
  "tracing",

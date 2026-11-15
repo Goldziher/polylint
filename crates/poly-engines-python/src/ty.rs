@@ -38,7 +38,6 @@ use poly_engine_api::engine::{
     WireSelection,
 };
 use poly_engine_api::language::Language;
-use rayon::prelude::*;
 use ruff_db::Db as SourceDb;
 use ruff_db::files::{File, system_path_to_file};
 use ruff_db::system::SystemPathBuf;
@@ -220,25 +219,36 @@ fn check_parallel(
     by_file: &FxHashMap<File, PathBuf>,
     threads: usize,
 ) -> anyhow::Result<Vec<Vec<Reported>>> {
-    let pool = rayon::ThreadPoolBuilder::new()
-        .num_threads(threads)
-        .thread_name(|index| format!("poly-ty-{index}"))
-        .stack_size(ruff_db::STACK_SIZE)
-        .build()
-        .context("cannot start the ty worker pool")?;
-    let results: Vec<(usize, anyhow::Result<Vec<Reported>>)> = pool.install(|| {
-        order
-            .par_iter()
-            .enumerate()
-            .map_init(
-                || db.clone(),
-                |db, (index, file)| {
-                    let checked = salsa::Cancelled::catch(AssertUnwindSafe(|| check_one(db, *file, by_file)))
-                        .unwrap_or_else(|cancelled| Err(anyhow!("ty: the check was cancelled: {cancelled}")));
-                    (index, checked)
-                },
-            )
-            .collect()
-    });
+    let next = std::sync::atomic::AtomicUsize::new(0);
+    let clones: Vec<TyDb> = (0..threads).map(|_| db.clone()).collect();
+    let mut results: Vec<(usize, anyhow::Result<Vec<Reported>>)> = Vec::with_capacity(order.len());
+    std::thread::scope(|scope| -> anyhow::Result<()> {
+        let next = &next;
+        let mut workers = Vec::with_capacity(threads);
+        for (index, worker_db) in clones.into_iter().enumerate() {
+            let worker = std::thread::Builder::new()
+                .name(format!("poly-ty-{index}"))
+                .stack_size(ruff_db::STACK_SIZE)
+                .spawn_scoped(scope, move || {
+                    let mut done = Vec::new();
+                    loop {
+                        let position = next.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+                        let Some(file) = order.get(position) else { break };
+                        let checked =
+                            salsa::Cancelled::catch(AssertUnwindSafe(|| check_one(&worker_db, *file, by_file)))
+                                .unwrap_or_else(|cancelled| Err(anyhow!("ty: the check was cancelled: {cancelled}")));
+                        done.push((position, checked));
+                    }
+                    done
+                })
+                .context("cannot start a ty worker")?;
+            workers.push(worker);
+        }
+        for worker in workers {
+            let done = worker.join().map_err(|_| anyhow!("a ty worker panicked"))?;
+            results.extend(done);
+        }
+        Ok(())
+    })?;
     merge_by_index(results).into_iter().collect::<anyhow::Result<Vec<_>>>()
 }

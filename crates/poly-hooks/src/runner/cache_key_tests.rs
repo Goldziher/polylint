@@ -102,7 +102,7 @@ fn declared_modified_reports_only_files_changed_since_the_key() {
     let memo = DeclaredMemo::default();
     digest(&memo, dir.path());
     let clean = declared_modified(&memo, dir.path(), dir.path(), &txt()).expect("probe");
-    assert!(clean.is_empty());
+    assert_eq!(clean, Vec::<PathBuf>::new());
 
     std::fs::write(dir.path().join("b.txt"), "changed").unwrap();
     let dirty = declared_modified(&memo, dir.path(), dir.path(), &txt()).expect("probe");
@@ -116,5 +116,5 @@ fn a_dirty_but_unchanged_worktree_is_not_reported_as_modified() {
     let memo = DeclaredMemo::default();
     digest(&memo, dir.path());
     let probe = declared_modified(&memo, dir.path(), dir.path(), &txt()).expect("probe");
-    assert!(probe.is_empty());
+    assert_eq!(probe, Vec::<PathBuf>::new());
 }

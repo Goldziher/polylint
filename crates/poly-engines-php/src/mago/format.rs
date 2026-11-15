@@ -35,7 +35,7 @@ const PHP_VERSION: PHPVersion = PHPVersion::PHP84;
 /// of a second borrow.
 pub(super) fn with_arena<R>(f: impl FnOnce(&mago_allocator::LocalArena) -> R) -> R {
     thread_local! {
-        static ARENA: RefCell<mago_allocator::LocalArena> = RefCell::new(mago_allocator::LocalArena::new());
+        static ARENA: RefCell<mago_allocator::LocalArena> = const { RefCell::new(mago_allocator::LocalArena::new()) };
     }
     ARENA.with(|cell| match cell.try_borrow_mut() {
         Ok(mut arena) => {

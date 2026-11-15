@@ -30,7 +30,7 @@ fn nested_tree(root: &Path) {
         std::fs::create_dir_all(&path).expect("create dir");
         for file in 0..FILES_PER_DIR {
             let n = dir * FILES_PER_DIR + file;
-            let ext = if n % 2 == 0 { "rs" } else { "py" };
+            let ext = if n.is_multiple_of(2) { "rs" } else { "py" };
             std::fs::write(path.join(format!("f{file}.{ext}")), "x = 1\n").expect("write fixture");
         }
     }

@@ -39,17 +39,17 @@ const SCAN_LIMIT: usize = 8000;
 /// `tests/invalid_utf8.rs` pins.
 pub(crate) fn is_binary(bytes: &[u8]) -> bool {
     let window = &bytes[..bytes.len().min(SCAN_LIMIT)];
-    let mut words = window.chunks_exact(8);
+    let (words, remainder) = window.as_chunks::<8>();
     // Exact for "some byte is zero": the borrow only reaches a byte's high bit
     // from a zero byte or from a lower byte that already borrowed, and the first
     // zero byte in a word has no lower zero to borrow from.
     const LOW: u64 = 0x0101_0101_0101_0101;
     const HIGH: u64 = 0x8080_8080_8080_8080;
-    let word_has_nul = words.any(|chunk| {
-        let word = u64::from_ne_bytes(chunk.try_into().unwrap_or_default());
+    let word_has_nul = words.iter().any(|chunk| {
+        let word = u64::from_ne_bytes(*chunk);
         word.wrapping_sub(LOW) & !word & HIGH != 0
     });
-    word_has_nul || words.remainder().contains(&0)
+    word_has_nul || remainder.contains(&0)
 }
 
 #[cfg(test)]

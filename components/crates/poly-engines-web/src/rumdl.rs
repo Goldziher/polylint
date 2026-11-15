@@ -503,7 +503,8 @@ const RULE_SET_MEMO_CAP: usize = 64;
 /// The [`RuleSet`] for `cfg` and `language`, built once per distinct config and flavor: building it
 /// constructs every rumdl rule, which per file dominated linting a small document.
 fn rule_set(cfg: &EngineConfig, language: &Language) -> Arc<RuleSet> {
-    static MEMO: LazyLock<Mutex<HashMap<([u8; 32], bool), Arc<RuleSet>>>> = LazyLock::new(Mutex::default);
+    type MemoKey = ([u8; 32], bool);
+    static MEMO: LazyLock<Mutex<HashMap<MemoKey, Arc<RuleSet>>>> = LazyLock::new(Mutex::default);
     let key = (cfg.fingerprint(), *language == Language::Mdx);
     if let Some(hit) = MEMO.lock().unwrap_or_else(PoisonError::into_inner).get(&key) {
         return Arc::clone(hit);

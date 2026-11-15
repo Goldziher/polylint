@@ -50,10 +50,12 @@ pub(super) struct DeclaredSet {
 /// the tree and rehashed every file. One memo lives per priority group: a hook
 /// that rewrites files in an earlier group cannot leave a later group keyed on
 /// stale content.
+type SetMap = HashMap<(String, PathBuf), Option<Arc<DeclaredSet>>>;
+
 #[derive(Default)]
 pub(super) struct DeclaredMemo {
     listings: Mutex<HashMap<PathBuf, Arc<Vec<PathBuf>>>>,
-    sets: Mutex<HashMap<(String, PathBuf), Option<Arc<DeclaredSet>>>>,
+    sets: Mutex<SetMap>,
     list_calls: AtomicUsize,
     hash_passes: AtomicUsize,
 }

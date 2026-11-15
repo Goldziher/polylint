@@ -93,7 +93,8 @@ pub(super) fn excluded(path: &Path, cfg: &EngineConfig) -> bool {
 /// The compiled glob set for `patterns`, built once per distinct pattern list. The memo is cleared
 /// when it outgrows [`EXCLUDE_MEMO_CAP`], which a run's handful of configs never reach.
 fn exclude_set(patterns: &[&str]) -> Option<Arc<globset::GlobSet>> {
-    static MEMO: OnceLock<Mutex<HashMap<Vec<String>, Option<Arc<globset::GlobSet>>>>> = OnceLock::new();
+    type Compiled = Option<Arc<globset::GlobSet>>;
+    static MEMO: OnceLock<Mutex<HashMap<Vec<String>, Compiled>>> = OnceLock::new();
     let key: Vec<String> = patterns.iter().map(|p| (*p).to_owned()).collect();
     let memo = MEMO.get_or_init(Mutex::default);
     if let Some(hit) = memo.lock().unwrap_or_else(PoisonError::into_inner).get(&key) {
