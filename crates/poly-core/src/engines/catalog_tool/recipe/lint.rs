@@ -21,7 +21,11 @@ use crate::engine::{Diagnostic, Edit, SourceFile, Span};
 /// The outcome of one invocation, shared by everything that asks for it.
 type InvocationCell = Arc<OnceLock<Outcome>>;
 
-pub(super) static INVOCATIONS: Memo<String, InvocationCell> = Memo::new();
+pub(super) static INVOCATIONS: Memo<String, InvocationCell> = Memo::with_settled(invocation_settled);
+
+fn invocation_settled(cell: &InvocationCell) -> bool {
+    cell.get().is_some()
+}
 
 /// One answer per input file, in order.
 pub(in crate::engines::catalog_tool) type LintResults = Vec<anyhow::Result<Vec<Diagnostic>>>;

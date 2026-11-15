@@ -111,7 +111,14 @@ pub(super) static DIGESTS: Memo<(PathBuf, Vec<String>), String> = Memo::new();
 /// root, and the tree does not change underneath it.
 pub(super) fn dependency_digest(root: &Path, globs: &[String]) -> String {
     let key = (root.to_path_buf(), globs.to_vec());
-    DIGESTS.get_or_insert_with(key, || compute_digest(root, globs))
+    if let Some(known) = DIGESTS.get(&key) {
+        return known;
+    }
+    // Computed outside the lock: a duplicate computation is harmless and
+    // returns the same digest.
+    let digest = compute_digest(root, globs);
+    DIGESTS.insert(key, digest.clone());
+    digest
 }
 
 fn compute_digest(root: &Path, globs: &[String]) -> String {

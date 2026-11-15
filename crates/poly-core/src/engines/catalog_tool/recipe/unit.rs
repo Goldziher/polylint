@@ -364,7 +364,11 @@ pub(super) fn dependencies_in_place(root: &Path) -> bool {
 /// Outcome of one root's prepare step, shared by everything that asks.
 type Prepared = Arc<OnceLock<Result<(), String>>>;
 
-pub(super) static PREPARED: Memo<String, Prepared> = Memo::new();
+pub(super) static PREPARED: Memo<String, Prepared> = Memo::with_settled(prepared_settled);
+
+fn prepared_settled(cell: &Prepared) -> bool {
+    cell.get().is_some()
+}
 
 /// Run `step` once per `(root, argv)` for the run, however many tools or
 /// files ask.
