@@ -146,12 +146,12 @@ Two of them carry poly's lint coverage for languages no tier-1 backend reaches:
   (`kinds::has_table`) — Python, Rust, Go, JavaScript, TypeScript, TSX, Java, Kotlin, C, C++,
   C#, Ruby Other grammars (Zig, Swift, Dart, Gleam, Elixir, PHP, Nix, Scala, Lua, R) still *report* the line-count
   floor and get the plain `no lint rules for <language>` skip.
-- **`poly-engines-astgrep/src/builtin/` — the built-in ast-grep rule pack (ADR 0029).** 30 rules across 9
+- **`poly-engines-astgrep/src/builtin/` — the built-in ast-grep rule pack (ADR 0029).** 42 rules across 9
   languages (C#, Elixir, Go, Java, Kotlin, Python, Ruby, Rust, Swift), each a YAML file embedded
   with `include_str!` and compiled once into a `OnceLock`. Pack rules go through the same
   `ast_grep_config::from_yaml_string` path as user rules and sit **beneath** them — a user rule
   with the same `id` replaces the pack's outright. Each rule authors its own default `severity:`,
-  including `off`; 17 of the 30 ship `off`. `[engines.astgrep]` `select`/`extend_select`/`ignore`
+  including `off`; 26 of the 42 ship `off`. `[engines.astgrep]` `select`/`extend_select`/`ignore`
   and `[engines.astgrep.rules.<id>] level` move any of them; `builtin_pack = false` in the same
   table disables the pack wholesale, and `rule_dirs` names the user rule directories. A
   rule whose findings concentrate in generated or test code declares its own default path

@@ -72,7 +72,7 @@ Four engines apply to every language regardless of tier (`typos` only when enabl
   like a test that the language's test runner will not collect (`parser.test.py` under
   pytest) — on for Python, Go and Ruby, off for JavaScript/TypeScript. Configure under
   `[engines.quality]` / `[engines.quality.lang.<lang>]`.
-- **`astgrep`** — ast-grep pattern rules. poly embeds a **built-in rule pack** of 30 rules
+- **`astgrep`** — ast-grep pattern rules. poly embeds a **built-in rule pack** of 42 rules
   across 9 languages (C#, Elixir, Go, Java, Kotlin, Python, Ruby, Rust, Swift), on by
   default; 13 of them ship `severity: off`. User rules under `[engines.astgrep] rule_dirs`
   (default `.poly/rules`) layer on top and replace a pack rule sharing its `id`. Disable the

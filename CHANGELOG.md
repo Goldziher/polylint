@@ -9,6 +9,11 @@ binary drives lint, format, hooks, and commit checks from one `poly.toml`.
 
 ### Added
 
+- **Twelve more Go rules in the built-in ast-grep pack.** On by default at warning: `go-deprecated-import`
+  (`io/ioutil`, `golang.org/x/net/context`), `go-dot-import` and `go-rand-seed`. Opt-in: `go-blank-import-outside-main`,
+  `go-fmt-print-outside-main`, `go-time-sleep`, `go-panic-in-library`, `go-goroutine-without-recover`,
+  `go-naked-return`, `go-unsafe-import`, `go-http-default-client` and `go-waitgroup-add-in-goroutine`. The pack is now
+  42 rules. (#125)
 - **`[discovery] max_file_size`.** A file larger than this many bytes (default 32 MiB, `0` for no limit) is not read and
   is reported as skipped (`file too large`), which counts toward `--deny-skips`. (#207)
 
