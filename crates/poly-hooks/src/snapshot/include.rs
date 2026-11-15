@@ -134,8 +134,14 @@ fn remove_link(link: &Path) -> std::io::Result<()> {
 fn write_ledger(dir: &Path, linked: &[&str]) {
     let path = dir.join(INCLUDES_FILE);
     if linked.is_empty() {
-        let _ = std::fs::remove_file(path);
+        if let Err(error) = std::fs::remove_file(&path)
+            && error.kind() != std::io::ErrorKind::NotFound
+        {
+            tracing::warn!(path = %path.display(), %error, "could not remove the snapshot include ledger");
+        }
         return;
     }
-    let _ = std::fs::write(path, format!("{}\n", linked.join("\n")));
+    if let Err(error) = std::fs::write(&path, format!("{}\n", linked.join("\n"))) {
+        tracing::warn!(path = %path.display(), %error, "could not write the snapshot include ledger");
+    }
 }

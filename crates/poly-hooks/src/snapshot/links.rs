@@ -253,7 +253,9 @@ fn copy_preserving_mtime(source: &Path, dest: &Path) -> Result<(), Error> {
     if let Ok(mtime) = std::fs::metadata(source).and_then(|meta| meta.modified())
         && let Ok(file) = std::fs::File::options().write(true).open(dest)
     {
-        let _ = file.set_modified(mtime);
+        if let Err(error) = file.set_modified(mtime) {
+            tracing::warn!(path = %dest.display(), %error, "could not preserve the modification time of a snapshot copy");
+        }
     }
     Ok(())
 }
