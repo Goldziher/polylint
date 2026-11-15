@@ -653,6 +653,38 @@ fn swiftlint_lints_swift_through_sarif_with_the_static_linux_build() {
 }
 
 #[test]
+fn scalafmt_formats_scala_in_place_from_the_upstream_native_builds() {
+    let tool = Catalog::get().tool("scalafmt").expect("scalafmt");
+    assert_eq!(tool.languages, ["scala"]);
+    let (name, format) = tool.format_command().expect("a format command");
+    assert_eq!(name, "format");
+    assert_eq!(format.arguments, ["--quiet", "--mode", "any", "$FILES"]);
+    let recipe = recipe_of("scalafmt");
+    assert_eq!(recipe.config_files, [".scalafmt.conf"]);
+    let install = recipe.install.as_ref().expect("install");
+    let release = &install.releases["3.11.5"];
+    let mut have: Vec<&str> = release.assets.keys().map(String::as_str).collect();
+    have.sort_unstable();
+    assert_eq!(
+        have,
+        [
+            "darwin-aarch64",
+            "darwin-x86_64",
+            "linux-aarch64",
+            "linux-x86_64",
+            "windows-x86_64"
+        ],
+        "no Windows arm64 build upstream"
+    );
+    assert_eq!(release.assets["windows-x86_64"].member.as_deref(), Some("scalafmt.exe"));
+    assert!(
+        release.assets["linux-x86_64"]
+            .url
+            .ends_with("scalafmt-x86_64-pc-linux.zip")
+    );
+}
+
+#[test]
 fn gau_lints_the_pins_of_workflows_and_action_manifests_as_json() {
     let gau = Catalog::get().tool("gau").expect("gau");
     assert_eq!(gau.binary, "gau");
@@ -718,7 +750,7 @@ fn buf_and_hadolint_are_pinned_for_every_desktop_and_server_platform() {
     }
 }
 
-const MIGRATED_TOOLS: [&str; 23] = [
+const MIGRATED_TOOLS: [&str; 24] = [
     "checkstyle",
     "palantir-java-format",
     "buildifier",
@@ -742,6 +774,7 @@ const MIGRATED_TOOLS: [&str; 23] = [
     "editorconfig-checker",
     "rbcop",
     "swiftlint",
+    "scalafmt",
 ];
 
 #[test]

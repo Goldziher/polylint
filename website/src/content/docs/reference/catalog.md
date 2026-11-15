@@ -50,6 +50,7 @@ pre-commit gate typically runs, and `poly migrate` maps those jobs onto them.
 | `editorconfig-checker` | lint | all text files | gcc-style lines (line, column) |
 | `rbcop` | lint, fix | Ruby files | RuboCop JSON (cop, severity, fixable) |
 | `swiftlint` | lint | Swift files | SARIF (rule, URL) |
+| `scalafmt` | format | Scala files, in place on a scratch copy | -- |
 
 ```toml
 [tools.checkstyle]

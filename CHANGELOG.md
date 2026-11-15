@@ -38,6 +38,8 @@ binary drives lint, format, hooks, and commit checks from one `poly.toml`.
   local schema, offline, with line and column spans (ADR 0052). (#111)
 - **R formatting and linting through pinned release binaries:** `air` formats and `jarl` lints R without an R install
   (opt-in under `[tools.air]` and `[tools.jarl]`); the in-process component for R is not done yet. (#130)
+- **Scala formatting without a JVM:** `scalafmt` from the upstream native builds as a pinned release recipe, opt-in
+  under `[tools.scalafmt]`. (#178)
 - **Swift linting:** `swiftlint` as a pinned release recipe, opt-in under `[tools.swiftlint]`, reading its SARIF report.
   (#177)
 - **RuboCop-compatible Ruby linting:** `rbcop` as a pinned release recipe, opt-in under `[tools.rbcop]`, reading the

@@ -2583,5 +2583,93 @@
         }
       }
     }
+  },
+  {
+    "name": "scalafmt",
+    "binary": "scalafmt",
+    "categories": [
+      "formatter"
+    ],
+    "languages": [
+      "scala"
+    ],
+    "homepage": "https://github.com/scalameta/scalafmt",
+    "commands": {
+      "format": {
+        "arguments": [
+          "--quiet",
+          "--mode",
+          "any",
+          "$FILES"
+        ],
+        "stdin": false
+      }
+    },
+    "recipe": {
+      "config_files": [
+        ".scalafmt.conf"
+      ],
+      "install": {
+        "hint": "brew install scalafmt, or set [tools.scalafmt] version to a pinned native build poly can download (Linux builds need glibc; the version in .scalafmt.conf must match the binary's)",
+        "source": {
+          "kind": "binary",
+          "github": "scalameta/scalafmt",
+          "assets": {
+            "darwin-aarch64": {
+              "name": "scalafmt-aarch64-apple-darwin.zip",
+              "member": "scalafmt"
+            },
+            "darwin-x86_64": {
+              "name": "scalafmt-x86_64-apple-darwin.zip",
+              "member": "scalafmt"
+            },
+            "linux-aarch64": {
+              "name": "scalafmt-aarch64-pc-linux.zip",
+              "member": "scalafmt"
+            },
+            "linux-x86_64": {
+              "name": "scalafmt-x86_64-pc-linux.zip",
+              "member": "scalafmt"
+            },
+            "windows-x86_64": {
+              "name": "scalafmt-x86_64-pc-win32.zip",
+              "member": "scalafmt.exe"
+            }
+          }
+        },
+        "releases": {
+          "3.11.5": {
+            "kind": "binary",
+            "assets": {
+              "darwin-aarch64": {
+                "url": "https://github.com/scalameta/scalafmt/releases/download/v3.11.5/scalafmt-aarch64-apple-darwin.zip",
+                "sha256": "8ccd72f826dd33b5c7ab5e0e01944044d041aa8c3c49cbda3caac31930483d5d",
+                "member": "scalafmt"
+              },
+              "darwin-x86_64": {
+                "url": "https://github.com/scalameta/scalafmt/releases/download/v3.11.5/scalafmt-x86_64-apple-darwin.zip",
+                "sha256": "33d012e18f322ac9855496bb0f6c6528f5d880d8ba225e5031ec24fff6963394",
+                "member": "scalafmt"
+              },
+              "linux-aarch64": {
+                "url": "https://github.com/scalameta/scalafmt/releases/download/v3.11.5/scalafmt-aarch64-pc-linux.zip",
+                "sha256": "691576a60e00f4bca150d251395196a382f0828697a9b1b4c9c44815eaea80bc",
+                "member": "scalafmt"
+              },
+              "linux-x86_64": {
+                "url": "https://github.com/scalameta/scalafmt/releases/download/v3.11.5/scalafmt-x86_64-pc-linux.zip",
+                "sha256": "7b0e44cc193eeff06daa14b394dc0489d8eaa4537eb945522f7f267641ed8c2b",
+                "member": "scalafmt"
+              },
+              "windows-x86_64": {
+                "url": "https://github.com/scalameta/scalafmt/releases/download/v3.11.5/scalafmt-x86_64-pc-win32.zip",
+                "sha256": "d420e6a7205cd87520dc09160e3c420dac7a9782150054b1c42cf2e6c98030db",
+                "member": "scalafmt.exe"
+              }
+            }
+          }
+        }
+      }
+    }
   }
 ]
