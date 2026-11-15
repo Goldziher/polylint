@@ -3,7 +3,13 @@
 //! Split out because `runner.rs` sits at the repository's 1000-line module cap;
 //! a path named `tests.rs` is exempt from it.
 
+use super::batch::BatchPrefill;
+use super::ctx::FormatCtx;
+use super::lint_pass::lint_content;
+use super::plan::EnginePlan;
 use super::*;
+use crate::engine::{Diagnostic, FormatOutput, SourceFile};
+use crate::language::Language;
 
 #[test]
 fn cache_write_policy_skips_cheap_results() {
@@ -256,19 +262,22 @@ mod panic_containment {
         std::fs::write(&bad, TRIGGER).expect("write fixture");
         let plan = RunPlan::serving(0, Language::Python, plans());
 
-        let error = format_one(
-            &discovered(&bad),
-            &plan,
-            &disabled_cache(directory.path()),
-            false,
-            false,
-            false,
-            &[true],
-            &SizeLimits::default(),
-            &BatchPrefill::default(),
-            (None, Resolution::Unavailable),
-        )
-        .expect_err("a panicking backend must surface as an error, not unwind");
+        let cache = disabled_cache(directory.path());
+        let limits = SizeLimits::default();
+        let prefilled = BatchPrefill::default();
+        let ctx = FormatCtx {
+            plan: &plan,
+            cache: &cache,
+            write: false,
+            fix_generated: false,
+            collect_debug: false,
+            act_on_generated: &[true],
+            limits: &limits,
+            prefilled: &prefilled,
+            fast: None,
+        };
+        let error = format_one(&ctx, &discovered(&bad), Resolution::Unavailable)
+            .expect_err("a panicking backend must surface as an error, not unwind");
 
         let message = format!("{error:#}");
         assert!(message.contains("panicked"), "{message}");
