@@ -22,12 +22,12 @@
 use std::path::{Path, PathBuf};
 use std::time::Instant;
 
-use poly_catalog::{Asset, Recipe, Release, ReleaseKind, Tool};
+use poly_catalog::{Asset, Recipe, Release, ReleaseKind, Source, Tool};
 use poly_config::{InstallPolicy, ToolConfig};
 
 use super::resolve::cache;
 use super::resolve::{self, Network, Request, Resolver, Scope};
-use super::{install, progress};
+use super::{install, origin, progress};
 
 /// How to start the tool: a program and the arguments that precede its own.
 #[derive(Debug, Clone)]
@@ -213,7 +213,13 @@ fn pinned_release(
         (None, InstallPolicy::Auto, Some(_)) => Request::Latest,
         (None, _, _) => return Ok(None),
     };
-    if let Some(pinned) = locked_pin(tool, &request, source.map_or(kind, |source| source.kind))? {
+    if let Some(pinned) = locked_pin(
+        tool,
+        &request,
+        source.map_or(kind, |source| source.kind),
+        source,
+        install.map(|install| &install.releases),
+    )? {
         return Ok(Some(pinned));
     }
     let seeds = install.map(|install| &install.releases);
@@ -297,7 +303,16 @@ fn implicit_fallback(tool: &Tool, message: &str, seed: Option<(&String, &Release
 
 /// The release `poly.lock` pins for this tool, when it answers `request`: any
 /// lock serves `latest`, and an exact version needs that very version.
-fn locked_pin(tool: &Tool, request: &Request, kind: ReleaseKind) -> Result<Option<Pinned>, String> {
+///
+/// The lock is repository content a pull request can change alone, so its URL is
+/// accepted only on an origin the catalog names for this tool.
+fn locked_pin(
+    tool: &Tool,
+    request: &Request,
+    kind: ReleaseKind,
+    source: Option<&Source>,
+    seeds: Option<&std::collections::BTreeMap<String, Release>>,
+) -> Result<Option<Pinned>, String> {
     let Some(locked) = poly_config::tool_lock::get(&tool.name) else {
         return Ok(None);
     };
@@ -317,6 +332,7 @@ fn locked_pin(tool: &Tool, request: &Request, kind: ReleaseKind) -> Result<Optio
             install::platform()
         ));
     };
+    origin::check_locked_url(&tool.name, &asset.url, &locked.version, source, seeds)?;
     Ok(Some(Pinned {
         version: locked.version.clone(),
         asset: Asset {
@@ -442,6 +458,9 @@ mod tests {
         }
     }
 
+    const TFLINT_URL: &str =
+        "https://github.com/terraform-linters/tflint/releases/download/v0.1.0/tflint_linux_amd64.zip";
+
     const HEX: &str = "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc";
 
     fn setup(name: &str) -> (&'static Tool, &'static Recipe, &'static Source) {
@@ -482,7 +501,7 @@ mod tests {
             version: "0.1.0".into(),
             assets: vec![LockedAsset {
                 platform: install::platform(),
-                url: "https://example.invalid/tflint.zip".into(),
+                url: TFLINT_URL.into(),
                 sha256: HEX.into(),
                 member: Some("tflint".into()),
             }],
@@ -496,10 +515,57 @@ mod tests {
                 .expect("pinned");
             assert_eq!(pinned.version, "0.1.0");
             assert_eq!(pinned.asset.sha256, HEX);
-            assert_eq!(pinned.asset.url, "https://example.invalid/tflint.zip");
+            assert_eq!(pinned.asset.url, TFLINT_URL);
         }
         assert_eq!(server.total(), 0, "a lock entry means no network at all");
         assert!(!dir.path().join("tflint").exists(), "nor any cache traffic");
+    }
+
+    fn lock_tflint(url: &str) {
+        tool_lock::install(vec![LockedTool {
+            name: "tflint".into(),
+            version: "0.1.0".into(),
+            assets: vec![LockedAsset {
+                platform: install::platform(),
+                url: url.into(),
+                sha256: HEX.into(),
+                member: Some("tflint".into()),
+            }],
+        }]);
+    }
+
+    #[test]
+    fn a_locked_url_on_a_foreign_host_or_over_http_is_refused_without_network() {
+        let _lock = LockGuard::new();
+        let (tool, recipe, _) = setup("tflint");
+        let server = Server::start(Vec::new());
+        let dir = tempfile::tempdir().unwrap();
+        let resolver = Resolver::for_test(&server.base, dir.path().to_path_buf(), false);
+        for url in [
+            "https://attacker.example/tflint.zip",
+            "http://github.com/terraform-linters/tflint/releases/download/v0.1.0/t.zip",
+            "https://user@github.com/terraform-linters/tflint/t.zip",
+        ] {
+            lock_tflint(url);
+            let error = pinned_release(&resolver, tool, recipe, &auto(None)).expect_err(url);
+            assert!(
+                error.contains("poly lock") && error.contains("refusing"),
+                "{url}: {error}"
+            );
+        }
+        assert_eq!(server.total(), 0);
+    }
+
+    #[test]
+    fn a_locked_url_on_the_catalogs_origin_is_accepted() {
+        let _lock = LockGuard::new();
+        let (tool, recipe, _) = setup("tflint");
+        lock_tflint(TFLINT_URL);
+        let server = Server::start(Vec::new());
+        let dir = tempfile::tempdir().unwrap();
+        let resolver = Resolver::for_test(&server.base, dir.path().to_path_buf(), false);
+        let pinned = pinned_release(&resolver, tool, recipe, &auto(None)).unwrap().unwrap();
+        assert_eq!(pinned.asset.url, TFLINT_URL);
     }
 
     #[test]

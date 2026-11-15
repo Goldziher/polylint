@@ -642,6 +642,17 @@ fn offline_resolution_neither_locks_nor_creates_the_cache() {
 }
 
 #[test]
+fn an_api_override_on_another_host_never_receives_the_token() {
+    for api in ["https://ghe.example/api/v3", "https://api.github.com.evil.example"] {
+        let (http, _) = fast_http(1);
+        let mut resolver = Resolver::with_http(http, api, std::env::temp_dir(), false);
+        resolver.token = Some("secret".into());
+        let sent = resolver.headers(&format!("{api}/repos/o/r/releases/latest"));
+        assert!(sent.iter().all(|(name, _)| name != "Authorization"), "{api}: {sent:?}");
+    }
+}
+
+#[test]
 fn the_token_goes_only_to_the_apis_exact_https_origin() {
     let (http, _) = fast_http(1);
     let mut resolver = Resolver::with_http(http, "https://api.github.com", std::env::temp_dir(), false);

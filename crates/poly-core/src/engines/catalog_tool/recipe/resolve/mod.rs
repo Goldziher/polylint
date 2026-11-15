@@ -546,7 +546,8 @@ impl Resolver {
     }
 
     /// Request headers for `url`. The token goes only to the GitHub API's exact
-    /// origin (scheme, host and port), and only over https.
+    /// origin (scheme, host and port), and only over https. A `POLY_GITHUB_API_URL`
+    /// override on another host gets no credentials.
     fn headers(&self, url: &str) -> Vec<(String, String)> {
         let mut headers = Vec::new();
         if let (Some(target), Some(api)) = (Origin::of(url), Origin::of(&self.api))
@@ -555,6 +556,7 @@ impl Resolver {
             headers.push(("Accept".to_owned(), "application/vnd.github+json".to_owned()));
             if let Some(token) = &self.token
                 && target.scheme == "https"
+                && Origin::of(GITHUB_API).is_some_and(|github| github == target)
             {
                 headers.push(("Authorization".to_owned(), format!("Bearer {token}")));
             }
@@ -659,14 +661,20 @@ impl Resolver {
 /// The scheme, host and port of a URL, compared whole so that
 /// `https://api.github.com.evil.example` or another port is never the API.
 #[derive(Debug, PartialEq, Eq)]
-struct Origin {
+pub(in crate::engines::catalog_tool) struct Origin {
     scheme: String,
     host: String,
     port: u16,
 }
 
 impl Origin {
-    fn of(url: &str) -> Option<Origin> {
+    /// Whether the scheme is https.
+    pub(in crate::engines::catalog_tool) fn is_https(&self) -> bool {
+        self.scheme == "https"
+    }
+
+    /// The origin of `url`, or `None` for a non-http(s) URL, one with userinfo, or no host.
+    pub(in crate::engines::catalog_tool) fn of(url: &str) -> Option<Origin> {
         let (scheme, rest) = url.split_once("://")?;
         let scheme = scheme.to_ascii_lowercase();
         let authority = rest.split(['/', '?', '#']).next()?;

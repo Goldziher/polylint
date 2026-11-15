@@ -33,6 +33,7 @@ mod launch;
 mod lint;
 mod mirror;
 mod net;
+mod origin;
 mod output;
 mod paths;
 mod progress;
