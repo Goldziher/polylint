@@ -29,6 +29,7 @@ mod oxfmt_native;
 mod oxlint_native;
 pub mod tool_lock;
 mod tools;
+pub mod trust;
 mod typos_native;
 pub mod v2;
 
@@ -142,6 +143,8 @@ pub struct PolyConfig {
     pub components: v2::ComponentsConfig,
     /// v2 `required_version` — a semver requirement on the running `poly`.
     pub required_version: Option<String>,
+    /// Which exec-capable keys were withheld because the repository is not trusted.
+    pub trust: trust::TrustState,
 }
 
 /// `[rules]` — user-defined ast-grep YAML custom-rule directories.
@@ -650,6 +653,9 @@ fn build_extends_table(
                 path.display()
             )
         })?;
+        if source.path.is_some() && !trust::admit_local_base(&base_path, base_dir) {
+            continue;
+        }
         let base_table = resolve_config_with_extends(&base_path, resolver, visited, memo)?;
         merge_layer(&mut merged, base_table);
     }
@@ -688,10 +694,12 @@ fn resolve_rules_dirs_in_table(table: &mut toml::Table, dir: &Path) {
 /// the merge directives that drove all of it are stripped — they are not part of
 /// the typed schema.
 fn finalize(mut table: toml::Table, typos_dir: &Path) -> anyhow::Result<PolyConfig> {
+    // Before the `--set` layer: the user's own command line is not gated.
+    let trust = trust::gate(&mut table, typos_dir);
     overrides::apply_run_overrides(&mut table);
     normalize_effective_table(&mut table);
     let raw: RawPolyConfig = table.try_into()?;
-    let mut config: PolyConfig = raw.into();
+    let mut config = PolyConfig { trust, ..raw.into() };
     check_required_version(config.required_version.as_deref(), env!("CARGO_PKG_VERSION"))?;
     config.rules.resolve_relative_to(typos_dir);
     v2::resolve_rule_dirs_typed(&mut config.engines, typos_dir);
@@ -960,6 +968,7 @@ impl From<RawPolyConfig> for PolyConfig {
             engines: raw.engines,
             components: raw.components,
             required_version: raw.required_version,
+            trust: trust::TrustState::default(),
         }
     }
 }
