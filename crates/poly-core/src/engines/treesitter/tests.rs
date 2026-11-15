@@ -1212,6 +1212,50 @@ fn bash_unparsable_source_falls_back_to_whitespace_normalization() {
     );
 }
 
+/// A pipeline whose first line holds a single-row `$( … )` still has continuation lines, and they
+/// keep their alignment: a one-line opener has no interior, so it must not end the keep range.
+#[test]
+fn bash_pipeline_continuation_after_single_line_command_substitution_is_left_verbatim() {
+    let input = concat!(
+        "f() {\n",
+        "  echo \"x: $(grep a \"$log\" | sed b)\" |\n",
+        "    tee -a \"$file\"\n",
+        "}\n",
+    );
+    assert_eq!(
+        bash(input),
+        input,
+        "the `tee` continuation keeps its four-space alignment"
+    );
+}
+
+/// tree-sitter-bash parses `while` as a command name when two or more assignment lines (the first
+/// with two assignments) precede it, and reports no error. Reindenting that tree flattened the loop
+/// body to column 0, so the tier must leave such a file's indentation alone.
+#[test]
+fn bash_reserved_word_parsed_as_command_name_is_not_reindented() {
+    let input = "a=1 b=2\nc=3\nd=3\nwhile true; do\n  echo hi\ndone\n";
+    assert_eq!(
+        bash(input),
+        input,
+        "a misparsed compound command must keep its indentation"
+    );
+}
+
+/// A script `shfmt` already formatted (the repository's own benchmark driver: assignments before a
+/// `while`/`case` loop, a pipeline continuation after `$( … )`, a quoted heredoc in a function) is a
+/// fixed point of the tier, and stays one when reformatted.
+#[test]
+fn bash_shfmt_clean_script_is_a_fixed_point() {
+    let input = include_str!("testdata/shfmt_clean.sh.txt");
+    let once = bash(input);
+    assert!(once == input, "tier rewrote a shfmt-formatted script");
+    assert!(
+        bash(&once) == once,
+        "tier is not idempotent on a shfmt-formatted script"
+    );
+}
+
 /// Starlark's bundled `indents.scm` opens a level at each bracket but has no
 /// notion of a `def` body, so reindenting by it flattened every statement
 /// outside a bracket to column 0 — one nesting level per pass, which surfaced

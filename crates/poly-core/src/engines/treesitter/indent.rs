@@ -223,10 +223,49 @@ fn builtin_facts(name: &str, query_src: &str, src: &SourceFile) -> Option<(Adjus
         if tree.root_node().has_error() {
             return None;
         }
+        if name == "bash" && has_reserved_word_command(&tree, src.content.as_bytes()) {
+            return None;
+        }
         let adjustments = collect_adjustments(&entry.2, &mut entry.1, &tree, src.content.as_bytes());
         let protected = collect_protected_ranges(&tree, src.content.as_bytes(), &entry.3);
         Some((adjustments, protected))
     })
+}
+
+/// Bash words that open or close a compound command and can never name a command.
+const BASH_RESERVED_WORDS: &[&str] = &[
+    "if", "then", "elif", "else", "fi", "while", "until", "for", "select", "do", "done", "case", "esac",
+];
+
+/// Whether the tree parses a reserved word as a command name.
+///
+/// tree-sitter-bash reads `a=1 b=2⏎c=3⏎d=3⏎while true; do …; done` as one `command` whose name is
+/// `while`, with `do`, the body and `done` as further commands, and reports no error node. The loop
+/// then has no `do_group`, so every block opener is missing and the body would be flattened to
+/// column 0. Like an error tree, this one does not describe the file, so the caller declines it.
+fn has_reserved_word_command(tree: &tree_sitter::Tree, source: &[u8]) -> bool {
+    let mut cursor = tree.walk();
+    loop {
+        let node = cursor.node();
+        if node.kind() == "command_name"
+            && node
+                .utf8_text(source)
+                .is_ok_and(|text| BASH_RESERVED_WORDS.contains(&text))
+        {
+            return true;
+        }
+        if cursor.goto_first_child() {
+            continue;
+        }
+        loop {
+            if cursor.goto_next_sibling() {
+                break;
+            }
+            if !cursor.goto_parent() {
+                return false;
+            }
+        }
+    }
 }
 
 /// Attempt query-driven reindentation for the given grammar and source.
@@ -458,7 +497,13 @@ fn truncate_keeps_at_inner_openers(openers: &[Opener], keep_ranges: &mut Vec<(us
     if keep_ranges.is_empty() || openers.is_empty() {
         return;
     }
-    let mut starts: Vec<usize> = openers.iter().map(|o| o.start_row).collect();
+    // A single-row opener (`$(…)` on the first line of a pipeline) has no interior to reindent, so it
+    // must not surrender the continuation lines below it.
+    let mut starts: Vec<usize> = openers
+        .iter()
+        .filter(|o| o.end_row > o.start_row)
+        .map(|o| o.start_row)
+        .collect();
     starts.sort_unstable();
     for range in keep_ranges.iter_mut() {
         let index = starts.partition_point(|&row| row < range.0);

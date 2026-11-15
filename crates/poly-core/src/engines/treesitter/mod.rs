@@ -174,7 +174,7 @@ impl Engine for TreeSitterEngine {
     }
 
     fn version(&self) -> &str {
-        "13+tslp1.25.0"
+        "14+tslp1.25.0"
     }
 
     fn run_context(&self, _cfg: &EngineConfig) -> String {
