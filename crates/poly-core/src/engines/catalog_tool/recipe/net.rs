@@ -13,6 +13,7 @@ use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use sha2::{Digest, Sha256};
 
+use super::origin::redirect_permitted;
 use super::unit::{Failed, Retry};
 
 /// Tries per fetch, the first included.
@@ -24,6 +25,9 @@ const JITTER_SECS: u64 = 1;
 const MAX_RETRY_AFTER: Duration = Duration::from_secs(30);
 
 /// Largest text body (API response, checksum file) read into memory.
+/// Most redirects one request follows.
+const MAX_REDIRECTS: u32 = 5;
+
 const MAX_TEXT_BODY: u64 = 16 * 1024 * 1024;
 
 /// How patient a fetch is.
@@ -226,8 +230,9 @@ impl Http {
         Http { policy, sleep }
     }
 
-    fn agent(&self, deadline: Duration) -> ureq::Agent {
+    fn agent(&self, deadline: Duration, redirects: u32) -> ureq::Agent {
         ureq::Agent::config_builder()
+            .max_redirects(redirects)
             .http_status_as_error(false)
             .timeout_connect(Some(self.policy.connect))
             .timeout_per_read(Some(self.policy.stall))
@@ -240,7 +245,7 @@ impl Http {
     /// GET `url` as text with the given request headers. A 304 is a success: the
     /// caller asked a conditional question.
     pub(super) fn get_text(&self, url: &str, headers: &[(&str, &str)]) -> Result<Reply, FetchError> {
-        let agent = self.agent(self.policy.request);
+        let agent = self.agent(self.policy.request, MAX_REDIRECTS);
         self.policy
             .retry
             .run_with(
@@ -277,7 +282,8 @@ impl Http {
     /// Stream `url` into `target`, returning the hex SHA-256 of what was
     /// written. Each attempt starts the file over.
     pub(super) fn download(&self, url: &str, target: &File) -> Result<String, FetchError> {
-        let agent = self.agent(self.policy.download);
+        // Redirects are followed by hand so each hop can be checked; ureq has no per-hop hook.
+        let agent = self.agent(self.policy.download, 0);
         self.policy
             .retry
             .run_with(
@@ -285,7 +291,7 @@ impl Http {
                     let mut file = target;
                     file.set_len(0).map_err(|error| local(url, &error))?;
                     file.rewind().map_err(|error| local(url, &error))?;
-                    let mut response = agent.get(url).call().map_err(|error| transport(url, &error))?;
+                    let mut response = follow(&agent, url)?;
                     let status = response.status().as_u16();
                     if !(200..300).contains(&status) {
                         return Err(self.reject(url, status, &response));
@@ -338,6 +344,60 @@ impl Http {
             Failed::fatal(error)
         }
     }
+}
+
+/// GET `url`, following up to [`MAX_REDIRECTS`] redirects that
+/// [`redirect_permitted`] allows, and returning the first non-redirect answer.
+fn follow(agent: &ureq::Agent, url: &str) -> Result<ureq::http::Response<ureq::Body>, Failed<FetchError>> {
+    let mut current = url.to_owned();
+    for _ in 0..=MAX_REDIRECTS {
+        let response = agent.get(&current).call().map_err(|error| transport(url, &error))?;
+        if !matches!(response.status().as_u16(), 301 | 302 | 303 | 307 | 308) {
+            return Ok(response);
+        }
+        let Some(location) = header(&response, "location") else {
+            return Ok(response);
+        };
+        let next = resolve_location(&current, &location);
+        if !redirect_permitted(&current, &next) {
+            return Err(Failed::fatal(FetchError::Transport {
+                url: url.to_owned(),
+                message: format!("refusing the redirect from {current} to {next}"),
+                timed_out: false,
+            }));
+        }
+        current = next;
+    }
+    Err(Failed::fatal(FetchError::Transport {
+        url: url.to_owned(),
+        message: format!("more than {MAX_REDIRECTS} redirects"),
+        timed_out: false,
+    }))
+}
+
+/// `location` resolved against the URL it answered.
+fn resolve_location(base: &str, location: &str) -> String {
+    if location.contains("://") {
+        return location.to_owned();
+    }
+    let Some((scheme, rest)) = base.split_once("://") else {
+        return location.to_owned();
+    };
+    if let Some(network) = location.strip_prefix("//") {
+        return format!("{scheme}://{network}");
+    }
+    let authority_end = rest.find('/').unwrap_or(rest.len());
+    let (authority, path) = rest.split_at(authority_end);
+    if location.starts_with('/') {
+        return format!("{scheme}://{authority}{location}");
+    }
+    let directory = path
+        .split(['?', '#'])
+        .next()
+        .unwrap_or("")
+        .rsplit_once('/')
+        .map_or("", |(head, _)| head);
+    format!("{scheme}://{authority}{directory}/{location}")
 }
 
 fn header(response: &ureq::http::Response<ureq::Body>, name: &str) -> Option<String> {
@@ -405,6 +465,61 @@ mod tests {
         );
         assert_eq!(retry_after_seconds("tomorrow", 0), None);
         assert_eq!(retry_after_seconds("Sun, 31 Feb 1994 08:49:37 UTC", 0), None);
+    }
+
+    #[test]
+    fn a_location_resolves_against_the_url_it_answered() {
+        let base = "https://h.example:8443/a/b/t.zip?x=1";
+        assert_eq!(resolve_location(base, "https://o.example/z"), "https://o.example/z");
+        assert_eq!(resolve_location(base, "//o.example/z"), "https://o.example/z");
+        assert_eq!(resolve_location(base, "/z"), "https://h.example:8443/z");
+        assert_eq!(resolve_location(base, "u.zip"), "https://h.example:8443/a/b/u.zip");
+    }
+
+    fn client() -> Http {
+        let policy = Policy {
+            retry: Retry::new(1, 0, 0),
+            connect: Duration::from_secs(5),
+            stall: Duration::from_secs(5),
+            request: Duration::from_secs(5),
+            download: Duration::from_secs(5),
+            max_retry_after: Duration::from_secs(1),
+        };
+        Http::with(policy, Arc::new(|_| {}))
+    }
+
+    #[test]
+    fn a_download_follows_a_same_origin_redirect() {
+        use super::super::testserver::{Canned, Server};
+        let server = Server::start(vec![
+            ("/a", vec![Canned::new(302, "").header("Location", "/b")]),
+            ("/b", vec![Canned::ok("payload")]),
+        ]);
+        let file = tempfile::tempfile().expect("file");
+        client().download(&server.url("/a"), &file).expect("download");
+        assert_eq!(server.hits("/b"), 1);
+    }
+
+    #[test]
+    fn a_download_refuses_a_redirect_to_a_foreign_host() {
+        use super::super::testserver::{Canned, Server};
+        let foreign = Server::start(vec![("/t", vec![Canned::ok("evil")])]);
+        let target = foreign.url("/t");
+        let server = Server::start(vec![("/a", vec![Canned::new(302, "").header("Location", &target)])]);
+        let file = tempfile::tempfile().expect("file");
+        let error = client().download(&server.url("/a"), &file).expect_err("refused");
+        assert!(error.to_string().contains("refusing the redirect"), "{error}");
+        assert_eq!(foreign.total(), 0, "the foreign host must never be contacted");
+    }
+
+    #[test]
+    fn a_redirect_loop_stops_after_the_cap() {
+        use super::super::testserver::{Canned, Server};
+        let server = Server::start(vec![("/a", vec![Canned::new(302, "").header("Location", "/a")])]);
+        let file = tempfile::tempfile().expect("file");
+        let error = client().download(&server.url("/a"), &file).expect_err("loop");
+        assert!(error.to_string().contains("redirects"), "{error}");
+        assert_eq!(server.hits("/a"), MAX_REDIRECTS as usize + 1);
     }
 
     #[test]
