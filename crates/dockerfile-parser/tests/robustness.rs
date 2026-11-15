@@ -215,3 +215,22 @@ fn large_inputs_parse_in_reasonable_time() {
         started.elapsed()
     );
 }
+
+#[test]
+fn deep_line_continuations_are_refused_not_overflowed() {
+    let input = format!("FROM alpine\nRUN a{}\n", " \\\n b".repeat(100_000));
+    let outcome = std::thread::Builder::new()
+        .stack_size(8 << 20)
+        .spawn(move || Dockerfile::parse(&input).is_err())
+        .expect("spawn")
+        .join()
+        .expect("parsing must not abort or panic");
+    assert!(outcome, "a 100000-line continuation must be refused");
+}
+
+#[test]
+fn moderate_line_continuations_still_parse() {
+    let input = format!("FROM alpine\nRUN a{}\n", " \\\n b".repeat(100));
+    let dockerfile = Dockerfile::parse(&input).expect("100 continuations parse");
+    assert_eq!(dockerfile.instructions.len(), 2);
+}

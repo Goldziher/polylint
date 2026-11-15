@@ -311,10 +311,16 @@ impl From<((usize, usize), &str)> for BreakableString {
 
 fn parse_any_breakable_inner(pair: Pair) -> Result<Vec<BreakableStringComponent>> {
     let mut components = Vec::new();
+    // Continuations nest `any_breakable` once per line; an explicit stack keeps the depth off the call stack.
+    let mut stack = vec![pair.into_inner()];
 
-    for field in pair.into_inner() {
+    while let Some(fields) = stack.last_mut() {
+        let Some(field) = fields.next() else {
+            stack.pop();
+            continue;
+        };
         match field.as_rule() {
-            Rule::any_breakable => components.extend(parse_any_breakable_inner(field)?),
+            Rule::any_breakable => stack.push(field.into_inner()),
             Rule::comment => components.push(
                 SpannedComment {
                     span: (&field).into(),

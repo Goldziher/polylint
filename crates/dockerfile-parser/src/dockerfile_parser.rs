@@ -339,8 +339,34 @@ pub struct Dockerfile {
     pub heredocs: Vec<Heredoc>,
 }
 
+/// Longest run of `\`-continued lines the grammar is asked to parse.
+///
+/// Each continuation nests one more `any_breakable` in pest's generated recursive-descent parser, so the run length
+/// is the recursion depth and an unbounded one would overflow the stack.
+const MAX_CONTINUATION_RUN: usize = 500;
+
+/// The longest run of consecutive lines ending in a line continuation; blank and comment lines do not break a run.
+fn longest_continuation_run(masked: &str) -> usize {
+    let (mut run, mut longest) = (0usize, 0usize);
+    for line in masked.lines() {
+        let trimmed = line.trim_end();
+        if trimmed.ends_with('\\') {
+            run += 1;
+            longest = longest.max(run);
+        } else if !(trimmed.is_empty() || trimmed.trim_start().starts_with('#')) {
+            run = 0;
+        }
+    }
+    longest
+}
+
 fn parse_dockerfile(input: &str) -> Result<Dockerfile> {
     let prepared = prepare(input);
+    if longest_continuation_run(&prepared.masked) > MAX_CONTINUATION_RUN {
+        return Err(Error::GenericParseError {
+            message: format!("more than {MAX_CONTINUATION_RUN} consecutive line continuations"),
+        });
+    }
     let dockerfile = DockerfileParser::parse(Rule::dockerfile, &prepared.masked)
         .map_err(|error| Error::ParseError {
             source: Box::new(error),
