@@ -74,16 +74,9 @@ Options:
   -j, --jobs <JOBS>
           Number of parallel jobs (default: all logical cores)
 
-  -q, --quiet
-          Trim `pretty` output to the findings and the summary: drop the per-file discovery and skip
-          detail printed beneath it.
-          
-          Every count and reason stays — the summary still reports how many files were linted, how
-          many were skipped and why, and what discovery excluded. Only the itemised list of paths
-          goes away. Findings still print and exit codes are unchanged. No effect on the `--format
-          json`/`toon` document. Also silences poly's info-level notices on stderr (a recipe tool's
-          download and run progress); warnings still print. Mutually exclusive with `--verbose` and
-          `--debug`.
+      --trust
+          Honour this repository's config keys that run programs for this run, as if `poly trust`
+          had been run. Also set by `POLY_TRUST=1`
 
       --exclude <GLOB>
           Gitignore-style glob to exclude from discovery (repeatable). Merged with the config's
@@ -96,6 +89,21 @@ Options:
           `--exclude '/e2e/**'`. Run `poly doctor` to see which rules are matching at more than one
           depth.
 
+  -q, --quiet
+          Trim `pretty` output to the findings and the summary: drop the per-file discovery and skip
+          detail printed beneath it.
+          
+          Every count and reason stays — the summary still reports how many files were linted, how
+          many were skipped and why, and what discovery excluded. Only the itemised list of paths
+          goes away. Findings still print and exit codes are unchanged. No effect on the `--format
+          json`/`toon` document. Also silences poly's info-level notices on stderr (a recipe tool's
+          download and run progress); warnings still print. Mutually exclusive with `--verbose` and
+          `--debug`.
+
+      --fix
+          Apply fixes in place: autofixes for `lint`, formatting for `fmt`. The default is a dry run
+          that reports what would change and writes nothing
+
   -v, --verbose
           Show extra per-finding detail in `pretty` output: description, rule URL, and metadata, and
           list every skipped file instead of the first few. For `--format json`/`toon` the findings
@@ -106,10 +114,6 @@ Options:
           `json`/`toon`), and raise log verbosity to `debug` on stderr.
           
           The top of the verbosity ladder, so it implies `--verbose`.
-
-      --fix
-          Apply fixes in place: autofixes for `lint`, formatting for `fmt`. The default is a dry run
-          that reports what would change and writes nothing
 
       --include-excluded
           Check explicitly named files or directory roots even when they match the exclude set.

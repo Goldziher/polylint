@@ -29,6 +29,7 @@ pub mod progress;
 pub mod remote;
 pub mod rules_cmd;
 mod timings;
+pub mod trust_cmd;
 pub mod workspace_coverage;
 pub mod workspace_phase;
 
@@ -43,6 +44,7 @@ pub use lock_cmd::{LockArgs, run_lock};
 pub use mcp_cmd::run_mcp;
 pub use migrate::{MigrateArgs, run_migrate};
 pub use rules_cmd::{RulesArgs, run_rules};
+pub use trust_cmd::{TrustArgs, run_trust};
 
 /// Install the process-wide `tracing` subscriber for the CLI binaries at the
 /// default verbosity (info-level poly notices). Equivalent to
@@ -461,6 +463,7 @@ pub fn run_lint(args: LintArgs) -> ExitCode {
     // must change the verdict, not what else the run does.
     let skips_over_budget = report_skip_budget(&common, &run.skipped);
     let components_blocking = report_blocking_components(&run.components);
+    trust_cmd::eprint_untrusted_note();
 
     let workspace_ok = match workspace_config {
         // Only explain the skip when path scoping caused it. `--workspace never`
@@ -625,6 +628,7 @@ pub fn run_fmt(args: FmtArgs) -> ExitCode {
                     run.results.iter().filter(|r| r.changed).count()
                 }
             };
+            trust_cmd::eprint_untrusted_note();
             (changed, errors, report_skip_budget(common, &run.skipped))
         }
         Err(e) => {

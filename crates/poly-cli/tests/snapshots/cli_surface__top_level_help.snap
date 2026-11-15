@@ -17,6 +17,7 @@ Commands:
   components  Inspect and manage downloadable engine components (list / status / install / sync /
               prune)
   lock        Pin remote `extends` bases and Git hook sources in `poly.lock`
+  trust       Allow this repository's config keys that run programs (or --revoke, --list, --show)
   config      Inspect the effective config and print the `poly.toml` JSON Schema
   mcp         Run an MCP server over stdio (mirrors the CLI)
   doctor      Report which poly is running, every poly on PATH, and the config in effect
@@ -39,6 +40,10 @@ Options:
       --offline
           Never use the network: no component, grammar, catalog-tool, remote `extends` or
           hook-source fetches. Also set by `POLY_OFFLINE=1`
+
+      --trust
+          Honour this repository's config keys that run programs for this run, as if `poly trust`
+          had been run. Also set by `POLY_TRUST=1`
 
   -q, --quiet
           Trim `pretty` output to the findings and the summary: drop the per-file discovery and skip

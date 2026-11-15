@@ -46,6 +46,13 @@ Options:
       --no-cache
           Disable the result cache
 
+      --trust
+          Honour this repository's config keys that run programs for this run, as if `poly trust`
+          had been run. Also set by `POLY_TRUST=1`
+
+  -j, --jobs <JOBS>
+          Number of parallel jobs (default: all logical cores)
+
   -q, --quiet
           Trim `pretty` output to the findings and the summary: drop the per-file discovery and skip
           detail printed beneath it.
@@ -57,8 +64,16 @@ Options:
           download and run progress); warnings still print. Mutually exclusive with `--verbose` and
           `--debug`.
 
-  -j, --jobs <JOBS>
-          Number of parallel jobs (default: all logical cores)
+      --exclude <GLOB>
+          Gitignore-style glob to exclude from discovery (repeatable). Merged with the config's
+          `[discovery] exclude`. Example: `--exclude 'test_apps/**'`.
+          
+          Matching is gitignore-style, which means a pattern that does not start with `/` matches a
+          directory of that name **at any depth**, not only at the root: `--exclude 'e2e/**'` prunes
+          the top-level `e2e/` and also `src/test/java/io/xberg/e2e/`, where `e2e` is just a package
+          name. Anchor the pattern with a leading slash to mean only the top-level directory:
+          `--exclude '/e2e/**'`. Run `poly doctor` to see which rules are matching at more than one
+          depth.
 
   -v, --verbose
           Show extra per-finding detail in `pretty` output: description, rule URL, and metadata, and
@@ -70,17 +85,6 @@ Options:
           `json`/`toon`), and raise log verbosity to `debug` on stderr.
           
           The top of the verbosity ladder, so it implies `--verbose`.
-
-      --exclude <GLOB>
-          Gitignore-style glob to exclude from discovery (repeatable). Merged with the config's
-          `[discovery] exclude`. Example: `--exclude 'test_apps/**'`.
-          
-          Matching is gitignore-style, which means a pattern that does not start with `/` matches a
-          directory of that name **at any depth**, not only at the root: `--exclude 'e2e/**'` prunes
-          the top-level `e2e/` and also `src/test/java/io/xberg/e2e/`, where `e2e` is just a package
-          name. Anchor the pattern with a leading slash to mean only the top-level directory:
-          `--exclude '/e2e/**'`. Run `poly doctor` to see which rules are matching at more than one
-          depth.
 
       --fix
           Apply fixes in place: autofixes for `lint`, formatting for `fmt`. The default is a dry run

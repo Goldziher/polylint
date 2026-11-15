@@ -10,8 +10,8 @@ use std::process::ExitCode;
 
 use crate::{
     CacheArgs, ComponentsArgs, ConfigArgs, DoctorArgs, FmtArgs, GlobalArgs, HooksArgs, LintArgs, LockArgs, MigrateArgs,
-    RulesArgs, run_cache, run_components, run_config, run_doctor, run_fmt, run_hooks, run_lint, run_lock, run_migrate,
-    run_rules,
+    RulesArgs, TrustArgs, run_cache, run_components, run_config, run_doctor, run_fmt, run_hooks, run_lint, run_lock,
+    run_migrate, run_rules, run_trust,
 };
 use clap::{Parser, Subcommand};
 
@@ -63,6 +63,8 @@ enum Command {
     Components(ComponentsArgs),
     /// Pin remote `extends` bases and Git hook sources in `poly.lock`.
     Lock(LockArgs),
+    /// Allow this repository's config keys that run programs (or --revoke, --list, --show).
+    Trust(TrustArgs),
     /// Inspect the effective config and print the `poly.toml` JSON Schema.
     Config(ConfigArgs),
     /// Run an MCP server over stdio (mirrors the CLI).
@@ -175,6 +177,10 @@ pub fn main() -> ExitCode {
         Command::Lock(args) => {
             crate::init_logging_with(debug);
             run_lock(args)
+        }
+        Command::Trust(args) => {
+            crate::init_logging_with(debug);
+            run_trust(args)
         }
         Command::Config(args) => {
             crate::init_logging_with(debug);

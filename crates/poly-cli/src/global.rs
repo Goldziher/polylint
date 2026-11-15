@@ -56,6 +56,11 @@ pub struct GlobalArgs {
     #[arg(long, global = true)]
     pub offline: bool,
 
+    /// Honour this repository's config keys that run programs for this run, as if
+    /// `poly trust` had been run. Also set by `POLY_TRUST=1`
+    #[arg(long, global = true)]
+    pub trust: bool,
+
     /// Trim `pretty` output to the findings and the summary: drop the per-file
     /// discovery and skip detail printed beneath it.
     ///
@@ -90,6 +95,11 @@ impl GlobalArgs {
     /// Record these flags for the rest of the process. First call wins.
     pub fn install(self) {
         poly_config::network::set_offline(self.offline);
+        poly_config::trust::set_mode(if self.trust || poly_config::trust::env_requests_trust() {
+            poly_config::trust::TrustMode::TrustAll
+        } else {
+            poly_config::trust::TrustMode::Enforce
+        });
         let _ = GLOBAL.set(self);
     }
 }

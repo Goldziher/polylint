@@ -79,6 +79,8 @@ fn poly(fixture: &Fixture, args: &[&str]) -> Output {
         .args(args)
         .current_dir(fixture.repo.path())
         .env("POLY_CACHE_HOME", fixture.cache.path())
+        // A `[tools]` url pin is honoured only in a trusted repository (ADR 0057).
+        .env("POLY_TRUST", "1")
         .env("NO_COLOR", "1")
         .env_remove("RUST_LOG")
         .env_remove("POLY_OFFLINE")
