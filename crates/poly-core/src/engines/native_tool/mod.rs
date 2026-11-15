@@ -133,8 +133,8 @@ use crate::language::Language;
 
 use self::batch::format_batch_via_tool;
 use self::format::format_via_tool;
-use self::lint::lint_via_shellcheck;
-use self::lint_batch::lint_batch_via_shellcheck;
+use self::lint::lint_via_shellcheck_at;
+use self::lint_batch::lint_batch_via_shellcheck_at;
 use self::probe::probe_tool;
 use self::spec::NativeRole;
 
@@ -148,6 +148,7 @@ mod isolate;
 mod lint;
 mod lint_batch;
 mod probe;
+mod provision;
 mod spec;
 mod tabs;
 #[cfg(test)]
@@ -267,6 +268,21 @@ impl NativeToolEngine {
         }
     }
 
+    /// The `shellcheck` this run executes: the host's, else (`install = "auto"`) the pinned
+    /// download. `None` when the tool is disabled or neither exists.
+    fn shellcheck(&self, cfg: &EngineConfig) -> Option<provision::Selected<'static>> {
+        if self.role != NativeRole::Shellcheck || !self.is_enabled(cfg) {
+            return None;
+        }
+        provision::select(
+            self.role.spec(),
+            self.probed_version(),
+            provision::install_auto(cfg),
+            &spec::SHELLCHECK_DOWNLOAD,
+            provision::catalog_download,
+        )
+    }
+
     /// Whether the underlying native tool is installed on this host.
     pub fn is_available(&self) -> bool {
         self.probed_version().is_some()
@@ -348,7 +364,19 @@ impl Engine for NativeToolEngine {
     /// capability alone would report an unexamined shell script as linted —
     /// precisely the silent under-checking this hook exists to prevent.
     fn provides_language_lint(&self, _language: &Language, cfg: &EngineConfig) -> bool {
-        self.capabilities().lint && self.is_enabled(cfg) && self.probed_version().is_some()
+        match self.role {
+            NativeRole::Shellcheck => self.shellcheck(cfg).is_some(),
+            _ => self.capabilities().lint && self.is_enabled(cfg) && self.probed_version().is_some(),
+        }
+    }
+
+    /// A downloaded `shellcheck` is keyed by its own version and build, not by the host's
+    /// (absent) one, so results never cross between binaries.
+    fn run_context(&self, cfg: &EngineConfig) -> String {
+        match self.shellcheck(cfg) {
+            Some(selected) if !selected.salt.is_empty() => selected.salt,
+            _ => crate::host_hooks::run_context(self.host_hook(), cfg),
+        }
     }
 
     fn provides_language_format(&self, _language: &Language, cfg: &EngineConfig) -> bool {
@@ -365,9 +393,11 @@ impl Engine for NativeToolEngine {
     fn option_keys(&self, table: OptionTable) -> OptionKeys {
         match table {
             OptionTable::Lint => match self.role {
-                NativeRole::Shellcheck => {
-                    OptionKeys::declared(&[("enabled", OptionType::BOOLEAN), ("batch", OptionType::BOOLEAN)])
-                }
+                NativeRole::Shellcheck => OptionKeys::declared(&[
+                    ("enabled", OptionType::BOOLEAN),
+                    ("batch", OptionType::BOOLEAN),
+                    ("install", OptionType::STRING),
+                ]),
                 _ => OptionKeys::declared(&[("enabled", OptionType::BOOLEAN)]),
             },
             OptionTable::Format => match (self.role.spec().format_indent_flag, self.role.spec().batch_format_args) {
@@ -470,8 +500,8 @@ impl Engine for NativeToolEngine {
         match self.role {
             NativeRole::Shellcheck => {
                 let mut diags = Vec::new();
-                if self.is_enabled(cfg) && self.probed_version().is_some() {
-                    diags.extend(lint_via_shellcheck(self.role.spec(), src)?);
+                if let Some(selected) = self.shellcheck(cfg) {
+                    diags.extend(lint_via_shellcheck_at(self.role.spec(), selected.binary, src)?);
                 }
                 Ok(diags)
             }
@@ -533,10 +563,10 @@ impl Engine for NativeToolEngine {
     ) -> anyhow::Result<Vec<anyhow::Result<Vec<Diagnostic>>>> {
         // Not runnable: fail the batch rather than answering for these files, so
         // the per-file path reports whatever a disabled or absent tool reports.
-        if self.role != NativeRole::Shellcheck || !self.is_enabled(cfg) || self.probed_version().is_none() {
+        let Some(selected) = self.shellcheck(cfg) else {
             anyhow::bail!("{} is not enabled or not installed; not batching", self.name());
-        }
-        lint_batch_via_shellcheck(self.role.spec(), batch)
+        };
+        lint_batch_via_shellcheck_at(self.role.spec(), selected.binary, batch)
     }
 
     fn format_batch(

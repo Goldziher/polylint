@@ -52,6 +52,7 @@ use poly_catalog::{Command, Findings, Group, Recipe, Tool};
 use poly_config::ToolConfig;
 
 use self::argv::Template;
+pub(crate) use self::launch::locate_or_install;
 use self::launch::{Launcher, Resolved};
 pub(in crate::engines::catalog_tool) use self::memo::forget_run_memos;
 use self::unit::UnitOptions;

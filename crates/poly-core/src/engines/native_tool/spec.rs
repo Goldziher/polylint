@@ -382,6 +382,8 @@ pub(crate) static ZIGFMT_PROBE: OnceLock<Option<String>> = OnceLock::new();
 pub(crate) static SHFMT_PROBE: OnceLock<Option<String>> = OnceLock::new();
 /// `Some(version)` = `shellcheck` found on PATH; `None` = absent.
 pub(crate) static SHELLCHECK_PROBE: OnceLock<Option<String>> = OnceLock::new();
+/// The pinned `shellcheck` download resolved under `install = "auto"`; `None` = unavailable.
+pub(super) static SHELLCHECK_DOWNLOAD: OnceLock<Option<super::provision::Provisioned>> = OnceLock::new();
 /// `Some(version)` = `google-java-format` found on PATH; `None` = absent.
 pub(crate) static JAVA_FMT_PROBE: OnceLock<Option<String>> = OnceLock::new();
 /// `Some(version)` = `ktfmt` found on PATH; `None` = absent.

@@ -49,6 +49,7 @@ mod recipe;
 
 pub use self::lock::{lock_satisfies, lock_tool, lockable_tools};
 
+pub(crate) use self::recipe::locate_or_install;
 use self::recipe::{RecipeTool, Role};
 
 /// Argv **flags** that mutate the file rather than only reporting on it. A lint

@@ -476,7 +476,10 @@ const ENGINE_SOURCES: &[(&str, &[&str])] = &[
         "shfmt",
         &["native_tool/mod.rs", "native_tool/tabs.rs", "native_tool/batch.rs"],
     ),
-    ("shellcheck", &["native_tool/mod.rs", "native_tool/batch.rs"]),
+    (
+        "shellcheck",
+        &["native_tool/mod.rs", "native_tool/batch.rs", "native_tool/provision.rs"],
+    ),
     ("google-java-format", &["native_tool/mod.rs", "native_tool/batch.rs"]),
     ("ktfmt", &["native_tool/mod.rs", "native_tool/batch.rs"]),
     ("styler", &["native_tool/mod.rs"]),

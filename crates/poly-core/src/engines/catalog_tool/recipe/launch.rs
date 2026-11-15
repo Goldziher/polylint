@@ -52,6 +52,32 @@ pub(in crate::engines::catalog_tool) fn resolve(tool: &Tool, recipe: &Recipe, co
     resolve_on(tool, recipe, config, host_is_musl())
 }
 
+/// The program for catalog tool `tool_name` under install policy `install`, for a
+/// caller outside the recipe tier (the built-in `shellcheck` engine). It follows
+/// [`resolve`]'s order for a default `[tools.<name>]`: the pinned release in the
+/// tool cache, the release downloaded now under [`InstallPolicy::Auto`] (never
+/// offline), then `PATH`. `Err` says why the tool is not available.
+///
+/// Returns the program and the identity string a cache key can fold in.
+pub(crate) fn locate_or_install(tool_name: &str, install: InstallPolicy) -> Result<(PathBuf, String), String> {
+    let tool = poly_catalog::Catalog::get()
+        .tool(tool_name)
+        .ok_or_else(|| format!("`{tool_name}` is not in the tool catalog"))?;
+    let recipe = tool
+        .recipe
+        .as_ref()
+        .ok_or_else(|| format!("catalog tool `{tool_name}` has no recipe to download from"))?;
+    let config = ToolConfig {
+        enabled: true,
+        install,
+        ..ToolConfig::default()
+    };
+    match resolve(tool, recipe, &config) {
+        Resolved::Ready(launcher) => Ok((launcher.program, launcher.identity)),
+        Resolved::Missing(message) => Err(message),
+    }
+}
+
 /// [`resolve`] with the host's libc passed in, so the musl path is testable.
 fn resolve_on(tool: &Tool, recipe: &Recipe, config: &ToolConfig, musl: bool) -> Resolved {
     if !recipe.java

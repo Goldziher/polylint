@@ -130,13 +130,15 @@ pub(super) fn comment_to_diagnostic(engine_name: &str, c: ShellcheckComment) -> 
 /// Returns an empty `Vec` when shellcheck exits 0 (no issues). Exit 2+, a
 /// signal or a timeout is an `Err`: the file was not checked.
 ///
+/// `lint_binary` is the executable to run: the host's `shellcheck` or the pinned download.
+///
 /// Shares [`crate::tool_run::run`] with `format_via_tool`, which feeds stdin
 /// concurrently with draining stdout to prevent pipe-buffer deadlocks.
-pub(crate) fn lint_via_shellcheck(spec: &ToolSpec, src: &SourceFile) -> anyhow::Result<Vec<Diagnostic>> {
-    let lint_binary = spec
-        .lint_binary
-        .expect("lint_via_shellcheck called on a format-only ToolSpec");
-
+pub(crate) fn lint_via_shellcheck_at(
+    spec: &ToolSpec,
+    lint_binary: &str,
+    src: &SourceFile,
+) -> anyhow::Result<Vec<Diagnostic>> {
     let output = crate::tool_run::run(
         Command::new(lint_binary).args(spec.lint_args),
         lint_binary,
@@ -235,7 +237,7 @@ mod tests {
             language: crate::language::Language::Shell,
             content: "echo hi\n".into(),
         };
-        lint_via_shellcheck(&spec, &src)
+        lint_via_shellcheck_at(&spec, binary, &src)
     }
 
     #[cfg(unix)]

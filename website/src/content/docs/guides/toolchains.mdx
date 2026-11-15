@@ -51,6 +51,12 @@ enabled = false   # use the tree-sitter tier for Go instead
   invalidates its cached results.
 - **Batching** — `batch = true` hands a tool many files per invocation, with output identical to
   the per-file path; `rustfmt`, `swift-format` and `styler` cannot be batched.
+- **`shellcheck` without a host install** — `[engines.shellcheck] install = "auto"` (default
+  `"never"`) makes poly download the catalog's pinned, checksummed shellcheck release when none is
+  on `PATH`, and run it like the host binary. A host `shellcheck` always wins; `--offline` never
+  downloads (a release already in poly's tool cache is still used); a download that fails is
+  reported as a warning and shell files are then skipped, not passed. The built-in engine never
+  downloads unless you set this.
 - **Shell formatting is not a host tool.** It comes from the `sh` component (shfmt as a Go
   sidecar). The host `shfmt` is used only by the bundled build or with
   `[components] disable = ["sh"]`; `[engines.shfmt] enabled = false` leaves shell unformatted.

@@ -50,13 +50,11 @@ const SOURCE_FOLLOWING_KEYS: &[&str] = &["external-sources", "source-path"];
 ///
 /// Returns one entry per input. An `Err` entry is a member to lint on its own;
 /// the outer `Err` is a batch that must not be trusted at all.
-pub(crate) fn lint_batch_via_shellcheck(
+pub(crate) fn lint_batch_via_shellcheck_at(
     spec: &ToolSpec,
+    binary: &str,
     batch: &[SourceFile],
 ) -> anyhow::Result<Vec<anyhow::Result<Vec<Diagnostic>>>> {
-    let binary = spec
-        .lint_binary
-        .context("lint_batch_via_shellcheck called on a format-only ToolSpec")?;
     if batch.is_empty() {
         return Ok(Vec::new());
     }
@@ -182,7 +180,7 @@ mod tests {
     use std::process::Stdio;
     use std::sync::Arc;
 
-    use super::super::lint::lint_via_shellcheck;
+    use super::super::lint::lint_via_shellcheck_at;
     use super::super::spec::SHELLCHECK_SPEC;
     use super::*;
     use crate::language::Language;
@@ -222,11 +220,12 @@ mod tests {
             shell("/repo/unparseable.sh", "#!/bin/sh\nif true; then\n"),
         ];
 
-        let batched = lint_batch_via_shellcheck(&SHELLCHECK_SPEC, &batch).expect("the batch is trusted");
+        let batched =
+            lint_batch_via_shellcheck_at(&SHELLCHECK_SPEC, "shellcheck", &batch).expect("the batch is trusted");
 
         assert_eq!(batched.len(), batch.len());
         for (src, got) in batch.iter().zip(&batched) {
-            let want = lint_via_shellcheck(&SHELLCHECK_SPEC, src).expect("stdin path");
+            let want = lint_via_shellcheck_at(&SHELLCHECK_SPEC, "shellcheck", src).expect("stdin path");
             let got = got.as_ref().expect("every member was answered");
             assert_eq!(
                 serde_json::to_value(got).expect("diagnostics serialize"),
