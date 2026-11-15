@@ -33,7 +33,19 @@ pub(super) const RUMDL_FORMAT_KEYS: &[&str] = &[
 ];
 
 pub(super) fn uses_rumdl_formatter(cfg: &EngineConfig) -> bool {
-    RUMDL_FORMAT_KEYS.iter().any(|key| cfg.options.contains_key(*key))
+    let Some(key) = RUMDL_FORMAT_KEYS.iter().find(|key| cfg.options.contains_key(**key)) else {
+        return false;
+    };
+    static WARNED: std::sync::Once = std::sync::Once::new();
+    WARNED.call_once(|| {
+        tracing::warn!(
+            key = *key,
+            "[fmt.markdown.rumdl] `{key}` selects rumdl's rule-based formatter instead of the oxfmt-compatible one: \
+             fenced code and front matter are no longer formatted; set `line_width` rather than \
+             `line_length` to keep the default formatter"
+        );
+    });
+    true
 }
 
 pub(super) fn format(src: &SourceFile, cfg: &EngineConfig) -> anyhow::Result<FormatOutput> {
@@ -46,13 +58,11 @@ pub(super) fn format(src: &SourceFile, cfg: &EngineConfig) -> anyhow::Result<For
             ..SessionServices::default()
         },
     );
-    let formatted = match oxc_formatter_markdown::format_with_session(&session, &src.content, build_options(cfg))
+    let formatted = oxc_formatter_markdown::format_with_session(&session, &src.content, build_options(cfg))
         .map_err(|_| ())
         .and_then(|formatted| formatted.print().map_err(|_| ()))
-    {
-        Ok(printed) => printed.into_code(),
-        Err(()) => return Ok(FormatOutput::Unchanged),
-    };
+        .map(|printed| printed.into_code())
+        .map_err(|()| anyhow::anyhow!("the markdown formatter could not parse {}", src.path.display()))?;
     if formatted == *src.content {
         Ok(FormatOutput::Unchanged)
     } else {
@@ -177,5 +187,17 @@ mod tests {
             options,
         };
         assert!(uses_rumdl_formatter(&cfg));
+    }
+
+    #[test]
+    fn line_length_selects_the_rumdl_formatter_but_line_width_does_not() {
+        for (options, expected) in [("line_length = 80", true), ("line_width = 80", false)] {
+            let cfg = EngineConfig {
+                globals: GlobalDefaults::default(),
+                indent_width: 2,
+                options: table(options),
+            };
+            assert_eq!(uses_rumdl_formatter(&cfg), expected, "{options}");
+        }
     }
 }

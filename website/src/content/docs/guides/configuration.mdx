@@ -197,6 +197,10 @@ backends; keys written in `poly.toml` win over them.
   formatted in process, as oxfmt does; `embeddedLanguageFormatting: "off"` (or
   `[engines.rumdl.format] embedded_language_formatting = "off"`) keeps them as written, and
   `[engines.rumdl.format.embedded.<js|json|yaml|css|toml>]` sub-tables set per-language options.
+- Setting a rumdl rule key in `[engines.rumdl.format]` (`line_length`, `enable`, `disable`, `select`,
+  `extend_select`, `ignore`, `rules`) switches Markdown to rumdl's rule-based formatter: fences and front
+  matter are no longer formatted, and a warning says so. Use `line_width` to set the width without that switch.
+  A Markdown file the formatter cannot parse is reported as an error, not as formatted.
 - `sort_package_json` (`sortPackageJson`) sorts `package.json` keys; `package.json`,
   `composer.json` and import maps otherwise keep the `JSON.stringify` layout npm writes.
 - `[engines.oxc.rules.<id>]` options reach oxlint rules. A positional rule such as `sort-keys` takes its leading
