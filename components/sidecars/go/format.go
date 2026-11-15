@@ -5,6 +5,7 @@ import (
 	"fmt"
 	gofmt "go/format"
 	goversion "go/version"
+	"sync"
 
 	"golang.org/x/tools/imports"
 	"mvdan.cc/gofumpt/format"
@@ -25,6 +26,19 @@ type formatOptions struct {
 	// localPrefixes is goimports' `-local`: comma-separated import path
 	// prefixes placed in a group after third-party imports.
 	localPrefixes string
+}
+
+var localPrefixMu sync.Mutex
+
+// setLocalPrefix sets goimports' `-local`, which the library keeps in a package
+// variable. It writes only on a change, so concurrent formatters that share a
+// config (a batch) only ever read it.
+func setLocalPrefix(prefix string) {
+	localPrefixMu.Lock()
+	defer localPrefixMu.Unlock()
+	if imports.LocalPrefix != prefix {
+		imports.LocalPrefix = prefix
+	}
 }
 
 // goLang is the form go/version and gofumpt accept for a go.mod `go` line:
@@ -70,7 +84,7 @@ func formatSource(path string, src []byte, opts formatOptions) (formatted string
 		return "", false, fmt.Errorf("format %s: %w", path, err)
 	}
 	if opts.groupImports {
-		imports.LocalPrefix = opts.localPrefixes
+		setLocalPrefix(opts.localPrefixes)
 		if out, err = imports.Process(path, out, &imports.Options{
 			Comments: true, TabIndent: true, TabWidth: 8, FormatOnly: true,
 		}); err != nil {

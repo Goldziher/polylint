@@ -13,6 +13,9 @@ const (
 	optionsTabs    = "use_tabs"
 	// optionTypeBoolean is the boolean bit of WireOptionKey.types.
 	optionTypeBoolean = 1
+	// hookBatchSupport is poly_component_protocol::hooks::BATCH_SUPPORT: the host asks
+	// BatchSupport, and sends FormatBatch to an engine that answers yes.
+	hookBatchSupport = 1 << 7
 )
 
 type wireCapabilities struct {
@@ -96,6 +99,7 @@ func describe(componentVersion string) (wireDescribe, error) {
 			},
 			ClaimedPaths:    []string{},
 			HostHook:        "editorconfig",
+			Hooks:           hookBatchSupport,
 			BatchShardFloor: 2,
 		}},
 	}, nil

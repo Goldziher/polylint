@@ -56,6 +56,10 @@ func (s *server) call(header, body []byte) ([]byte, error) {
 		payload, failure = s.handleRegisterConfig(req.fields)
 	case "Format":
 		payload, logs, failure = s.handleFormat(req.fields, body)
+	case "FormatBatch":
+		payload, logs, failure = s.handleFormatBatch(req.fields, body)
+	case "BatchSupport":
+		payload, failure = s.handleBatchSupport(req.fields)
 	default:
 		failure = newWireError(errKindUnsupported, "the go component does not serve %s", req.variant)
 	}
@@ -102,18 +106,29 @@ func (s *server) handleFormat(fields msgpack.RawMessage, body []byte) (any, []wi
 	if req.File.Len != uint64(len(body)) {
 		return nil, nil, newWireError(errKindProtocol, "file.len is %d but the body has %d bytes", req.File.Len, len(body))
 	}
-	if !utf8.Valid(body) {
-		return nil, nil, newWireError(errKindError, "%s is not valid UTF-8", req.File.Path)
+	output, logs, failure := s.formatContent(cfg, req.File.Path, body)
+	if failure != nil {
+		return nil, nil, failure
 	}
-	formatted, changed, err := s.format(req.File.Path, body, cfg.formatOptions)
+	return map[string]any{"Formatted": output}, logs, nil
+}
+
+// formatContent formats one file's bytes: the WireFormatOutput value, the debug
+// log of a file left alone, or the failure of a file that cannot be formatted.
+// It is safe to call from several goroutines.
+func (s *server) formatContent(cfg engineConfig, path string, content []byte) (any, []wireLog, *wireError) {
+	if !utf8.Valid(content) {
+		return nil, nil, newWireError(errKindError, "%s is not valid UTF-8", path)
+	}
+	formatted, changed, err := s.format(path, content, cfg.formatOptions)
 	if err != nil {
 		// Like the host tool's non-zero exit: a file that does not parse is
 		// left alone, with the reason at debug level.
 		log := wireLog{Level: logDebug, Target: "poly_go", Message: err.Error()}
-		return map[string]any{"Formatted": "Unchanged"}, []wireLog{log}, nil
+		return "Unchanged", []wireLog{log}, nil
 	}
 	if !changed {
-		return map[string]any{"Formatted": "Unchanged"}, nil, nil
+		return "Unchanged", nil, nil
 	}
-	return map[string]any{"Formatted": map[string]any{"Formatted": formatted}}, nil, nil
+	return map[string]any{"Formatted": formatted}, nil, nil
 }

@@ -21,6 +21,10 @@ const (
 	optionsLangVersion   = "lang_version"
 	optionsModulePath    = "module_path"
 
+	// hookBatchSupport is poly_component_protocol::hooks::BATCH_SUPPORT: the host asks
+	// BatchSupport, and sends FormatBatch to an engine that answers yes.
+	hookBatchSupport = 1 << 7
+
 	// The type bits of WireOptionKey.types.
 	optionTypeBoolean = 1
 	optionTypeString  = 8
@@ -116,6 +120,7 @@ func describe(componentVersion string) (wireDescribe, error) {
 			},
 			ClaimedPaths:    []string{},
 			HostHook:        "go-mod",
+			Hooks:           hookBatchSupport,
 			BatchShardFloor: 2,
 		}},
 	}, nil

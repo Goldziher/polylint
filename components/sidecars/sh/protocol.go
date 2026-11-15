@@ -51,6 +51,15 @@ type wireFile struct {
 	Len      uint64 `msgpack:"len"`
 }
 
+// wireFileSlice mirrors poly_component_protocol::WireFileSlice: one batch
+// member, a window of the request body.
+type wireFileSlice struct {
+	Path     string `msgpack:"path"`
+	Language string `msgpack:"language"`
+	Offset   uint64 `msgpack:"offset"`
+	Len      uint64 `msgpack:"len"`
+}
+
 // request is a decoded request header: the variant name and its fields.
 type request struct {
 	variant string
@@ -90,6 +99,19 @@ type formatRequest struct {
 	Engine string   `msgpack:"engine"`
 	Config uint32   `msgpack:"config"`
 	File   wireFile `msgpack:"file"`
+}
+
+// formatBatchRequest mirrors Request::FormatBatch.
+type formatBatchRequest struct {
+	Engine string          `msgpack:"engine"`
+	Config uint32          `msgpack:"config"`
+	Files  []wireFileSlice `msgpack:"files"`
+}
+
+// batchSupportRequest mirrors Request::BatchSupport.
+type batchSupportRequest struct {
+	Engine string `msgpack:"engine"`
+	Config uint32 `msgpack:"config"`
 }
 
 // engineConfig is the part of a registered engine config this component reads.
