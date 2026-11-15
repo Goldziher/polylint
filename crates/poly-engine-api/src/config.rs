@@ -1,5 +1,7 @@
 //! The per-engine configuration slice handed to every [`Engine`](crate::engine::Engine) call.
 
+use std::cell::RefCell;
+
 pub use poly_config::{GlobalDefaults, LineEnding};
 
 /// The slice of config handed to one engine for one file.
@@ -23,12 +25,37 @@ impl EngineConfig {
     /// ordered), so equal configs hash equal across processes.
     ///
     /// Computed on demand rather than memoised in a field: `EngineConfig` is built
-    /// with struct literals in hundreds of places, and a private cache field would
-    /// break them all; a cache also goes stale when a clone's `options` are mutated.
-    /// Callers that need it per file compute it once per engine plan and hold the
-    /// result.
+    /// with struct literals in hundreds of places and its fields are public, so a field cache
+    /// would break them and go stale on mutation. Each thread instead keeps a few recently
+    /// hashed configs and returns the stored digest only when the config compares equal to
+    /// one of them, so a mutated clone can never read a stale digest and the per-file path
+    /// pays an equality check rather than a serialization and a hash.
     #[must_use]
     pub fn fingerprint(&self) -> [u8; 32] {
+        MEMO.with(|memo| {
+            let mut memo = memo.borrow_mut();
+            if let Some((_, digest)) = memo.iter().find(|(cfg, _)| cfg.same_as(self)) {
+                return *digest;
+            }
+            let digest = self.compute_fingerprint();
+            if memo.len() == MEMO_CAPACITY {
+                memo.remove(0);
+            }
+            memo.push((self.clone(), digest));
+            digest
+        })
+    }
+
+    fn same_as(&self, other: &Self) -> bool {
+        self.indent_width == other.indent_width
+            && self.globals.line_length == other.globals.line_length
+            && self.globals.line_ending == other.globals.line_ending
+            && self.globals.final_newline == other.globals.final_newline
+            && self.globals.trim_trailing_whitespace == other.globals.trim_trailing_whitespace
+            && self.options == other.options
+    }
+
+    fn compute_fingerprint(&self) -> [u8; 32] {
         let mut hasher = blake3::Hasher::new();
         hasher.update(format!("{:?}", self.globals).as_bytes());
         hasher.update(b"\0");
@@ -41,6 +68,13 @@ impl EngineConfig {
         };
         *hasher.finalize().as_bytes()
     }
+}
+
+/// Configs remembered per thread; a run has a handful of distinct engine configs.
+const MEMO_CAPACITY: usize = 16;
+
+thread_local! {
+    static MEMO: RefCell<Vec<(EngineConfig, [u8; 32])>> = const { RefCell::new(Vec::new()) };
 }
 
 #[cfg(test)]
@@ -72,5 +106,29 @@ mod tests {
         let mut c = a.clone();
         c.indent_width = 2;
         assert_ne!(a.fingerprint(), c.fingerprint());
+    }
+
+    #[test]
+    fn memo_never_serves_a_stale_digest_after_mutation() {
+        let mut a = cfg("a = 1");
+        let before = a.fingerprint();
+        assert_eq!(before, a.fingerprint());
+        a.options.insert("a".into(), toml::Value::Integer(2));
+        assert_ne!(before, a.fingerprint());
+        a.options.insert("a".into(), toml::Value::Integer(1));
+        assert_eq!(before, a.fingerprint());
+        a.globals.line_length += 1;
+        assert_ne!(before, a.fingerprint());
+    }
+
+    #[test]
+    fn memoised_digest_matches_a_fresh_computation() {
+        let a = cfg("a = 1");
+        assert_eq!(a.fingerprint(), a.compute_fingerprint());
+        for i in 0..(MEMO_CAPACITY * 2) {
+            let c = cfg(&format!("k = {i}"));
+            assert_eq!(c.fingerprint(), c.compute_fingerprint());
+        }
+        assert_eq!(a.fingerprint(), a.compute_fingerprint());
     }
 }
