@@ -33,6 +33,19 @@ binary drives lint, format, hooks, and commit checks from one `poly.toml`.
 - **kubeconform findings carry a line.** The offending resource is located in a multi-document manifest by `kind` and
   `metadata.name`, and a schema error's path is followed to its line. (#128)
 
+### Changed
+
+- **Component protocol v3 (ADR 0058); every engine component and sidecar must be rebuilt.** Requests and responses are
+  encoded positionally instead of with a field name per struct field, and a diagnostic no longer repeats the engine
+  id of the request. Components built for protocol 2 are rejected as incompatible.
+
+### Performance
+
+- **Fewer component round trips per file.** An engine's decline of a file now arrives in its `Format` reply, so a
+  component no longer receives every file twice (a `SkipReason` request, then `Format`), and a component is not loaded
+  just to ask. `BatchSupport` is asked once per engine and config instead of once per file. The `uncomment`, `ini`,
+  `python-types` and `pyrefly` engines no longer ask any per-file hook. (#190)
+
 ### Fixed
 
 - **Dockerfiles, `.env` and INI files format the same in every build.** The bundled build left them with no formatter,

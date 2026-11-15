@@ -72,6 +72,7 @@ Context, Decision, Consequences (positive and negative/risks), and Alternatives 
 | [0055](0055-tsrs-hermetic-run-refinements.md) | tsrs Check: Declared Extends, Scoped Manifests and Project Declaration Files | Accepted |
 | [0056](0056-sidecar-batching.md) | Sidecar Batching and Frame Encoding | Accepted |
 | [0057](0057-shared-parse-per-lint-pass.md) | One Parse per File per Grammar per Lint Pass | Accepted |
+| [0058](0058-component-protocol-v3.md) | Component Protocol v3: Declines in the Reply, Positional Encoding | Accepted |
 
 ## Conventions
 
