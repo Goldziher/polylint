@@ -2,7 +2,7 @@
 source: crates/poly-cli/src/migrate/v2/tests.rs
 expression: output
 ---
-#:schema https://goldziher.github.io/poly/poly-v2.schema.json
+#:schema https://goldziher.github.io/polylint/poly-v2.schema.json
 required_version = ">=2.0.0"
 
 [discovery]

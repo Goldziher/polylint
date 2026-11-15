@@ -249,7 +249,7 @@ fn the_schema_comment_stays_first_and_points_at_v2() {
     let output = migrate(PER_LANGUAGE);
     assert_eq!(
         output.lines().next(),
-        Some("#:schema https://goldziher.github.io/poly/poly-v2.schema.json")
+        Some("#:schema https://goldziher.github.io/polylint/poly-v2.schema.json")
     );
 }
 

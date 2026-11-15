@@ -19,7 +19,8 @@
 //! * typos is opt-in in v2, so `[engines.typos] enabled = true` is written unless the file
 //!   already switched typos off for the whole engine (`poly.toml` only, not `poly.local.toml`).
 //! * `required_version = ">=<this poly>"` is added when absent (`poly.toml` only).
-//! * A leading `#:schema` URL naming `poly.schema.json` is pointed at `poly-v2.schema.json`.
+//! * A leading `#:schema` URL naming `poly.schema.json` is pointed at `poly-v2.schema.json`, and a
+//!   `goldziher.github.io/poly/` base at `goldziher.github.io/polylint/`.
 //!
 //! `poly-config.lock` and `poly-hooks.lock` are not merged here; the migration reports that
 //! they must be replaced by `poly lock`.
@@ -48,6 +49,9 @@ pub(crate) const CROSS_CUTTING_ENGINES: &[&str] = &["typos", "astgrep", "uncomme
 
 const V1_SCHEMA_FILE: &str = "poly.schema.json";
 const V2_SCHEMA_FILE: &str = "poly-v2.schema.json";
+/// The docs site is served under `/polylint`; configs written against the old `/poly` base 404.
+const OLD_SITE_BASE: &str = "goldziher.github.io/poly/";
+const SITE_BASE: &str = "goldziher.github.io/polylint/";
 
 /// Lock files that `poly lock` replaces.
 const V1_LOCK_FILES: &[&str] = &["poly-config.lock", "poly-hooks.lock"];
@@ -387,7 +391,9 @@ fn split_schema_line(text: &str) -> (Option<String>, String) {
 fn updated_schema_line(line: &str, notes: &mut Vec<String>) -> String {
     if line.contains(V1_SCHEMA_FILE) {
         notes.push(format!("#:schema now points at {V2_SCHEMA_FILE}"));
-        return line.replace(V1_SCHEMA_FILE, V2_SCHEMA_FILE);
+        return line
+            .replace(OLD_SITE_BASE, SITE_BASE)
+            .replace(V1_SCHEMA_FILE, V2_SCHEMA_FILE);
     }
     notes.push("#:schema does not name poly.schema.json; update it to the v2 schema by hand".to_string());
     line.to_string()

@@ -24,3 +24,22 @@ fn published_config_schema_is_current() {
          website/public/poly.schema.json"
     );
 }
+
+/// Path of the v2 schema as committed under `schemas/`, the source of the published copy.
+const V2_SOURCE: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/../../schemas/poly-v2.schema.json");
+
+/// Path of the published v2 schema, the target of `poly migrate --to-v2`'s `#:schema` line.
+const V2_PUBLISHED: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/../../website/public/poly-v2.schema.json");
+
+#[test]
+fn published_v2_schema_matches_the_committed_one() {
+    let read = |path: &str| -> serde_json::Value {
+        let text = std::fs::read_to_string(path).unwrap_or_else(|error| panic!("reading {path}: {error}"));
+        serde_json::from_str(&text).unwrap_or_else(|error| panic!("parsing {path}: {error}"))
+    };
+    assert_eq!(
+        read(V2_SOURCE),
+        read(V2_PUBLISHED),
+        "website/public/poly-v2.schema.json is stale; copy schemas/poly-v2.schema.json over it"
+    );
+}
