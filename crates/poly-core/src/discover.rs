@@ -639,7 +639,7 @@ pub fn discover_reporting(
         let matcher = ExcludeMatcher::new(root, exclude);
         let pruner = PruneRecorder::new(root, configs.no_prune(), configs.tracked_dirs(root));
         if let Some(snapshot) = configs.take_walk_snapshot(root) {
-            replay_snapshot(&snapshot, matcher.as_deref(), &pruner, configs, &mut out, &mut report);
+            replay_snapshot(snapshot, matcher.as_deref(), &pruner, configs, &mut out, &mut report);
             if let Some(matcher) = &matcher {
                 matcher.merge_into(&mut report);
             }
@@ -668,11 +668,12 @@ pub fn discover_reporting(
                 }
             });
         let walker = builder.build();
+        let mut memo = ParentConfigMemo::default();
         for entry in walker.flatten() {
             if !entry.file_type().map(|t| t.is_file()).unwrap_or(false) {
                 continue;
             }
-            accept_file(entry.path(), configs, &mut out, &mut report);
+            accept_file(entry.into_path(), configs, &mut memo, &mut out, &mut report);
         }
         if let Some(matcher) = &matcher {
             matcher.merge_into(&mut report);
@@ -732,16 +733,47 @@ fn walk_listing(
     files
 }
 
+/// The config id of the directory last asked about. A config is chosen by a file's parent
+/// directory alone and walks yield a directory's files together, so one remembered answer saves
+/// the scan over every nested config for almost every file.
+#[derive(Default)]
+struct ParentConfigMemo(Option<(PathBuf, usize)>);
+
+impl ParentConfigMemo {
+    fn config_id_for(&mut self, configs: &ConfigSet, file: &Path) -> usize {
+        let Some(parent) = file.parent() else {
+            return configs.config_id_for(file);
+        };
+        if let Some((dir, id)) = &self.0
+            && dir == parent
+        {
+            return *id;
+        }
+        let id = configs.config_id_for(file);
+        self.0 = Some((parent.to_path_buf(), id));
+        id
+    }
+}
+
 /// Tag a walked file with its language and governing config, or count it as
 /// unrecognised.
-fn accept_file(path: &Path, configs: &ConfigSet, out: &mut Vec<DiscoveredFile>, report: &mut DiscoveryReport) {
-    match detect(path) {
-        Some(language) => out.push(DiscoveredFile {
-            path: path.to_path_buf(),
-            language,
-            config_id: configs.config_id_for(path),
-        }),
-        None => report.record_unrecognized(path),
+fn accept_file(
+    path: PathBuf,
+    configs: &ConfigSet,
+    memo: &mut ParentConfigMemo,
+    out: &mut Vec<DiscoveredFile>,
+    report: &mut DiscoveryReport,
+) {
+    match detect(&path) {
+        Some(language) => {
+            let config_id = memo.config_id_for(configs, &path);
+            out.push(DiscoveredFile {
+                path,
+                language,
+                config_id,
+            });
+        }
+        None => report.record_unrecognized(&path),
     }
 }
 
@@ -752,7 +784,7 @@ fn accept_file(path: &Path, configs: &ConfigSet, out: &mut Vec<DiscoveredFile>, 
 /// `entries` is sorted by path, so a directory is followed immediately by its
 /// descendants and one `starts_with` test skips the whole subtree.
 fn replay_snapshot(
-    snapshot: &RootSnapshot,
+    snapshot: RootSnapshot,
     matcher: Option<&ExcludeMatcher>,
     pruner: &PruneRecorder,
     configs: &ConfigSet,
@@ -762,9 +794,10 @@ fn replay_snapshot(
     for path in &snapshot.pruned {
         pruner.record_pruned(path);
     }
-    let mut skipped: Option<&Path> = None;
-    for entry in &snapshot.entries {
-        if let Some(dir) = skipped {
+    let mut memo = ParentConfigMemo::default();
+    let mut skipped: Option<PathBuf> = None;
+    for entry in snapshot.entries {
+        if let Some(dir) = &skipped {
             if entry.path.starts_with(dir) {
                 continue;
             }
@@ -774,12 +807,12 @@ fn replay_snapshot(
             || matcher.is_some_and(|m| m.record_if_excluded(&entry.path, entry.is_dir, false));
         if pruned {
             if entry.is_dir {
-                skipped = Some(entry.path.as_path());
+                skipped = Some(entry.path);
             }
             continue;
         }
         if !entry.is_dir {
-            accept_file(&entry.path, configs, out, report);
+            accept_file(entry.path, configs, &mut memo, out, report);
         }
     }
 }
