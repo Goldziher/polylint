@@ -21,6 +21,8 @@ binary drives lint, format, hooks, and commit checks from one `poly.toml`.
 
 ### Fixed
 
+- **Dockerfiles, `.env` and INI files format the same in every build.** The bundled build left them with no formatter,
+  while the core build normalised them through the generic tier; both now use the generic tier.
 - **Language-agnostic catalog tools now run when enabled.** A catalog tool that names no language (codespell, typos, proselint, dprint, editorconfig-checker and similar) matched no file, so `[tools.<name>] enabled = true` did nothing. It now applies to every discovered file.
 
 ## [0.35.0] - 2026-11-15

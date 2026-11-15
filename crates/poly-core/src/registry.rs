@@ -172,11 +172,11 @@ pub fn engines_for(lang: &Language) -> Vec<Box<dyn Engine>> {
         #[cfg(feature = "engine-php")]
         Language::Php => poly_engines_php::engines_for(lang),
         #[cfg(feature = "engine-dockerfile")]
-        Language::Dockerfile => poly_engines_misc::engines_for(lang),
+        Language::Dockerfile => with_generic_formatter(poly_engines_misc::engines_for(lang)),
         #[cfg(feature = "engine-dotenv")]
-        Language::Dotenv => poly_engines_misc::engines_for(lang),
+        Language::Dotenv => with_generic_formatter(poly_engines_misc::engines_for(lang)),
         #[cfg(feature = "engine-ini")]
-        Language::Ini => poly_engines_misc::engines_for(lang),
+        Language::Ini => with_generic_formatter(poly_engines_misc::engines_for(lang)),
         #[cfg(feature = "engine-typst")]
         Language::Typst => poly_engines_misc::engines_for(lang),
         #[cfg(feature = "engine-latex")]
@@ -209,6 +209,16 @@ pub fn engines_for(lang: &Language) -> Vec<Box<dyn Engine>> {
     engines.extend(poly_engines_uncomment::engines_for(lang));
     #[cfg(feature = "engine-quality")]
     engines.push(Box::new(QualityEngine));
+    engines
+}
+
+/// A lint-only family leaves the generic tier as the language's formatter, exactly as a core build
+/// does when the family is served by a component, so the two builds format the same files.
+#[cfg(any(feature = "engine-dockerfile", feature = "engine-dotenv", feature = "engine-ini"))]
+fn with_generic_formatter(mut engines: Vec<Box<dyn Engine>>) -> Vec<Box<dyn Engine>> {
+    if !engines.iter().any(|engine| engine.capabilities().format) {
+        engines.push(Box::new(TreeSitterEngine));
+    }
     engines
 }
 
@@ -435,6 +445,20 @@ pub(crate) mod tests {
         all_languages()
     }
     use crate::language::Language;
+
+    /// A lint-only family keeps the generic formatter whether it is linked or served by a component,
+    /// so the full and core builds format the same files.
+    #[test]
+    fn lint_only_families_keep_a_formatter() {
+        for language in [Language::Dockerfile, Language::Dotenv, Language::Ini] {
+            let engines = engines_for(&language);
+            assert!(
+                engines.iter().any(|engine| engine.capabilities().format),
+                "{language:?} has no formatter: {:?}",
+                engines.iter().map(|engine| engine.name()).collect::<Vec<_>>()
+            );
+        }
+    }
 
     /// Compile-time companion to `all_languages`: an exhaustive match
     /// (no wildcard arm) over every `Language` variant. Never called — its only

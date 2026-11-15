@@ -1485,6 +1485,16 @@
           },
           "additionalProperties": true
         },
+        "dockerfile": {
+          "type": "object",
+          "description": "Backends that handle dockerfile files.",
+          "properties": {
+            "treesitter": {
+              "$ref": "#/$defs/fmt_treesitter"
+            }
+          },
+          "additionalProperties": true
+        },
         "go": {
           "type": "object",
           "description": "Backends that handle go files.",
@@ -1638,6 +1648,26 @@
         "csharp": {
           "type": "object",
           "description": "Backends that handle csharp files.",
+          "properties": {
+            "treesitter": {
+              "$ref": "#/$defs/fmt_treesitter"
+            }
+          },
+          "additionalProperties": true
+        },
+        "dotenv": {
+          "type": "object",
+          "description": "Backends that handle dotenv files.",
+          "properties": {
+            "treesitter": {
+              "$ref": "#/$defs/fmt_treesitter"
+            }
+          },
+          "additionalProperties": true
+        },
+        "ini": {
+          "type": "object",
+          "description": "Backends that handle ini files.",
           "properties": {
             "treesitter": {
               "$ref": "#/$defs/fmt_treesitter"
@@ -5337,6 +5367,28 @@
       },
       "additionalProperties": true
     },
+    "fmt_treesitter": {
+      "type": "object",
+      "properties": {
+        "enabled": {
+          "type": "boolean"
+        },
+        "indent_width": {
+          "type": "integer"
+        },
+        "rules": {
+          "oneOf": [
+            {
+              "type": "array"
+            },
+            {
+              "type": "object"
+            }
+          ]
+        }
+      },
+      "additionalProperties": true
+    },
     "fmt_gofmt": {
       "type": "object",
       "properties": {
@@ -5475,28 +5527,6 @@
       "additionalProperties": true
     },
     "fmt_styler": {
-      "type": "object",
-      "properties": {
-        "enabled": {
-          "type": "boolean"
-        },
-        "indent_width": {
-          "type": "integer"
-        },
-        "rules": {
-          "oneOf": [
-            {
-              "type": "array"
-            },
-            {
-              "type": "object"
-            }
-          ]
-        }
-      },
-      "additionalProperties": true
-    },
-    "fmt_treesitter": {
       "type": "object",
       "properties": {
         "enabled": {
