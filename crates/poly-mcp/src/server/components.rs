@@ -132,11 +132,14 @@ impl PathsTool {
     }
 }
 
-/// Annotations for a tool that reads or checks only but may download a component, so it reaches
-/// beyond the machine: closed-world would be a false claim.
-fn read_only_open_world_annotations() -> ToolAnnotations {
+/// Annotations for a check-only tool that runs the repository's configuration.
+///
+/// Not read-only: a run executes whatever the repository's `poly.toml` names (`[tools.*] bin`,
+/// `args`, `env`), so a harness that auto-approves read-only tools would run a cloned repository's
+/// programs. It writes no files of its own, hence not destructive, and may download a component.
+fn check_open_world_annotations() -> ToolAnnotations {
     ToolAnnotations::new()
-        .read_only(true)
+        .read_only(false)
         .destructive(false)
         .idempotent(true)
         .open_world(true)
@@ -162,7 +165,8 @@ fn installing_annotations() -> ToolAnnotations {
 }
 
 /// What every lint and format result reports about the run, appended to each tool description.
-const RUN_RESULT_NOTE: &str = "A file poly could not process is reported with an `error` (never as clean) and sets `isError`. \
+const RUN_RESULT_NOTE: &str = "Linting and formatting run the tools and hooks the repository's own `poly.toml` \
+    configures, so only run against repositories you trust. A file poly could not process is reported with an `error` (never as clean) and sets `isError`. \
     The result carries `skipped` and a `summary` of checked/skipped/errored counts: check those, not just \
     an empty `results`, since a run that skipped everything reports no diagnostics and is not an error. \
     When the run needed downloadable components the result carries a `components` block (`used`, `installed_now`, \
@@ -191,16 +195,16 @@ pub(super) fn tool_definitions() -> Vec<Tool> {
     vec![
         paths_tool(
             LINT,
-            "Lint files and report diagnostics as structured JSON (plus JSON/TOON text). Never writes. Mirrors `poly lint`.",
+            "Lint files and report diagnostics as structured JSON (plus JSON/TOON text). Writes no fixes. Mirrors `poly lint`.",
             dto::lint_output_schema(),
-            read_only_open_world_annotations(),
+            check_open_world_annotations(),
         ),
         paths_tool(
             FORMAT_CHECK,
             "Check formatting without writing; reports which files would change as structured JSON (plus JSON/TOON text). \
              Mirrors `poly fmt` (the dry run).",
             dto::format_output_schema(),
-            read_only_open_world_annotations(),
+            check_open_world_annotations(),
         ),
         paths_tool(
             LINT_FIX,

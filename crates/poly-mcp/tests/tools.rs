@@ -324,18 +324,18 @@ fn registered_tools_have_expected_names_and_annotations() {
         ]
     );
 
-    for tool in [
-        "lint",
-        "format_check",
-        "cache_stats",
-        "rules",
-        "config_show",
-        "components",
-        "version",
-    ] {
+    for tool in ["cache_stats", "rules", "config_show", "components", "version"] {
         let (read_only, destructive) = server.tool_hints(tool).unwrap();
         assert_eq!(read_only, Some(true), "{tool} should be read-only");
         assert_eq!(destructive, Some(false), "{tool} should not be destructive");
+    }
+    for tool in ["lint", "format_check"] {
+        let (read_only, destructive) = server.tool_hints(tool).unwrap();
+        assert_eq!(
+            (read_only, destructive),
+            (Some(false), Some(false)),
+            "{tool} runs the repository's configured tools: not read-only, but it deletes nothing"
+        );
     }
     let (read_only, destructive) = server.tool_hints("components_install").unwrap();
     assert_eq!(
@@ -976,4 +976,40 @@ async fn a_host_without_a_component_manager_is_explicit_about_it() {
 
     client.cancel().await.unwrap();
     let _ = server_task.await;
+}
+
+/// Only a tool that cannot execute repository-configured programs may claim `read_only_hint`; a
+/// client auto-approves on it. This pins the complete set so a new tool must choose deliberately.
+#[test]
+fn read_only_is_claimed_exactly_by_tools_that_cannot_run_repository_config() {
+    let server = common::server(None);
+    let mut read_only: Vec<String> = server
+        .tool_names()
+        .into_iter()
+        .filter(|name| server.tool_hints(name).unwrap().0 == Some(true))
+        .collect();
+    read_only.sort();
+    assert_eq!(
+        read_only,
+        ["cache_stats", "components", "config_show", "rules", "version"],
+        "read-only tools"
+    );
+}
+
+/// The descriptions of the tools that run repository config tell the client to trust the repository.
+#[test]
+fn lint_and_format_descriptions_warn_about_untrusted_repositories() {
+    let server = common::server(None);
+    for tool in ["lint", "format_check", "lint_fix", "format_write"] {
+        let description = server
+            .get_tool(tool)
+            .unwrap()
+            .description
+            .unwrap_or_default()
+            .to_string();
+        assert!(
+            description.contains("only run against repositories you trust"),
+            "{tool}"
+        );
+    }
 }
