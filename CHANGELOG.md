@@ -7,6 +7,8 @@ binary drives lint, format, hooks, and commit checks from one `poly.toml`.
 
 ## [Unreleased]
 
+## [0.35.0] - 2026-11-15
+
 ### Added
 
 - **Cross-file Markdown link checks.** `[engines.rumdl] cross_file_links = true` reports a `file.md#anchor` that no
