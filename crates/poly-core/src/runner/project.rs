@@ -20,6 +20,7 @@
 mod fixes;
 mod inputs;
 mod merge;
+mod schedule;
 mod scope;
 
 use std::path::{Path, PathBuf};
@@ -784,84 +785,7 @@ pub(super) fn run_project_phase(
     if plans.is_empty() {
         return outcome;
     }
-    let run_scope = scope::RunScope::new(run.paths);
-    let mut environments: FxHashMap<PathBuf, ProjectEnvironment> = FxHashMap::default();
-    let roots: Vec<PathBuf> = plans.iter().map(|plan| root_for(run.configs, plan.config_id)).collect();
-    for (at, plan) in plans.iter().enumerate() {
-        if only.is_some_and(|only| !only.contains(plan.engine.name())) {
-            continue;
-        }
-        if let Some(outer) = covering_plan(&plans, &roots, at) {
-            outcome.findings.extend(ignored_options_note(&plans, &roots, at, outer));
-            continue;
-        }
-        let served = plan.engine.languages();
-        let scoped: Vec<&DiscoveredFile> = files
-            .iter()
-            .filter(|f| f.config_id == plan.config_id && (served.is_empty() || served.contains(&f.language)))
-            .collect();
-        if scoped.is_empty() && !plan.ancestor {
-            continue;
-        }
-        let root = root_for(run.configs, plan.config_id);
-        let dirs = match inputs::plan_dirs(plan) {
-            Ok(dirs) => dirs,
-            Err(message) => {
-                outcome.errors.push(LintError {
-                    path: root,
-                    message: format!("project check '{}': {message}", plan.engine.name()),
-                });
-                continue;
-            }
-        };
-        if let Some(dirs) = &dirs
-            && !dirs.absolute(&root).any(|dir| run_scope.reaches(&dir))
-        {
-            continue;
-        }
-        let environment = environments
-            .entry(root.clone())
-            .or_insert_with(|| crate::project::env::resolve_environment(&root));
-        let loaded = match inputs::load(plan, &root, dirs.as_ref(), &scoped, run) {
-            Ok(loaded) => loaded,
-            Err(message) => {
-                outcome.errors.push(LintError {
-                    path: root,
-                    message: format!("project check '{}': {message}", plan.engine.name()),
-                });
-                continue;
-            }
-        };
-        if !inputs::has_substance(&loaded) {
-            continue;
-        }
-        let reported = match report_for(plan, &root, &loaded, environment, cache) {
-            Ok(reported) => reported,
-            Err(error) => {
-                outcome.errors.push(error);
-                continue;
-            }
-        };
-        outcome.reads.push((
-            plan.engine.name(),
-            loaded.iter().map(|file| file.path.clone()).collect(),
-        ));
-        let narrowed = dirs.is_some().then_some(&run_scope);
-        // A whole-tree check saw files the run's excludes drop; it reports only on the ones the run covers.
-        let covered = dirs
-            .as_ref()
-            .is_some_and(|dirs| dirs.whole_tree)
-            .then(|| scope::covered(files, &reported));
-        collect_findings(
-            plan,
-            run.configs,
-            reported,
-            narrowed,
-            covered.as_ref(),
-            &loaded,
-            &mut outcome.findings,
-        );
-    }
+    schedule::run_plans(&mut outcome, &plans, files, run, only, cache);
     outcome
 }
 
