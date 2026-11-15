@@ -1,7 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "title": "ProtocolSchema",
-  "description": "Root type used to emit one JSON Schema covering every top-level message.\n\nTransport framing is not part of the messages. A dylib component receives `call(header, body)`\ndirectly. A sidecar executable (alef stdio transport) receives one `invoke_bytes(method, payload)`\nper call: method `describe` with an empty payload returns the encoded `describe` message; method\n`call` carries `u32_le(header_len) ++ header ++ body` and returns the encoded `response`.",
+  "description": "Root type used to emit one JSON Schema covering every top-level message.\n\n`request` and `response` are encoded positionally: a struct (or struct variant) is a MessagePack\narray of its fields in declaration order, every field present (`null` for `None`). Enums are\nexternally tagged by variant name (`{\"Variant\": value}`, a unit variant as its bare name).\n`describe` keeps named fields (structs as maps), so a description can grow defaulted fields.\n\nTransport framing is not part of the messages. A dylib component receives `call(header, body)`\ndirectly. A sidecar executable (alef stdio transport) receives one `invoke_bytes(method, payload)`\nper call: method `describe` with an empty payload returns the encoded `describe` message; method\n`call` carries `u32_le(header_len) ++ header ++ body` and returns the encoded `response`.",
   "type": "object",
   "properties": {
     "request": {
@@ -250,7 +250,7 @@
                   }
                 },
                 "threads": {
-                  "description": "The worker threads the host's run budgets for the check. Absent from an older host, which reads as\n\"the component's choice\".",
+                  "description": "The worker threads the host's run budgets for the check; `None` is the component's choice.",
                   "type": ["integer", "null"],
                   "format": "uint32",
                   "minimum": 0
@@ -260,28 +260,6 @@
             }
           },
           "required": ["ProjectCheck"],
-          "additionalProperties": false
-        },
-        {
-          "description": "`Engine::skip_reason` for one file (content in `body`).",
-          "type": "object",
-          "properties": {
-            "SkipReason": {
-              "type": "object",
-              "properties": {
-                "engine": {
-                  "description": "Engine name.",
-                  "type": "string"
-                },
-                "file": {
-                  "description": "The file.",
-                  "$ref": "#/$defs/WireFile"
-                }
-              },
-              "required": ["engine", "file"]
-            }
-          },
-          "required": ["SkipReason"],
           "additionalProperties": false
         },
         {
@@ -891,7 +869,7 @@
           "additionalProperties": false
         },
         {
-          "description": "Answer to `SkipReason`, the salts and the contexts; `None` is the trait default.",
+          "description": "Answer to the salts and `FileContext`; `None` is the trait default.",
           "type": "object",
           "properties": {
             "OptString": {
@@ -955,8 +933,8 @@
       "type": "object",
       "properties": {
         "engine": {
-          "description": "Id of the engine that produced the finding.",
-          "type": "string"
+          "description": "Id of the engine that produced the finding, when it is not the engine the request named.\n`None` (the common case) means the requested engine, so the id is not repeated per finding.",
+          "type": ["string", "null"]
         },
         "code": {
           "description": "Tool-specific rule code.",
@@ -1004,7 +982,7 @@
           }
         }
       },
-      "required": ["engine", "severity", "title", "fix", "metadata"]
+      "required": ["severity", "title", "fix", "metadata"]
     },
     "WireSeverity": {
       "description": "Severity of a [`WireDiagnostic`].",
@@ -1102,6 +1080,17 @@
             }
           },
           "required": ["Formatted"],
+          "additionalProperties": false
+        },
+        {
+          "description": "The engine declines the file (`Engine::skip_reason`) and did not format it; the reason is\nreported as the file's skip.",
+          "type": "object",
+          "properties": {
+            "Declined": {
+              "type": "string"
+            }
+          },
+          "required": ["Declined"],
           "additionalProperties": false
         }
       ]
