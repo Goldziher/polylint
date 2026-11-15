@@ -218,17 +218,24 @@ fn run_commit(args: crate::CommitArgs) -> ExitCode {
         Ok(resolver) => resolver,
         Err(error) => {
             eprintln!("poly commit: {error:#}");
-            return ExitCode::FAILURE;
+            return ExitCode::from(COMMIT_UNVERIFIED);
         }
     };
     let mut args = args;
     args.color = crate::global().color;
+    if args.config.is_none() {
+        args.config.clone_from(&crate::global().config);
+    }
     match crate::run_commit_lint(args, &resolver) {
         Ok(0) => ExitCode::SUCCESS,
         Ok(code) => ExitCode::from(code as u8),
         Err(error) => {
             eprintln!("poly commit: {error:#}");
-            ExitCode::FAILURE
+            ExitCode::from(COMMIT_UNVERIFIED)
         }
     }
 }
+
+/// Exit code when the message could not be checked (config, I/O or other failure), kept apart
+/// from `1`, which means the message was checked and rejected.
+const COMMIT_UNVERIFIED: u8 = 2;

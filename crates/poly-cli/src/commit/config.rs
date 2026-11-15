@@ -11,7 +11,8 @@ use poly_config::BaseConfigResolver;
 /// Load the commit config governing `start_dir`.
 ///
 /// An explicit path or a gitfluff-native file (`.gitfluff.toml` / `.fluff.toml`) takes
-/// precedence; otherwise the `[commit]` table of the nearest `poly.toml` is mapped onto
+/// precedence, except that an explicit `poly.toml` is read as poly config (its `[commit]`
+/// table), not as a gitfluff file; otherwise the `[commit]` table of the nearest `poly.toml` is mapped onto
 /// gitfluff's [`FileConfig`]. Returns `None` when neither exists.
 ///
 /// `resolver` resolves the `extends` bases a `poly.toml` declares, so a repo whose shared base
@@ -21,28 +22,34 @@ pub(super) fn load(
     start_dir: &Path,
     resolver: &dyn BaseConfigResolver,
 ) -> anyhow::Result<Option<(ConfigSource, FileConfig)>> {
+    if let Some(path) = explicit_path.filter(|path| is_poly_config(path)) {
+        return load_poly_commit_config(path, resolver).map(Some);
+    }
     if let Some((path, config)) = gitfluff::load_config(explicit_path, start_dir)? {
         return Ok(Some((ConfigSource::new(path), config)));
     }
-    load_poly_commit_config(start_dir, resolver)
+    match poly_config::find_config(start_dir) {
+        Some(poly_path) => load_poly_commit_config(&poly_path, resolver).map(Some),
+        None => Ok(None),
+    }
+}
+
+fn is_poly_config(path: &Path) -> bool {
+    path.file_name()
+        .is_some_and(|name| poly_config::CONFIG_FILE_NAMES.iter().any(|known| name == *known))
 }
 
 fn load_poly_commit_config(
-    start_dir: &Path,
+    poly_path: &Path,
     resolver: &dyn BaseConfigResolver,
-) -> anyhow::Result<Option<(ConfigSource, FileConfig)>> {
-    match poly_config::find_config(start_dir) {
-        Some(poly_path) => {
-            let poly = poly_config::PolyConfig::load_file_with(&poly_path, resolver)
-                .with_context(|| format!("invalid config at {}", poly_path.display()))?;
-            let config = file_config(poly.commit);
-            Ok(Some((
-                ConfigSource::new(poly_path).with_rules_table("commit.rules"),
-                config,
-            )))
-        }
-        None => Ok(None),
-    }
+) -> anyhow::Result<(ConfigSource, FileConfig)> {
+    let poly = poly_config::PolyConfig::load_file_with(poly_path, resolver)
+        .with_context(|| format!("invalid config at {}", poly_path.display()))?;
+    let config = file_config(poly.commit);
+    Ok((
+        ConfigSource::new(poly_path.to_path_buf()).with_rules_table("commit.rules"),
+        config,
+    ))
 }
 
 fn file_config(commit: poly_config::CommitConfig) -> FileConfig {

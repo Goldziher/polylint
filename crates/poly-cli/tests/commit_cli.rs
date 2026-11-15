@@ -79,7 +79,7 @@ fn write_strips_ai_trailer_from_the_message_file() {
 fn missing_message_source_is_an_error() {
     let dir = tempdir().unwrap();
     let output = poly_commit(dir.path(), &[]);
-    assert_eq!(output.status.code(), Some(1));
+    assert_eq!(output.status.code(), Some(2));
     assert!(stderr(&output).contains("no commit message source"));
 }
 
@@ -447,4 +447,49 @@ fn a_plain_ai_banner_in_the_body_fails_like_the_trailer_form() {
         ],
     );
     assert_eq!(opted_out.status.code(), Some(0), "{}", stderr(&opted_out));
+}
+
+#[test]
+fn global_config_flag_is_the_fallback_for_commit() {
+    let dir = tempdir().unwrap();
+    let config = dir.path().join("custom.toml");
+    fs::write(&config, "preset = \"simple\"\n").unwrap();
+    let output = Command::new(POLY)
+        .args([
+            "--config",
+            config.to_str().unwrap(),
+            "commit",
+            "--message",
+            "Plain subject",
+        ])
+        .current_dir(dir.path())
+        .env("POLY_OFFLINE", "1")
+        .env("POLY_NO_SHADOW_WARN", "1")
+        .output()
+        .expect("run poly commit");
+    assert_eq!(code(&output), Some(0), "{}", stderr(&output));
+}
+
+#[test]
+fn explicit_poly_toml_reads_its_commit_table() {
+    let dir = tempdir().unwrap();
+    let config = dir.path().join("poly.toml");
+    fs::write(&config, "[commit]\npreset = \"simple\"\n").unwrap();
+    let args = ["--config", config.to_str().unwrap(), "--message"];
+    let ok = poly_commit(dir.path(), &[args[0], args[1], args[2], "Plain subject"]);
+    assert_eq!(code(&ok), Some(0), "{}", stderr(&ok));
+}
+
+#[test]
+fn unreadable_config_exits_2_while_a_rejected_message_exits_1() {
+    let dir = tempdir().unwrap();
+    let missing = dir.path().join("absent.toml");
+    let broken = poly_commit(
+        dir.path(),
+        &["--config", missing.to_str().unwrap(), "--message", "feat: x"],
+    );
+    assert_eq!(code(&broken), Some(2), "{}", stderr(&broken));
+
+    let rejected = poly_commit(dir.path(), &["--message", "not conventional"]);
+    assert_eq!(code(&rejected), Some(1), "{}", stderr(&rejected));
 }
