@@ -2203,6 +2203,7 @@ dependencies = [
  "poly-config",
  "poly-engine-api",
  "poly-engines",
+ "rustix",
  "serde_json",
  "tracing",
 ]

@@ -9,8 +9,8 @@ metadata:
 
 <!--
 AI-RULEZ :: GENERATED FILE — DO NOT EDIT
-Content-Hash: blake3:422fb9318db7715d1c421a5d935a7a0cdce9918dd0c8c78983801b3a3e2ff3b8
-Source-Hash: blake3:c96bf481ec94a647ddbc1a37390b57d8acb968f94da6a7452ebfa692337d14a9
+Content-Hash: blake3:4fd1a1fbeabd608acca584f8cd4b3daeca5672446e3abba1ac2f13528b79dfe7
+Source-Hash: blake3:96f26b0f2e2a2e679039b1d07dfd3e83e21e574c9e9ed176e92b374893a0e8ff
 Schema-Version: v1
 -->
 
@@ -23,14 +23,24 @@ the CLI's `--format json`, or the compact TOON encoding when asked.
 
 `poly mcp --config <PATH>` pins a fallback config file for requests that do not name one.
 
+Requests are confined to the directory `poly mcp` was started in: every `paths`, `dirs` and
+`config` argument is canonicalized (symlinks and `..` resolved) and one outside that directory is
+rejected with an error. The `--config` file itself is always accepted. `poly mcp
+--allow-outside-workspace` turns the confinement off.
+
 ## Tool surface
 
-Fourteen tools, no more. Read-only (never touch the tree):
+Fourteen tools, no more. Not read-only, but apply no fixes (`lint`, `format_check`): they run
+the tools and hooks the repository's own `poly.toml` configures, so only run them against
+repositories you trust.
 
 - `lint` — run the linters and return diagnostics. Mirrors `poly lint`, per-file tier only
   (as `--workspace never`); the whole-project phase is the separate `workspace_lint` tool.
   May download a missing engine component (see "Components" below).
 - `format_check` — report formatting drift without writing. Mirrors `poly fmt`. May download.
+
+Read-only (cannot execute repository config):
+
 - `components` — the downloadable engine components and where each stands (`bundled`,
   `installed`, `not installed`, `unavailable`). Given `paths`, only the components they need,
   which are `missing`, and which a run would `would_download`. Never downloads. Mirrors `poly
@@ -117,8 +127,9 @@ There is no `hooks` tool: `poly hooks` is CLI-only.
 
 `format` selects only the paired **text** block; `structured_content` is always JSON.
 
-Treat the read-only tools as safe to call freely; gate the mutating tools behind explicit
-intent since they change files.
+Treat only the read-only tools as safe to call freely; `lint` and `format_check` execute
+repository-configured tools, so gate them (and the mutating tools) behind trust in the repository
+and explicit intent.
 
 ## Every result identifies the binary that answered
 

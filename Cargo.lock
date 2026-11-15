@@ -3401,6 +3401,7 @@ dependencies = [
  "poly-engine-api",
  "poly-engines",
  "rayon",
+ "rustix",
  "serde_json",
  "sha2",
  "tar",
