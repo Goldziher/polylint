@@ -110,10 +110,17 @@
 //!
 //! ## Subprocess I/O safety
 //!
-//! A dedicated OS thread writes stdin while the main (rayon) worker thread
-//! collects stdout via `wait_with_output`. This prevents the pipe-buffer
+//! Every invocation goes through [`crate::tool_run`]: a dedicated OS thread writes
+//! stdin while others drain stdout and stderr, which prevents the pipe-buffer
 //! deadlock that can occur for source files larger than the OS pipe buffer
 //! (~64 KB on Linux) when a formatter buffers all input before writing output.
+//! The tool runs under a deadline by call kind (60 s per file, 30 minutes per batch,
+//! 10 s per probe; `POLY_TOOL_TIMEOUT_SECS` overrides, `0` for none) and is killed with
+//! its process group on expiry. A tool that does not answer its presence probe in
+//! time is treated as absent.
+//!
+//! A non-zero exit is a per-file error, never a silently unchanged file: the file is
+//! reported as failed rather than counted as formatted.
 
 use tracing::warn;
 

@@ -286,8 +286,8 @@ pub(crate) static KTFMT_SPEC: ToolSpec = ToolSpec {
 
 /// `Rscript --vanilla -e 'styler::style_text(...)'`: reads R source from stdin
 /// via `file("stdin")`, formats with the `styler` package, and writes to
-/// stdout. Opt-in (off by default). Non-zero exit (syntax error or missing
-/// package) leaves the file unchanged.
+/// stdout. Opt-in (off by default). A non-zero exit (syntax error or
+/// missing package) is reported as a per-file error.
 pub(crate) static RSTYLER_SPEC: ToolSpec = ToolSpec {
     engine_name: "styler",
     format_binary: Some("Rscript"),
