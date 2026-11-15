@@ -569,3 +569,24 @@ fn indent_width_changes_formatted_indentation() {
     assert!(two.contains("\n  a,"), "two-space indent expected, got {two:?}");
     assert!(four.contains("\n    a,"), "four-space indent expected, got {four:?}");
 }
+
+#[test]
+fn default_config_keeps_sqruff_own_indentation() {
+    let engine = SqruffEngine;
+    let src = make_source("t.sql", "SELECT\n a,\n b\nFROM t\n");
+    let default = match engine.format(&src, &default_cfg()).unwrap() {
+        poly_engine_api::engine::FormatOutput::Formatted(s) => s,
+        poly_engine_api::engine::FormatOutput::Unchanged => src.content.to_string(),
+    };
+    let mut explicit = default_cfg();
+    explicit.indent_width = 2;
+    let two = match engine.format(&src, &explicit).unwrap() {
+        poly_engine_api::engine::FormatOutput::Formatted(s) => s,
+        poly_engine_api::engine::FormatOutput::Unchanged => src.content.to_string(),
+    };
+    assert!(
+        default.contains("\n    a,"),
+        "sqruff's own four-space layout expected, got {default:?}"
+    );
+    assert_ne!(default, two, "an explicit indent_width = 2 must change the layout");
+}

@@ -379,10 +379,14 @@ fn build_fluff_config(cfg: &EngineConfig, mode: Mode) -> anyhow::Result<FluffCon
         }
     }
 
-    ini.push_str(&format!(
-        "\n[sqruff:indentation]\ntab_space_size = {}\n",
-        cfg.indent_width
-    ));
+    // Only an indent the user moved off SQL's own default is forwarded; otherwise sqruff keeps its
+    // built-in layout and unconfigured SQL is not reindented.
+    if cfg.indent_width != Language::Sql.default_indent_width() {
+        ini.push_str(&format!(
+            "\n[sqruff:indentation]\ntab_space_size = {}\n",
+            cfg.indent_width
+        ));
+    }
 
     Ok(FluffConfig::from_source(&ini, None))
 }
