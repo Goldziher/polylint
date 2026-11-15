@@ -10,14 +10,14 @@ use poly_engine_api::engine::Span;
 use poly_engine_api::line_index::LineIndex;
 use serde_json::{Map, Value};
 
-use crate::doc::{Document, MAX_DEPTH, child, element, span_between};
+use crate::doc::{Document, MAX_DEPTH, child_if, element_if, span_between};
 
 /// Parses `src` into its value and spans.
 ///
 /// # Errors
 ///
 /// A syntax error with its `line:column`.
-pub(crate) fn parse(src: &str) -> Result<Document, String> {
+pub(crate) fn parse(src: &str, record: bool) -> Result<Document, String> {
     let mut parser = Parser {
         src,
         bytes: src.as_bytes(),
@@ -28,6 +28,7 @@ pub(crate) fn parse(src: &str) -> Result<Document, String> {
         },
         lines: LineIndex::new(src),
         spans: HashMap::new(),
+        record,
     };
     parser.skip()?;
     let value = parser.value("", 0)?;
@@ -35,7 +36,11 @@ pub(crate) fn parse(src: &str) -> Result<Document, String> {
     if parser.pos < parser.bytes.len() {
         return Err(parser.error("unexpected content after the document"));
     }
-    Ok(Document::new(value, parser.spans))
+    Ok(if record {
+        Document::new(value, parser.spans)
+    } else {
+        Document::unrecorded(value)
+    })
 }
 
 struct Parser<'a> {
@@ -44,6 +49,7 @@ struct Parser<'a> {
     pos: usize,
     lines: LineIndex<'a>,
     spans: HashMap<String, Span>,
+    record: bool,
 }
 
 impl Parser<'_> {
@@ -93,8 +99,10 @@ impl Parser<'_> {
             Some(b'n') => self.literal("null", Value::Null)?,
             _ => return Err(self.error("expected a value")),
         };
-        let span = span_between(&self.lines, start, self.pos);
-        self.spans.insert(pointer.to_owned(), span);
+        if self.record {
+            let span = span_between(&self.lines, start, self.pos);
+            self.spans.insert(pointer.to_owned(), span);
+        }
         Ok(value)
     }
 
@@ -118,7 +126,8 @@ impl Parser<'_> {
             }
             self.pos += 1;
             self.skip()?;
-            let value = self.value(&child(pointer, &key), depth + 1)?;
+            let path = child_if(self.record, pointer, &key);
+            let value = self.value(&path, depth + 1)?;
             members.insert(key, value);
             self.skip()?;
             match self.peek() {
@@ -142,7 +151,8 @@ impl Parser<'_> {
                 self.pos += 1;
                 break;
             }
-            let value = self.value(&element(pointer, items.len()), depth + 1)?;
+            let path = element_if(self.record, pointer, items.len());
+            let value = self.value(&path, depth + 1)?;
             items.push(value);
             self.skip()?;
             match self.peek() {
@@ -247,6 +257,10 @@ impl Parser<'_> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn parse(src: &str) -> Result<Document, String> {
+        super::parse(src, true)
+    }
 
     #[test]
     fn spans_are_one_based_line_and_column_of_each_value() {

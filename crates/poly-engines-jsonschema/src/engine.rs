@@ -130,7 +130,7 @@ impl Engine for JsonSchemaEngine {
             return Ok(Vec::new());
         }
 
-        let documents = match doc::parse(&src.language, content) {
+        let documents = match doc::parse_lazy(&src.language, &src.content) {
             Ok(documents) => documents,
             Err(reason) => {
                 return Ok(match resolve_in(&scope, textual.as_deref(), cfg) {

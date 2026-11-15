@@ -14,7 +14,7 @@ use poly_engine_api::engine::Span;
 use poly_engine_api::line_index::LineIndex;
 use serde_json::{Map, Number, Value};
 
-use crate::doc::{Document, MAX_DEPTH, child, element, span_between};
+use crate::doc::{Document, MAX_DEPTH, child, child_if, element_if, span_between};
 
 /// Most nodes one document may gain through alias and merge expansion; bounds a billion-laughs
 /// document to a fixed amount of memory.
@@ -48,6 +48,7 @@ struct Walker<'a> {
     anchors: HashMap<usize, (Value, usize)>,
     expanded: usize,
     spans: HashMap<String, Span>,
+    record: bool,
 }
 
 /// Parses every document of `src`.
@@ -55,7 +56,7 @@ struct Walker<'a> {
 /// # Errors
 ///
 /// The parser's message, with its position, when `src` is not valid YAML.
-pub(crate) fn parse(src: &str) -> Result<Vec<Document>, String> {
+pub(crate) fn parse(src: &str, record: bool) -> Result<Vec<Document>, String> {
     let mut events = Vec::new();
     for event in Parser::new_from_str(src) {
         let (event, span) = event.map_err(|error| format!("invalid YAML: {error}"))?;
@@ -87,6 +88,7 @@ pub(crate) fn parse(src: &str) -> Result<Vec<Document>, String> {
         anchors: HashMap::new(),
         expanded: 0,
         spans: HashMap::new(),
+        record,
     };
     let mut documents = Vec::new();
     while let Some((kind, _)) = walker.pull() {
@@ -105,7 +107,11 @@ pub(crate) fn parse(src: &str) -> Result<Vec<Document>, String> {
                 break;
             }
         }
-        documents.push(Document::new(value, std::mem::take(&mut walker.spans)));
+        documents.push(if record {
+            Document::new(value, std::mem::take(&mut walker.spans))
+        } else {
+            Document::unrecorded(value)
+        });
     }
     Ok(documents)
 }
@@ -116,7 +122,7 @@ pub(crate) fn parse(src: &str) -> Result<Vec<Document>, String> {
 ///
 /// The parser's message when `src` is not valid YAML, or a note that it holds no document.
 pub(crate) fn parse_value(src: &str) -> Result<Value, String> {
-    parse(src)?
+    parse(src, false)?
         .into_iter()
         .next()
         .map(|document| document.value)
@@ -139,7 +145,16 @@ impl Walker<'_> {
         Ok(())
     }
 
+    fn record_child(&mut self, parent: &str, key: &str, loc: &Loc) {
+        if self.record {
+            self.record(&child(parent, key), loc);
+        }
+    }
+
     fn record(&mut self, pointer: &str, loc: &Loc) {
+        if !self.record {
+            return;
+        }
         let span = match &loc.bytes {
             Some(range) => span_between(&self.lines, range.start, range.end),
             None => {
@@ -182,7 +197,8 @@ impl Walker<'_> {
                     if matches!(kind, Kind::SeqEnd) {
                         break;
                     }
-                    let value = self.node(kind, &item_loc, &element(pointer, items.len()), depth + 1)?;
+                    let path = element_if(self.record, pointer, items.len());
+                    let value = self.node(kind, &item_loc, &path, depth + 1)?;
                     items.push(value);
                 }
                 (Value::Array(items), anchor)
@@ -216,19 +232,20 @@ impl Walker<'_> {
                                 continue;
                             }
                             None => {
-                                self.record(&child(pointer, &key), &value_loc);
+                                self.record_child(pointer, &key, &value_loc);
                                 members.insert(key, value);
                                 continue;
                             }
                         }
                     }
-                    let value = self.node(kind, &value_loc, &child(pointer, &key), depth + 1)?;
+                    let path = child_if(self.record, pointer, &key);
+                    let value = self.node(kind, &value_loc, &path, depth + 1)?;
                     members.insert(key, value);
                 }
                 for (source, merge_loc) in merged {
                     for (key, value) in source {
                         if !members.contains_key(&key) {
-                            self.record(&child(pointer, &key), &merge_loc);
+                            self.record_child(pointer, &key, &merge_loc);
                             members.insert(key, value);
                         }
                     }
@@ -311,6 +328,10 @@ fn number(text: &str) -> Option<Value> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn parse(src: &str) -> Result<Vec<Document>, String> {
+        super::parse(src, true)
+    }
 
     fn at(doc: &Document, pointer: &str) -> (u32, u32) {
         let span = doc.span_of(pointer).expect("span");

@@ -11,30 +11,37 @@ use poly_engine_api::line_index::LineIndex;
 use serde_json::{Map, Number, Value};
 use toml::de::{DeInteger, DeTable, DeValue};
 
-use crate::doc::{Document, child, element, span_between};
+use crate::doc::{Document, child_if, element_if, span_between};
 
 /// Parses `src` into its value and spans.
 ///
 /// # Errors
 ///
 /// The parser's message, with its position, when `src` is not valid TOML.
-pub(crate) fn parse(src: &str) -> Result<Document, String> {
+pub(crate) fn parse(src: &str, record: bool) -> Result<Document, String> {
     let root = DeTable::parse(src).map_err(|error| format!("invalid TOML: {error}"))?;
     let lines = LineIndex::new(src);
-    let mut spans = HashMap::new();
+    let mut spans = record.then(HashMap::new);
     let value = table(root.get_ref(), "", &lines, &mut spans);
-    Ok(Document::new(value, spans))
+    Ok(match spans {
+        Some(spans) => Document::new(value, spans),
+        None => Document::unrecorded(value),
+    })
 }
 
-fn record(spans: &mut HashMap<String, Span>, lines: &LineIndex<'_>, pointer: &str, range: Range<usize>) {
-    spans.insert(pointer.to_owned(), span_between(lines, range.start, range.end));
+type Spans = Option<HashMap<String, Span>>;
+
+fn record(spans: &mut Spans, lines: &LineIndex<'_>, pointer: &str, range: Range<usize>) {
+    if let Some(spans) = spans {
+        spans.insert(pointer.to_owned(), span_between(lines, range.start, range.end));
+    }
 }
 
-fn table(entries: &DeTable<'_>, pointer: &str, lines: &LineIndex<'_>, spans: &mut HashMap<String, Span>) -> Value {
+fn table(entries: &DeTable<'_>, pointer: &str, lines: &LineIndex<'_>, spans: &mut Spans) -> Value {
     let mut members = Map::new();
     for (key, value) in entries.iter() {
         let name: &str = key.get_ref();
-        let member = child(pointer, name);
+        let member = child_if(spans.is_some(), pointer, name);
         let range = if matches!(value.get_ref(), DeValue::Table(_)) {
             key.span()
         } else {
@@ -46,7 +53,7 @@ fn table(entries: &DeTable<'_>, pointer: &str, lines: &LineIndex<'_>, spans: &mu
     Value::Object(members)
 }
 
-fn node(value: &DeValue<'_>, pointer: &str, lines: &LineIndex<'_>, spans: &mut HashMap<String, Span>) -> Value {
+fn node(value: &DeValue<'_>, pointer: &str, lines: &LineIndex<'_>, spans: &mut Spans) -> Value {
     match value {
         DeValue::String(text) => Value::String(text.to_string()),
         DeValue::Integer(integer) => integer_value(integer),
@@ -62,7 +69,7 @@ fn node(value: &DeValue<'_>, pointer: &str, lines: &LineIndex<'_>, spans: &mut H
         DeValue::Array(items) => {
             let mut out = Vec::with_capacity(items.len());
             for (at, item) in items.iter().enumerate() {
-                let member = element(pointer, at);
+                let member = element_if(spans.is_some(), pointer, at);
                 record(spans, lines, &member, item.span());
                 out.push(node(item.get_ref(), &member, lines, spans));
             }
@@ -100,6 +107,10 @@ fn integer_value(integer: &DeInteger<'_>) -> Value {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn parse(src: &str) -> Result<Document, String> {
+        super::parse(src, true)
+    }
 
     #[test]
     fn values_and_positions_come_from_the_source() {
