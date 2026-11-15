@@ -338,7 +338,8 @@ fn run_hooks(
     let mut any_failed = false;
 
     for group in prepare::group_by_priority(&spec.hooks) {
-        let mut runs = run_group(request, spec, prepared, &group, ui);
+        let memo = cache_key::DeclaredMemo::default();
+        let mut runs = run_group(request, spec, prepared, &group, ui, &memo);
 
         // Landing is a group-wide step: the hooks ran concurrently, so who
         // rewrote what has to be reconciled once, before any outcome is final.
@@ -367,8 +368,8 @@ fn run_hooks(
             // one — so it stays as the conservative guard it has always been.
             if modified.is_empty() && store_key.is_some() {
                 if let HookCache::DeclaredInputs(pattern) = &hook.cache {
-                    let declared = cache_key::declared_input_files(&request.root, pattern)?;
-                    modified = cache_key::modified_matched(&request.root, &declared)?;
+                    let (exec_root, _) = execution_root(request);
+                    modified = cache_key::declared_modified(&memo, &request.root, exec_root, pattern)?;
                 }
             }
 
@@ -440,6 +441,7 @@ fn run_group(
     prepared: &[Prepared],
     group: &[usize],
     ui: Option<&ProgressUi>,
+    memo: &cache_key::DeclaredMemo,
 ) -> Vec<HookRun> {
     // Resolved once per group rather than per hook: the tree is a property of
     // the run, and every hook in the run shares it.
@@ -491,7 +493,7 @@ fn run_group(
         let key = request
             .cache
             .as_ref()
-            .and_then(|_| cache_key::cache_key(&request.root, exec_root, hook, matched));
+            .and_then(|_| cache_key::cache_key(memo, &request.root, exec_root, hook, matched));
 
         if let (Some(cache), Some(key)) = (request.cache.as_ref(), key.as_ref()) {
             if let Some(output) = cache.get(Namespace::Hook, key) {
