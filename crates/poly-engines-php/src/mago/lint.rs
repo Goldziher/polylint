@@ -83,6 +83,80 @@ pub(super) type PlanCache = Mutex<HashMap<[u8; 32], Arc<LintPlan>>>;
 const PLAN_CACHE_CAP: usize = 32;
 
 fn build_plan(cfg: &EngineConfig) -> anyhow::Result<LintPlan> {
+    let selection = RuleSelection::from_options(cfg);
+    let php_version = rules::parse_php_version(cfg)?.unwrap_or(PHP_VERSION);
+    let integrations = parse_integrations(cfg)?;
+
+    let settings = Settings {
+        php_version,
+        integrations,
+        ..Settings::default()
+    };
+
+    let only_list: Option<Vec<String>> = if selection.is_empty() {
+        None
+    } else {
+        Some(build_only_list(&selection, php_version, integrations)?)
+    };
+    let registry = Arc::new(RuleRegistry::build(&settings, only_list.as_deref(), false));
+    Ok(LintPlan {
+        registry,
+        selection,
+        php_version,
+    })
+}
+
+/// The plan for `cfg`, built on first use and shared by every file under the same configuration.
+fn plan_for(plans: &PlanCache, cfg: &EngineConfig) -> anyhow::Result<Arc<LintPlan>> {
+    let key = cfg.fingerprint();
+    if let Some(plan) = plans
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner)
+        .get(&key)
+    {
+        return Ok(Arc::clone(plan));
+    }
+    let plan = Arc::new(build_plan(cfg)?);
+    let mut cache = plans.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+    if cache.len() >= PLAN_CACHE_CAP {
+        cache.clear();
+    }
+    cache.insert(key, Arc::clone(&plan));
+    Ok(plan)
+}
+
+/// Lint a single PHP source file.
+///
+/// `plans` caches the rule registry and option-derived settings per configuration, so
+/// [`RuleRegistry::build`] runs once per distinct config rather than once per file.
+///
+/// All arena-backed objects are scoped to this function so the engine struct
+/// itself stays `Send + Sync` even though [`LocalArena`] is `!Sync`.
+pub(super) fn lint_php(src: &SourceFile, cfg: &EngineConfig, plans: &PlanCache) -> anyhow::Result<Vec<Diagnostic>> {
+    let arena = LocalArena::new();
+
+    let file = File::ephemeral(Cow::Owned(file_name(src)), Cow::Owned(src.content.as_bytes().to_vec()));
+
+    let program = parse_file(&arena, &file);
+    let mut diags: Vec<Diagnostic> = Vec::new();
+
+    for error in program.errors {
+        let mago_span = error.span();
+        let span = convert_span(mago_span, &file);
+        diags.push(Diagnostic {
+            engine: "mago".to_string(),
+            code: Some(parse_error_code(error)),
+            severity: Severity::Error,
+            title: error.to_string(),
+            description: None,
+            span: Some(span),
+            url: None,
+            fix: vec![],
+            metadata: Default::default(),
+        });
+    }
+
+    let plan = plan_for(plans, cfg)?;
     let registry = Arc::clone(&plan.registry);
 
     let names = NameResolver::new(&arena).resolve(program);
@@ -91,7 +165,7 @@ fn build_plan(cfg: &EngineConfig) -> anyhow::Result<LintPlan> {
     let file_id = file.file_id();
 
     for issue in issues.iter() {
-        let severity = issue_severity(issue, selection);
+        let severity = issue_severity(issue, &plan.selection);
         let span = issue.primary_span().map(|s| convert_span(s, &file));
         let fix = extract_safe_fixes(issue, file_id, &src.content);
         let description = issue

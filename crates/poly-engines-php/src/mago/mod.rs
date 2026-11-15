@@ -42,17 +42,10 @@ use poly_engine_api::language::Language;
 ///
 /// Holds per-configuration lint plans so the expensive `RuleRegistry::build`
 /// step runs once per distinct configuration rather than per file.
+#[derive(Default)]
 pub struct MagoEngine {
     /// Lint plans shared across all `lint` calls on this instance.
-    pub(super) plans: lint::PlanCache,
-}
-
-impl Default for MagoEngine {
-    fn default() -> Self {
-        Self {
-            plans: Default::default(),
-        }
-    }
+    plans: lint::PlanCache,
 }
 
 /// Languages handled by this backend.
