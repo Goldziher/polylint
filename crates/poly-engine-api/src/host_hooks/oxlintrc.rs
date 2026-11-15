@@ -186,13 +186,13 @@ mod tests {
         let readable = tempfile::tempdir().unwrap();
         let empty = readable.path().join(".oxlintrc.json");
         std::fs::write(&empty, "").unwrap();
-        let empty_digest = governing(&empty, readable.path()).digest;
+        let empty_digest = governing(&empty, readable.path()).digest.clone();
 
         // A directory in place of the config: the read itself fails.
         let broken = tempfile::tempdir().unwrap();
         let unreadable = broken.path().join(".oxlintrc.json");
         std::fs::create_dir(&unreadable).unwrap();
-        let unreadable_digest = governing(&unreadable, broken.path()).digest;
+        let unreadable_digest = governing(&unreadable, broken.path()).digest.clone();
 
         let empty_hash = blake3::Hasher::new()
             .update(empty.as_os_str().as_encoded_bytes())
