@@ -62,7 +62,7 @@
 //! replace the file atomically, so concurrent runs lose at most each other's
 //! newest records.
 
-use std::collections::HashMap;
+use rustc_hash::FxHashMap;
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -177,6 +177,37 @@ fn now_ns() -> i64 {
         .map_or(0, |elapsed| i64::try_from(elapsed.as_nanos()).unwrap_or(i64::MAX))
 }
 
+/// `path` as [`std::path::absolute`] spells it, borrowed unchanged when that is already its
+/// spelling: on Unix an absolute path with no empty or `.` component, which is nearly every
+/// discovered path and would otherwise be re-allocated once per file.
+fn absolute_form(path: &Path) -> std::borrow::Cow<'_, Path> {
+    if is_normalized_absolute(path) {
+        return std::borrow::Cow::Borrowed(path);
+    }
+    std::borrow::Cow::Owned(std::path::absolute(path).unwrap_or_else(|_| path.to_path_buf()))
+}
+
+#[cfg(unix)]
+fn is_normalized_absolute(path: &Path) -> bool {
+    let bytes = path.as_os_str().as_encoded_bytes();
+    if bytes.first() != Some(&b'/') || bytes.last() == Some(&b'/') {
+        return false;
+    }
+    !bytes.iter().enumerate().any(|(index, byte)| {
+        *byte == b'/'
+            && match bytes.get(index + 1) {
+                Some(b'/') => true,
+                Some(b'.') => matches!(bytes.get(index + 2), None | Some(b'/')),
+                _ => false,
+            }
+    })
+}
+
+#[cfg(not(unix))]
+fn is_normalized_absolute(_path: &Path) -> bool {
+    false
+}
+
 /// A path reduced to a fixed-width key, made absolute so the same file reached
 /// as `./a.py` and `a.py` is one record.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -185,7 +216,7 @@ pub struct PathKey(Id);
 impl PathKey {
     /// Key `path` by its absolute form.
     pub fn of(path: &Path) -> Self {
-        let absolute = std::path::absolute(path).unwrap_or_else(|_| path.to_path_buf());
+        let absolute = absolute_form(path);
         Self(truncated(&blake3::hash(absolute.as_os_str().as_encoded_bytes())))
     }
 
@@ -193,7 +224,7 @@ impl PathKey {
     /// file in two worktrees of one repository is one key; by its absolute form
     /// otherwise. The two forms are domain-separated and cannot collide.
     pub(crate) fn within(path: &Path, checkout: Option<&Checkout>) -> Self {
-        let absolute = std::path::absolute(path).unwrap_or_else(|_| path.to_path_buf());
+        let absolute = absolute_form(path);
         match checkout.and_then(|checkout| checkout.relative(&absolute)) {
             Some(relative) => {
                 let mut hasher = blake3::Hasher::new();
@@ -345,12 +376,12 @@ impl Record {
 #[derive(Debug)]
 pub struct StatIndex {
     file: Option<PathBuf>,
-    loaded: HashMap<PathKey, Record>,
+    loaded: FxHashMap<PathKey, Record>,
     /// Another checkout's records, consulted only where this one has none.
-    seed: HashMap<PathKey, Record>,
+    seed: FxHashMap<PathKey, Record>,
     seen: Option<FileFingerprint>,
-    pending: Mutex<HashMap<PathKey, Record>>,
-    vouched: Mutex<HashMap<PathKey, Vouch>>,
+    pending: Mutex<FxHashMap<PathKey, Record>>,
+    vouched: Mutex<FxHashMap<PathKey, Vouch>>,
 }
 
 /// A content check that vouched for an existing record under a new `stat`.
@@ -380,11 +411,11 @@ impl StatIndex {
     pub fn disabled() -> Self {
         Self {
             file: None,
-            loaded: HashMap::new(),
-            seed: HashMap::new(),
+            loaded: FxHashMap::default(),
+            seed: FxHashMap::default(),
             seen: None,
-            pending: Mutex::new(HashMap::new()),
-            vouched: Mutex::new(HashMap::new()),
+            pending: Mutex::new(FxHashMap::default()),
+            vouched: Mutex::new(FxHashMap::default()),
         }
     }
 
@@ -404,8 +435,8 @@ impl StatIndex {
             loaded,
             seed: seed.map(read_records).unwrap_or_default(),
             seen,
-            pending: Mutex::new(HashMap::new()),
-            vouched: Mutex::new(HashMap::new()),
+            pending: Mutex::new(FxHashMap::default()),
+            vouched: Mutex::new(FxHashMap::default()),
         }
     }
 
@@ -482,19 +513,19 @@ impl StatIndex {
     }
 }
 
-fn read_records(file: &Path) -> HashMap<PathKey, Record> {
+fn read_records(file: &Path) -> FxHashMap<PathKey, Record> {
     let Ok(bytes) = std::fs::read(file) else {
-        return HashMap::new();
+        return FxHashMap::default();
     };
     let Some(mut rest) = bytes.strip_prefix(MAGIC.as_slice()) else {
-        return HashMap::new();
+        return FxHashMap::default();
     };
     // A record with one segment is 112 bytes before its payload, so this sizes the
     // map once instead of rehashing it through every doubling on a large index.
-    let mut records = HashMap::with_capacity(rest.len() / 112);
+    let mut records = FxHashMap::with_capacity_and_hasher(rest.len() / 112, Default::default());
     while !rest.is_empty() {
         let Some((path, record, after)) = decode(rest) else {
-            return HashMap::new();
+            return FxHashMap::default();
         };
         records.insert(path, record);
         rest = after;
@@ -593,10 +624,10 @@ fn encode(out: &mut Vec<u8>, path: &PathKey, record: &Record, stat: &FileStat) -
 /// sorted by path key so the file's bytes depend only on its contents.
 fn write_records(
     file: &Path,
-    base: &HashMap<PathKey, Record>,
-    seed: &HashMap<PathKey, Record>,
-    pending: &HashMap<PathKey, Record>,
-    vouched: &HashMap<PathKey, Vouch>,
+    base: &FxHashMap<PathKey, Record>,
+    seed: &FxHashMap<PathKey, Record>,
+    pending: &FxHashMap<PathKey, Record>,
+    vouched: &FxHashMap<PathKey, Vouch>,
 ) -> anyhow::Result<()> {
     let from_seed = vouched
         .iter()

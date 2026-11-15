@@ -344,3 +344,36 @@ fn the_own_record_shadows_the_seed_and_the_seed_is_not_copied() {
     assert_eq!(b.get(&path("a.py")).unwrap().digest, ContentDigest::of(b"from b"));
     assert!(StatIndex::load(checkout_file(&dir, "b")).get(&path("b.py")).is_none());
 }
+
+/// The borrowed fast path must spell every path exactly as `std::path::absolute` does, or a
+/// record written under one spelling is lost to the other.
+#[cfg(unix)]
+#[test]
+fn absolute_form_matches_std_absolute() {
+    for raw in [
+        "/a/b/c.py",
+        "/a/./b.py",
+        "/a//b.py",
+        "/a/.hidden/b.py",
+        "/a/..x/b.py",
+        "/a/../b.py",
+        "/a/b/.",
+        "/a/b/",
+        "/.",
+        "/",
+        "/.git/config",
+        "rel/c.py",
+        "./rel/c.py",
+    ] {
+        let path = Path::new(raw);
+        assert_eq!(
+            super::absolute_form(path).as_ref(),
+            std::path::absolute(path).unwrap().as_path(),
+            "{raw}"
+        );
+    }
+    assert!(matches!(
+        super::absolute_form(Path::new("/a/b/c.py")),
+        std::borrow::Cow::Borrowed(_)
+    ));
+}
