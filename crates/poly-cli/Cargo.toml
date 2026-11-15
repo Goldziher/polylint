@@ -53,6 +53,7 @@ aho-corasick.workspace = true
 alef-component-runtime.workspace = true
 anyhow.workspace = true
 clap.workspace = true
+ctrlc = { workspace = true, features = ["termination"] }
 fs2.workspace = true
 gitfluff.workspace = true
 ignore.workspace = true

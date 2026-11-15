@@ -112,11 +112,22 @@ fn exit_quietly_on_broken_pipe() {
     }));
 }
 
+/// Remove poly's scratch directories on Ctrl-C or SIGTERM and exit 130; `Drop`
+/// guards never run when the process is interrupted. A failure to install (a
+/// handler already set by an embedder) leaves the default behaviour.
+fn install_interrupt_cleanup() {
+    let _ = ctrlc::set_handler(|| {
+        poly_core::tempreg::cleanup_all();
+        std::process::exit(130);
+    });
+}
+
 /// Parses the process arguments and runs the requested `poly` subcommand.
 ///
 /// Call after any `poly_core::register_engine_provider` registration.
 pub fn main() -> ExitCode {
     exit_quietly_on_broken_pipe();
+    install_interrupt_cleanup();
     let arguments: Vec<OsString> = std::env::args_os().collect();
     // Emitted before clap parses, so `poly --version` — the command that
     // started two false bug reports against already-fixed code — is covered
