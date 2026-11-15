@@ -28,16 +28,8 @@ pub const fn prefix_for(frame_on_screen: bool) -> &'static str {
 pub fn draw_spinner_frame(frame: Option<&str>) {
     let _gate = STDERR_GATE.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
     let mut stderr = std::io::stderr().lock();
-    match frame {
-        Some(text) => {
-            let _ = write!(stderr, "{CLEAR_LINE}{text}");
-            FRAME_ON_SCREEN.store(true, Ordering::Relaxed);
-        }
-        None => {
-            let _ = write!(stderr, "{CLEAR_LINE}");
-            FRAME_ON_SCREEN.store(false, Ordering::Relaxed);
-        }
-    }
+    let _ = write!(stderr, "{CLEAR_LINE}{}", frame.unwrap_or_default());
+    FRAME_ON_SCREEN.store(frame.is_some(), Ordering::Relaxed);
     let _ = stderr.flush();
 }
 

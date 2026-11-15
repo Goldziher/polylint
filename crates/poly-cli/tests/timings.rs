@@ -1,4 +1,6 @@
 //! `--timings` / `POLY_TIMINGS`: a per-phase and per-engine block on stderr after the report.
+// The `.py` fixture needs the python component, which a lockless core test build cannot fetch.
+#![cfg(feature = "all-engines")]
 
 use std::process::{Command, Output};
 

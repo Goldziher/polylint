@@ -25,7 +25,7 @@
 //! through [`LogWriter`], which erases the current frame before writing; the
 //! next tick redraws it below the log line.
 
-use std::io::{IsTerminal, Write as _};
+use std::io::IsTerminal;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::thread::JoinHandle;
