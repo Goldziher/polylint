@@ -79,23 +79,63 @@ fn compile(scope: &Scope, schema: &std::path::Path, bytes: &[u8]) -> Result<Vali
         .map_err(|error| format!("is not a usable JSON Schema: {error}"))
 }
 
-/// The schema as a value: YAML for a `.yaml`/`.yml` file, JSON otherwise, with YAML as the fallback
-/// for a file that is not JSON but is valid YAML.
+/// The schema as a value: YAML for a `.yaml`/`.yml` file, JSON for a `.json` one, and for any other
+/// extension JSON, falling back to YAML when the text does not open like JSON (`{` or `[`).
+///
+/// A `.json` file never falls back, so its real JSON error is not masked by a lenient YAML read.
 fn schema_value(schema: &std::path::Path, bytes: &[u8]) -> Result<Value, String> {
-    let yaml_name = schema
-        .extension()
-        .is_some_and(|ext| ext.eq_ignore_ascii_case("yaml") || ext.eq_ignore_ascii_case("yml"));
+    let extension = |wanted: &[&str]| {
+        schema
+            .extension()
+            .is_some_and(|ext| wanted.iter().any(|name| ext.eq_ignore_ascii_case(name)))
+    };
     let yaml = |text: &str| crate::yaml::parse_value(text);
-    if yaml_name {
+    if extension(&["yaml", "yml"]) {
         let text = std::str::from_utf8(bytes).map_err(|error| format!("is not valid UTF-8: {error}"))?;
         return yaml(text).map_err(|error| format!("is not valid YAML: {error}"));
     }
+    let json_only = extension(&["json"]);
     serde_json::from_slice(bytes).or_else(|json_error| {
+        let opens_like_json = bytes
+            .iter()
+            .find(|byte| !byte.is_ascii_whitespace())
+            .is_some_and(|byte| matches!(byte, b'{' | b'['));
+        if json_only || opens_like_json {
+            return Err(format!("is not valid JSON: {json_error}"));
+        }
         std::str::from_utf8(bytes)
             .ok()
             .and_then(|text| yaml(text).ok())
             .ok_or_else(|| format!("is not valid JSON: {json_error}"))
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use std::path::Path;
+
+    use super::schema_value;
+
+    #[test]
+    fn a_json_file_reports_its_json_error_even_when_valid_yaml() {
+        let error = schema_value(Path::new("s.json"), b"type: object\n").expect_err("not JSON");
+        assert!(error.starts_with("is not valid JSON"), "{error}");
+        let error = schema_value(Path::new("s.json"), b"{\"type\": \"object\",}").expect_err("trailing comma");
+        assert!(error.starts_with("is not valid JSON"), "{error}");
+    }
+
+    #[test]
+    fn a_yaml_file_and_an_extensionless_yaml_schema_load_as_yaml() {
+        assert!(schema_value(Path::new("s.yaml"), b"type: object\n").is_ok());
+        assert!(schema_value(Path::new("s.yml"), b"type: object\n").is_ok());
+        assert!(schema_value(Path::new("schema"), b"type: object\n").is_ok());
+    }
+
+    #[test]
+    fn a_brace_opening_extensionless_file_reports_the_json_error() {
+        let error = schema_value(Path::new("schema"), b"{type: object}").expect_err("not JSON");
+        assert!(error.starts_with("is not valid JSON"), "{error}");
+    }
 }
 
 /// Every violation of the compiled schema in `document`.
