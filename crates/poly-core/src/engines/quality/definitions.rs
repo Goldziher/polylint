@@ -50,9 +50,8 @@
 //! line-counting rules rather than reporting zero definitions as success
 //! (mirrors `treesitter/indent.rs:126-128`).
 
+use rustc_hash::{FxHashMap, FxHashSet};
 use std::cell::RefCell;
-use std::collections::{HashMap, HashSet};
-
 use tree_sitter::{Node, Query, QueryCursor, StreamingIterator};
 use tree_sitter_language_pack::get_tags_query;
 
@@ -80,14 +79,52 @@ const TS_FAMILY_TAGS: &str = "\
 const ZIG_TAGS: &str = "(function_declaration) @definition.function";
 
 thread_local! {
-    static QUERY_STATE: RefCell<HashMap<String, (QueryCursor, Query)>> = RefCell::new(HashMap::new());
+    /// Compiled query and cursor per grammar; `None` records a grammar with no query at all so the
+    /// lookup is not repeated for every file. A failed compile is not recorded and is retried.
+    static QUERY_STATE: RefCell<FxHashMap<String, Option<(QueryCursor, Query)>>> = RefCell::new(FxHashMap::default());
+    static HAS_QUERY: RefCell<FxHashMap<String, bool>> = RefCell::new(FxHashMap::default());
+}
+
+/// The Tags query source for `grammar`: a built-in replacement, else the bundled one.
+fn query_source(grammar: &str) -> Option<&'static str> {
+    BUILTIN_TAGS
+        .iter()
+        .find(|(name, _)| *name == grammar)
+        .map(|(_, q)| *q)
+        .or_else(|| get_tags_query(grammar))
+}
+
+/// Compile `grammar`'s query and switch off every pattern that cannot yield a counted capture.
+///
+/// [`classify_capture`] accepts only `@definition.*` captures, so a pattern whose source never
+/// names one (the `@reference.*` patterns) is dead weight for the matcher.
+fn compile_query(grammar: &str, source: &str) -> Option<(QueryCursor, Query)> {
+    let language = crate::engines::grammar::language(grammar)?;
+    let mut query = Query::new(&language, source).ok()?;
+    for pattern in 0..query.pattern_count() {
+        let text = source
+            .get(query.start_byte_for_pattern(pattern)..query.end_byte_for_pattern(pattern))
+            .unwrap_or_default();
+        if !text.is_empty() && !text.contains("@definition.") {
+            query.disable_pattern(pattern);
+        }
+    }
+    Some((QueryCursor::new(), query))
 }
 
 /// Whether `grammar` has any Tags/built-in query at all, without compiling or
 /// running it. Used by callers to decide whether to claim structural
 /// coverage before attempting it.
 pub fn has_query(grammar: &str) -> bool {
-    BUILTIN_TAGS.iter().any(|(name, _)| *name == grammar) || get_tags_query(grammar).is_some()
+    HAS_QUERY.with(|cell| {
+        let mut memo = cell.borrow_mut();
+        if let Some(&known) = memo.get(grammar) {
+            return known;
+        }
+        let known = query_source(grammar).is_some();
+        memo.insert(grammar.to_owned(), known);
+        known
+    })
 }
 
 /// A `function-like` or `type-like` structural definition found in a file.
@@ -124,20 +161,16 @@ pub enum DefKind {
 /// matched nothing productive (still a fallback signal — see the zero-match
 /// guard in the module docs, applied by the caller).
 pub fn collect(grammar: &str, root: Node, source: &[u8]) -> Option<Vec<Definition>> {
-    let query_src = BUILTIN_TAGS
-        .iter()
-        .find(|(name, _)| *name == grammar)
-        .map(|(_, q)| *q)
-        .or_else(|| get_tags_query(grammar))?;
-
     QUERY_STATE.with(|cell| {
         let mut pool = cell.borrow_mut();
         if !pool.contains_key(grammar) {
-            let language = crate::engines::grammar::language(grammar)?;
-            let query = Query::new(&language, query_src).ok()?;
-            pool.insert(grammar.to_owned(), (QueryCursor::new(), query));
+            let compiled = match query_source(grammar) {
+                Some(source) => Some(compile_query(grammar, source)?),
+                None => None,
+            };
+            pool.insert(grammar.to_owned(), compiled);
         }
-        let (cursor, query) = pool.get_mut(grammar)?;
+        let (cursor, query) = pool.get_mut(grammar)?.as_mut()?;
         Some(run(grammar, query, cursor, root, source))
     })
 }
@@ -146,7 +179,7 @@ pub fn collect(grammar: &str, root: Node, source: &[u8]) -> Option<Vec<Definitio
 /// definition list. Split out of [`collect`] so the thread-local borrow of
 /// the parser/cursor/query triple stays scoped to one `with` call.
 fn run(grammar: &str, query: &Query, cursor: &mut QueryCursor, root: Node, source: &[u8]) -> Vec<Definition> {
-    let mut seen: HashSet<(usize, usize)> = HashSet::new();
+    let mut seen: FxHashSet<(usize, usize)> = FxHashSet::default();
     let mut out = Vec::new();
 
     let mut matches = cursor.matches(query, root, source);
