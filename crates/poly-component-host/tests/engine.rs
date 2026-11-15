@@ -48,6 +48,24 @@ fn config_is_registered_once_per_fingerprint() {
 }
 
 #[test]
+fn concurrent_calls_register_a_config_once() {
+    let (engine, fake) = engine_with(0, "none");
+    let barrier = std::sync::Barrier::new(8);
+    std::thread::scope(|scope| {
+        for _ in 0..8 {
+            scope.spawn(|| {
+                barrier.wait();
+                for _ in 0..20 {
+                    engine.lint(&source("a"), &config(4)).unwrap();
+                }
+            });
+        }
+    });
+    assert_eq!(fake.count("RegisterConfig"), 1);
+    assert_eq!(fake.count("Lint"), 160);
+}
+
+#[test]
 fn unknown_config_is_registered_again_and_retried() {
     let (engine, fake) = engine_with(0, "none");
     engine.lint(&source("a"), &config(4)).unwrap();

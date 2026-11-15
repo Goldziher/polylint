@@ -1,7 +1,7 @@
 //! One component's lazily established connection: load once, remember failure, register configs.
 
 use std::collections::HashMap;
-use std::sync::{Arc, Mutex, PoisonError};
+use std::sync::{Arc, Mutex, PoisonError, RwLock};
 
 use anyhow::Context;
 use poly_component_protocol::{
@@ -210,7 +210,7 @@ impl ComponentSlot {
 /// An initialised connection: the transport plus the configs registered on it.
 pub struct Connection {
     transport: Arc<dyn ComponentTransport>,
-    configs: Mutex<Configs>,
+    configs: RwLock<Configs>,
 }
 
 struct Configs {
@@ -227,7 +227,7 @@ impl Connection {
     fn new(transport: Arc<dyn ComponentTransport>) -> Self {
         Self {
             transport,
-            configs: Mutex::new(Configs {
+            configs: RwLock::new(Configs {
                 next: 1,
                 ids: HashMap::new(),
             }),
@@ -257,7 +257,17 @@ impl Connection {
     }
 
     fn config_id(&self, fingerprint: [u8; 32], cfg: &EngineConfig) -> anyhow::Result<ConfigId> {
-        let mut configs = self.configs.lock().unwrap_or_else(PoisonError::into_inner);
+        if let Some(id) = self
+            .configs
+            .read()
+            .unwrap_or_else(PoisonError::into_inner)
+            .ids
+            .get(&fingerprint)
+        {
+            return Ok(*id);
+        }
+        let mut configs = self.configs.write().unwrap_or_else(PoisonError::into_inner);
+        // Another worker may have registered it while this one waited for the write lock.
         if let Some(id) = configs.ids.get(&fingerprint) {
             return Ok(*id);
         }
@@ -278,7 +288,7 @@ impl Connection {
     }
 
     fn forget_config(&self, fingerprint: [u8; 32], id: ConfigId) {
-        let mut configs = self.configs.lock().unwrap_or_else(PoisonError::into_inner);
+        let mut configs = self.configs.write().unwrap_or_else(PoisonError::into_inner);
         if configs.ids.get(&fingerprint) == Some(&id) {
             configs.ids.remove(&fingerprint);
         }
