@@ -32,7 +32,7 @@ use serde::{Deserialize, Serialize};
 #[repr(u8)]
 #[non_exhaustive]
 pub enum Stage {
-    /// Run manually via `poly hooks run --hook-type=manual`.
+    /// Run manually via `poly hooks run manual`.
     Manual,
     /// `commit-msg` git hook.
     CommitMsg,

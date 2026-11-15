@@ -41,7 +41,8 @@ enum ConfigCommand {
     /// Editors use it for validation and autocomplete — point them at it with a
     /// `#:schema <path-or-url>` first line in `poly.toml`, or the `taplo` schema
     /// association. The schema covers every typed section; the per-engine
-    /// `[lint]` / `[fmt]` tables list each backend's declared keys.
+    /// `[engines.<id>]` tables (with their `.lint` / `.format` / `.lang.<id>`
+    /// sub-tables) list each backend's declared keys.
     Schema {
         /// Write the schema to this file instead of stdout.
         #[arg(long, value_name = "PATH")]

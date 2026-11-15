@@ -111,3 +111,22 @@ fn stats_takes_format_like_every_other_command() {
     assert_eq!(json["command"], "clean");
     assert_eq!(json["freed_bytes"], 20);
 }
+
+#[test]
+fn cache_dir_is_accepted_after_the_subcommand() {
+    let tmp = TempDir::new().expect("tempdir");
+    seed_cache(tmp.path(), 2, 10);
+    let output = Command::new(POLY)
+        .arg("cache")
+        .arg("stats")
+        .arg("--cache-dir")
+        .arg(tmp.path())
+        .output()
+        .expect("poly invocation");
+    assert!(
+        output.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert!(String::from_utf8_lossy(&output.stdout).contains("2 entries"));
+}

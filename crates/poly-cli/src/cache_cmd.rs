@@ -30,7 +30,7 @@ pub struct CacheArgs {
     pub command: Option<CacheCommand>,
 
     /// Operate on this cache directory instead of the resolved repo cache.
-    #[arg(long)]
+    #[arg(long, global = true)]
     pub cache_dir: Option<PathBuf>,
 
     /// Output format.
@@ -77,7 +77,7 @@ fn run(args: CacheArgs) -> Result<ExitCode> {
             emit(args.format, &StatsDocument::from(&stats), |_| print_stats(&stats))?;
         }
         CacheCommand::Gc { max_age, max_size } => {
-            let max_age = max_age.map(|days| Duration::from_secs(days * SECONDS_PER_DAY));
+            let max_age = max_age.map(max_age_duration);
             let max_size = max_size.as_deref().map(parse_size).transpose()?;
             let freed = cache.gc(max_age, max_size)?;
             let document = FreedDocument {
@@ -100,6 +100,11 @@ fn run(args: CacheArgs) -> Result<ExitCode> {
         }
     }
     Ok(ExitCode::SUCCESS)
+}
+
+/// `--max-age` days as a duration; a huge value saturates instead of overflowing.
+fn max_age_duration(days: u64) -> Duration {
+    Duration::from_secs(days.saturating_mul(SECONDS_PER_DAY))
 }
 
 /// The `--format json|toon` document of `poly cache stats`.
@@ -247,7 +252,9 @@ fn format_iec(bytes: u64) -> String {
 
 #[cfg(test)]
 mod tests {
-    use super::{format_iec, parse_size};
+    use std::time::Duration;
+
+    use super::{format_iec, max_age_duration, parse_size};
 
     #[test]
     fn parse_size_handles_suffixes_and_bare_bytes() {
@@ -255,6 +262,12 @@ mod tests {
         assert_eq!(parse_size("64K").unwrap(), 64 * 1024);
         assert_eq!(parse_size("500M").unwrap(), 500 * 1024 * 1024);
         assert_eq!(parse_size("2g").unwrap(), 2 * 1024 * 1024 * 1024);
+    }
+
+    #[test]
+    fn max_age_saturates_instead_of_overflowing() {
+        assert_eq!(max_age_duration(2), Duration::from_secs(172_800));
+        assert_eq!(max_age_duration(u64::MAX), Duration::from_secs(u64::MAX));
     }
 
     #[test]
