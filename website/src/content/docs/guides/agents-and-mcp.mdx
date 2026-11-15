@@ -96,6 +96,11 @@ Any MCP-capable client can run poly directly:
 
 `poly mcp --config <PATH>` pins a fallback config file for requests that do not name one.
 
+The server honours a repository's config keys that run programs (tool `bin`, `env` and argv,
+`[hooks]` whole-project jobs) only when the repository is [trusted](/poly/guides/trust/) with
+`poly trust`; `--trust` and `POLY_TRUST` do not apply to it, so a client cannot widen what a model
+can make it run. It reads the trust store when it starts.
+
 The Linux musl release binary links the server in. The other release binaries are core builds and
 serve MCP through the downloadable `mcp` component instead: `poly mcp` installs it on
 first use (unless `--offline` or `[components] install = "never"` forbids it) and hands it stdio, and

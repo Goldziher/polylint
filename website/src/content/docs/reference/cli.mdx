@@ -29,6 +29,7 @@ These work on every subcommand, before or after it (`poly --color never lint` an
 | `-q`, `--quiet` | Trim pretty output to the findings and the summary. Conflicts with `--verbose` and `--debug`. |
 | `-v`, `--verbose` | Pretty output includes descriptions, URLs and metadata, and names **every** skipped file rather than the first 3 per skip reason. For `poly hooks run`, also shows the output of jobs that passed. |
 | `--debug` | Include cache hit/miss and timing data. Implies `--verbose`. Conflicts with `--quiet`. |
+| `--trust` | Honour the repository's config keys that run programs for this run, as if it were [trusted](/poly/guides/trust/). Also set by `POLY_TRUST=1`. Ignored by `poly mcp`. |
 
 ### Writing changes
 
@@ -358,6 +359,20 @@ pin already recorded, and prints one line per entry it adds. Pass `--locked` (or
 and the installed git hooks never write `poly.lock`; a missing entry fails them with a pointer to
 `poly lock`. `poly components install` is unaffected: components are pinned by the lock compiled
 into the binary, not by `poly.lock`.
+
+## `poly trust` — allow a repository's programs
+
+```text
+poly trust [PATH]              # trust the repository holding PATH (default: the working directory)
+poly trust --show [PATH]       # the gated keys each poly.toml sets, and whether they are trusted
+poly trust --revoke [PATH]     # forget the repository
+poly trust --list              # every trusted repository
+```
+
+Until a repository is trusted, poly ignores the config keys that run programs (tool `bin`, `env`,
+argv and `url`, whole-project `[hooks]` jobs, `[cache] dir`) and prints one note naming them;
+`poly hooks run` refuses. The record binds the keys' current values, so changing one untrusts the
+repository again. `POLY_CONFIG_HOME` relocates the store. See [Repository trust](/poly/guides/trust/).
 
 ## `poly config` — what did poly actually parse?
 

@@ -1,4 +1,4 @@
-//! Repository trust: whether a config may run programs (ADR 0057).
+//! Repository trust: whether a config may run programs (ADR 0059).
 //!
 //! A cloned repository's `poly.toml` can name executables, their argv and
 //! environment, download URLs, whole-project commands and cache directories.

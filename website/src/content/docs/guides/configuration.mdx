@@ -613,7 +613,8 @@ files = "**/*.py"
 ```
 
 Catalog tools are capability-probed on `PATH`; a missing binary is skipped with a warning instead
-of making the whole run fail. Fifteen tools carry a [recipe](/poly/reference/catalog/#tools-with-a-recipe)
+of making the whole run fail. Keys that change what a tool runs — `bin`, `env`, `args`,
+`extra_args`, `root`, `url` — take effect only in a [trusted](/poly/guides/trust/) repository. Fifteen tools carry a [recipe](/poly/reference/catalog/#tools-with-a-recipe)
 — batched runs, parsed per-line findings, and `install = "auto"` downloads of a pinned, checksummed
 release; see [Toolchains, runtimes and recipes](/poly/guides/toolchains/). The full list of 348
 tools is on the [tool catalog](/poly/reference/catalog/) page.

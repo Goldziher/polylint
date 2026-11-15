@@ -1,4 +1,4 @@
-//! `poly trust` — allow a repository's config keys that run programs (ADR 0057).
+//! `poly trust` — allow a repository's config keys that run programs (ADR 0059).
 //!
 //! `poly trust [PATH]` records the repository holding PATH (default: the working
 //! directory) in the per-user trust store, bound to a digest of every

@@ -73,6 +73,7 @@ Context, Decision, Consequences (positive and negative/risks), and Alternatives 
 | [0056](0056-sidecar-batching.md) | Sidecar Batching and Frame Encoding | Accepted |
 | [0057](0057-shared-parse-per-lint-pass.md) | One Parse per File per Grammar per Lint Pass | Accepted |
 | [0058](0058-component-protocol-v3.md) | Component Protocol v3: Declines in the Reply, Positional Encoding | Accepted |
+| [0059](0059-repository-trust.md) | Repository Trust for Config Keys That Run Programs | Accepted |
 
 ## Conventions
 

@@ -367,9 +367,9 @@ Opt into tools from the vendored catalog, keyed by catalog name
 | `extra_args` | array | `[]` | Flags added to every role's argv, just before the file list. Keeps the catalog's own flags, so this is where configuration goes (`["-c", "checkstyle.xml"]`). |
 | `format_extra_args` | array | `[]` | `extra_args` for the formatting role only. |
 | `lint_extra_args` | array | `[]` | `extra_args` for the linting role only. |
-| `bin` | string | — | Executable to run instead of the catalog binary on `PATH`. For a JVM tool, the `java`. |
+| `bin` | string | — | Executable to run instead of the catalog binary on `PATH`: a program name or an absolute path. For a JVM tool, the `java`. |
 | `version` | string | — | Pinned release to use. Looked up in the catalog's checksummed releases. |
-| `url`, `sha256` | string | — | Download and digest for a `version` the catalog does not know. |
+| `url`, `sha256` | string | — | Download and digest for a `version` the catalog does not seed. The URL must be https on a host the catalog names for the tool. |
 | `install` | string | `"never"` | `"auto"` downloads the pinned `version` into poly's cache when the tool is missing. A `version` that cannot be provisioned makes the tool unavailable; poly never runs a different version from `PATH`. |
 | `values_files` | array | `[]` | helm: values files (`-f`) passed to every chart, relative to the config root. |
 | `chart_values` | table | `{}` | helm: chart-directory glob to the values files passed for the charts it matches. |
@@ -381,6 +381,13 @@ Opt into tools from the vendored catalog, keyed by catalog name
 | `verify_skip_charts` | bool | `true` | helm: still run each `skip_charts` chart and fail when the tool now passes on it; `false` skips them without running. |
 | `new_from_rev` | string | — | golangci-lint: report only findings introduced since this git revision (`--new-from-rev`). |
 | `goos` | array | `[]` | golangci-lint: run once per operating system with `GOOS` set and merge the findings. |
+
+`bin`, `url`/`sha256`, `env`, `args`, `extra_args`, `format_extra_args`, `lint_extra_args`,
+`new_from_rev` and `root` are honoured only in a [trusted](/poly/guides/trust/) repository (a bare
+`bin` name always is). Trusted or not, `bin` is a program name or an absolute path, `root` stays
+inside the repository, `url` must be https on a host the catalog names for the tool, and `env` may
+not set loader, git-config or runtime-injection variables (`LD_*`, `DYLD_*`, `GIT_CONFIG*`,
+`NODE_OPTIONS`, …).
 
 Tools with a recipe (`checkstyle`, `palantir-java-format`, `buildifier`, `buf`, `actionlint`, `gau`,
 `hadolint`, `golangci-lint`, `helm`, `helm-template`, `tflint`, `tofu`, `terraform`,
@@ -398,6 +405,9 @@ diagnostics, and are described in [Tool catalog](/poly/reference/catalog/#tools-
 | `[cache.sccache] bin` | string | — | `sccache` binary (bare name or absolute path). |
 | `[cache.sccache] dir` | string | — | sccache storage directory. |
 | `[cache.sccache] max_size` | string | — | Maximum cache size (e.g. `"10G"`). |
+
+`dir`, `[cache.sccache] dir` and a path `[cache.sccache] bin` are honoured only in a
+[trusted](/poly/guides/trust/) repository.
 
 Without `dir`, the result cache lives in the per-user cache directory (`POLY_CACHE_HOME`, else
 `~/.cache/poly` on Linux, `~/Library/Caches/poly` on macOS, `%LOCALAPPDATA%\poly` on Windows), in a
@@ -493,6 +503,9 @@ extends = [
   "./poly.overrides.toml",   # later entry = higher precedence
 ]
 ```
+
+A local path outside the repository is read only once the repository is
+[trusted](/poly/guides/trust/).
 
 `exclude_mode = "replace"` in a table next to an `exclude` list makes that list
 replace the inherited one rather than accumulate. A symbolic (branch/tag) `git`

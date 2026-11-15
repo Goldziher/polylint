@@ -1,0 +1,78 @@
+---
+title: Repository trust
+description: >-
+  Why a cloned repository's poly.toml cannot run programs until you trust it, what `poly trust`
+  records, and how CI, git hooks and the MCP server fit in.
+---
+
+import { Aside } from '@astrojs/starlight/components';
+
+A `poly.toml` travels with every clone, and some of its keys make poly run a program: a tool's
+`bin`, the `env` and argv it runs with, a download URL, the whole-project `[hooks]` jobs that plain
+`poly lint` runs. poly honours those keys only in a repository you have trusted, the way `direnv`
+treats an `.envrc` (ADR 0059).
+
+```sh
+poly trust --show    # what this repository's configs would run, and whether it is trusted
+poly trust           # trust it with the values it has now
+poly trust --revoke  # forget it again
+poly trust --list    # every trusted repository
+```
+
+## What is gated
+
+| Key | Untrusted |
+| --- | --- |
+| `[tools.<name>] bin` | A path is ignored; a bare name (looked up on `PATH`) still works. |
+| `[tools.<name>] url`, `sha256` | Ignored. `install = "auto"` still downloads the catalog's own checksummed release. |
+| `[tools.<name>] env`, `args`, `extra_args`, `format_extra_args`, `lint_extra_args`, `new_from_rev`, `root` | Ignored. |
+| `[hooks]` | `poly lint` runs no whole-project tool and evaluates no `skip`/`only` guard; the whole-project section says `skipped (untrusted)`. `poly hooks run` and the git hooks refuse to run. |
+| `[cache] dir`, `[cache.sccache] dir`, a path `[cache.sccache] bin` | Ignored; the default cache is used. |
+| oxc `js_plugins = "external"`, `external = true` | Ignored; the in-process engines run. |
+| A local `extends` base outside the repository | Not read. |
+
+Nothing fails because of it. One note on stderr per repository names every key poly ignored and
+says to run `poly trust`; with `--format json` or `toon` the document on stdout is unchanged.
+
+## What a trust record binds
+
+`poly trust` stores, in `trust.json` in your per-user config directory (`POLY_CONFIG_HOME`, else
+`$XDG_CONFIG_HOME/poly` or `~/.config/poly` on Linux, `~/Library/Preferences/poly` on macOS,
+`%APPDATA%\poly` on Windows), a digest of every gated key's
+value in every `poly.toml` of the repository, after `extends`, the nested cascade and
+`poly.local.toml` are applied. Reordering a file or changing an ungated key leaves the repository
+trusted; changing a gated value, adding one, or editing anything under `[hooks]` makes it untrusted
+again until you review it with `poly trust --show` and run `poly trust` once more.
+
+The store is refused when another user owns its directory or group or others can write it, and
+it is written atomically with owner-only permissions.
+
+## CI, hooks and agents
+
+- **CI and throwaway checkouts:** set `POLY_TRUST=1`, or pass `--trust`, to honour the keys for one
+  run without writing a record. `--trust` covers that process only; the `poly lint` and `poly fmt`
+  a hook spawns see `POLY_TRUST` but not the flag.
+- **Git hooks:** `poly hooks install` records trust, because installing the hooks is the decision
+  to run them. When a later pull changes a gated key, the next commit stops with a message pointing
+  at `poly trust --show`.
+- **MCP:** `poly mcp` honours a repository's gated keys only when it is trusted in the store;
+  neither `--trust` nor `POLY_TRUST` applies to it. The server reads the store when it starts.
+
+## Restrictions that always apply
+
+Even in a trusted repository:
+
+- `bin` is a program name or an absolute path, never a relative path such as `./tools/x`.
+- `root` is a relative path inside the repository, without `..`.
+- A `[tools]` `url` must be https and hosted where the catalog publishes that tool, as
+  `poly.lock` URLs already must. A mirror you name with `POLY_GITHUB_API_URL` is accepted as written.
+- `env` may not set `LD_*`, `DYLD_*`, `GIT_CONFIG*`, `GIT_EXEC_PATH`, `GIT_SSH`, `GIT_SSH_COMMAND`,
+  `GIT_ASKPASS`, `GIT_PROXY_COMMAND`, `GIT_EXTERNAL_DIFF`, `BASH_ENV`, `ENV`, `NODE_OPTIONS`,
+  `PERL5OPT`, `RUBYOPT`, `PYTHONSTARTUP`, `JAVA_TOOL_OPTIONS`, `JDK_JAVA_OPTIONS` or
+  `_JAVA_OPTIONS`.
+
+<Aside type="caution" title="Trust is not a sandbox">
+    A trusted repository runs exactly what its config names, with your permissions. Enabled catalog
+    tools still read their own config files from the repository, and toolchain managers such as
+    `rustup` honour the repository's pins; poly does not isolate either.
+</Aside>

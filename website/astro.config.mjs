@@ -87,6 +87,7 @@ export default defineConfig({
             { label: "Migrating to the v2 config schema", slug: "guides/migrating-to-v2" },
             { label: "Git hooks", slug: "guides/hooks" },
             { label: "Agents and MCP", slug: "guides/agents-and-mcp" },
+            { label: "Repository trust", slug: "guides/trust" },
           ],
         },
         {

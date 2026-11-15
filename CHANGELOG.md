@@ -62,6 +62,25 @@ binary drives lint, format, hooks, and commit checks from one `poly.toml`.
   identity, not by comparing the paths as written, so a project check gets the same project root for every spelling
   and argument order. A project finding under a named directory is reported under the run's own spelling of the file.
 
+### Security
+
+- **BREAKING: a repository's config keys that run programs need `poly trust`.** A cloned `poly.toml` could make
+  `poly lint`, `poly fmt` and the MCP `lint`/`workspace_lint` tools run any program with no prompt. Now
+  `[tools.<name>] bin` (a path), `url`/`sha256`, `env`, `args`, `extra_args`, `format_extra_args`,
+  `lint_extra_args`, `new_from_rev` and `root`; `[hooks]` whole-project jobs and their `skip`/`only` guards;
+  `[cache] dir` and `[cache.sccache] dir`/`bin`; oxc `js_plugins = "external"` and `external = true`; and local
+  `extends` bases outside the repository are ignored, with one note naming them, until the repository is trusted.
+  `poly trust` records a digest of those values in a per-user store (`--show`, `--revoke`, `--list`); changing any
+  of them untrusts the repository again. `poly hooks install` records trust; `poly hooks run` and the git hooks refuse
+  an untrusted config. `poly mcp` honours only the store. **Migration:** run `poly trust` once in each repository that
+  relies on these keys (re-run `poly hooks install` or `poly trust` after pulling a change to them), or set
+  `POLY_TRUST=1` (or pass `--trust`) in CI. (ADR 0059)
+- **BREAKING: always-on limits on `[tools]`.** Even in a trusted repository, `bin` must be a program name or an
+  absolute path, `root` must stay inside the repository, `url` must be https on a host the catalog names for the tool
+  (or the `POLY_GITHUB_API_URL` mirror you set), and `env` may not set `LD_*`, `DYLD_*`, `GIT_CONFIG*`,
+  `GIT_SSH_COMMAND`, `NODE_OPTIONS`, `JAVA_TOOL_OPTIONS` and similar code-injection variables. **Migration:** install
+  a tool from another host yourself and name it with an absolute `bin`.
+
 ## [0.35.0] - 2026-11-15
 
 ### Added

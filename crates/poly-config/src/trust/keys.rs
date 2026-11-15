@@ -1,6 +1,6 @@
 //! Which config keys can make poly run a program, and their digest.
 //!
-//! The list is the trust model's attack surface (ADR 0057): every key here either
+//! The list is the trust model's attack surface (ADR 0059): every key here either
 //! names an executable, feeds one its argv or environment, picks where it runs,
 //! fetches one, or relocates a directory poly later executes from or trusts.
 

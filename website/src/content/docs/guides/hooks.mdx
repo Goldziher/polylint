@@ -15,7 +15,10 @@ bootstrap, no separate version to keep in sync.
 poly hooks install
 ```
 
-That wires the git shims once; the configured stages then run on every `git commit`.
+That wires the git shims once; the configured stages then run on every `git commit`. Installing is
+also how you [trust](/poly/guides/trust/) the repository: `install` records it, and `poly hooks run`
+and the git hooks refuse to run a `[hooks]` table that changed since then until you run
+`poly trust` again.
 
 A hook that already exists is not lost: it is kept as `<hook>.legacy` and the poly shim runs it
 **before** poly, with the same arguments and stdin; if it fails, poly does not run. A **lefthook**
@@ -563,6 +566,10 @@ lint = false   # runs in git hooks, excluded from `poly lint`'s whole-project ph
 
 This is the per-group counterpart to `[workspace] run = "never"`, which disables the whole-project
 phase for **every** tool at once.
+
+In a repository you have not [trusted](/poly/guides/trust/), `poly lint` runs none of these tools
+and evaluates none of their `skip`/`only` guards; the whole-project section reports
+`skipped (untrusted)` instead.
 
 ### The phase executes tools
 
