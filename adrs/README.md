@@ -75,6 +75,7 @@ Context, Decision, Consequences (positive and negative/risks), and Alternatives 
 | [0058](0058-component-protocol-v3.md) | Component Protocol v3: Declines in the Reply, Positional Encoding | Accepted |
 | [0059](0059-repository-trust.md) | Repository Trust for Config Keys That Run Programs | Accepted |
 | [0060](0060-release-signing-and-attestations.md) | Release Signing Isolation, SBOMs and Attestations | Accepted |
+| [0061](0061-adr-maintenance-commands.md) | ADR Log Maintenance Through `poly adr` | Accepted |
 
 ## Conventions
 
