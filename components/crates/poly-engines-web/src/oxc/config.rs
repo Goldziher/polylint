@@ -149,7 +149,7 @@ pub(super) fn build_js_options(cfg: &EngineConfig) -> JsFormatOptions {
 /// | `cfg.options` key | Type | Values |
 /// |---|---|---|
 /// | `bracket_spacing` | bool | `true` (default) |
-/// | `trailing_commas` | string | `"all"` / `"es5"` (default) or `"none"` / `"never"`; `"always"` is `"all"` |
+/// | `trailing_commas` | string | `"all"` (default) / `"es5"` or `"none"` / `"never"`; `"always"` is `"all"` |
 ///
 /// `line_width` and `indent_width` are always sourced from `cfg.globals.line_length`
 /// and `cfg.indent_width`. The variant (Json vs Jsonc) is derived from the file language
