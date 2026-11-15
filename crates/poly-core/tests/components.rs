@@ -691,3 +691,115 @@ fn switching_shfmt_off_leaves_shell_alone_instead_of_reindenting_it() {
         UNDENTED_SHELL
     );
 }
+
+fn named_desc(name: &str) -> WireEngineDesc {
+    WireEngineDesc {
+        name: name.into(),
+        ..desc()
+    }
+}
+
+/// Answers the handshake for one engine of a many-component index.
+struct Named(&'static str);
+
+impl ComponentTransport for Named {
+    fn describe(&self) -> anyhow::Result<Vec<u8>> {
+        Ok(encode_describe(&Describe {
+            protocol: PROTOCOL_VERSION,
+            component_version: "1.0.0".into(),
+            engines: vec![named_desc(self.0)],
+        })?)
+    }
+
+    fn call(&self, header: &[u8], _body: &[u8]) -> anyhow::Result<Vec<u8>> {
+        let payload = match decode_request(header)? {
+            Request::Init { .. } => Payload::Init {
+                protocol: PROTOCOL_VERSION,
+                component_version: "1.0.0".into(),
+            },
+            _ => Payload::Ok,
+        };
+        Ok(encode_response(&Response {
+            result: Ok(payload),
+            logs: Vec::new(),
+        })?)
+    }
+}
+
+/// Records how many `connect` calls are in flight at once; each one lingers so that
+/// concurrent ensures overlap.
+struct Overlapping {
+    active: AtomicUsize,
+    peak: AtomicUsize,
+}
+
+const NAMES: [&str; 3] = ["demo-a", "demo-b", "demo-c"];
+
+impl TransportConnector for Overlapping {
+    fn connect(&self, _: &ComponentManager, id: &str) -> anyhow::Result<Arc<dyn ComponentTransport>> {
+        let now = self.active.fetch_add(1, Ordering::SeqCst) + 1;
+        self.peak.fetch_max(now, Ordering::SeqCst);
+        std::thread::sleep(std::time::Duration::from_millis(150));
+        self.active.fetch_sub(1, Ordering::SeqCst);
+        let name = NAMES.iter().find(|name| **name == id).expect("a known component");
+        Ok(Arc::new(Named(name)))
+    }
+}
+
+#[test]
+fn needed_components_are_installed_concurrently_and_reported_in_name_order() {
+    let artifacts: Vec<String> = NAMES
+        .iter()
+        .map(|name| {
+            format!(
+                r#"{{"identity":{{"crate_name":"c","component":"{name}","version":"1.0.0","target":"{TARGET}",
+                    "feature_hash":"{h}","contract_hash":"{h}"}},
+                "provides":[],"mode":"download","url":"https://example.invalid/{name}.tar.gz",
+                "sha256":"{sha}","size":1,"manifest_sha256":"{h}","key_id":"k"}}"#,
+                h = "11".repeat(32),
+                sha = "ab".repeat(32)
+            )
+        })
+        .collect();
+    let lock = format!(
+        r#"{{"schema_version":2,"public_keys":{{}},"artifacts":[{}]}}"#,
+        artifacts.join(",")
+    );
+    let index = ComponentIndex {
+        schema: 1,
+        components: NAMES
+            .iter()
+            .map(|name| Component {
+                name: (*name).into(),
+                kind: ComponentKind::Engines,
+                opt_in: false,
+                download_only: false,
+                features: vec![format!("engine-{name}")],
+                engines: vec![named_desc(name)],
+                lock_sha: None,
+            })
+            .collect(),
+        presets: Default::default(),
+    };
+    let cache = tempfile::tempdir().unwrap();
+    let mut host_options = HostOptions::new(lock, PathBuf::from(cache.path()));
+    host_options.allow_unsigned = true;
+    host_options.target = Some(TARGET.into());
+    host_options.gate_loads = true;
+    let connector = Arc::new(Overlapping {
+        active: AtomicUsize::new(0),
+        peak: AtomicUsize::new(0),
+    });
+    let host = ComponentHost::new(host_options)
+        .unwrap()
+        .with_connector(connector.clone());
+    let dir = project();
+    let run = lint(dir.path(), &default_config(), &inject(host, index));
+    assert!(
+        connector.peak.load(Ordering::SeqCst) >= 2,
+        "ensures ran one after another"
+    );
+    assert_eq!(run.components.used, NAMES);
+    assert_eq!(run.components.installed_now, NAMES);
+    assert!(run.components.missing.is_empty(), "{:?}", run.components.missing);
+}

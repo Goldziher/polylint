@@ -97,6 +97,47 @@ fn incompatible(name: &str, reason: String) -> MissingComponent {
     }
 }
 
+/// Most components installed at once: each ensure is a download plus a load, so more threads
+/// would only contend for the network and the disk.
+const MAX_PARALLEL_ENSURES: usize = 4;
+
+/// `host.ensure` for every name, at most [`MAX_PARALLEL_ENSURES`] at a time.
+///
+/// The answers come back keyed by name and the caller reads them in its own order, so the
+/// report and which error is reported first never depend on which install finished first.
+fn ensure_all<'a>(
+    host: &ComponentHost,
+    names: impl Iterator<Item = &'a str>,
+    allow_install: bool,
+) -> BTreeMap<&'a str, Availability> {
+    let names: Vec<&str> = names.collect();
+    let workers = names.len().min(MAX_PARALLEL_ENSURES);
+    if workers <= 1 {
+        return names
+            .iter()
+            .map(|name| (*name, host.ensure(name, allow_install)))
+            .collect();
+    }
+    let next = std::sync::atomic::AtomicUsize::new(0);
+    let answers = std::sync::Mutex::new(BTreeMap::new());
+    std::thread::scope(|scope| {
+        for _ in 0..workers {
+            scope.spawn(|| {
+                loop {
+                    let index = next.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+                    let Some(name) = names.get(index) else { break };
+                    let availability = host.ensure(name, allow_install);
+                    answers
+                        .lock()
+                        .unwrap_or_else(std::sync::PoisonError::into_inner)
+                        .insert(*name, availability);
+                }
+            });
+        }
+    });
+    answers.into_inner().unwrap_or_else(std::sync::PoisonError::into_inner)
+}
+
 fn open_host(injected: Option<&ComponentInjection>, index: &ComponentIndex) -> Hosted {
     if let Some(injected) = injected {
         return Hosted::Host(Arc::clone(&injected.host), false);
@@ -224,10 +265,16 @@ pub(crate) fn resolve(
 
     let mut report = ComponentsReport::default();
     let mut engines: BTreeMap<&str, Vec<ComponentEngine>> = BTreeMap::new();
+    let mut ensured = match &hosted {
+        Hosted::Host(host, _) => ensure_all(host, needed.iter().map(|c| c.name.as_str()), allow_install),
+        Hosted::Unavailable(_) => BTreeMap::new(),
+    };
     for component in needed {
         let name = component.name.as_str();
         let availability = match &hosted {
-            Hosted::Host(host, _) => host.ensure(name, allow_install),
+            Hosted::Host(..) => ensured
+                .remove(name)
+                .unwrap_or_else(|| Availability::Unavailable(no_host(component, "component was not ensured"))),
             Hosted::Unavailable(detail) => Availability::Unavailable(no_host(component, detail)),
         };
         let sha = match &hosted {
