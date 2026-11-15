@@ -228,7 +228,18 @@ fn walk(
     configs: &ConfigSet,
     exclude: &[String],
 ) -> (Vec<DiscoveredFile>, Vec<PathBuf>) {
-    let served = plan.engine.languages();
+    walk_scope(plan.engine.languages(), plan.config_id, root, dirs, configs, exclude)
+}
+
+/// [`walk`] for an engine serving `served` in config scope `config_id`.
+fn walk_scope(
+    served: &[Language],
+    config_id: usize,
+    root: &Path,
+    dirs: &ResolvedDirs,
+    configs: &ConfigSet,
+    exclude: &[String],
+) -> (Vec<DiscoveredFile>, Vec<PathBuf>) {
     let mut owned: Vec<DiscoveredFile> = Vec::new();
     let mut unserved: Vec<PathBuf> = Vec::new();
     for dir in dirs.absolute(root) {
@@ -242,7 +253,7 @@ fn walk(
             list_files(&dir, configs, dirs.recursive, exclude)
         };
         for path in listed {
-            if !dirs.whole_tree && configs.config_id_for(&path) != plan.config_id {
+            if !dirs.whole_tree && configs.config_id_for(&path) != config_id {
                 continue;
             }
             let named = path
@@ -253,7 +264,7 @@ fn walk(
                 owned.push(DiscoveredFile {
                     language: Language::Other(name.to_owned()),
                     path,
-                    config_id: plan.config_id,
+                    config_id,
                 });
                 continue;
             }
@@ -261,7 +272,7 @@ fn walk(
                 Some(language) if served.is_empty() || served.contains(&language) => owned.push(DiscoveredFile {
                     path,
                     language,
-                    config_id: plan.config_id,
+                    config_id,
                 }),
                 _ => unserved.push(path),
             }
@@ -326,6 +337,29 @@ pub(super) fn load(
     }
     loaded.sort_by(|a, b| a.path.cmp(&b.path));
     Ok(loaded)
+}
+
+/// The files a project check that declared `declared` is served in config scope `config_id`: the
+/// walk and the filters [`load`] applies (`.gitignore`, pruned directories, `[discovery] exclude`, the
+/// run's `--exclude`, nested `poly.toml` ownership, lock, binary, non-UTF-8 and generated files), without
+/// side files or the listing. Paths are absolute, sorted.
+///
+/// For a host operation that must act on exactly the files a run's project check judges (`poly adr
+/// lock`, ADR 0061).
+pub(crate) fn served_files(
+    declared: &ProjectDirs,
+    options: &toml::Table,
+    served: &[Language],
+    root: &Path,
+    configs: &ConfigSet,
+    config_id: usize,
+    opts: &crate::RunOptions,
+) -> Result<Vec<ProjectFile>, String> {
+    let dirs = resolve_dirs(declared, options)?;
+    let (owned, _) = walk_scope(served, config_id, root, &dirs, configs, &opts.exclude);
+    let refs: Vec<&DiscoveredFile> = owned.iter().collect();
+    let act_on_generated = super::super::generated::acts_on_generated(configs, opts.generated);
+    Ok(load_files(&refs, &act_on_generated))
 }
 
 /// The content `loaded` holds for `path`; `None` for a file it does not hold or holds by name only.

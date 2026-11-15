@@ -47,7 +47,10 @@ fn config() -> poly_component_protocol::WireValue {
 fn the_web_component_plans_a_lock_over_the_wire() {
     let component = initialised();
     let request = Request::Adr {
-        op: WireAdrOp::Lock { all: false },
+        op: WireAdrOp::Lock {
+            all: false,
+            check: false,
+        },
         config: config(),
         files: vec![WireFileSlice {
             path: "docs/adr/0001-use-rust.md".into(),

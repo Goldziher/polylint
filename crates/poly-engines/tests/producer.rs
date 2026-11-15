@@ -697,7 +697,10 @@ fn the_astgrep_component_answers_rules() {
 
 fn adr_request() -> Request {
     Request::Adr {
-        op: poly_component_protocol::WireAdrOp::Lock { all: false },
+        op: poly_component_protocol::WireAdrOp::Lock {
+            all: false,
+            check: false,
+        },
         config: engine_config_to_wire(&cfg()),
         files: vec![WireFileSlice {
             path: "docs/adr/0001-a.md".into(),
@@ -721,7 +724,13 @@ fn adr_reaches_the_handler_with_the_sliced_files() {
     use poly_engine_api::engine::ProjectFile;
 
     fn handler(op: &WireAdrOp, cfg: &EngineConfig, files: &[ProjectFile]) -> anyhow::Result<WireAdrPlan> {
-        anyhow::ensure!(*op == WireAdrOp::Lock { all: false }, "op was {op:?}");
+        anyhow::ensure!(
+            *op == WireAdrOp::Lock {
+                all: false,
+                check: false
+            },
+            "op was {op:?}"
+        );
         anyhow::ensure!(cfg.indent_width == 2, "the config did not arrive");
         let [file] = files else {
             anyhow::bail!("{} file(s)", files.len());

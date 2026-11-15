@@ -729,14 +729,18 @@ pub enum WireAdrOp {
         /// Lock every numbered record whatever its status; also re-locks a manifest written by an
         /// older canonical serializer.
         all: bool,
+        /// Plan for `--check`: a stale manifest is a pending write rather than an error, and a log with
+        /// no manifest and nothing to lock is an empty plan, as `adrlint lock --check` reports them.
+        check: bool,
     },
     /// Remove one record's entry from the manifest. `files` holds the manifest.
     Unlock {
         /// The record, relative to the project root with `/` separators: its manifest key.
         path: String,
     },
-    /// Create the next numbered record in `dir`. `files` holds the Markdown directly in `dir`; a
-    /// `template.md` or `NNNN-template.md` among them is the template, otherwise the MADR one is used.
+    /// Create the next numbered record in `dir`. `files` holds the Markdown of every configured ADR
+    /// directory: the next number follows the highest among them, and a `template.md` or
+    /// `NNNN-template.md` directly in `dir` is the template, otherwise the MADR one is used.
     New {
         /// The ADR directory, relative to the project root with `/` separators (empty for the root).
         dir: String,

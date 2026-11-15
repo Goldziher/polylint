@@ -3,8 +3,11 @@
 //! The host half of `poly adr lock`, `unlock` and `new`. [`AdrLog`] reads the adrlint settings from
 //! `poly.toml` (`[engines.adrlint]`, or the v1 `[lint.markdown.adrlint]` table) through the same option
 //! keys and defaults the engine declares for its project check, gathers the files an operation reads,
-//! and hands them to the engine as content. The engine answers what to write; [`AdrLog::apply`] writes
-//! it, only inside the project root and never through a symlink.
+//! and hands them to the engine as content. `lock` and `new` read the log through
+//! [`poly_core::runner::project_dir_files`], the walk the project check makes, so they see exactly the
+//! files `poly lint` judges. The engine answers what to write; [`AdrLog::apply`] writes it only when the
+//! operation that asked may write that file (the manifest, or one new `NNNN-slug.md` record in the
+//! chosen directory), only inside the project root and never through a symlink.
 //!
 //! A build that links the adrlint engine registers it with [`register_linked_planner`] and is answered
 //! in-process; any other build asks the `web` component with `Request::Adr`, installing it on demand
@@ -17,13 +20,13 @@ use std::path::{Component, Path, PathBuf};
 use std::sync::{Arc, OnceLock};
 use std::time::{SystemTime, UNIX_EPOCH};
 
-use anyhow::{Context, Result, bail};
-use poly_component_protocol::{Payload, Request, WireAdrOp, WireAdrPlan, WireFileSlice};
+use anyhow::{Context, Result, bail, ensure};
+use poly_component_protocol::{Payload, Request, WireAdrOp, WireAdrPlan, WireAdrWrite, WireFileSlice};
 use poly_core::components::{ComponentInjection, call_engine_component_with_body, engine_project_inputs};
-use poly_core::{Config, Kind, Language};
+use poly_core::{Config, Kind, Language, RunOptions};
 use poly_engine_api::component_wire::engine_config_to_wire;
 use poly_engine_api::config::EngineConfig;
-use poly_engine_api::engine::ProjectFile;
+use poly_engine_api::engine::{ProjectDirs, ProjectFile};
 
 /// The engine that answers ADR operations.
 pub const ENGINE: &str = "adrlint";
@@ -51,10 +54,46 @@ pub struct AdrLog {
     enabled: bool,
     /// The ADR directories, relative to the root (empty for the root itself).
     dirs: Vec<PathBuf>,
-    /// Whether the directories' subdirectories belong to the log.
-    recursive: bool,
+    /// The directory options the engine declared, for the project-check walk.
+    declared: ProjectDirs,
     /// The lock manifest, relative to the root.
     lock: PathBuf,
+}
+
+/// A planned change, bound to what the operation that asked for it may write.
+#[derive(Debug)]
+pub struct AdrPlan {
+    wire: WireAdrPlan,
+    allowed: Allowed,
+}
+
+/// The one file an operation may write.
+#[derive(Debug, Clone, PartialEq, Eq)]
+enum Allowed {
+    /// `lock` and `unlock`: replace the manifest.
+    Manifest,
+    /// `new`: create one `NNNN-slug.md` record directly in this directory (relative to the root).
+    NewRecord(PathBuf),
+}
+
+impl AdrPlan {
+    /// The one-line outcome.
+    #[must_use]
+    pub fn summary(&self) -> &str {
+        &self.wire.summary
+    }
+
+    /// One line per manifest entry or record changed.
+    #[must_use]
+    pub fn changes(&self) -> &[String] {
+        &self.wire.changes
+    }
+
+    /// Whether the plan writes nothing: the log is already in the requested state.
+    #[must_use]
+    pub fn is_empty(&self) -> bool {
+        self.wire.writes.is_empty()
+    }
 }
 
 impl AdrLog {
@@ -104,10 +143,9 @@ impl AdrLog {
         dirs.sort();
         dirs.dedup();
 
-        let recursive = match declared.recursive_key.as_deref() {
-            Some(key) => option(options, key, "a boolean", toml::Value::as_bool)?.unwrap_or(declared.recursive_default),
-            None => declared.recursive_default,
-        };
+        if let Some(key) = declared.recursive_key.as_deref() {
+            option(options, key, "a boolean", toml::Value::as_bool)?;
+        }
         let lock_text =
             option(options, &side.option_key, "a string", toml::Value::as_str)?.unwrap_or(&side.default_path);
         let lock = inside_root(lock_text)
@@ -118,12 +156,22 @@ impl AdrLog {
             .as_deref()
             .is_none_or(|key| options.get(key).and_then(toml::Value::as_bool) == Some(true));
 
+        let declared = ProjectDirs {
+            dir_key: declared.dir_key,
+            dir_default: declared.dir_default,
+            paths_key: declared.paths_key,
+            recursive_key: declared.recursive_key,
+            recursive_default: declared.recursive_default,
+            whole_tree: declared.whole_tree,
+            file_names: declared.file_names,
+            list_unserved: declared.list_unserved,
+        };
         Ok(Self {
             root,
             config: engine_config,
             enabled,
             dirs,
-            recursive,
+            declared,
             lock,
         })
     }
@@ -180,15 +228,29 @@ impl AdrLog {
             .with_context(|| format!("{} is outside the project root {}", path.display(), self.root.display()))
     }
 
-    /// The directory a new record goes into: `chosen` when given, else the one configured directory.
+    /// The directory a new record goes into: `chosen` when given, which must be one of the configured
+    /// directories, else the one configured directory.
     ///
     /// # Errors
     ///
-    /// When `chosen` is outside the root or not a directory, several directories are configured and
-    /// none was chosen, or the configured one does not exist.
+    /// When `chosen` is not a configured directory, several directories are configured and none was
+    /// chosen, or the directory does not exist.
     pub fn new_record_dir(&self, chosen: Option<&Path>) -> Result<PathBuf> {
         let dir = match chosen {
-            Some(chosen) => self.relative(chosen)?,
+            Some(chosen) => {
+                let dir = self.relative(chosen)?;
+                ensure!(
+                    self.dirs.contains(&dir),
+                    "{} is not a configured ADR directory ({})",
+                    chosen.display(),
+                    self.dirs
+                        .iter()
+                        .map(|dir| wire_path(dir))
+                        .collect::<Vec<_>>()
+                        .join(", ")
+                );
+                dir
+            }
             None => match self.dirs.as_slice() {
                 [only] => only.clone(),
                 several => bail!(
@@ -207,18 +269,21 @@ impl AdrLog {
         Ok(dir)
     }
 
-    /// Plans writing or refreshing the lock manifest. With `all`, every numbered record is locked.
+    /// Plans writing or refreshing the lock manifest over the files the project check is served under
+    /// `opts`. With `all`, every numbered record is locked; with `check`, the plan reports what
+    /// `--check` reports instead of refusing (see `poly_engines_web::adrlint::ops`).
     ///
     /// # Errors
     ///
-    /// When a file cannot be read, or the engine refuses (see `poly_engines_web::adrlint::ops`).
-    pub fn plan_lock(&self, all: bool, config: &Config, injection: Option<&ComponentInjection>) -> Result<WireAdrPlan> {
-        let mut files = Vec::new();
-        for dir in &self.dirs {
-            self.markdown_under(dir, &mut files)?;
-        }
+    /// When a file cannot be read, or the engine refuses.
+    pub fn plan_lock(&self, all: bool, check: bool, config: &Config, opts: &RunOptions) -> Result<AdrPlan> {
+        let mut files = self.served(config, opts)?;
         files.extend(self.manifest()?);
-        self.call(WireAdrOp::Lock { all }, files, config, injection)
+        let wire = self.call(WireAdrOp::Lock { all, check }, files, config, opts)?;
+        Ok(AdrPlan {
+            wire,
+            allowed: Allowed::Manifest,
+        })
     }
 
     /// Plans removing `record` (relative to the root) from the lock manifest.
@@ -226,114 +291,133 @@ impl AdrLog {
     /// # Errors
     ///
     /// When the manifest cannot be read, or has no entry for `record`.
-    pub fn plan_unlock(
-        &self,
-        record: &Path,
-        config: &Config,
-        injection: Option<&ComponentInjection>,
-    ) -> Result<WireAdrPlan> {
+    pub fn plan_unlock(&self, record: &Path, config: &Config, opts: &RunOptions) -> Result<AdrPlan> {
         let files = self.manifest()?.into_iter().collect();
         let op = WireAdrOp::Unlock {
             path: wire_path(record),
         };
-        self.call(op, files, config, injection)
+        let wire = self.call(op, files, config, opts)?;
+        Ok(AdrPlan {
+            wire,
+            allowed: Allowed::Manifest,
+        })
     }
 
-    /// Plans creating the next numbered record titled `title` in `dir` (relative to the root), dated
-    /// `date`.
+    /// Plans creating the next numbered record titled `title` in `dir` (relative to the root, as
+    /// [`new_record_dir`](Self::new_record_dir) answers it), dated `date`. The number follows every
+    /// configured directory.
     ///
     /// # Errors
     ///
-    /// When the directory cannot be read, or the engine rejects the title.
-    pub fn plan_new(
-        &self,
-        dir: &Path,
-        title: &str,
-        date: &str,
-        config: &Config,
-        injection: Option<&ComponentInjection>,
-    ) -> Result<WireAdrPlan> {
-        let mut files = Vec::new();
-        self.markdown_in(dir, false, &mut files)?;
+    /// When the log cannot be read, or the engine rejects the title.
+    pub fn plan_new(&self, dir: &Path, title: &str, date: &str, config: &Config, opts: &RunOptions) -> Result<AdrPlan> {
+        let files = self.served(config, opts)?;
         let op = WireAdrOp::New {
             dir: wire_path(dir),
             title: title.to_owned(),
             date: date.to_owned(),
         };
-        self.call(op, files, config, injection)
+        let wire = self.call(op, files, config, opts)?;
+        Ok(AdrPlan {
+            wire,
+            allowed: Allowed::NewRecord(dir.to_path_buf()),
+        })
     }
 
-    /// Writes `plan`, returning the absolute paths written. A path outside the root, a symlink, or (for
-    /// a new record) an existing file is refused before anything is written for that file.
+    /// Writes `plan`, returning the absolute paths written.
+    ///
+    /// Every write is checked before any is made: a plan holds at most one, and it must be the one the
+    /// operation may make (the manifest, replaced; or a new `NNNN-slug.md` directly in the chosen
+    /// directory, created). The path must stay inside the root, its directory must resolve inside the
+    /// root, and the file must not be a symlink; the write goes to the resolved directory.
     ///
     /// # Errors
     ///
     /// When a write is refused or fails.
-    pub fn apply(&self, plan: &WireAdrPlan) -> Result<Vec<PathBuf>> {
-        let mut written = Vec::with_capacity(plan.writes.len());
-        for write in &plan.writes {
-            let relative = inside_root(&write.path)
-                .filter(|path| !path.as_os_str().is_empty())
-                .with_context(|| format!("refusing to write {}: it is outside the project root", write.path))?;
-            let path = self.root.join(&relative);
-            let parent = path.parent().context("a write with no parent directory")?;
-            let parent = fs::canonicalize(parent).with_context(|| format!("resolving {}", parent.display()))?;
-            if !parent.starts_with(&self.root) {
-                bail!(
-                    "refusing to write {}: its directory resolves outside the project root",
-                    write.path
+    pub fn apply(&self, plan: &AdrPlan) -> Result<Vec<PathBuf>> {
+        let writes = &plan.wire.writes;
+        ensure!(
+            writes.len() <= 1,
+            "refusing a plan of {} writes; an ADR operation writes one file",
+            writes.len()
+        );
+        let targets = writes
+            .iter()
+            .map(|write| self.target(&plan.allowed, write))
+            .collect::<Result<Vec<_>>>()?;
+        for (target, write) in targets.iter().zip(writes) {
+            if write.create {
+                create_new(target, &write.content)?;
+            } else {
+                replace(target, &write.content)?;
+            }
+        }
+        Ok(targets)
+    }
+
+    /// Where `write` lands, when `allowed` permits it: the resolved parent directory joined with the
+    /// file name, so what is checked is what is written.
+    fn target(&self, allowed: &Allowed, write: &WireAdrWrite) -> Result<PathBuf> {
+        let relative = inside_root(&write.path)
+            .filter(|path| !path.as_os_str().is_empty())
+            .with_context(|| format!("refusing to write {}: it is outside the project root", write.path))?;
+        match allowed {
+            Allowed::Manifest => ensure!(
+                relative == self.lock && !write.create,
+                "refusing to write {}: this operation may only replace {}",
+                write.path,
+                wire_path(&self.lock)
+            ),
+            Allowed::NewRecord(dir) => {
+                let named = relative
+                    .file_name()
+                    .and_then(|name| name.to_str())
+                    .is_some_and(is_record_name);
+                ensure!(
+                    write.create && named && relative.parent() == Some(dir.as_path()),
+                    "refusing to write {}: this operation may only create a new NNNN-slug.md record in {}",
+                    write.path,
+                    wire_path(dir)
                 );
             }
-            if fs::symlink_metadata(&path).is_ok_and(|metadata| metadata.file_type().is_symlink()) {
-                bail!("refusing to write through the symlink at {}", path.display());
-            }
-            if write.create {
-                create_new(&path, &write.content)?;
-            } else {
-                replace(&path, &write.content)?;
-            }
-            written.push(path);
         }
-        Ok(written)
+        let name = relative.file_name().context("a write with no file name")?;
+        let joined = self.root.join(&relative);
+        let parent = joined.parent().context("a write with no parent directory")?;
+        let parent = fs::canonicalize(parent).with_context(|| format!("resolving {}", parent.display()))?;
+        ensure!(
+            parent.starts_with(&self.root),
+            "refusing to write {}: its directory resolves outside the project root",
+            write.path
+        );
+        let target = parent.join(name);
+        if fs::symlink_metadata(&target).is_ok_and(|metadata| metadata.file_type().is_symlink()) {
+            bail!("refusing to write through the symlink at {}", target.display());
+        }
+        Ok(target)
     }
 
-    /// Every Markdown file under `dir`, recursing when the log is recursive.
-    fn markdown_under(&self, dir: &Path, out: &mut Vec<ProjectFile>) -> Result<()> {
-        self.markdown_in(dir, self.recursive, out)
-    }
-
-    /// Every Markdown file in `dir` (relative to the root), and its subdirectories with `recursive`.
-    /// Symlinks are never followed; a directory that does not exist contributes nothing.
-    fn markdown_in(&self, dir: &Path, recursive: bool, out: &mut Vec<ProjectFile>) -> Result<()> {
-        let absolute = self.root.join(dir);
-        if fs::symlink_metadata(&absolute).is_ok_and(|metadata| metadata.file_type().is_symlink()) {
-            return Ok(());
-        }
-        let entries = match fs::read_dir(&absolute) {
-            Ok(entries) => entries,
-            Err(error) if error.kind() == ErrorKind::NotFound => return Ok(()),
-            Err(error) => return Err(error).with_context(|| format!("reading {}", absolute.display())),
-        };
-        let mut names = Vec::new();
-        for entry in entries {
-            let entry = entry.with_context(|| format!("reading {}", absolute.display()))?;
-            let kind = entry
-                .file_type()
-                .with_context(|| format!("reading {}", entry.path().display()))?;
-            names.push((entry.file_name(), kind));
-        }
-        names.sort_by(|a, b| a.0.cmp(&b.0));
-        for (name, kind) in names {
-            let relative = dir.join(&name);
-            if kind.is_dir() {
-                if recursive {
-                    self.markdown_in(&relative, true, out)?;
-                }
-            } else if kind.is_file() && relative.extension().is_some_and(|extension| extension == "md") {
-                out.push(self.read(&relative, Language::Markdown)?);
-            }
-        }
-        Ok(())
+    /// The Markdown the project check is served for this log under `opts`, relative to the root.
+    fn served(&self, config: &Config, opts: &RunOptions) -> Result<Vec<ProjectFile>> {
+        let files = poly_core::runner::project_dir_files(
+            &self.root,
+            config,
+            opts,
+            &self.declared,
+            &self.config.options,
+            &[Language::Markdown],
+        )?;
+        files
+            .into_iter()
+            .map(|file| {
+                let relative = file
+                    .path
+                    .strip_prefix(&self.root)
+                    .with_context(|| format!("{} is outside the project root", file.path.display()))?
+                    .to_path_buf();
+                Ok(ProjectFile { path: relative, ..file })
+            })
+            .collect()
     }
 
     /// The lock manifest, or `None` when the project has none yet.
@@ -367,13 +451,8 @@ impl AdrLog {
 
     /// Asks the engine to plan `op` over `files`: in-process when this build links it, otherwise through
     /// the component that hosts it.
-    fn call(
-        &self,
-        op: WireAdrOp,
-        files: Vec<ProjectFile>,
-        config: &Config,
-        injection: Option<&ComponentInjection>,
-    ) -> Result<WireAdrPlan> {
+    fn call(&self, op: WireAdrOp, files: Vec<ProjectFile>, config: &Config, opts: &RunOptions) -> Result<WireAdrPlan> {
+        let injection = opts.component_injection.as_ref();
         if injection.is_none()
             && let Some(planner) = LINKED.get()
         {
@@ -442,6 +521,20 @@ fn wire_path(path: &Path) -> String {
         .join("/")
 }
 
+/// Whether `name` is a record file name `new` may create: `^\d{4}-[a-z0-9-]+\.md$`.
+fn is_record_name(name: &str) -> bool {
+    let Some(stem) = name.strip_suffix(".md") else {
+        return false;
+    };
+    let bytes = stem.as_bytes();
+    bytes.len() > 5
+        && bytes[..4].iter().all(u8::is_ascii_digit)
+        && bytes[4] == b'-'
+        && bytes[5..]
+            .iter()
+            .all(|byte| byte.is_ascii_lowercase() || byte.is_ascii_digit() || *byte == b'-')
+}
+
 /// Writes a new file, failing when it already exists.
 fn create_new(path: &Path, content: &str) -> Result<()> {
     let mut file = match OpenOptions::new().write(true).create_new(true).open(path) {
@@ -503,31 +596,6 @@ fn civil_from_days(days: i64) -> (i64, u32, u32) {
     (year, u32::try_from(month).unwrap_or(1), u32::try_from(day).unwrap_or(1))
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn civil_dates_match_known_days() {
-        assert_eq!(civil_from_days(0), (1970, 1, 1));
-        assert_eq!(civil_from_days(11_016), (2000, 2, 29));
-        assert_eq!(civil_from_days(20_772), (2026, 11, 15));
-    }
-
-    #[test]
-    fn a_path_must_stay_inside_the_root() {
-        assert_eq!(inside_root("./docs/adr"), Some(PathBuf::from("docs/adr")));
-        assert_eq!(inside_root("."), Some(PathBuf::new()));
-        assert_eq!(inside_root("../elsewhere"), None);
-        assert_eq!(inside_root("/etc"), None);
-    }
-
-    #[test]
-    fn wire_paths_use_forward_slashes() {
-        assert_eq!(
-            wire_path(&Path::new("docs").join("adr").join("0001-x.md")),
-            "docs/adr/0001-x.md"
-        );
-        assert_eq!(wire_path(Path::new("./adrlint.lock")), "adrlint.lock");
-    }
-}
+// The write-safety tests build symlinks with `std::os::unix`.
+#[cfg(all(test, unix))]
+mod tests;

@@ -371,11 +371,12 @@ poly adr new <TITLE> [--dir <DIR>]            # create the next numbered record
 The three commands use the bundled adrlint and the `[engines.adrlint]` (v1: `[lint.markdown.adrlint]`)
 settings: `dir`, `paths` and `recursive` name the log, `lock` the manifest and `start` the first number.
 `lock` locks every `accepted` or `rejected` record (`--all`: every numbered record) and refuses, exiting `1`,
-while `poly lint` reports an adrlint error in the log after `[per-file-ignores]` and inline suppressions;
+while `poly lint` reports an adrlint error in the log after `[per_file_ignores]` and inline suppressions;
 `--check` writes nothing and exits `1` when the manifest would change. `unlock` takes the record's path from
 the working directory and prints the reason for the commit message. `new` fills the directory's
 `template.md` or `NNNN-template.md` (MADR's template otherwise) with the title, `status: proposed` and
-today's date; `--dir` picks the directory when `paths` names several. Writes stay inside the directory of
+today's date, numbering after the highest record in every configured directory; `--dir` picks one of the
+configured directories when `paths` names several. Writes stay inside the directory of
 the nearest `poly.toml` and never follow a symlink. A core build asks the `web` component, installing it
 on demand unless `--offline` or `[components] install = "never"`.
 

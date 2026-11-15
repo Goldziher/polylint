@@ -34,7 +34,14 @@ fn record(status: &str, title: &str) -> String {
 }
 
 fn lock_op(all: bool) -> WireAdrOp {
-    WireAdrOp::Lock { all }
+    WireAdrOp::Lock { all, check: false }
+}
+
+fn check_op() -> WireAdrOp {
+    WireAdrOp::Lock {
+        all: false,
+        check: true,
+    }
 }
 
 fn parsed(plan: &WireAdrPlan) -> LockFile {
@@ -182,7 +189,7 @@ fn new(dir: &str, title: &str) -> WireAdrOp {
 }
 
 #[test]
-fn new_takes_the_next_number_and_fills_the_template() {
+fn new_takes_the_next_number_across_directories_and_fills_the_local_template() {
     let template = "---\nstatus: accepted\ndate: 2000-01-01\ndecision-makers: []\n---\n\n# Template\n\n## Context and Problem Statement\n\nWhy?\n";
     let files = [
         markdown("docs/adr/0000-template.md", template),
@@ -193,13 +200,14 @@ fn new_takes_the_next_number_and_fills_the_template() {
     let plan = plan(&new("docs/adr", "Choose a Database!"), &config(&[]), &files).expect("new");
     assert_eq!(plan.writes.len(), 1);
     let write = &plan.writes[0];
-    assert_eq!(write.path, "docs/adr/0002-choose-a-database.md");
+    // `other/` holds 0007: numbers come from every directory the host handed over.
+    assert_eq!(write.path, "docs/adr/0008-choose-a-database.md");
     assert!(write.create);
     assert_eq!(
         write.content,
         "---\nstatus: proposed\ndate: 2026-11-15\ndecision-makers: []\n---\n\n# Choose a Database!\n\n## Context and Problem Statement\n\nWhy?\n"
     );
-    assert_eq!(plan.summary, "created docs/adr/0002-choose-a-database.md");
+    assert_eq!(plan.summary, "created docs/adr/0008-choose-a-database.md");
 }
 
 #[test]
@@ -241,4 +249,31 @@ fn a_long_title_is_cut_at_a_word_boundary() {
     assert!(cut.len() <= MAX_SLUG_LEN);
     assert!(!cut.ends_with('-'));
     assert!(cut.ends_with("word"));
+}
+
+#[test]
+fn check_passes_a_log_with_no_manifest_and_nothing_to_lock() {
+    let files = [markdown("docs/adr/0001-use-go.md", &record("proposed", "Use Go"))];
+    let plan = plan(&check_op(), &config(&[]), &files).expect("--check does not refuse");
+    assert!(plan.writes.is_empty(), "{plan:?}");
+    assert!(plan.summary.contains("nothing to lock"), "{}", plan.summary);
+}
+
+#[test]
+fn check_reports_a_stale_manifest_as_a_pending_write() {
+    let manifest = LockFile {
+        canonical: lock::CANONICAL_VERSION + 1,
+        ..LockFile::default()
+    };
+    let files = [
+        markdown("docs/adr/0001-use-rust.md", &record("accepted", "Use Rust")),
+        manifest_file("adrlint.lock", &manifest),
+    ];
+    let plan = plan(&check_op(), &config(&[]), &files).expect("--check does not refuse a stale manifest");
+    assert_eq!(plan.writes.len(), 1, "a stale manifest is out of date");
+    assert!(
+        plan.changes.iter().any(|change| change.contains("canonical version")),
+        "{:?}",
+        plan.changes
+    );
 }

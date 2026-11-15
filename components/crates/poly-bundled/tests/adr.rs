@@ -205,7 +205,8 @@ fn per_file_ignores_let_a_template_share_the_first_number() {
 
     project.write(
         "poly.toml",
-        &format!("{config}\n[per-file-ignores]\n\"0000-*.md\" = [\"MADR43\"]\n"),
+        // The glob is relative to the config's directory, so it names the ADR directory.
+        &format!("{config}\n[per-file-ignores]\n\"docs/adr/0000-*.md\" = [\"MADR43\"]\n"),
     );
     let output = project.poly(&["adr", "lock"]);
     assert_success(&output);
@@ -276,4 +277,46 @@ fn new_starts_an_empty_log_with_the_madr_template() {
     let second = project.poly(&["adr", "new", "Use Go"]);
     assert_success(&second);
     assert!(project.root.join("docs/adr/0002-use-go.md").is_file());
+}
+
+#[test]
+fn lock_check_passes_a_log_that_has_not_opted_in() {
+    let project = Project::new("[engines.adrlint]\nenabled = true\n");
+    project.write("docs/adr/0001-use-go.md", &record("proposed", "Use Go"));
+    let output = project.poly(&["adr", "lock", "--check"]);
+    assert_success(&output);
+    assert!(
+        text(&output.stdout).contains("nothing to lock"),
+        "{}",
+        text(&output.stdout)
+    );
+    assert!(!project.root.join("adrlint.lock").exists());
+}
+
+/// `lock` reads the log through the project check's own walk, so a record `[discovery] exclude` keeps
+/// out of `poly lint` is not locked, and the lint that follows finds no lock entry without its record
+/// (`ADR51`).
+#[test]
+fn lock_judges_the_files_poly_lint_judges() {
+    let project = Project::new(
+        "[discovery]\nexclude = [\"docs/adr/archive\"]\n\n[engines.adrlint]\nenabled = true\nrecursive = true\n",
+    );
+    project.write("docs/adr/0001-use-rust.md", &record("accepted", "Use Rust"));
+    project.write("docs/adr/archive/0001-use-go.md", &record("accepted", "Use Go"));
+
+    assert_success(&project.poly(&["adr", "lock"]));
+    assert_eq!(
+        project.locked(),
+        ["docs/adr/0001-use-rust.md"],
+        "the excluded record is not locked"
+    );
+
+    let lint = project.poly(&["lint", "--workspace", "never", "--only", "adrlint", "."]);
+    assert_eq!(
+        lint.status.code(),
+        Some(0),
+        "stdout: {}\nstderr: {}",
+        text(&lint.stdout),
+        text(&lint.stderr)
+    );
 }

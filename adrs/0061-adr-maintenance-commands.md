@@ -11,7 +11,7 @@ poly lints decision records with adrlint as a library in the `web` component (AD
 lints its ADRs through poly still installs the standalone adrlint CLI for `lock`, `unlock` and `new` (#221). That puts
 two adrlint versions in play and two configs: `[engines.adrlint]` in `poly.toml` and `.adrlint.toml`, with the rule
 switches duplicated. The CLI config also cannot express the per-file exemption `poly.toml` can: a template sharing
-number `0000` with the first record needs `MADR43` off for that pair alone, which `[per-file-ignores]` does and
+number `0000` with the first record needs `MADR43` off for that pair alone, which `[per_file_ignores]` does and
 adrlint's `[rules]` table cannot.
 
 The adrlint library exposes what the CLI's commands are built from (`lock::entry`, `lock::render`,
@@ -25,10 +25,13 @@ on the bundled one.
 - **`poly adr lock [--all] [--check]`, `poly adr unlock <FILE> --reason <TEXT>` and `poly adr new <TITLE> [--dir
   <DIR>]`** in `poly-cli`, reading the adrlint settings from the config the run resolves (`[engines.adrlint]`, or the
   v1 `[lint.markdown.adrlint]`). The log's directories and the manifest come from the option keys and defaults the
-  engine declares in `Engine::project_inputs` (`dir`, `paths`, `recursive`, `lock`), read from the component index, so
-  `poly adr` acts on exactly the log `poly lint` judges. The project root is the directory of the nearest `poly.toml`.
+  engine declares in `Engine::project_inputs` (`dir`, `paths`, `recursive`, `lock`), read from the component index.
+  `lock` and `new` read the log through `poly_core::runner::project_dir_files`, the walk and filters the project
+  check itself applies (`.gitignore`, `[discovery] exclude`, nested `poly.toml` ownership, generated files), so
+  `poly adr` acts on exactly the files `poly lint` judges. The project root is the directory of the nearest
+  `poly.toml`.
 - **One new component request, `Request::Adr { op, config, files }`, answered with `Payload::Adr(WireAdrPlan)`.** `op`
-  is `Lock { all }`, `Unlock { path }` or `New { dir, title, date }`. The host hands over the files as body slices with
+  is `Lock { all, check }`, `Unlock { path }` or `New { dir, title, date }`. The host hands over the files as body slices with
   root-relative paths, as for `ProjectCheck`; the engine reads and writes nothing and answers the files to write
   (`path`, `content`, `create`), the manifest changes and a summary. The planner is one function in the `web` crate,
   `adrlint::ops::plan`; the `web` producer serves it through `Producer::with_adr`, as the `astgrep` producer serves
@@ -39,14 +42,20 @@ on the bundled one.
   `call_engine_component_with_body`. Both builds run the same function on the same inputs.
 - **The lint gate is the host's.** `lock` first runs `poly lint` over the log with `--only adrlint` and refuses (exit 1)
   on any error-severity adrlint finding, as `adrlint lock` refuses on its own errors. Running the real lint means
-  `[per-file-ignores]` and inline `poly: allow[…]` directives decide what blocks a lock. A missing component fails the
-  gate rather than skipping it, and a gate run that checked no file is an error.
+  `[per_file_ignores]` (globs relative to the declaring config's directory, so
+  `"docs/adr/0000-*.md" = ["MADR43"]` exempts a template pair) and inline `poly: allow[…]` directives decide what
+  blocks a lock. A missing component fails the gate rather than skipping it, and a gate run that checked no file is an
+  error. `--check` keeps `adrlint lock --check`'s answers: a log with no manifest and nothing to lock passes, and a
+  manifest from an older canonical serializer is out of date (exit 1).
 - **Templates are found by name.** `new` fills `template.md` or `NNNN-template.md` in the target directory (front
   matter `status: proposed`, the host's date, the first `#` heading set to the title), else MADR's template as
-  `adrlint new` writes it. A template is never locked and never counts toward the next number.
-- **Writes stay in the repository.** The host writes each planned path only when it is relative, its directory resolves
-  inside the root and the file is not a symlink; a new record is created exclusively and the manifest is replaced
-  atomically. No command runs a program, so repository trust (ADR 0059) gates nothing here.
+  `adrlint new` writes it. The number follows the highest record in every configured directory, and `--dir` must name
+  one of them. A template is never locked and never counts toward the next number.
+- **Writes stay in the repository, and to the file the operation names.** The host does not trust the plan: it holds
+  at most one write, `lock` and `unlock` may only replace the configured manifest, and `new` may only create one
+  `NNNN-slug.md` directly in the chosen directory. The path must be relative, its directory must resolve inside the
+  root, and the file must not be a symlink; the write goes to the resolved directory. A new record is created
+  exclusively and the manifest is replaced atomically, keeping its permissions. No command runs a program, so repository trust (ADR 0059) gates nothing here.
 - **`PROTOCOL_VERSION` stays 3.** The variant is appended to `Request` and `Payload`, which are externally tagged by
   name, so no existing message changes shape. Only the component hosting adrlint is ever sent it; an older `web`
   component fails that one call with a decode error and every other request keeps working.

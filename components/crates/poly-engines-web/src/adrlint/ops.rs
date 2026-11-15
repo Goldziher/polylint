@@ -40,7 +40,7 @@ const NEW_STATUS: &str = "proposed";
 /// entry to unlock), or the title of a new record is unusable.
 pub fn plan(op: &WireAdrOp, cfg: &EngineConfig, files: &[ProjectFile]) -> anyhow::Result<WireAdrPlan> {
     match op {
-        WireAdrOp::Lock { all } => lock_log(cfg, files, *all),
+        WireAdrOp::Lock { all, check } => lock_log(cfg, files, *all, *check),
         WireAdrOp::Unlock { path } => unlock_record(cfg, files, path),
         WireAdrOp::New { dir, title, date } => new_record(cfg, files, dir, title, date),
     }
@@ -79,11 +79,16 @@ fn record_number(path: &Path) -> Option<u32> {
     discovery::parse_number(name)
 }
 
-fn lock_log(cfg: &EngineConfig, files: &[ProjectFile], all: bool) -> anyhow::Result<WireAdrPlan> {
+/// Plans the manifest. With `check` it never refuses what `adrlint lock --check` reports instead: a
+/// stale canonical version comes back as a pending write (the host exits 1 on it), and a log with no
+/// manifest and nothing to lock as an empty plan (exit 0), so an always-run hook passes on a log that
+/// has not opted in.
+fn lock_log(cfg: &EngineConfig, files: &[ProjectFile], all: bool, check: bool) -> anyhow::Result<WireAdrPlan> {
     let lock_key = lock_key(cfg);
     let existing = manifest(files, &lock_key)?;
     let current = existing.clone().unwrap_or_default();
-    if !current.is_current() && !all {
+    let stale = !current.is_current();
+    if stale && !all && !check {
         bail!(
             "{lock_key} uses canonical version {}; run `poly adr lock --all` to re-lock every ADR",
             current.canonical
@@ -112,13 +117,26 @@ fn lock_log(cfg: &EngineConfig, files: &[ProjectFile], all: bool) -> anyhow::Res
     }
 
     if locked == 0 && current.adrs.is_empty() {
+        if check && existing.is_none() {
+            return Ok(WireAdrPlan {
+                writes: Vec::new(),
+                changes: Vec::new(),
+                summary: format!("no ADR has a locked status and {lock_key} does not exist; nothing to lock"),
+            });
+        }
         bail!(
             "no ADR has a locked status ({}); pass --all to lock every ADR",
             statuses.statuses.join(", ")
         );
     }
 
-    let changes = lock_changes(&current, &candidate);
+    let mut changes = lock_changes(&current, &candidate);
+    if stale {
+        changes.push(format!(
+            "re-lock {lock_key}, which uses canonical version {} (`poly adr lock --all`)",
+            current.canonical
+        ));
+    }
     if existing.as_ref() == Some(&candidate) {
         return Ok(WireAdrPlan {
             writes: Vec::new(),
@@ -179,11 +197,13 @@ fn new_record(
 ) -> anyhow::Result<WireAdrPlan> {
     let title = validate_title(title)?;
     let dir = Path::new(dir);
-    let in_dir = |file: &&ProjectFile| file.path.parent().unwrap_or_else(|| Path::new("")) == dir;
+    let in_dir = |file: &&&ProjectFile| file.path.parent().unwrap_or_else(|| Path::new("")) == dir;
 
-    let mut members: Vec<&ProjectFile> = files.iter().filter(in_dir).collect();
+    let mut members: Vec<&ProjectFile> = files.iter().collect();
     members.sort_by(|a, b| a.path.cmp(&b.path));
-    let template = members.iter().find(|file| is_template(&file.path));
+    // The template comes from the target directory; the number from every configured directory, so
+    // two logs never hand out the same number.
+    let template = members.iter().filter(in_dir).find(|file| is_template(&file.path));
     let highest = members
         .iter()
         .filter(|file| !is_template(&file.path))

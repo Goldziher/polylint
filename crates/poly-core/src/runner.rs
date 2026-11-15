@@ -30,6 +30,7 @@ mod project;
 pub(crate) use project::ancestor_pairs;
 mod schedule;
 pub(crate) mod selection;
+mod served;
 mod skips;
 mod types;
 mod write;
@@ -45,6 +46,7 @@ use plan::{RunPlan, plan_by_config_language, prefetch_tier2_grammars};
 #[doc(hidden)]
 pub use project::with_extra_project_engines;
 use selection::{EngineSelection, validate_selection};
+pub use served::project_dir_files;
 pub use skips::{
     BINARY_SKIP, DISABLED_SKIP_PREFIX, FILTERED_SKIP, GENERATED_SKIP, LOCKFILE_SKIP, NO_ENGINE_SKIP,
     NO_LINT_RULES_SKIP_PREFIX, SkippedFile, TOO_LARGE_SKIP_PREFIX, is_withdrawal_reason,

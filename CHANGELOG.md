@@ -12,8 +12,8 @@ binary drives lint, format, hooks, and commit checks from one `poly.toml`.
 - **`poly adr lock`, `poly adr unlock <file> --reason <text>` and `poly adr new <title>`.** Maintain `adrlint.lock`
   and create numbered records with the bundled adrlint and the `[engines.adrlint]` settings, so a repository no
   longer needs the standalone adrlint CLI or `.adrlint.toml`. `lock` refuses while `poly lint` reports an adrlint
-  error, honouring `[per-file-ignores]` (a template sharing `0000` with the first record can be exempted from
-  `MADR43` for that pair); `new` fills the directory's `template.md`/`NNNN-template.md`. A core build asks the `web`
+  error, honouring `[per_file_ignores]` (a template sharing `0000` with the first record can be exempted from
+  `MADR43` for that pair with `"docs/adr/0000-*.md" = ["MADR43"]`); `new` fills the directory's `template.md`/`NNNN-template.md`. A core build asks the `web`
   component through a new `Adr` component request. (ADR 0061, #221)
 - **`--timings` for `poly lint` and `poly fmt`** (or `POLY_TIMINGS=1`). Prints per-phase wall time and a per-engine
   table (calls, wall, own CPU, child-process CPU, p95, slowest file) to stderr, and the slow-engine log now counts a

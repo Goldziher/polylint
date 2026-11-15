@@ -1000,12 +1000,12 @@ poly adr new "Choose a database"                      # docs/adr/NNNN-choose-a-d
 ```
 
 `lock` records every `accepted` or `rejected` record (`--all`: every numbered one) and refuses while
-`poly lint` reports an adrlint error in the log, so `[per-file-ignores]` decide what blocks it. A
+`poly lint` reports an adrlint error in the log, so `[per_file_ignores]` decide what blocks it. A
 template that shares number `0000` with the first record is exempted for that pair alone:
 
 ```toml
-[per-file-ignores]
-"0000-*.md" = ["MADR43"]
+[per_file_ignores]
+"docs/adr/0000-*.md" = ["MADR43"] # relative to this poly.toml's directory
 ```
 
 `new` copies `template.md` or `NNNN-template.md` from the ADR directory when there is one (MADR's

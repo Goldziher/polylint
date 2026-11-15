@@ -39,9 +39,10 @@ pub struct AdrArgs {
 pub enum AdrCommand {
     /// Write or refresh adrlint.lock for every accepted or rejected record.
     ///
-    /// Refuses while `poly lint` reports an adrlint error in the log; `[per-file-ignores]` and inline
+    /// Refuses while `poly lint` reports an adrlint error in the log; per-file ignores and inline
     /// `poly: allow[...]` directives apply, so a template sharing a number with the first record can
-    /// be exempted from MADR43 for that pair alone.
+    /// be exempted from MADR43 for that pair alone (`[per_file_ignores] "docs/adr/0000-*.md" =
+    /// ["MADR43"]`, a glob relative to the config's directory).
     Lock(AdrLockArgs),
     /// Release one record from adrlint.lock so it can be edited.
     Unlock(AdrUnlockArgs),
@@ -150,13 +151,15 @@ impl Project {
             return Ok(ExitCode::from(1));
         }
 
-        let plan = self.log.plan_lock(args.all, &self.config, None)?;
+        let plan = self
+            .log
+            .plan_lock(args.all, args.check, &self.config, &self.run_options())?;
         if args.check {
-            if plan.writes.is_empty() {
-                println!("{}", plan.summary);
+            if plan.is_empty() {
+                println!("{}", plan.summary());
                 return Ok(ExitCode::SUCCESS);
             }
-            for change in &plan.changes {
+            for change in plan.changes() {
                 eprintln!("would {change}");
             }
             eprintln!(
@@ -166,24 +169,38 @@ impl Project {
             return Ok(ExitCode::from(1));
         }
         self.log.apply(&plan)?;
-        println!("{}", plan.summary);
+        println!("{}", plan.summary());
         Ok(ExitCode::SUCCESS)
     }
 
     fn unlock(self, args: &AdrUnlockArgs) -> Result<ExitCode> {
         let record = self.log.relative(&args.file)?;
-        let plan = self.log.plan_unlock(&record, &self.config, None)?;
+        let plan = self.log.plan_unlock(&record, &self.config, &self.run_options())?;
         self.log.apply(&plan)?;
-        println!("{}: {}", plan.summary, args.reason.trim());
+        println!("{}: {}", plan.summary(), args.reason.trim());
         Ok(ExitCode::SUCCESS)
     }
 
     fn create(self, args: &AdrNewArgs) -> Result<ExitCode> {
         let dir = self.log.new_record_dir(args.dir.as_deref())?;
-        let plan = self.log.plan_new(&dir, &args.title, &today(), &self.config, None)?;
+        let plan = self
+            .log
+            .plan_new(&dir, &args.title, &today(), &self.config, &self.run_options())?;
         self.log.apply(&plan)?;
-        println!("{}", plan.summary);
+        println!("{}", plan.summary());
         Ok(ExitCode::SUCCESS)
+    }
+
+    /// The options a `poly lint` run of this project would use: the config's discovery settings, the
+    /// `--config` scoping and the `extends` resolver. The ADR file set is walked under them, so it is the
+    /// set the project check judges.
+    fn run_options(&self) -> RunOptions {
+        RunOptions {
+            force_exclude: self.config.force_exclude,
+            explicit_config: crate::global().config.is_some(),
+            config_resolver: Some(self.resolver.clone()),
+            ..RunOptions::default()
+        }
     }
 
     /// The error-severity adrlint findings `poly lint` reports over `dirs`, one line each, after every
@@ -192,12 +209,9 @@ impl Project {
     /// passes because it examined nothing.
     fn lint_errors(&self, dirs: &[PathBuf]) -> Result<Vec<String>> {
         let options = RunOptions {
-            force_exclude: self.config.force_exclude,
-            explicit_config: crate::global().config.is_some(),
-            config_resolver: Some(self.resolver.clone()),
             only: vec![ENGINE.to_owned()],
             on_missing: Some(poly_config::v2::OnMissing::Fail),
-            ..RunOptions::default()
+            ..self.run_options()
         };
         let run = poly_core::lint_run(dirs, &self.config, &options, false, false)
             .context("linting the ADR log before locking it")?;

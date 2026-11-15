@@ -256,7 +256,10 @@ fn sample_requests() -> Vec<Request> {
             test: true,
         },
         Request::Adr {
-            op: WireAdrOp::Lock { all: false },
+            op: WireAdrOp::Lock {
+                all: false,
+                check: false,
+            },
             config: WireValue::Table(vec![("options".into(), WireValue::Table(vec![]))]),
             files: vec![WireFileSlice {
                 path: "docs/adr/0001-use-rust.md".into(),

@@ -125,3 +125,15 @@ fn a_build_without_the_web_family_asks_the_web_component() {
         "nothing is written when the engine cannot be asked"
     );
 }
+
+#[test]
+fn new_only_writes_into_a_configured_directory() {
+    let dir = project("[engines.adrlint]\nenabled = true\n", &["docs/adr", "elsewhere"]);
+    let output = poly(dir.path(), &["adr", "new", "Use Rust", "--dir", "elsewhere"]);
+    assert_eq!(output.status.code(), Some(2));
+    assert!(
+        stderr(&output).contains("elsewhere is not a configured ADR directory (docs/adr)"),
+        "{}",
+        stderr(&output)
+    );
+}
