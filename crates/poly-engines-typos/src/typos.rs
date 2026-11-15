@@ -26,8 +26,10 @@
 //! on locale preference, which is inappropriate for a general-purpose backend.
 
 use std::borrow::Cow;
+use std::collections::{HashMap, HashSet};
+use std::sync::{Arc, LazyLock, Mutex};
 
-use globset::{Glob, GlobSetBuilder};
+use globset::{Glob, GlobSet, GlobSetBuilder};
 use unicase::UniCase;
 
 use poly_engine_api::config::EngineConfig;
@@ -35,11 +37,12 @@ use poly_engine_api::engine::{
     Capabilities, Diagnostic, Engine, OptionKeys, OptionTable, OptionType, Severity, SourceFile, Span,
 };
 use poly_engine_api::language::Language;
+use poly_engine_api::line_index::LineIndex;
 
 /// Combined cache-key version: `typos` tokeniser + `typos-dict` word list,
 /// plus a marker for the noise-suppression guards below. Bump whenever either
 /// crate is updated OR the guard logic changes (it alters output).
-const TYPOS_VERSION: &str = "0.10.44+dict-0.14.5+guards1+cfg3+warn-noautofix+builtins2+rulecodes1";
+const TYPOS_VERSION: &str = "0.10.44+dict-0.14.5+guards1+cfg3+warn-noautofix+builtins2+rulecodes2+cols1";
 
 /// Skip spell-checking files at least this large: generated/minified bundles
 /// dominate by size and are pure noise word-by-word.
@@ -183,59 +186,132 @@ impl Engine for TyposEngine {
             return Ok(Vec::new());
         }
 
-        let exclude_globs: Vec<String> = cfg
-            .options
-            .get("extend_exclude")
-            .and_then(|v| v.as_array())
-            .map(|arr| arr.iter().filter_map(|v| v.as_str()).map(|s| s.to_string()).collect())
-            .unwrap_or_default();
-        if !exclude_globs.is_empty() && path_matches_any(&src.path, &exclude_globs) {
+        let prepared = prepared_for(cfg);
+        if let Some(set) = &prepared.exclude
+            && path_matches_set(&src.path, set)
+        {
             return Ok(Vec::new());
         }
 
-        let mut valid_words: Vec<String> = cfg
-            .options
-            .get("extend_ignore_words")
-            .and_then(|v| v.as_array())
-            .map(|arr| {
-                arr.iter()
-                    .filter_map(|v| v.as_str())
-                    .map(|s| s.to_ascii_lowercase())
-                    .collect()
+        let dict = ConfiguredDictionary {
+            valid_words: &prepared.valid_words,
+            valid_identifiers: &prepared.valid_identifiers,
+            corrections: &prepared.word_corrections,
+        };
+
+        let masked = merge_ranges(
+            prepared
+                .ignore_re
+                .iter()
+                .flat_map(|re| re.find_iter(&src.content).map(|m| (m.start(), m.end())))
+                .collect(),
+        );
+
+        let index = LineIndex::new(&src.content);
+        let diags = typos::check_str(&src.content, &TOKENIZER, &dict)
+            .filter(|typo| typo.typo.len() >= MIN_TYPO_LEN)
+            .filter(|typo| !byte_in_ranges(typo.byte_offset, &masked))
+            .filter(|typo| !prepared.word_ignore_re.iter().any(|re| re.is_match(typo.typo.as_ref())))
+            .filter(|typo| {
+                !prepared
+                    .ident_ignore_re
+                    .iter()
+                    .any(|re| re.is_match(typo.typo.as_ref()))
             })
-            .unwrap_or_default();
-        if let Some(words_table) = cfg.options.get("extend_words").and_then(|v| v.as_table()) {
-            valid_words.extend(words_table.keys().map(|k| k.to_ascii_lowercase()));
+            .map(|typo| typo_to_diagnostic(&index, typo))
+            .collect();
+        Ok(diags)
+    }
+}
+
+/// Everything derived from one [`EngineConfig`] that does not depend on the file
+/// being checked, built once and shared across files.
+struct Prepared {
+    exclude: Option<GlobSet>,
+    ignore_re: Vec<regex::Regex>,
+    word_ignore_re: Vec<regex::Regex>,
+    ident_ignore_re: Vec<regex::Regex>,
+    /// Lowercased words treated as valid: `extend_ignore_words` plus `extend_words`
+    /// entries whose value equals their key.
+    valid_words: HashSet<String>,
+    /// Lowercased `extend_identifiers` keys.
+    valid_identifiers: HashSet<String>,
+    /// `extend_words` entries whose value differs from the key: `(typo, correction)`,
+    /// typo lowercased.
+    word_corrections: Vec<(String, String)>,
+}
+
+/// Upper bound on memoized configs; the map is cleared when it grows past this.
+const MAX_PREPARED_CONFIGS: usize = 64;
+
+static PREPARED: LazyLock<Mutex<HashMap<[u8; 32], Arc<Prepared>>>> = LazyLock::new(|| Mutex::new(HashMap::new()));
+
+/// The memoized [`Prepared`] for `cfg`, keyed by its fingerprint.
+fn prepared_for(cfg: &EngineConfig) -> Arc<Prepared> {
+    let key = cfg.fingerprint();
+    if let Ok(map) = PREPARED.lock()
+        && let Some(found) = map.get(&key)
+    {
+        return Arc::clone(found);
+    }
+    let built = Arc::new(Prepared::build(&cfg.options));
+    if let Ok(mut map) = PREPARED.lock() {
+        if map.len() >= MAX_PREPARED_CONFIGS {
+            map.clear();
+        }
+        map.insert(key, Arc::clone(&built));
+    }
+    built
+}
+
+impl Prepared {
+    fn build(options: &toml::Table) -> Self {
+        let exclude_globs = str_array(options, "extend_exclude");
+        let exclude = if exclude_globs.is_empty() {
+            None
+        } else {
+            let mut builder = GlobSetBuilder::new();
+            for pattern in &exclude_globs {
+                if let Ok(glob) = Glob::new(pattern) {
+                    builder.add(glob);
+                }
+            }
+            builder.build().ok()
+        };
+
+        let mut valid_words: HashSet<String> = str_array(options, "extend_ignore_words")
+            .iter()
+            .map(|s| s.to_ascii_lowercase())
+            .collect();
+        let mut word_corrections = Vec::new();
+        if let Some(words_table) = options.get("extend_words").and_then(|v| v.as_table()) {
+            for (typo, value) in words_table {
+                match value.as_str() {
+                    Some(correction) if !correction.eq_ignore_ascii_case(typo) => {
+                        word_corrections.push((typo.to_ascii_lowercase(), correction.to_string()));
+                    }
+                    _ => {
+                        valid_words.insert(typo.to_ascii_lowercase());
+                    }
+                }
+            }
         }
 
-        let valid_identifiers: Vec<String> = cfg
-            .options
+        let valid_identifiers = options
             .get("extend_identifiers")
             .and_then(|v| v.as_table())
             .map(|t| t.keys().map(|k| k.to_ascii_lowercase()).collect())
             .unwrap_or_default();
 
-        let dict = ConfiguredDictionary {
-            valid_words: &valid_words,
-            valid_identifiers: &valid_identifiers,
-        };
-
-        let ignore_re = compile_regexes(&str_array(&cfg.options, "extend_ignore_re"));
-        let word_ignore_re = compile_regexes(&str_array(&cfg.options, "extend_ignore_words_re"));
-        let ident_ignore_re = compile_regexes(&str_array(&cfg.options, "extend_ignore_identifiers_re"));
-        let masked: Vec<(usize, usize)> = ignore_re
-            .iter()
-            .flat_map(|re| re.find_iter(&src.content).map(|m| (m.start(), m.end())))
-            .collect();
-
-        let diags = typos::check_str(&src.content, &TOKENIZER, &dict)
-            .filter(|typo| typo.typo.len() >= MIN_TYPO_LEN)
-            .filter(|typo| !byte_in_ranges(typo.byte_offset, &masked))
-            .filter(|typo| !word_ignore_re.iter().any(|re| re.is_match(typo.typo.as_ref())))
-            .filter(|typo| !ident_ignore_re.iter().any(|re| re.is_match(typo.typo.as_ref())))
-            .map(|typo| typo_to_diagnostic(&src.content, typo))
-            .collect();
-        Ok(diags)
+        Self {
+            exclude,
+            ignore_re: compile_regexes(&str_array(options, "extend_ignore_re")),
+            word_ignore_re: compile_regexes(&str_array(options, "extend_ignore_words_re")),
+            ident_ignore_re: compile_regexes(&str_array(options, "extend_ignore_identifiers_re")),
+            valid_words,
+            valid_identifiers,
+            word_corrections,
+        }
     }
 }
 
@@ -263,9 +339,23 @@ fn compile_regexes(patterns: &[String]) -> Vec<regex::Regex> {
         .collect()
 }
 
-/// Whether `offset` falls within any `[start, end)` range.
+/// Sort `ranges` and merge overlapping ones so [`byte_in_ranges`] can binary-search.
+fn merge_ranges(mut ranges: Vec<(usize, usize)>) -> Vec<(usize, usize)> {
+    ranges.sort_unstable();
+    let mut merged: Vec<(usize, usize)> = Vec::with_capacity(ranges.len());
+    for (start, end) in ranges {
+        match merged.last_mut() {
+            Some(last) if start <= last.1 => last.1 = last.1.max(end),
+            _ => merged.push((start, end)),
+        }
+    }
+    merged
+}
+
+/// Whether `offset` falls within any `[start, end)` range of the sorted, disjoint `ranges`.
 fn byte_in_ranges(offset: usize, ranges: &[(usize, usize)]) -> bool {
-    ranges.iter().any(|&(start, end)| offset >= start && offset < end)
+    let idx = ranges.partition_point(|&(start, _)| start <= offset);
+    idx > 0 && offset < ranges[idx - 1].1
 }
 
 /// Whether `content` looks generated/minified and should not be spell-checked:
@@ -276,22 +366,12 @@ fn is_generated_or_minified(content: &str) -> bool {
     content.len() >= MAX_SPELL_CHECK_BYTES || content.lines().any(|line| line.len() >= MAX_LINE_BYTES)
 }
 
-/// Return `true` when `path` matches at least one of the gitignore-style glob
-/// `patterns`. Matching is tried against the full path first, then against each
+/// Return `true` when `path` matches `set`, a gitignore-style glob set.
+/// Matching is tried against the full path first, then against each
 /// successive suffix (leading component stripped repeatedly) so bare patterns
 /// like `CHANGELOG.md` match `/repo/CHANGELOG.md` and `tests/**` matches
-/// `/repo/tests/foo.rs`. Malformed patterns are silently ignored.
-fn path_matches_any(path: &std::path::Path, patterns: &[String]) -> bool {
-    let mut builder = GlobSetBuilder::new();
-    for pattern in patterns {
-        if let Ok(glob) = Glob::new(pattern) {
-            builder.add(glob);
-        }
-    }
-    let Ok(set) = builder.build() else {
-        return false;
-    };
-
+/// `/repo/tests/foo.rs`. Malformed patterns are silently ignored when the set is built.
+fn path_matches_set(path: &std::path::Path, set: &GlobSet) -> bool {
     if set.is_match(path) {
         return true;
     }
@@ -311,25 +391,22 @@ fn path_matches_any(path: &std::path::Path, patterns: &[String]) -> bool {
     false
 }
 
-/// In-process dictionary wrapping `typos_dict::WORD`, extended with a
-/// caller-supplied list of words to treat as valid.
+/// In-process dictionary wrapping `typos_dict::WORD`, extended with
+/// caller-supplied valid words, identifiers and corrections.
 ///
-/// `valid_words` contains **lowercased** word strings. Any token whose lowercased
-/// form appears in that slice is returned as [`typos::Status::Valid`], bypassing
-/// the built-in dictionary lookup.
-///
-/// `valid_identifiers` contains **lowercased** identifier strings. Any identifier
-/// token whose lowercased form appears in that slice is returned as valid,
-/// suppressing any word-level typo flagging within it.
+/// The built-in dictionary is consulted first, without allocating; a miss means
+/// the token is not a typo whether or not it is in the valid sets, so those are
+/// only checked (case-insensitively) on a hit. `corrections` are the exception:
+/// they name typos the dictionary may not know and are checked first.
 ///
 /// Implements [`typos::Dictionary`] so it can be passed to [`typos::check_str`].
 struct ConfiguredDictionary<'a> {
     /// Lowercased words the user wants treated as valid spellings.
-    /// Sourced from `extend_ignore_words` (flat list) and `extend_words` keys.
-    valid_words: &'a [String],
+    valid_words: &'a HashSet<String>,
     /// Lowercased identifier tokens the user wants treated as valid.
-    /// Sourced from `extend_identifiers` keys.
-    valid_identifiers: &'a [String],
+    valid_identifiers: &'a HashSet<String>,
+    /// `(lowercased typo, correction)` pairs from `extend_words`.
+    corrections: &'a [(String, String)],
 }
 
 impl typos::Dictionary for ConfiguredDictionary<'_> {
@@ -341,8 +418,7 @@ impl typos::Dictionary for ConfiguredDictionary<'_> {
         if is_lint_rule_code(ident.token()) {
             return Some(typos::Status::Valid);
         }
-        let lowered = ident.token().to_ascii_lowercase();
-        if self.valid_identifiers.iter().any(|w| w == &lowered) {
+        if !self.valid_identifiers.is_empty() && self.valid_identifiers.contains(&ident.token().to_ascii_lowercase()) {
             return Some(typos::Status::Valid);
         }
         None
@@ -355,13 +431,22 @@ impl typos::Dictionary for ConfiguredDictionary<'_> {
             return None;
         }
 
-        let lowered = word_token.token().to_ascii_lowercase();
-        if is_builtin_valid_word(&lowered) || self.valid_words.iter().any(|w| w == &lowered) {
-            return Some(typos::Status::Valid);
+        let token = word_token.token();
+        if let Some((_, correction)) = self
+            .corrections
+            .iter()
+            .find(|(typo, _)| typo.eq_ignore_ascii_case(token))
+        {
+            return Some(typos::Status::Corrections(vec![Cow::Borrowed(correction.as_str())]));
         }
 
-        let word_case = UniCase::new(word_token.token());
+        let word_case = UniCase::new(token);
         let corrections = typos_dict::WORD.find(&word_case).copied()?;
+
+        let lowered = token.to_ascii_lowercase();
+        if is_builtin_valid_word(&lowered) || self.valid_words.contains(&lowered) {
+            return Some(typos::Status::Valid);
+        }
 
         let mut status = if corrections.is_empty() {
             typos::Status::Invalid
@@ -395,12 +480,12 @@ fn case_correct(correction: &mut Cow<'_, str>, case: typos::tokens::Case) {
     }
 }
 
-fn typo_to_diagnostic(content: &str, typo: typos::Typo<'_>) -> Diagnostic {
+fn typo_to_diagnostic(index: &LineIndex<'_>, typo: typos::Typo<'_>) -> Diagnostic {
     let start_byte = typo.byte_offset;
     let end_byte = start_byte + typo.typo.len();
 
-    let (start_line, start_col) = byte_to_line_col(content, start_byte);
-    let (end_line, end_col) = byte_to_line_col(content, end_byte);
+    let (start_line, start_col) = index.line_col(start_byte);
+    let (end_line, end_col) = index.line_col(end_byte);
 
     let corrections: Vec<&str> = match &typo.corrections {
         typos::Status::Corrections(c) => c.iter().map(Cow::as_ref).collect(),
@@ -434,17 +519,4 @@ fn typo_to_diagnostic(content: &str, typo: typos::Typo<'_>) -> Diagnostic {
         fix: Vec::new(),
         metadata: Default::default(),
     }
-}
-
-/// Convert a byte offset to a 1-based (line, column) pair.
-///
-/// Columns count UTF-8 bytes from the start of the line, not Unicode scalar
-/// values — this matches the convention used by most editors.
-fn byte_to_line_col(content: &str, offset: usize) -> (u32, u32) {
-    let clamped = offset.min(content.len());
-    let before = &content[..clamped];
-    let line = (before.bytes().filter(|&b| b == b'\n').count() as u32) + 1;
-    let col_start = before.rfind('\n').map_or(0, |p| p + 1);
-    let col = (clamped - col_start) as u32 + 1;
-    (line, col)
 }

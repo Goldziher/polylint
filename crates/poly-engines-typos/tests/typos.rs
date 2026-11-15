@@ -321,3 +321,43 @@ fn rule_code_exemption_does_not_silence_screaming_identifiers() {
         "a SCREAMING_CASE identifier with a real typo must still be flagged: {diags:?}",
     );
 }
+
+fn first_span(content: &str, cfg: &EngineConfig) -> (u32, u32, u32, u32) {
+    let diags = TyposEngine.lint(&make_src(content), cfg).unwrap();
+    let span = diags.first().and_then(|d| d.span.as_ref()).expect("one typo expected");
+    (span.start_line, span.start_col, span.end_line, span.end_col)
+}
+
+#[test]
+fn columns_count_characters_not_bytes() {
+    let cfg = engine_cfg();
+    assert_eq!(first_span("é teh\n", &cfg), (1, 3, 1, 6));
+    assert_eq!(first_span("日本語 teh\n", &cfg), (1, 5, 1, 8));
+    assert_eq!(first_span("😀 teh\n", &cfg), (1, 3, 1, 6));
+    assert_eq!(first_span("ok\né 😀 teh\n", &cfg), (2, 5, 2, 8));
+}
+
+#[test]
+fn extend_words_with_a_different_value_is_the_correction() {
+    let mut words = toml::Table::new();
+    words.insert("frobnitz".to_string(), toml::Value::String("frobnicate".to_string()));
+    let mut options = toml::Table::new();
+    options.insert("extend_words".to_string(), toml::Value::Table(words));
+    let cfg = EngineConfig {
+        globals: GlobalDefaults::default(),
+        indent_width: 4,
+        options,
+    };
+    let diags = TyposEngine.lint(&make_src("a frobnitz here\n"), &cfg).unwrap();
+    assert_eq!(diags.len(), 1, "{diags:?}");
+    assert_eq!(diags[0].title, "`frobnitz` should be `frobnicate`");
+}
+
+#[test]
+fn masked_regions_are_skipped_even_when_overlapping() {
+    let content = "teh one\nteh two\nteh three\n";
+    let cfg = options_with_string_array("extend_ignore_re", &["teh one\nteh", "one\nteh two"]);
+    let diags = TyposEngine.lint(&make_src(content), &cfg).unwrap();
+    assert_eq!(diags.len(), 1, "{diags:?}");
+    assert_eq!(diags[0].span.as_ref().map(|s| s.start_line), Some(3));
+}
