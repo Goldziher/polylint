@@ -19,7 +19,8 @@ const RULE: &str = "secrets/betterleaks.github-pat";
 
 /// The core build leaves cross-cutting component engines to the host; this stands in for it. The index lists
 /// `secrets` as a download-only component this build cannot fetch, so the config disables the component and
-/// the provider's engine is the one that runs.
+/// the provider's engine is the one that runs. The `.ini` fixtures' own linter is the `misc` component, which
+/// this lockless build cannot fetch either, so it is disabled too.
 fn provider(_: &Language) -> Vec<Box<dyn Engine>> {
     vec![Box::new(SecretsEngine)]
 }
@@ -34,7 +35,7 @@ fn enabled(per_file_ignores: BTreeMap<String, Vec<String>>) -> Config {
         lint: toml::from_str("[secrets]\nenabled = true\n").expect("valid lint config"),
         per_file_ignores,
         components: ComponentsConfig {
-            disable: vec!["secrets".to_owned()],
+            disable: vec!["secrets".to_owned(), "misc".to_owned()],
             ..ComponentsConfig::default()
         },
         ..Config::default()
