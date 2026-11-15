@@ -74,6 +74,7 @@ clap_complete = { version = "4.6.11", features = ["unstable-dynamic"] }
 console = { version = "0.16", default-features = false, features = ["ansi-parsing", "std"] }
 criterion = "0.8"
 ctrlc = "3.5.2"
+dhat = "0.3.3"
 dockerfile-parser = { path = "crates/dockerfile-parser" }
 dotenv-analyzer = "0.1"
 dotenv-core = "0.1"
@@ -146,7 +147,6 @@ poly-hooks = { path = "crates/poly-hooks" }
 poly-host-services = { path = "crates/poly-host-services", default-features = false }
 poly-mcp = { path = "crates/poly-mcp" }
 poly-workspace = { path = "crates/poly-workspace" }
-pprof = "0.15.0"
 predicates = "3"
 pretty_assertions = "1.4.1"
 pretty_graphql = "0.2.3"
@@ -220,6 +220,12 @@ zip = { version = "9.5", default-features = false, features = ["deflate-flate2-z
 [profile.release]
 lto = "thin"
 codegen-units = 1
+
+# Symbolised release build for `mise run profile:samply` and `profile:dhat`: line tables, no strip.
+[profile.profiling]
+inherits = "release"
+debug = "line-tables-only"
+strip = false
 
 # The released core binary (ADR 0039, ADR 0043): fat LTO and one codegen unit for size, stripped.
 # panic stays unwind because engine_guard catches an engine panic.

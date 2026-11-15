@@ -16,6 +16,10 @@ categories = ["development-tools", "command-line-utilities"]
 [target.'cfg(target_env = "musl")'.dependencies]
 mimalloc.workspace = true
 
+[dependencies.dhat]
+workspace = true
+optional = true
+
 # `{ archive-suffix }` carries its own leading dot, so it follows `{ target }` directly.
 [package.metadata.binstall]
 pkg-url = "{ repo }/releases/download/v{ version }/poly-{ version }-{ target }{ archive-suffix }"
@@ -46,6 +50,9 @@ all-engines = ["poly-core/all-engines", "poly-host-services/all-engines", "engin
 # The released core binary of every triple but musl: `--no-default-features --features core`. The
 # other engine families, and the MCP server, come from downloadable components.
 core = ["poly-core/core"]
+# Heap profiling with dhat (`mise run profile:dhat`); replaces the system allocator, so it excludes
+# the musl mimalloc one.
+dhat-heap = ["dep:dhat"]
 # Forwarded dev-lock: lets a local build install components from the `components:dev` lock.
 dev-lock = ["poly-core/dev-lock"]
 # Link the ast-grep engine family so `poly rules` answers in-process; without it the `astgrep`

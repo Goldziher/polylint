@@ -72,6 +72,12 @@ tracing = "0.1"
 lto = "thin"
 codegen-units = 1
 
+# Symbolised release build for `mise run profile:samply` (the bundled binary).
+[profile.profiling]
+inherits = "release"
+debug = "line-tables-only"
+strip = false
+
 [patch.crates-io]
 # One copy of every oxc crate a registry dependency pulls in: `oxc_formatter_yaml`/`toml` reach
 # `oxc_allocator` through their parsers, and skif's `skif-js-syntax` takes the parser, semantic and AST
