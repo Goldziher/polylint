@@ -107,12 +107,24 @@ async runtime.
 Every tool returns typed `structured_content` against a declared output schema, plus one text
 block mirroring the CLI's `--format json` — or the compact TOON encoding when asked for it.
 
-### Read-only — never touch the tree
+### Check-only — apply no fixes, but run repository config
 
 | Tool | Mirrors | Returns |
 | --- | --- | --- |
 | `lint` | `poly lint --workspace never` | Diagnostics per file (per-file tier only; the whole-project phase is `workspace_lint`). May download a component. |
 | `format_check` | `poly fmt` | Formatting drift, without writing. May download a component. |
+
+<Aside type="caution" title="`lint` and `format_check` are not read-only">
+    They run the tools and hooks the repository's own `poly.toml` configures (`[tools.*]` `bin`,
+    `args`, `env`), so a cloned repository can make them execute its programs. They are therefore not
+    annotated read-only, and a client should not auto-approve them. Only run them against
+    repositories you trust.
+</Aside>
+
+### Read-only — cannot execute repository config
+
+| Tool | Mirrors | Returns |
+| --- | --- | --- |
 | `components` | `poly components list` / `status` | The downloadable engine components and where each stands; with `paths`, which ones they need, which are missing and which a run would download. Never downloads. |
 | `cache_stats` | `poly cache stats` | Result-cache footprint per namespace: entries, bytes, format version. |
 | `rules` | `poly rules list` / `test` | Every ast-grep rule a run would apply — the built-in pack plus `[engines.astgrep] rule_dirs` — with language, `source` (`builtin`/`user`), `default_severity`, the `severity` under the resolved config, and `enabled`. Optionally runs the `*-test.yml` snippets. |
@@ -186,8 +198,15 @@ returns the result.
 
 `format` selects only the paired **text** block; `structured_content` is always JSON.
 
-Treat the read-only tools as safe to call freely, and gate the mutating tools behind explicit
-intent since they change files.
+Treat only the read-only tools as safe to call freely; gate `lint`, `format_check` and the
+mutating tools behind trust in the repository and explicit intent.
+
+### Workspace confinement
+
+Every `paths`, `dirs` and `config` argument is canonicalized (symlinks and `..` resolved) and must
+lie inside the directory `poly mcp` was started in; otherwise the call fails with an error naming
+the path. The `--config` file passed to `poly mcp` is always accepted. Start the server with
+`poly mcp --allow-outside-workspace` to lift the restriction.
 
 ## Every result identifies the binary that answered
 

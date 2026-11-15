@@ -426,6 +426,7 @@ poly cache stats
 poly cache gc
 poly cache clean
 poly --config /path/to/poly.toml mcp
+poly mcp --allow-outside-workspace  # let tool calls name paths outside the start directory
 ```
 
 | Command | Flags |
@@ -435,12 +436,13 @@ poly --config /path/to/poly.toml mcp
 | `poly hooks install` | `--hook-type <TYPE>` (repeatable; default: the stages `poly.toml` configures), `--overwrite` (discard an existing hook instead of keeping it as `<hook>.legacy`), `--replace-lefthook`, `--locked` (never write `poly.lock`; fail on a missing entry, also `POLY_LOCKED=1`) |
 | `poly hooks uninstall` | `--hook-type <TYPE>`; restores a kept `<hook>.legacy` |
 | `poly cache gc` | `--max-age <DAYS>`, `--max-size <SIZE>` (`500M`, `2G`) |
+| `poly mcp` | `--allow-outside-workspace` (off by default: `paths`, `dirs` and `config` of tool calls must resolve inside the directory the server started in) |
 | `poly cache …` | `--cache-dir <DIR>` operates on another cache directory; `--format pretty\|json\|toon` |
 
 See [Git hooks](/poly/guides/hooks/) for the full `[hooks]` surface, and
 [Agents and MCP](/poly/guides/agents-and-mcp/) for the MCP tool reference. In short: the MCP server
-is **stdio-only**; `lint`, `format_check`, `components`, `cache_stats`, `rules`, `config_show` and
-`version` are read-only; `lint_fix`, `format_write`, `cache_clean`, `components_install` and
+is **stdio-only**; `components`, `cache_stats`, `rules`, `config_show` and
+`version` are read-only (`lint` and `format_check` are not: they run the repository's configured tools); `lint_fix`, `format_write`, `cache_clean`, `components_install` and
 `components_uninstall` are mutating; `workspace_lint` and
 `workspace_lint_fix` run the whole-project phase as async **Tasks** — the call returns a task handle
 and the client polls `tasks/get`, while a client without the tasks capability gets a synchronous

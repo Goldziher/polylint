@@ -17,7 +17,9 @@
 //!
 //! Annotations are static per tool, so read-only and mutating variants are split
 //! into **separate** tools rather than gated behind a boolean: `lint` /
-//! `format_check` / `cache_stats` / `rules` / `config_show` are read-only and
+//! `format_check` run the repository's configured tools, so they are not read-only (a client
+//! auto-approving read-only tools would otherwise execute a cloned repository's programs);
+//! `cache_stats` / `rules` / `config_show` / `components` / `version` are read-only and
 //! idempotent, while `lint_fix` / `format_write` / `cache_clean` are destructive.
 //!
 //! ## Identity
@@ -581,7 +583,9 @@ impl ServerHandler for PolyMcpServer {
             .with_instructions(
                 "polylint: one linter & formatter for every language in the repository. Tools mirror the \
                  `poly` CLI. Read-only: \
-                 lint / format_check / cache_stats / rules / config_show / components / version. Mutating: lint_fix / \
+                 cache_stats / rules / config_show / components / version. Run the repository's own configured tools \
+                 (only against trusted repositories): lint / format_check. Tool-call paths and config must lie inside \
+                 the server's start directory unless it was started with `--allow-outside-workspace`. Mutating: lint_fix / \
                  format_write / cache_clean / components_uninstall. Component management: components (status, never \
                  downloads), components_install (downloads; a Task when the client supports them and something must be \
                  fetched), components_uninstall (refuses a component loaded in this process). Whole-project \

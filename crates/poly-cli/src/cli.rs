@@ -76,7 +76,13 @@ enum Command {
 /// CLI; the global `--config` pins a fallback config file for requests that
 /// don't name one.
 #[derive(clap::Args)]
-struct McpArgs {}
+struct McpArgs {
+    /// Let tool calls name paths and config files outside the directory `poly mcp` was started in.
+    /// Off by default: a prompt-injected client could otherwise lint, rewrite or load config from any
+    /// project the process can reach.
+    #[arg(long)]
+    allow_outside_workspace: bool,
+}
 
 /// Exit status of a process whose reader went away, as a shell reports death by SIGPIPE.
 const EXIT_BROKEN_PIPE: i32 = 141;
@@ -164,9 +170,9 @@ pub fn main() -> ExitCode {
             crate::init_logging_with(debug);
             run_doctor(args)
         }
-        Command::Mcp(_args) => {
+        Command::Mcp(args) => {
             crate::init_logging_with(debug);
-            crate::run_mcp(mcp_config)
+            crate::run_mcp(mcp_config, args.allow_outside_workspace)
         }
     }
 }

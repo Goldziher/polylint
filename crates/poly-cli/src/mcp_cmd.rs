@@ -13,7 +13,7 @@ use std::path::PathBuf;
 use std::process::ExitCode;
 use std::sync::Arc;
 
-use poly_host_services::Services;
+use poly_host_services::{Services, WorkspaceGuard};
 
 use crate::components_cmd::HostComponents;
 
@@ -22,13 +22,21 @@ use crate::components_cmd::HostComponents;
 const COMPONENT: &str = "mcp";
 
 /// The host services every frontend gets.
-fn services() -> Arc<Services> {
-    Arc::new(Services::new().with_components(Arc::new(HostComponents)))
+///
+/// Requests are confined to the working directory (and the operator's `--config`) unless
+/// `allow_outside_workspace` is set.
+fn services(config: Option<&std::path::Path>, allow_outside_workspace: bool) -> anyhow::Result<Arc<Services>> {
+    let guard = WorkspaceGuard::for_cwd(config, allow_outside_workspace)?;
+    Ok(Arc::new(
+        Services::new()
+            .with_components(Arc::new(HostComponents))
+            .with_workspace_guard(guard),
+    ))
 }
 
 /// Run `poly mcp`; `config` is the global `--config`, the fallback for requests naming none.
-pub fn run_mcp(config: Option<PathBuf>) -> ExitCode {
-    match serve(config) {
+pub fn run_mcp(config: Option<PathBuf>, allow_outside_workspace: bool) -> ExitCode {
+    match services(config.as_deref(), allow_outside_workspace).and_then(|services| serve(services, config)) {
         Ok(()) => ExitCode::SUCCESS,
         Err(error) => {
             eprintln!("poly mcp: {error:#}");
@@ -38,13 +46,13 @@ pub fn run_mcp(config: Option<PathBuf>) -> ExitCode {
 }
 
 #[cfg(feature = "bundled-mcp")]
-fn serve(config: Option<PathBuf>) -> anyhow::Result<()> {
-    poly_mcp::serve(services(), config)
+fn serve(services: Arc<Services>, config: Option<PathBuf>) -> anyhow::Result<()> {
+    poly_mcp::serve(services, config)
 }
 
 #[cfg(not(feature = "bundled-mcp"))]
-fn serve(config: Option<PathBuf>) -> anyhow::Result<()> {
-    component::serve(services(), config)
+fn serve(services: Arc<Services>, config: Option<PathBuf>) -> anyhow::Result<()> {
+    component::serve(services, config)
 }
 
 #[cfg(not(feature = "bundled-mcp"))]

@@ -11,9 +11,11 @@
 
 pub mod ops;
 mod services;
+mod workspace_guard;
 
 pub use poly_frontend_api::ServiceCaller;
 pub use services::{ComponentsProvider, Services};
+pub use workspace_guard::WorkspaceGuard;
 
 /// Loading a config installs the repository's `poly.lock` into process-global state, so the
 /// tests that load a config run one at a time.

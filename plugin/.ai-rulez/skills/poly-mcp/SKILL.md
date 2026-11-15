@@ -22,14 +22,24 @@ the CLI's `--format json`, or the compact TOON encoding when asked.
 
 `poly mcp --config <PATH>` pins a fallback config file for requests that do not name one.
 
+Requests are confined to the directory `poly mcp` was started in: every `paths`, `dirs` and
+`config` argument is canonicalized (symlinks and `..` resolved) and one outside that directory is
+rejected with an error. The `--config` file itself is always accepted. `poly mcp
+--allow-outside-workspace` turns the confinement off.
+
 ## Tool surface
 
-Fourteen tools, no more. Read-only (never touch the tree):
+Fourteen tools, no more. Not read-only, but apply no fixes (`lint`, `format_check`): they run
+the tools and hooks the repository's own `poly.toml` configures, so only run them against
+repositories you trust.
 
 - `lint` — run the linters and return diagnostics. Mirrors `poly lint`, per-file tier only
   (as `--workspace never`); the whole-project phase is the separate `workspace_lint` tool.
   May download a missing engine component (see "Components" below).
 - `format_check` — report formatting drift without writing. Mirrors `poly fmt`. May download.
+
+Read-only (cannot execute repository config):
+
 - `components` — the downloadable engine components and where each stands (`bundled`,
   `installed`, `not installed`, `unavailable`). Given `paths`, only the components they need,
   which are `missing`, and which a run would `would_download`. Never downloads. Mirrors `poly
@@ -116,8 +126,9 @@ There is no `hooks` tool: `poly hooks` is CLI-only.
 
 `format` selects only the paired **text** block; `structured_content` is always JSON.
 
-Treat the read-only tools as safe to call freely; gate the mutating tools behind explicit
-intent since they change files.
+Treat only the read-only tools as safe to call freely; `lint` and `format_check` execute
+repository-configured tools, so gate them (and the mutating tools) behind trust in the repository
+and explicit intent.
 
 ## Every result identifies the binary that answered
 

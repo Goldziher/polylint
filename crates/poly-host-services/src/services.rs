@@ -17,6 +17,7 @@ use serde::de::DeserializeOwned;
 use serde_json::Value;
 
 use crate::ops;
+use crate::workspace_guard::WorkspaceGuard;
 
 /// Lists the components for the `components.list` service. The core binary supplies it, since
 /// what is installed is the component host's knowledge, not this crate's.
@@ -58,6 +59,7 @@ pub trait ComponentsProvider: Send + Sync {
 #[derive(Clone, Default)]
 pub struct Services {
     components: Option<Arc<dyn ComponentsProvider>>,
+    guard: Option<WorkspaceGuard>,
 }
 
 fn no_manager<T>() -> anyhow::Result<T> {
@@ -78,6 +80,24 @@ impl Services {
         self
     }
 
+    /// Refuse requests whose `paths`, `dirs` or `config` resolve outside `guard`'s workspace.
+    #[must_use]
+    pub fn with_workspace_guard(mut self, guard: WorkspaceGuard) -> Self {
+        self.guard = Some(guard);
+        self
+    }
+
+    /// Apply the workspace guard, if any, to a request's paths and config.
+    fn confine(&self, paths: &[String], config: Option<&str>) -> anyhow::Result<()> {
+        match &self.guard {
+            Some(guard) => {
+                guard.check_paths(paths)?;
+                guard.check_config(config)
+            }
+            None => Ok(()),
+        }
+    }
+
     /// Run `service` on `request` and return the encoded reply.
     ///
     /// # Errors
@@ -88,17 +108,20 @@ impl Services {
         match service_name {
             service::LINT => {
                 let req: PathsRequest = decode(request)?;
+                self.confine(&req.paths, req.config.as_deref())?;
                 let run = ops::lint_run_with(&req.paths, &req.exclude, req.config.as_deref(), req.apply, req.install)?;
                 encode(&lint_reply(&run)?)
             }
             service::FORMAT => {
                 let req: PathsRequest = decode(request)?;
+                self.confine(&req.paths, req.config.as_deref())?;
                 let run =
                     ops::format_run_with(&req.paths, &req.exclude, req.config.as_deref(), req.apply, req.install)?;
                 encode(&format_reply(&run)?)
             }
             service::WORKSPACE_LINT => {
                 let req: WorkspaceRequest = decode(request)?;
+                self.confine(&[], req.config.as_deref())?;
                 encode(&ops::workspace_lint(
                     req.config.as_deref(),
                     req.fix,
@@ -110,10 +133,12 @@ impl Services {
             service::CACHE_CLEAN => encode(&ops::cache_clean()?),
             service::CONFIG_SHOW => {
                 let req: ConfigRequest = decode(request)?;
+                self.confine(&[], req.config.as_deref())?;
                 encode(&ops::config_show(req.config.as_deref())?)
             }
             service::RULES => {
                 let req: RulesRequest = decode(request)?;
+                self.confine(&req.dirs, req.config.as_deref())?;
                 encode(&ops::rules_report(&req.dirs, req.config.as_deref(), req.test)?)
             }
             service::COMPONENTS => {
@@ -125,6 +150,7 @@ impl Services {
             }
             service::COMPONENTS_STATUS => {
                 let req: ComponentsStatusRequest = decode(request)?;
+                self.confine(&req.paths, req.config.as_deref())?;
                 match &self.components {
                     Some(provider) => encode(&provider.status(&req)?),
                     None => encode(&empty_status()),
@@ -132,6 +158,7 @@ impl Services {
             }
             service::COMPONENTS_INSTALL => {
                 let req: ComponentsInstallRequest = decode(request)?;
+                self.confine(&req.paths, req.config.as_deref())?;
                 match &self.components {
                     Some(provider) => encode(&provider.install(&req)?),
                     None => no_manager(),
@@ -244,6 +271,34 @@ mod tests {
     fn a_malformed_request_is_an_error_not_a_default() {
         let error = Services::new().dispatch(service::LINT, b"{\"paths\": 3}").unwrap_err();
         assert!(format!("{error:#}").contains("does not decode"), "{error:#}");
+    }
+
+    #[test]
+    fn a_guarded_host_refuses_a_lint_outside_its_workspace() {
+        let root = tempfile::tempdir().unwrap();
+        let outside = tempfile::tempdir().unwrap();
+        let guard = WorkspaceGuard::new(root.path(), None, false).unwrap();
+        let request = serde_json::json!({ "paths": [outside.path()], "apply": true }).to_string();
+        let error = Services::new()
+            .with_workspace_guard(guard)
+            .dispatch(service::LINT, request.as_bytes())
+            .unwrap_err();
+        assert!(format!("{error:#}").contains("outside the workspace"), "{error:#}");
+    }
+
+    #[test]
+    fn a_guarded_host_refuses_a_config_outside_its_workspace() {
+        let root = tempfile::tempdir().unwrap();
+        let outside = tempfile::tempdir().unwrap();
+        let evil = outside.path().join("poly.toml");
+        std::fs::write(&evil, "").unwrap();
+        let guard = WorkspaceGuard::new(root.path(), None, false).unwrap();
+        let request = serde_json::json!({ "config": evil }).to_string();
+        let error = Services::new()
+            .with_workspace_guard(guard)
+            .dispatch(service::CONFIG_SHOW, request.as_bytes())
+            .unwrap_err();
+        assert!(format!("{error:#}").contains("outside the workspace"), "{error:#}");
     }
 
     #[test]
