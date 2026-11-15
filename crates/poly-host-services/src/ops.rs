@@ -421,6 +421,7 @@ pub fn workspace_lint(
                 output: String::from_utf8_lossy(&tool.output).into_owned(),
             })
             .collect(),
+        untrusted: outcome.untrusted.then(|| poly_workspace::UNTRUSTED_SKIP.to_owned()),
     })
 }
 

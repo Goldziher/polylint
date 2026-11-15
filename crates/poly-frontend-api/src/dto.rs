@@ -167,6 +167,10 @@ pub struct WorkspaceReport {
     pub fixed: bool,
     /// Per-tool results, in run order. Empty when the phase did not run.
     pub tools: Vec<WorkspaceToolReport>,
+    /// Set when the phase did not run because the repository is not trusted to
+    /// run its `[hooks]` (ADR 0057): why, and how the user allows it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub untrusted: Option<String>,
 }
 
 /// One downloadable component as the host sees it (the `components` host service).

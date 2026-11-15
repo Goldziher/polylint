@@ -192,6 +192,9 @@ pub fn main() -> ExitCode {
         }
         Command::Mcp(args) => {
             crate::init_logging_with(debug);
+            // A model steering the server must not be able to widen trust, so neither
+            // `--trust` nor `POLY_TRUST` applies: only `poly trust` records count.
+            poly_config::trust::set_mode(poly_config::trust::TrustMode::Enforce);
             crate::run_mcp(mcp_config, args.allow_outside_workspace)
         }
     }
