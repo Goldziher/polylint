@@ -23,12 +23,9 @@
 //! own anonymous node) rather than through the per-grammar table — this is
 //! the same check for every language.
 
-use std::cell::RefCell;
-
 use tree_sitter::Node;
 
-use super::kinds::{self, NestRole};
-use super::walk::walk;
+use super::kinds::{self, KindInfo, KindTable, NestRole};
 
 /// One cyclomatic-complexity finding for a single function-like scope.
 pub struct ComplexityFinding {
@@ -46,7 +43,8 @@ pub fn analyze(grammar: &str, root: Node, threshold: usize) -> Vec<ComplexityFin
     if !kinds::has_table(grammar) {
         return Vec::new();
     }
-    collect(grammar, root, threshold)
+    let table = KindTable::build(grammar, &root.language());
+    super::scan::nesting_and_complexity(&table, grammar, root, None, Some(threshold)).1
 }
 
 struct Scope {
@@ -55,67 +53,74 @@ struct Scope {
     end_byte: usize,
 }
 
-fn collect(grammar: &str, root: Node, threshold: usize) -> Vec<ComplexityFinding> {
-    let scopes = RefCell::new(Vec::<Scope>::new());
-    let findings = RefCell::new(Vec::new());
-    walk(
-        root,
-        |node, _| {
-            let mut scopes = scopes.borrow_mut();
-            let construct = kinds::classify(grammar, node.kind());
-            if construct.nest == NestRole::Reset {
-                scopes.push(Scope {
-                    count: 1,
-                    start_byte: node.start_byte(),
-                    end_byte: node.end_byte(),
-                });
-            }
-            if construct.decision {
-                bump(&mut scopes);
-            }
-            if has_bool_operator_child(node) {
-                bump(&mut scopes);
-            }
-        },
-        |node, _| {
-            if kinds::classify(grammar, node.kind()).nest != NestRole::Reset {
-                return;
-            }
-            let scope = scopes.borrow_mut().pop().expect("scope pushed on enter");
-            if scope.count > threshold {
-                findings.borrow_mut().push(ComplexityFinding {
-                    complexity: scope.count,
-                    start_byte: scope.start_byte,
-                    end_byte: scope.end_byte,
-                });
-            }
-        },
-    );
-    findings.into_inner()
+/// Incremental complexity state driven by [`super::scan`]'s shared traversal.
+pub struct ComplexityWalk {
+    threshold: usize,
+    scopes: Vec<Scope>,
+    /// One flag per open node: whether its `&&`/`||` child was already counted. A node counts once
+    /// however many operator tokens it holds.
+    bool_counted: Vec<bool>,
+    /// Findings in the order scopes close.
+    pub findings: Vec<ComplexityFinding>,
 }
 
-fn bump(scopes: &mut [Scope]) {
-    if let Some(top) = scopes.last_mut() {
-        top.count += 1;
-    }
-}
-
-/// Whether `node` has an immediate child whose own kind is the literal `&&`
-/// or `||` punctuation token — how tree-sitter represents these operators
-/// inside a generic binary-expression node across every grammar in the
-/// construct table (Rust, C, C++, C#, Java, Kotlin, Go, JS/TS, Ruby all fold
-/// logical-and/or into one generic binary node rather than a dedicated kind).
-fn has_bool_operator_child(node: Node) -> bool {
-    let mut cursor = node.walk();
-    if !cursor.goto_first_child() {
-        return false;
-    }
-    loop {
-        if kinds::is_bool_operator_text(cursor.node().kind()) {
-            return true;
+impl ComplexityWalk {
+    /// Start an empty walk.
+    pub fn new(threshold: usize) -> Self {
+        Self {
+            threshold,
+            scopes: Vec::new(),
+            bool_counted: Vec::new(),
+            findings: Vec::new(),
         }
-        if !cursor.goto_next_sibling() {
-            return false;
+    }
+
+    /// Called on entering `node`, described by `info`.
+    ///
+    /// The old per-node child scan for an operator token becomes a check on the token itself: when
+    /// a `&&`/`||` child is entered, its parent is credited once. The innermost open scope at that
+    /// moment is the one the parent's own entry would have credited, since every earlier sibling
+    /// subtree has closed.
+    pub fn enter(&mut self, node: Node, info: &KindInfo) {
+        self.bool_counted.push(false);
+        if info.construct.nest == NestRole::Reset {
+            self.scopes.push(Scope {
+                count: 1,
+                start_byte: node.start_byte(),
+                end_byte: node.end_byte(),
+            });
+        }
+        if info.construct.decision {
+            self.bump();
+        }
+        if info.bool_token
+            && let Some(parent) = self.bool_counted.len().checked_sub(2)
+            && !self.bool_counted[parent]
+        {
+            self.bool_counted[parent] = true;
+            self.bump();
+        }
+    }
+
+    /// Called on leaving the node last entered and not yet left, described by `info`.
+    pub fn leave(&mut self, info: &KindInfo) {
+        self.bool_counted.pop();
+        if info.construct.nest != NestRole::Reset {
+            return;
+        }
+        let scope = self.scopes.pop().expect("scope pushed on enter");
+        if scope.count > self.threshold {
+            self.findings.push(ComplexityFinding {
+                complexity: scope.count,
+                start_byte: scope.start_byte,
+                end_byte: scope.end_byte,
+            });
+        }
+    }
+
+    fn bump(&mut self) {
+        if let Some(top) = self.scopes.last_mut() {
+            top.count += 1;
         }
     }
 }

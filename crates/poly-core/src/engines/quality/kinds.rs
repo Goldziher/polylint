@@ -117,6 +117,60 @@ const BOOL_OP: Construct = Construct {
     bool_operator: true,
 };
 
+/// Everything the structural walks ask about one node kind, resolved once per grammar so the hot
+/// loops index a table by [`tree_sitter::Node::kind_id`] instead of string-matching the kind name.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct KindInfo {
+    /// The grammar's [`classify`] answer for this kind.
+    pub construct: Construct,
+    /// Whether the kind is a member/attribute access (law-of-demeter chain link).
+    pub chain: bool,
+    /// Whether the kind names a numeric literal (magic-number candidate).
+    pub numeric: bool,
+    /// Whether the kind is the literal `&&`/`||` token.
+    pub bool_token: bool,
+}
+
+impl KindInfo {
+    fn of(grammar: &str, kind: &str) -> Self {
+        Self {
+            construct: classify(grammar, kind),
+            chain: super::demeter::is_chain_kind(kind),
+            numeric: super::magic_number::is_numeric_literal_kind(kind),
+            bool_token: is_bool_operator_text(kind),
+        }
+    }
+}
+
+/// Per-grammar [`KindInfo`] indexed by node kind id, built once from the grammar's own kind list.
+pub struct KindTable {
+    entries: Vec<KindInfo>,
+    /// Answer for ids past the table: the `ERROR` pseudo-node carries `u16::MAX`.
+    fallback: KindInfo,
+}
+
+impl KindTable {
+    /// Evaluate every kind `language` declares against the same predicates the string-based path uses.
+    pub fn build(grammar: &str, language: &tree_sitter::Language) -> Self {
+        let fallback = KindInfo::of(grammar, "ERROR");
+        let entries = (0..language.node_kind_count())
+            .map(|id| {
+                u16::try_from(id)
+                    .ok()
+                    .and_then(|id| language.node_kind_for_id(id))
+                    .map_or(fallback, |kind| KindInfo::of(grammar, kind))
+            })
+            .collect();
+        Self { entries, fallback }
+    }
+
+    /// The info for `id`, a [`tree_sitter::Node::kind_id`].
+    #[inline]
+    pub fn info(&self, id: u16) -> KindInfo {
+        self.entries.get(usize::from(id)).copied().unwrap_or(self.fallback)
+    }
+}
+
 /// Grammars with a [`classify`] table, used to gate whether nesting/complexity
 /// run at all for a language (see the module docs on degrading honestly).
 pub fn has_table(grammar: &str) -> bool {
@@ -322,6 +376,28 @@ mod tests {
             assert!(
                 !has_table(grammar),
                 "{grammar} intentionally has no construct table (degrades to line-counting only)"
+            );
+        }
+    }
+
+    /// For every kind id the table must answer exactly what the string-based predicates answer.
+    #[test]
+    fn table_matches_string_classification_for_every_kind_id() {
+        for grammar in ["rust", "python", "go", "javascript", "java", "c"] {
+            let language = tree_sitter_language_pack::get_language(grammar).expect("grammar available");
+            let table = KindTable::build(grammar, &language);
+            let count = language.node_kind_count();
+            assert!(count > 0, "{grammar}: empty kind list would make this test vacuous");
+            for id in 0..count {
+                let id = id as u16;
+                let kind = language.node_kind_for_id(id).unwrap_or("");
+                let expected = KindInfo::of(grammar, kind);
+                assert_eq!(table.info(id), expected, "{grammar}: kind id {id} ({kind})");
+            }
+            assert_eq!(
+                table.info(u16::MAX),
+                KindInfo::of(grammar, "ERROR"),
+                "{grammar}: ERROR id"
             );
         }
     }

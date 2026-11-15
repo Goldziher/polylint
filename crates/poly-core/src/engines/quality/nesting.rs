@@ -14,11 +14,13 @@
 //! a chain that reaches depth 5 with a threshold of 4 yields exactly one
 //! finding, at the depth-5 node, because depths 1-4 do not exceed 4.
 
+#[cfg(test)]
 use std::cell::RefCell;
 
 use tree_sitter::Node;
 
-use super::kinds::{self, NestRole};
+use super::kinds::{self, KindTable, NestRole};
+#[cfg(test)]
 use super::walk::walk;
 
 /// One nesting-too-deep finding: a construct whose depth exceeds the
@@ -36,36 +38,56 @@ pub struct NestingFinding {
 /// Returns an empty vec (not an error) when `grammar` has no construct table
 /// — the caller is responsible for not claiming coverage in that case.
 pub fn analyze(grammar: &str, root: Node, threshold: usize) -> Vec<NestingFinding> {
-    let mut findings = Vec::new();
     if !kinds::has_table(grammar) {
-        return findings;
+        return Vec::new();
     }
-    let depths = RefCell::new(Vec::<usize>::new());
-    walk(
-        root,
-        |node, ancestors| {
-            let mut depths = depths.borrow_mut();
-            let depth = depths.last().copied().unwrap_or(0);
-            let next_depth = next_depth(node, ancestors, grammar, depth);
-            depths.push(next_depth);
-            if next_depth > threshold && next_depth > depth {
-                findings.push(NestingFinding {
-                    depth: next_depth,
-                    start_byte: node.start_byte(),
-                    end_byte: node.end_byte(),
-                });
-            }
-        },
-        |_, _| {
-            depths.borrow_mut().pop();
-        },
-    );
-    findings
+    let table = KindTable::build(grammar, &root.language());
+    super::scan::nesting_and_complexity(&table, grammar, root, Some(threshold), None).0
+}
+
+/// Incremental nesting state driven by [`super::scan`]'s shared traversal.
+pub struct NestingWalk<'g> {
+    grammar: &'g str,
+    threshold: usize,
+    depths: Vec<usize>,
+    /// Findings in pre-order.
+    pub findings: Vec<NestingFinding>,
+}
+
+impl<'g> NestingWalk<'g> {
+    /// Start an empty walk for `grammar`.
+    pub fn new(grammar: &'g str, threshold: usize) -> Self {
+        Self {
+            grammar,
+            threshold,
+            depths: Vec::new(),
+            findings: Vec::new(),
+        }
+    }
+
+    /// Called on entering `node`, whose nesting role is `role`.
+    pub fn enter(&mut self, node: Node, ancestors: &[Node], role: NestRole) {
+        let depth = self.depths.last().copied().unwrap_or(0);
+        let next_depth = next_depth(node, ancestors, self.grammar, role, depth);
+        self.depths.push(next_depth);
+        if next_depth > self.threshold && next_depth > depth {
+            self.findings.push(NestingFinding {
+                depth: next_depth,
+                start_byte: node.start_byte(),
+                end_byte: node.end_byte(),
+            });
+        }
+    }
+
+    /// Called on leaving the node last entered and not yet left.
+    pub fn leave(&mut self) {
+        self.depths.pop();
+    }
 }
 
 /// The depth `node` itself sits at, given its parent's `depth`.
-fn next_depth(node: Node, ancestors: &[Node], grammar: &str, depth: usize) -> usize {
-    match kinds::classify(grammar, node.kind()).nest {
+fn next_depth(node: Node, ancestors: &[Node], grammar: &str, role: NestRole, depth: usize) -> usize {
+    match role {
         NestRole::Increment => depth + 1,
         NestRole::IncrementUnlessChained => {
             if is_chained_else_if(node, ancestors, grammar) {
@@ -85,13 +107,15 @@ fn next_depth(node: Node, ancestors: &[Node], grammar: &str, depth: usize) -> us
 /// (see module docs), but the 4-language fixture asserts the exact number.
 #[cfg(test)]
 pub fn max_depth(grammar: &str, root: Node) -> usize {
+    let table = KindTable::build(grammar, &root.language());
     let max = RefCell::new(0usize);
     let depths = RefCell::new(Vec::<usize>::new());
     walk(
         root,
         |node, ancestors| {
             let mut depths = depths.borrow_mut();
-            let depth = next_depth(node, ancestors, grammar, depths.last().copied().unwrap_or(0));
+            let role = table.info(node.kind_id()).construct.nest;
+            let depth = next_depth(node, ancestors, grammar, role, depths.last().copied().unwrap_or(0));
             depths.push(depth);
             let mut max = max.borrow_mut();
             *max = (*max).max(depth);
@@ -120,7 +144,7 @@ pub fn max_depth(grammar: &str, root: Node) -> usize {
 /// - Python and Ruby never reach this function at all (`elif_clause`/`elsif`
 ///   are distinct sibling node kinds classified directly in the construct
 ///   table, with no nested if-node to disambiguate).
-fn is_chained_else_if(node: Node, ancestors: &[Node], grammar: &str) -> bool {
+pub(super) fn is_chained_else_if(node: Node, ancestors: &[Node], grammar: &str) -> bool {
     let Some(&parent) = ancestors.last() else {
         return false;
     };

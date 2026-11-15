@@ -17,6 +17,7 @@
 
 use tree_sitter::Node;
 
+use super::kinds::KindTable;
 use super::walk::walk;
 use crate::engine::{Diagnostic, Severity, Span};
 
@@ -33,12 +34,21 @@ const CHAIN_KIND_MARKERS: &[&str] = &[
 /// a link in a longer chain. Call arguments and index expressions are still searched for chains of
 /// their own, since their parent is not a chain-kind node.
 pub fn scan(root: Node, max_depth: usize) -> Vec<Diagnostic> {
+    scan_with(&KindTable::build("", &root.language()), root, max_depth)
+}
+
+/// [`scan`] against a prebuilt per-grammar [`KindTable`].
+pub fn scan_with(table: &KindTable, root: Node, max_depth: usize) -> Vec<Diagnostic> {
     let mut out = Vec::new();
     walk(
         root,
         |node, ancestors| {
-            if is_chain_kind(node.kind()) && !ancestors.last().is_some_and(|parent| is_chain_kind(parent.kind())) {
-                let depth = chain_depth(node);
+            if table.info(node.kind_id()).chain
+                && !ancestors
+                    .last()
+                    .is_some_and(|parent| table.info(parent.kind_id()).chain)
+            {
+                let depth = chain_depth(table, node);
                 if depth > max_depth {
                     out.push(diagnostic(node, depth));
                 }
@@ -49,7 +59,7 @@ pub fn scan(root: Node, max_depth: usize) -> Vec<Diagnostic> {
     out
 }
 
-fn is_chain_kind(kind: &str) -> bool {
+pub(super) fn is_chain_kind(kind: &str) -> bool {
     let lower = kind.to_ascii_lowercase();
     CHAIN_KIND_MARKERS.iter().any(|marker| lower.contains(marker))
 }
@@ -57,11 +67,11 @@ fn is_chain_kind(kind: &str) -> bool {
 /// Count how many chain-kind nodes are nested along the "object" side of
 /// `node`, i.e. its first named child, its first named child's first named
 /// child, and so on.
-fn chain_depth(node: Node) -> usize {
+fn chain_depth(table: &KindTable, node: Node) -> usize {
     let mut depth = 1;
     let mut current = node;
     while let Some(object) = current.named_child(0) {
-        if is_chain_kind(object.kind()) {
+        if table.info(object.kind_id()).chain {
             depth += 1;
             current = object;
         } else {

@@ -20,6 +20,7 @@
 
 use tree_sitter::Node;
 
+use super::kinds::KindTable;
 use super::walk::walk;
 use crate::engine::{Diagnostic, Severity, Span};
 
@@ -33,12 +34,17 @@ const EXCLUDED_KINDS: &[&str] = &["predefined_type", "type_identifier", "integra
 
 /// Walk `root` and report every magic number not in `allow`.
 pub fn scan(root: Node, source: &[u8], allow: &[i64]) -> Vec<Diagnostic> {
+    scan_with(&KindTable::build("", &root.language()), root, source, allow)
+}
+
+/// [`scan`] against a prebuilt per-grammar [`KindTable`].
+pub fn scan_with(table: &KindTable, root: Node, source: &[u8], allow: &[i64]) -> Vec<Diagnostic> {
     let mut out = Vec::new();
     walk(
         root,
         |node, _| {
             if node.child_count() == 0
-                && is_numeric_literal_kind(node.kind())
+                && table.info(node.kind_id()).numeric
                 && let Some(finding) = check(node, source, allow)
             {
                 out.push(finding);
@@ -49,7 +55,7 @@ pub fn scan(root: Node, source: &[u8], allow: &[i64]) -> Vec<Diagnostic> {
     out
 }
 
-fn is_numeric_literal_kind(kind: &str) -> bool {
+pub(super) fn is_numeric_literal_kind(kind: &str) -> bool {
     if EXCLUDED_KINDS.contains(&kind) {
         return false;
     }

@@ -59,13 +59,13 @@ pub mod lazy_ignore;
 pub mod magic_number;
 mod metrics;
 pub mod nesting;
+mod scan;
 pub mod settings;
 pub mod test_files;
 mod walk;
 
+use rustc_hash::FxHashMap;
 use std::cell::RefCell;
-use std::collections::HashMap;
-
 use tree_sitter::Parser;
 use tree_sitter_language_pack::detect_language;
 
@@ -74,6 +74,7 @@ use crate::engine::{Capabilities, Diagnostic, Engine, OptionKeys, OptionTable, S
 use crate::engines::line_index::LineIndex;
 use crate::language::Language;
 use family::Rule;
+use kinds::KindTable;
 use settings::Settings;
 
 /// Cache-key version. Bump whenever `tree-sitter-language-pack` is upgraded
@@ -82,12 +83,18 @@ use settings::Settings;
 const QUALITY_VERSION: &str =
     "quality-6+parse-limit+tslp1.25.0+no-rust-allow+max-in-title+no-prose-lazy-ignore+uncollected-test-file+cols1";
 
+/// A grammar's pooled parser and its kind-class table, both built once per thread.
+struct GrammarState {
+    parser: Parser,
+    kinds: KindTable,
+}
+
 thread_local! {
     /// Per-thread parser pool keyed by grammar name, shared by every
     /// structural sub-rule (definitions, nesting, complexity, magic-number,
     /// law-of-demeter) so a file is parsed exactly once per lint pass rather
     /// than once per rule.
-    static PARSERS: RefCell<HashMap<String, Parser>> = RefCell::new(HashMap::new());
+    static PARSERS: RefCell<FxHashMap<String, GrammarState>> = RefCell::new(FxHashMap::default());
 }
 
 /// Cross-cutting code-quality metric engine. See the module docs.
@@ -205,45 +212,62 @@ fn run_structural_rules(grammar: &str, src: &SourceFile, settings: &Settings, di
             if parser.set_language(&language).is_err() {
                 return;
             }
-            pool.insert(grammar.to_owned(), parser);
+            let kinds = KindTable::build(grammar, &language);
+            pool.insert(grammar.to_owned(), GrammarState { parser, kinds });
         }
-        let Some(parser) = pool.get_mut(grammar) else {
+        let Some(state) = pool.get_mut(grammar) else {
             return;
         };
-        let Some(tree) = parser.parse(src.content.as_bytes(), None) else {
+        let Some(tree) = state.parser.parse(src.content.as_bytes(), None) else {
             return;
         };
+        let kind_table = &state.kinds;
         let root = tree.root_node();
         let source = src.content.as_bytes();
 
         metrics::check_definitions(grammar, root, source, &src.language, settings, diagnostics);
 
-        if settings.nesting_too_deep.enabled && !family::is_deferred(Rule::NestingTooDeep, &src.language) {
+        let nesting = settings.nesting_too_deep.enabled && !family::is_deferred(Rule::NestingTooDeep, &src.language);
+        let complexity =
+            settings.cyclomatic_complexity.enabled && !family::is_deferred(Rule::CyclomaticComplexity, &src.language);
+        if (nesting || complexity) && kinds::has_table(grammar) {
             let index = LineIndex::new(&src.content);
-            for finding in nesting::analyze(grammar, root, usize_threshold(settings.nesting_too_deep.threshold)) {
+            let (nesting_findings, complexity_findings) = scan::nesting_and_complexity(
+                kind_table,
+                grammar,
+                root,
+                nesting.then(|| usize_threshold(settings.nesting_too_deep.threshold)),
+                complexity.then(|| usize_threshold(settings.cyclomatic_complexity.threshold)),
+            );
+            for finding in &nesting_findings {
                 diagnostics.push(metrics::nesting_diagnostic(
-                    &finding,
+                    finding,
                     &index,
                     settings.nesting_too_deep.threshold,
                 ));
             }
-        }
-        if settings.cyclomatic_complexity.enabled && !family::is_deferred(Rule::CyclomaticComplexity, &src.language) {
-            let index = LineIndex::new(&src.content);
-            for finding in complexity::analyze(grammar, root, usize_threshold(settings.cyclomatic_complexity.threshold))
-            {
+            for finding in &complexity_findings {
                 diagnostics.push(metrics::complexity_diagnostic(
-                    &finding,
+                    finding,
                     &index,
                     settings.cyclomatic_complexity.threshold,
                 ));
             }
         }
         if settings.magic_number {
-            diagnostics.extend(magic_number::scan(root, source, &settings.magic_number_allow));
+            diagnostics.extend(magic_number::scan_with(
+                kind_table,
+                root,
+                source,
+                &settings.magic_number_allow,
+            ));
         }
         if settings.law_of_demeter {
-            diagnostics.extend(demeter::scan(root, usize_threshold(settings.law_of_demeter_depth)));
+            diagnostics.extend(demeter::scan_with(
+                kind_table,
+                root,
+                usize_threshold(settings.law_of_demeter_depth),
+            ));
         }
     });
 }
