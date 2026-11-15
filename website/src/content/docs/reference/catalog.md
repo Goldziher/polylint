@@ -48,6 +48,7 @@ pre-commit gate typically runs, and `poly migrate` maps those jobs onto them.
 | `jarl` | lint, fix | R files | SARIF (rule, URL, fixable) |
 | `checkmake` | lint | Makefiles | JSON (rule, line) |
 | `editorconfig-checker` | lint | all text files | gcc-style lines (line, column) |
+| `rbcop` | lint, fix | Ruby files | RuboCop JSON (cop, severity, fixable) |
 
 ```toml
 [tools.checkstyle]

@@ -2402,5 +2402,101 @@
         }
       }
     }
+  },
+  {
+    "name": "rbcop",
+    "binary": "rbcop",
+    "categories": [
+      "linter"
+    ],
+    "languages": [
+      "ruby"
+    ],
+    "homepage": "https://github.com/costajohnt/rbcop",
+    "commands": {
+      "lint": {
+        "arguments": [
+          "--format",
+          "json",
+          "--force-exclusion",
+          "$FILES"
+        ],
+        "stdin": false
+      },
+      "fix": {
+        "arguments": [
+          "-a",
+          "--force-exclusion",
+          "$FILES"
+        ],
+        "stdin": false
+      }
+    },
+    "recipe": {
+      "output": "rubocop_json",
+      "fix": "fix",
+      "config_files": [
+        ".rubocop.yml",
+        ".rubocop_todo.yml"
+      ],
+      "ok_exits": [
+        1
+      ],
+      "install": {
+        "hint": "gem install rbcop or brew install costajohnt/tap/rbcop, or set [tools.rbcop] version to a pinned release poly can download (no Windows build). Set RBCOP_FALLBACK = \"0\" under [tools.rbcop.env] so rbcop never starts Ruby for cops it does not implement",
+        "source": {
+          "kind": "binary",
+          "github": "costajohnt/rbcop",
+          "checksum": {
+            "list": "SHA256SUMS"
+          },
+          "assets": {
+            "darwin-aarch64": {
+              "name": "rbcop-{version}-aarch64-apple-darwin.tar.gz",
+              "member": "rbcop-{version}-aarch64-apple-darwin/rbcop"
+            },
+            "darwin-x86_64": {
+              "name": "rbcop-{version}-x86_64-apple-darwin.tar.gz",
+              "member": "rbcop-{version}-x86_64-apple-darwin/rbcop"
+            },
+            "linux-aarch64": {
+              "name": "rbcop-{version}-aarch64-unknown-linux-musl.tar.gz",
+              "member": "rbcop-{version}-aarch64-unknown-linux-musl/rbcop"
+            },
+            "linux-x86_64": {
+              "name": "rbcop-{version}-x86_64-unknown-linux-musl.tar.gz",
+              "member": "rbcop-{version}-x86_64-unknown-linux-musl/rbcop"
+            }
+          }
+        },
+        "releases": {
+          "0.1.4": {
+            "kind": "binary",
+            "assets": {
+              "darwin-aarch64": {
+                "url": "https://github.com/costajohnt/rbcop/releases/download/v0.1.4/rbcop-0.1.4-aarch64-apple-darwin.tar.gz",
+                "sha256": "f0a23d0dbe31ebc013c2450941321366c383565610a9b9cee381b83d0a1710a8",
+                "member": "rbcop-0.1.4-aarch64-apple-darwin/rbcop"
+              },
+              "darwin-x86_64": {
+                "url": "https://github.com/costajohnt/rbcop/releases/download/v0.1.4/rbcop-0.1.4-x86_64-apple-darwin.tar.gz",
+                "sha256": "e6c4be15199c400d4dd2013f1fee80ec159f4359f5ac8de8bd4ab64a8b3a14ae",
+                "member": "rbcop-0.1.4-x86_64-apple-darwin/rbcop"
+              },
+              "linux-aarch64": {
+                "url": "https://github.com/costajohnt/rbcop/releases/download/v0.1.4/rbcop-0.1.4-aarch64-unknown-linux-musl.tar.gz",
+                "sha256": "ed1ce9c8209767f1b0171b52c4cb130c760875e38613588bc61edbcdfd760db2",
+                "member": "rbcop-0.1.4-aarch64-unknown-linux-musl/rbcop"
+              },
+              "linux-x86_64": {
+                "url": "https://github.com/costajohnt/rbcop/releases/download/v0.1.4/rbcop-0.1.4-x86_64-unknown-linux-musl.tar.gz",
+                "sha256": "b106e957584d85ffff72241cf02eabcc0b512762113d6350ce8796e0cb206113",
+                "member": "rbcop-0.1.4-x86_64-unknown-linux-musl/rbcop"
+              }
+            }
+          }
+        }
+      }
+    }
   }
 ]

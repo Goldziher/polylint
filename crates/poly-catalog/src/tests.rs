@@ -593,6 +593,38 @@ fn editorconfig_checker_lints_every_file_as_gcc_lines_and_maps_both_macos_arches
 }
 
 #[test]
+fn rbcop_lints_ruby_through_rubocop_json_and_ships_no_windows_build() {
+    let tool = Catalog::get().tool("rbcop").expect("rbcop");
+    assert_eq!(tool.languages, ["ruby"]);
+    let (_, lint) = tool.lint_command().expect("a lint command");
+    assert_eq!(lint.arguments, ["--format", "json", "--force-exclusion", "$FILES"]);
+    assert_eq!(
+        tool.command("fix").expect("fix").arguments,
+        ["-a", "--force-exclusion", "$FILES"]
+    );
+    let recipe = recipe_of("rbcop");
+    assert_eq!(recipe.output, Output::RubocopJson);
+    assert_eq!(recipe.fix.as_deref(), Some("fix"));
+    assert_eq!(recipe.ok_exits, [1], "offenses exit 1, a failed run exits 2");
+    assert_eq!(recipe.config_files, [".rubocop.yml", ".rubocop_todo.yml"]);
+    let install = recipe.install.as_ref().expect("install");
+    assert_eq!(install.source.as_ref().expect("source").tag_template(), "v{version}");
+    let release = install.releases.get("0.1.4").expect("0.1.4");
+    let mut have: Vec<&str> = release.assets.keys().map(String::as_str).collect();
+    have.sort_unstable();
+    assert_eq!(
+        have,
+        ["darwin-aarch64", "darwin-x86_64", "linux-aarch64", "linux-x86_64"]
+    );
+    for platform in ["linux-aarch64", "linux-x86_64"] {
+        assert!(
+            release.assets[platform].url.contains("unknown-linux-musl"),
+            "{platform}"
+        );
+    }
+}
+
+#[test]
 fn gau_lints_the_pins_of_workflows_and_action_manifests_as_json() {
     let gau = Catalog::get().tool("gau").expect("gau");
     assert_eq!(gau.binary, "gau");
@@ -658,7 +690,7 @@ fn buf_and_hadolint_are_pinned_for_every_desktop_and_server_platform() {
     }
 }
 
-const MIGRATED_TOOLS: [&str; 21] = [
+const MIGRATED_TOOLS: [&str; 22] = [
     "checkstyle",
     "palantir-java-format",
     "buildifier",
@@ -680,6 +712,7 @@ const MIGRATED_TOOLS: [&str; 21] = [
     "jarl",
     "checkmake",
     "editorconfig-checker",
+    "rbcop",
 ];
 
 #[test]

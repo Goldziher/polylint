@@ -63,6 +63,8 @@ pub enum Output {
     CredoJson,
     /// checkmake `--output json`.
     CheckmakeJson,
+    /// RuboCop-compatible `--format json` (rbcop, RuboCop).
+    RubocopJson,
 }
 
 /// How a run's files are split into invocations.

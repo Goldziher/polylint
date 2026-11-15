@@ -768,3 +768,46 @@ fn editorconfig_checker_gcc_lines_become_findings() {
     assert_eq!(findings[1].path.as_deref(), Some("src/b.rs"));
     assert!(parse(Output::PathLine, "", "").expect("clean").is_empty());
 }
+
+const RUBOCOP_JSON: &str = r#"{"metadata":{"rubocop_version":"1.92.2","ruby_engine":"ruby","ruby_version":"3.4.1","ruby_patchlevel":"0","ruby_platform":"arm64-darwin24"},"files":[
+{"path":"app/clean.rb","offenses":[]},
+{"path":"app/user.rb","offenses":[
+{"severity":"convention","message":"Style/FrozenStringLiteralComment: Missing frozen string literal comment.","cop_name":"Style/FrozenStringLiteralComment","corrected":false,"correctable":true,"location":{"start_line":1,"start_column":1,"last_line":1,"last_column":1,"length":1,"line":1,"column":1}},
+{"severity":"warning","message":"Lint/UselessAssignment: Useless assignment to variable - `x`.","cop_name":"Lint/UselessAssignment","corrected":false,"correctable":false,"location":{"start_line":4,"start_column":5,"last_line":4,"last_column":6,"length":1,"line":4,"column":5}},
+{"severity":"fatal","message":"unexpected token $end","cop_name":"Lint/Syntax","corrected":false,"correctable":false,"location":{"start_line":9,"start_column":1,"last_line":9,"last_column":1,"length":1,"line":9,"column":1}}]}],
+"summary":{"offense_count":3,"target_file_count":2,"inspected_file_count":2}}"#;
+
+#[test]
+fn rubocop_offenses_become_cop_named_findings_with_severity_and_fixability() {
+    let findings = parse(Output::RubocopJson, RUBOCOP_JSON, "").expect("parses");
+    assert_eq!(findings.len(), 3, "{findings:?}");
+    assert!(findings.iter().all(|f| f.path.as_deref() == Some("app/user.rb")));
+    assert_eq!(findings[0].code.as_deref(), Some("Style/FrozenStringLiteralComment"));
+    assert_eq!(findings[0].message, "Missing frozen string literal comment.");
+    assert_eq!(findings[0].severity, Severity::Warning);
+    assert!(findings[0].fixable);
+    assert_eq!(
+        (findings[1].line, findings[1].column, findings[1].end_column),
+        (Some(4), Some(5), Some(6))
+    );
+    assert_eq!(findings[1].severity, Severity::Error);
+    assert!(!findings[1].fixable);
+    assert_eq!(findings[2].message, "unexpected token $end", "no cop prefix to strip");
+    assert_eq!(findings[2].severity, Severity::Error);
+}
+
+#[test]
+fn rubocop_output_that_is_not_its_report_is_an_error_not_a_clean_run() {
+    assert!(
+        parse(Output::RubocopJson, r#"{"files":[]}"#, "")
+            .expect("parses")
+            .is_empty()
+    );
+    for (stdout, why) in [
+        ("", "no output"),
+        ("rbcop: error: invalid option", "usage text"),
+        (r#"{"metadata":{}}"#, "no files list"),
+    ] {
+        assert!(parse(Output::RubocopJson, stdout, "").is_err(), "{why}");
+    }
+}

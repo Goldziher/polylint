@@ -1,5 +1,5 @@
 //! The JSON reports: actionlint, buf, hadolint, golangci-lint, buildifier,
-//! tflint, npm-groovy-lint, gh-actions-updater (`gau --lint-pins`), shellcheck, kubeconform, ktlint, credo and checkmake.
+//! tflint, npm-groovy-lint, gh-actions-updater (`gau --lint-pins`), shellcheck, kubeconform, ktlint, credo, checkmake and RuboCop-compatible Ruby linters.
 //!
 //! Each reader pulls only the fields it needs through `serde_json::Value`, so a
 //! tool adding a field never breaks it; a field it needs going missing, or the
@@ -522,4 +522,46 @@ pub(super) fn checkmake(stdout: &str, stderr: &str) -> Result<Vec<Finding>> {
             finding
         })
         .collect())
+}
+
+/// RuboCop's `--format json` (as printed by rbcop too): `{"files": [{"path",
+/// "offenses": [...]}]}`. An offense's `message` repeats the cop name in front,
+/// which the finding carries as its code. `fatal`, `error` and `warning`
+/// offenses are errors; `convention` and `refactor` (style) are warnings.
+pub(super) fn rubocop(stdout: &str) -> Result<Vec<Finding>> {
+    let report = document(stdout, "rubocop")?;
+    let files = report
+        .get("files")
+        .and_then(Value::as_array)
+        .context("the RuboCop JSON report has no files list")?;
+    let mut findings = Vec::new();
+    for file in files {
+        let path = text(file, "path");
+        for offense in file.get("offenses").and_then(Value::as_array).into_iter().flatten() {
+            let severity = match offense.get("severity").and_then(Value::as_str) {
+                Some("fatal" | "error" | "warning") => Severity::Error,
+                Some("info") => Severity::Info,
+                _ => Severity::Warning,
+            };
+            let code = text(offense, "cop_name");
+            let message = text(offense, "message").unwrap_or_default();
+            let message = code
+                .as_deref()
+                .and_then(|cop| message.strip_prefix(cop))
+                .and_then(|rest| rest.strip_prefix(": "))
+                .map_or_else(|| message.clone(), str::to_owned);
+            let mut finding = Finding::new(severity, message);
+            finding.path = path.clone();
+            finding.code = code;
+            finding.fixable = offense.get("correctable").and_then(Value::as_bool).unwrap_or(false);
+            if let Some(location) = offense.get("location") {
+                finding.line = number(location, "start_line");
+                finding.column = number(location, "start_column");
+                finding.end_line = number(location, "last_line");
+                finding.end_column = number(location, "last_column");
+            }
+            findings.push(finding);
+        }
+    }
+    Ok(findings)
 }
