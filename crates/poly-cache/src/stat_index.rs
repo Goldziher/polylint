@@ -105,6 +105,11 @@ impl FileStat {
         std::fs::metadata(path).map(|metadata| Self::from_metadata(&metadata))
     }
 
+    /// The file's size in bytes.
+    pub fn size(&self) -> u64 {
+        self.size
+    }
+
     /// Build from metadata already in hand.
     pub fn from_metadata(metadata: &std::fs::Metadata) -> Self {
         #[cfg(unix)]

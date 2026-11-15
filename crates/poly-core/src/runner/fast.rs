@@ -30,7 +30,7 @@ use crate::engine::Diagnostic;
 use crate::language::Language;
 
 use super::plan::{EnginePlan, RunPlan, provides_language_lint};
-use super::skips::{SkippedFile, Withdrawal};
+use super::skips::{SizeLimits, SkippedFile, Withdrawal};
 use super::types::LintResult;
 use crate::filter::suppressed::SuppressedDiagnostic;
 
@@ -57,6 +57,7 @@ pub(super) struct FastPath<'a> {
     /// file is looked up by borrowed `&Language`: a `(usize, Language)` key
     /// would clone the language, and so allocate for `Language::Other`, per file.
     slots: Vec<FxHashMap<Language, Slot<'a>>>,
+    limits: &'a SizeLimits,
     replay: Replay,
 }
 
@@ -109,6 +110,7 @@ impl<'a> FastPath<'a> {
         namespace: Namespace,
         plan: &'a RunPlan,
         flags: &dyn Fn(usize) -> u8,
+        limits: &'a SizeLimits,
         replay: Replay,
     ) -> Option<Self> {
         if !cache.enabled() {
@@ -141,6 +143,7 @@ impl<'a> FastPath<'a> {
             index: cache.stat_index(namespace),
             tally: Tally::default(),
             slots,
+            limits,
             replay,
         })
     }
@@ -194,6 +197,14 @@ impl<'a> FastPath<'a> {
         let Some(slot) = self.slot(file) else {
             return Resolution::Unavailable;
         };
+        // A recorded verdict predates the limit it would now exceed; the per-file path skips the file.
+        if self
+            .limits
+            .skip_reason(file.config_id, Some(stat.size()), &file.path)
+            .is_some()
+        {
+            return Resolution::Unavailable;
+        }
         let path = self.cache.path_key(&file.path);
         let prior = self.index.get(&path).filter(|record| record.scope == slot.scope);
         let vouched = KEY_SCRATCH.with_borrow_mut(|keys| {
@@ -316,6 +327,11 @@ impl Outcome {
 }
 
 impl Probe<'_> {
+    /// The file's size when it was probed.
+    pub(super) fn size(&self) -> u64 {
+        self.stat.size()
+    }
+
     /// The recorded output of each engine that is still valid for `bytes`:
     /// the same bytes, produced under the same engine key.
     pub(super) fn reusable(&self, bytes: &[u8]) -> Vec<Option<&[u8]>> {

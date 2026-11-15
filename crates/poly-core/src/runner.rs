@@ -52,9 +52,9 @@ pub use project::with_extra_project_engines;
 use selection::{EngineSelection, validate_selection};
 pub use skips::{
     BINARY_SKIP, DISABLED_SKIP_PREFIX, FILTERED_SKIP, GENERATED_SKIP, LOCKFILE_SKIP, NO_ENGINE_SKIP,
-    NO_LINT_RULES_SKIP_PREFIX, SkippedFile, is_withdrawal_reason,
+    NO_LINT_RULES_SKIP_PREFIX, SkippedFile, TOO_LARGE_SKIP_PREFIX, is_withdrawal_reason,
 };
-use skips::{is_lock_file, unmatched_explicit_paths};
+use skips::{SizeLimits, is_lock_file, unmatched_explicit_paths};
 use write::write_atomic_if_unchanged;
 // The suppression record lives beside the filters that produce it; re-exported
 // here so a consumer reaches it next to `SkippedFile`, the accounting it
@@ -156,6 +156,7 @@ pub fn lint_run(
     // `[discovery] generated`, resolved once per config and once per run rather
     // than per file. See `generated::acts_on_generated`.
     let act_on_generated = acts_on_generated(&configs, opts.generated);
+    let size_limits = SizeLimits::of(&configs);
     // One relaxed increment per file, so the summary can state how many files
     // were genuinely linted rather than how many were handed to the pipeline.
     // Negligible next to reading and parsing the file it counts.
@@ -169,6 +170,7 @@ pub fn lint_run(
         Namespace::Lint,
         &plan,
         &|id| u8::from(act_on_generated[id]),
+        &size_limits,
         replay,
     );
     let resolutions: Vec<Resolution> = files
@@ -188,7 +190,7 @@ pub fn lint_run(
             Resolution::Unavailable => Some((file, None)),
         })
         .collect();
-    let prefilled = prefill_lint(&pending, &plan);
+    let prefilled = prefill_lint(&pending, &plan, &size_limits);
     tracing::debug!(
         prefilled = prefilled.len(),
         files = files.len(),
@@ -210,6 +212,7 @@ pub fn lint_run(
                 &ignore_bases,
                 &opts.externally_linted_languages,
                 &act_on_generated,
+                &size_limits,
                 &prefilled,
                 (fast.as_ref(), resolution),
             ) {
@@ -362,6 +365,7 @@ pub fn format_run(
     prefetch_tier2_grammars(&plan);
     // Same key, same resolution, same phase-agnostic answer as `lint_run`.
     let act_on_generated = acts_on_generated(&configs, opts.generated);
+    let size_limits = SizeLimits::of(&configs);
     // Batch-capable formatters run once over many files here, before the loop.
     // Whatever this produces is an accelerator only: every filter below still
     // runs, and a file with no entry simply takes the per-file path (ADR 0033).
@@ -370,6 +374,7 @@ pub fn format_run(
         Namespace::Fmt,
         &plan,
         &|id| u8::from(act_on_generated[id]) | u8::from(opts.fix_generated) << 1,
+        &size_limits,
         Replay {
             diagnostics: false,
             verdicts: !collect_debug,
@@ -385,7 +390,7 @@ pub fn format_run(
         .filter(|(_, resolution)| !matches!(resolution, Resolution::Hit(_)))
         .map(|(f, _)| f.clone())
         .collect();
-    let prefilled = prefill(&unresolved, &plan, &cache);
+    let prefilled = prefill(&unresolved, &plan, &cache, &size_limits);
     tracing::debug!(
         prefilled = prefilled.len(),
         files = files.len(),
@@ -405,6 +410,7 @@ pub fn format_run(
                 opts.fix_generated,
                 collect_debug,
                 &act_on_generated,
+                &size_limits,
                 &prefilled,
                 (fast.as_ref(), resolution),
             )
@@ -474,6 +480,7 @@ fn lint_one(
     ignore_bases: &[Vec<PathBuf>],
     externally_linted: &[Language],
     act_on_generated: &[bool],
+    limits: &SizeLimits,
     prefilled: &LintPrefill,
     (fast, resolution): (Option<&FastPath>, Resolution),
 ) -> anyhow::Result<LintResult> {
@@ -536,6 +543,9 @@ fn lint_one(
             fast.record(probe, bytes, outcome);
         }
     };
+    if let Some(skip) = limits.skip_reason(f.config_id, probe.as_ref().map(|p| p.size()), &f.path) {
+        return Ok(lint_skip_result(f, &skip));
+    }
     let bytes = std::fs::read(&f.path).with_context(|| format!("reading {}", f.path.display()))?;
     // Asked before the decode, because the decode cannot tell the two apart:
     // a compiled artifact and a corrupted source file both fail
@@ -674,6 +684,7 @@ fn format_one(
     fix_generated: bool,
     collect_debug: bool,
     act_on_generated: &[bool],
+    limits: &SizeLimits,
     prefilled: &BatchPrefill,
     (fast, resolution): (Option<&FastPath>, Resolution),
 ) -> anyhow::Result<FormatResult> {
@@ -693,6 +704,9 @@ fn format_one(
             fast.record(probe, bytes, outcome);
         }
     };
+    if let Some(skip) = limits.skip_reason(f.config_id, probe.as_ref().map(|p| p.size()), &f.path) {
+        return Ok(format_skip_result(f, Some(skip)));
+    }
     let bytes = std::fs::read(&f.path).with_context(|| format!("reading {}", f.path.display()))?;
     // See the same guard on the lint path: a binary file is a skip, malformed
     // text is an error, and only a pre-decode check can distinguish them.

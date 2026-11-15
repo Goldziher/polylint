@@ -264,6 +264,7 @@ mod panic_containment {
             false,
             false,
             &[true],
+            &SizeLimits::default(),
             &BatchPrefill::default(),
             (None, Resolution::Unavailable),
         )
@@ -435,7 +436,7 @@ mod lint_batching {
         let batches = Arc::new(AtomicUsize::new(0));
         let plan = RunPlan::serving(0, Language::Shell, plans(&batches));
         let pending: Vec<PendingLint> = files.iter().map(|file| (file, None)).collect();
-        let prefilled = prefill_lint(&pending, &plan);
+        let prefilled = prefill_lint(&pending, &plan, &SizeLimits::default());
 
         assert_eq!(
             batches.load(Ordering::SeqCst),
@@ -479,7 +480,7 @@ mod lint_batching {
         let batches = Arc::new(AtomicUsize::new(0));
         let plan = RunPlan::serving(0, Language::Shell, plans(&batches));
         let pending: Vec<PendingLint> = files.iter().map(|file| (file, None)).collect();
-        let prefilled = prefill_lint(&pending, &plan);
+        let prefilled = prefill_lint(&pending, &plan, &SizeLimits::default());
 
         let pass = lint_content(
             &files[0],

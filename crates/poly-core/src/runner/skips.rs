@@ -155,6 +155,38 @@ pub const GENERATED_SKIP: &str = "machine-generated file ([discovery] generated 
 /// something in it turned out to be binary.
 pub const BINARY_SKIP: &str = "binary file";
 
+/// Start of the reason recorded for a file above `[discovery] max_file_size`, followed by the
+/// file's size and the limit. Like [`BINARY_SKIP`] it is a skip, so the file leaves the `checked`
+/// count and `--deny-skips` / `--max-skips` still see it.
+pub const TOO_LARGE_SKIP_PREFIX: &str = "file too large";
+
+/// `[discovery] max_file_size` per config id, resolved once per run.
+#[derive(Debug, Default)]
+pub(crate) struct SizeLimits(Vec<u64>);
+
+impl SizeLimits {
+    /// The limit of every config in `configs`.
+    pub(crate) fn of(configs: &ConfigSet) -> Self {
+        Self(configs.iter().map(|config| config.max_file_size).collect())
+    }
+
+    /// Why a file of `size` bytes governed by `config_id` must not be read, if it must. `size` is
+    /// the stat the caller already holds; without one the file is stat-ed, and a file that cannot
+    /// be stat-ed is left for the read to report.
+    pub(crate) fn skip_reason(&self, config_id: usize, size: Option<u64>, path: &Path) -> Option<String> {
+        let limit = *self.0.get(config_id)?;
+        if limit == 0 {
+            return None;
+        }
+        let size = size.or_else(|| std::fs::metadata(path).ok().map(|metadata| metadata.len()))?;
+        (size > limit).then(|| too_large_reason(size, limit))
+    }
+}
+
+fn too_large_reason(size: u64, limit: u64) -> String {
+    format!("{TOO_LARGE_SKIP_PREFIX} ({size} bytes > {limit} bytes)")
+}
+
 /// Reason recorded for a package-manager lock file.
 ///
 /// Lock files are machine-written in the package manager's own canonical layout and verified
@@ -328,6 +360,39 @@ fn excluded_rather_than_unmatched(path: &Path, configs: &ConfigSet, exclude: &[S
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn size_limits_gate_on_the_per_config_limit() {
+        let limits = SizeLimits(vec![10, 0]);
+        let path = Path::new("/nonexistent/x");
+        assert_eq!(
+            limits.skip_reason(0, Some(11), path).as_deref(),
+            Some("file too large (11 bytes > 10 bytes)")
+        );
+        assert_eq!(
+            limits.skip_reason(0, Some(10), path),
+            None,
+            "the limit itself is allowed"
+        );
+        assert_eq!(limits.skip_reason(1, Some(u64::MAX), path), None, "0 is unlimited");
+        assert_eq!(limits.skip_reason(2, Some(u64::MAX), path), None, "unknown config id");
+        assert_eq!(
+            limits.skip_reason(0, None, path),
+            None,
+            "an unstat-able file is left to the read"
+        );
+    }
+
+    #[test]
+    fn size_limits_stat_the_file_when_no_size_is_known() {
+        let dir = std::env::temp_dir().join(format!("poly-size-limits-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let file = dir.join("f.txt");
+        std::fs::write(&file, b"0123456789ab").unwrap();
+        let limits = SizeLimits(vec![5]);
+        assert!(limits.skip_reason(0, None, &file).is_some());
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
 
     #[test]
     fn lock_files_are_recognised_by_file_name_only() {

@@ -35,6 +35,7 @@ use rustc_hash::FxHashMap;
 
 use super::fast::Probe;
 use super::plan::{EnginePlan, RunPlan};
+use super::skips::SizeLimits;
 use crate::discover::DiscoveredFile;
 use crate::engine::{Diagnostic, FormatOutput, SourceFile};
 use crate::filter::is_binary;
@@ -130,10 +131,15 @@ struct Candidate {
 /// Files already answered by the result cache are excluded: the per-file loop
 /// will hit the cache for them and never spawn anything, so batching them would
 /// be pure waste.
-pub(super) fn prefill(files: &[DiscoveredFile], plan: &RunPlan, cache: &ResultCache) -> BatchPrefill {
+pub(super) fn prefill(
+    files: &[DiscoveredFile],
+    plan: &RunPlan,
+    cache: &ResultCache,
+    limits: &SizeLimits,
+) -> BatchPrefill {
     let mut candidates: Vec<Candidate> = files
         .par_iter()
-        .filter_map(|file| candidate_for(file, plan, cache))
+        .filter_map(|file| candidate_for(file, plan, cache, limits))
         .collect();
     if candidates.len() < MIN_BATCH {
         return BatchPrefill::default();
@@ -347,10 +353,10 @@ pub(super) type PendingLint<'a> = (&'a DiscoveredFile, Option<&'a Probe<'a>>);
 /// whose output the index already holds for these exact bytes is excluded too,
 /// since the per-file path reuses it. Every failure mode returns nothing for
 /// the shard, which leaves its files to the per-file path.
-pub(super) fn prefill_lint(files: &[PendingLint], plan: &RunPlan) -> LintPrefill {
+pub(super) fn prefill_lint(files: &[PendingLint], plan: &RunPlan, limits: &SizeLimits) -> LintPrefill {
     let mut candidates: Vec<(usize, Candidate)> = files
         .par_iter()
-        .flat_map_iter(|(file, probe)| lint_candidates_for(file, *probe, plan))
+        .flat_map_iter(|(file, probe)| lint_candidates_for(file, *probe, plan, limits))
         .collect();
     if candidates.len() < MIN_BATCH {
         return LintPrefill::default();
@@ -391,7 +397,12 @@ pub(super) fn prefill_lint(files: &[PendingLint], plan: &RunPlan) -> LintPrefill
 /// The `(engine index, candidate)` pairs one file contributes: one per planned
 /// engine that batches, none when the file cannot be read as text or the stat
 /// index already holds that engine's answer for these bytes.
-fn lint_candidates_for(file: &DiscoveredFile, probe: Option<&Probe>, plan: &RunPlan) -> Vec<(usize, Candidate)> {
+fn lint_candidates_for(
+    file: &DiscoveredFile,
+    probe: Option<&Probe>,
+    plan: &RunPlan,
+    limits: &SizeLimits,
+) -> Vec<(usize, Candidate)> {
     let engines = plan.engines(file.config_id, &file.language);
     let batching: Vec<usize> = engines
         .iter()
@@ -401,7 +412,11 @@ fn lint_candidates_for(file: &DiscoveredFile, probe: Option<&Probe>, plan: &RunP
         })
         .map(|(index, _)| index)
         .collect();
-    if batching.is_empty() {
+    if batching.is_empty()
+        || limits
+            .skip_reason(file.config_id, probe.map(Probe::size), &file.path)
+            .is_some()
+    {
         return Vec::new();
     }
     let Ok(bytes) = std::fs::read(&file.path) else {
@@ -500,8 +515,11 @@ fn sole_batchable_engine(plans: &[EnginePlan]) -> Option<&EnginePlan> {
 }
 
 /// Decide whether one discovered file can join a batch, reading it if so.
-fn candidate_for(file: &DiscoveredFile, plan: &RunPlan, cache: &ResultCache) -> Option<Candidate> {
+fn candidate_for(file: &DiscoveredFile, plan: &RunPlan, cache: &ResultCache, limits: &SizeLimits) -> Option<Candidate> {
     let engine_plan = sole_batchable_engine(plan.engines(file.config_id, &file.language))?;
+    if limits.skip_reason(file.config_id, None, &file.path).is_some() {
+        return None;
+    }
 
     let bytes = std::fs::read(&file.path).ok()?;
     if is_binary(&bytes) {
@@ -658,6 +676,7 @@ mod tests {
         use crate::filter::SeverityRemap;
         use crate::language::Language;
         use crate::runner::plan::{EnginePlan, RunPlan};
+        use crate::runner::skips::SizeLimits;
 
         /// Appends `x` until a line holds three, then leaves it alone — settled
         /// after two changing passes, so the loop needs three to see it.
@@ -751,7 +770,7 @@ mod tests {
                 })
                 .collect();
             let batches = Arc::new(AtomicUsize::new(0));
-            let prefilled = prefill(&files, &plan(&batches), &cache);
+            let prefilled = prefill(&files, &plan(&batches), &cache, &SizeLimits::default());
 
             let path = &files[0].path;
             let first = prefilled.take(path, "appender", "a\n").expect("pass one");
