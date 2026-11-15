@@ -146,6 +146,10 @@ impl Engine for UncommentEngine {
             removals
         };
 
+        if removals.is_empty() {
+            return Ok(Vec::new());
+        }
+
         let index = LineIndex::new(&src.content);
         let diagnostics = removals
             .into_iter()
