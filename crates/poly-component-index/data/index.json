@@ -3019,7 +3019,7 @@
               "note": null
             }
           ],
-          "hooks": 0,
+          "hooks": 128,
           "takes_over_tier_one": false,
           "claimed_paths": [],
           "host_hook": "editorconfig",
@@ -3112,7 +3112,7 @@
               "note": null
             }
           ],
-          "hooks": 0,
+          "hooks": 128,
           "takes_over_tier_one": false,
           "claimed_paths": [],
           "host_hook": "go-mod",

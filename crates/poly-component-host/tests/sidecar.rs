@@ -438,11 +438,16 @@ mod real {
         let error = connection
             .call_plain(
                 "shfmt",
-                &Request::BatchSupport {
+                &Request::Lint {
                     engine: "shfmt".into(),
                     config: 1,
+                    file: poly_component_protocol::WireFile {
+                        path: "a.sh".into(),
+                        language: "shell".into(),
+                        len: 1,
+                    },
                 },
-                b"",
+                b"x",
             )
             .unwrap_err();
         assert!(format!("{error:#}").contains("does not support"), "{error:#}");
