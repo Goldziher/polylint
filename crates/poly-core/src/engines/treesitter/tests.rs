@@ -1543,3 +1543,23 @@ fn deep_operator_chain_does_not_overflow_the_case_collectors() {
         .join()
         .unwrap();
 }
+
+#[test]
+fn deeply_nested_rust_macros_format_on_a_small_stack_in_linear_time() {
+    let depth = 50_000;
+    let content = format!("fn f() {{\n    {}1{};\n}}\n", "m!(".repeat(depth), ")".repeat(depth));
+    let started = std::time::Instant::now();
+    std::thread::Builder::new()
+        .stack_size(8 << 20)
+        .spawn(move || {
+            let s = src("main.rs", Language::Other("rust".into()), &content);
+            let _ = TreeSitterEngine.format(&s, &cfg(4));
+        })
+        .unwrap()
+        .join()
+        .unwrap();
+    assert!(
+        started.elapsed() < std::time::Duration::from_secs(60),
+        "token-tree parent lookups must not be quadratic"
+    );
+}

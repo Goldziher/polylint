@@ -327,14 +327,15 @@ fn collect_cst(root: &Node, grammar_name: &str, kinds: &KindTable) -> CstFacts {
     let mut protected: Vec<(usize, usize)> = Vec::new();
     let mut macro_bodies: Vec<(usize, usize)> = Vec::new();
     let mut cursor = root.walk();
+    // One flag per ancestor, so a token tree's parent kind is a stack read rather than an O(depth)
+    // `parent()` lookup that made deeply nested macros quadratic.
+    let mut ancestor_is_macro: Vec<bool> = Vec::new();
     loop {
         let node = cursor.node();
         let is_protected = kinds.has(&node, kinds::STRING_OR_COMMENT);
         if is_protected {
             protected.push((node.start_byte(), node.end_byte()));
-        } else if kinds.has(&node, kinds::TOKEN_TREE)
-            && node.parent().is_some_and(|p| kinds.has(&p, kinds::MACRO_INVOCATION))
-        {
+        } else if kinds.has(&node, kinds::TOKEN_TREE) && ancestor_is_macro.last().copied().unwrap_or(false) {
             // The walk is pre-order, so starts ascend and a nested macro's body lies inside the
             // last one recorded; keeping only the outermost lets `in_macro_body` binary-search.
             let (open, close) = (node.start_byte(), node.end_byte().saturating_sub(1));
@@ -355,12 +356,14 @@ fn collect_cst(root: &Node, grammar_name: &str, kinds: &KindTable) -> CstFacts {
             }
         }
         if !is_protected && cursor.goto_first_child() {
+            ancestor_is_macro.push(kinds.has(&node, kinds::MACRO_INVOCATION));
             continue;
         }
         loop {
             if cursor.goto_next_sibling() {
                 break;
             }
+            ancestor_is_macro.pop();
             if !cursor.goto_parent() {
                 delimiters.sort_by_key(|d| d.byte);
                 protected.sort_by_key(|r| r.0);
