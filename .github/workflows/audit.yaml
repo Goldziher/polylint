@@ -1,0 +1,46 @@
+name: audit
+
+on:
+  schedule:
+    - cron: "17 5 * * 1"
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+jobs:
+  advisories:
+    # New RustSec advisories land between pushes, so a lockfile that was clean at merge can go stale. Each
+    # workspace has its own lockfile and deny.toml.
+    name: cargo-deny advisories / ${{ matrix.workspace }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - workspace: root
+            manifest: Cargo.toml
+            config: deny.toml
+          - workspace: components
+            manifest: components/Cargo.toml
+            config: components/deny.toml
+          - workspace: components-pyrefly
+            manifest: components-pyrefly/Cargo.toml
+            config: components-pyrefly/deny.toml
+          - workspace: components-secrets
+            manifest: components-secrets/Cargo.toml
+            config: components-secrets/deny.toml
+          - workspace: components-tsrs
+            manifest: components-tsrs/Cargo.toml
+            config: components-tsrs/deny.toml
+    steps:
+      - uses: actions/checkout@v7
+      - uses: dtolnay/rust-toolchain@v1
+        with:
+          toolchain: stable
+      - uses: EmbarkStudios/cargo-deny-action@v2
+        with:
+          command: check advisories
+          manifest-path: ${{ matrix.manifest }}
+          arguments: --all-features --config ${{ matrix.config }}
