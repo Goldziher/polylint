@@ -34,13 +34,11 @@
 //! | 1    | Issues found (JSON output is still valid). |
 //! | 2+   | Tool error (bad args, unreadable file, etc.). |
 //!
-//! We parse the output for exit codes 0 and 1; on 2+, we return an empty
-//! `Vec` (graceful degradation — a broken shellcheck invocation is never a
-//! hard error).
+//! We parse the output for exit codes 0 and 1; on 2+ or a signal the file was
+//! not checked, so the run fails with shellcheck's first stderr line rather
+//! than reporting the file clean.
 
-use std::io::Write;
-use std::process::{Command, Stdio};
-use std::thread;
+use std::process::Command;
 
 use anyhow::Context;
 use serde::Deserialize;
@@ -129,43 +127,25 @@ pub(super) fn comment_to_diagnostic(engine_name: &str, c: ShellcheckComment) -> 
 /// Pipe `src.content` through `shellcheck --format=json1 -` and parse the
 /// JSON1 output into diagnostics.
 ///
-/// Returns an empty `Vec` (not an error) when:
-/// - shellcheck exits with code 2+ (tool error / bad invocation)
-/// - shellcheck exits with code 0 (no issues found)
+/// Returns an empty `Vec` when shellcheck exits 0 (no issues). Exit 2+, a
+/// signal or a timeout is an `Err`: the file was not checked.
 ///
-/// This function follows the same stdin-write-thread / wait_with_output
-/// pattern as `format_via_tool` to prevent pipe-buffer deadlocks on large
-/// files.
+/// Shares [`crate::tool_run::run`] with `format_via_tool`, which feeds stdin
+/// concurrently with draining stdout to prevent pipe-buffer deadlocks.
 pub(crate) fn lint_via_shellcheck(spec: &ToolSpec, src: &SourceFile) -> anyhow::Result<Vec<Diagnostic>> {
     let lint_binary = spec
         .lint_binary
         .expect("lint_via_shellcheck called on a format-only ToolSpec");
 
-    let mut child = Command::new(lint_binary)
-        .args(spec.lint_args)
-        .stdin(Stdio::piped())
-        .stdout(Stdio::piped())
-        .stderr(Stdio::null())
-        .spawn()
-        .with_context(|| format!("failed to spawn '{lint_binary}'"))?;
+    let output = crate::tool_run::run(
+        Command::new(lint_binary).args(spec.lint_args),
+        lint_binary,
+        Some(std::sync::Arc::from(src.content.as_bytes())),
+        crate::tool_run::tool_timeout(),
+    )?;
 
-    let content = std::sync::Arc::clone(&src.content);
-    let mut stdin_handle = child
-        .stdin
-        .take()
-        .ok_or_else(|| anyhow::anyhow!("'{lint_binary}' stdin pipe was not created"))?;
-
-    let write_thread = thread::spawn(move || -> std::io::Result<()> { stdin_handle.write_all(content.as_bytes()) });
-
-    let output = child
-        .wait_with_output()
-        .with_context(|| format!("'{lint_binary}' wait_with_output failed"))?;
-
-    let _ = write_thread.join();
-
-    let exit_code = output.status.code().unwrap_or(2);
-    if exit_code >= 2 {
-        return Ok(Vec::new());
+    if !matches!(output.status.code(), Some(0 | 1)) {
+        return Err(output.failure(lint_binary));
     }
 
     let json =
@@ -227,6 +207,60 @@ mod tests {
     #[test]
     fn parse_malformed_json_returns_error() {
         assert!(parse_shellcheck_json("shellcheck", "not json").is_err());
+    }
+
+    #[cfg(unix)]
+    fn fake_shellcheck(body: &str) -> anyhow::Result<Vec<Diagnostic>> {
+        let dir = tempfile::tempdir().expect("dir");
+        let tool = crate::tool_run::fake_tool::script(dir.path(), "shellcheck", body);
+        let binary: &'static str = Box::leak(tool.to_string_lossy().into_owned().into_boxed_str());
+        let spec = ToolSpec {
+            engine_name: "shellcheck",
+            format_binary: None,
+            format_args: &[],
+            format_indent_flag: false,
+            lint_binary: Some(binary),
+            lint_args: &[],
+            version_binary: binary,
+            version_args: &[],
+            default_on: false,
+            edition_flag: false,
+            rustfmt_config_flag: false,
+            run_in_file_dir: false,
+            config_files: &[],
+            batch_format_args: None,
+        };
+        let src = SourceFile {
+            path: "x.sh".into(),
+            language: crate::language::Language::Shell,
+            content: "echo hi\n".into(),
+        };
+        lint_via_shellcheck(&spec, &src)
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn exit_two_is_an_error_not_a_clean_file() {
+        let err = fake_shellcheck("cat >/dev/null; echo 'rcfile unreadable' >&2; exit 2").expect_err("exit 2");
+        let text = format!("{err:#}");
+        assert!(
+            text.contains("status 2") && text.contains("rcfile unreadable"),
+            "{text}"
+        );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn a_signal_killed_shellcheck_is_an_error() {
+        let err = fake_shellcheck("kill -9 $$").expect_err("signal");
+        assert!(format!("{err:#}").contains("killed by a signal"), "{err:#}");
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn exit_one_with_findings_still_parses() {
+        let diags = fake_shellcheck("cat >/dev/null; echo '{\"comments\":[]}'; exit 1").expect("exit 1 is findings");
+        assert!(diags.is_empty());
     }
 
     /// Unknown `level` values are mapped to `Warning` rather than panicking.

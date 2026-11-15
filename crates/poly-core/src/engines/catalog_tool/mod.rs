@@ -30,9 +30,8 @@ use std::borrow::Cow;
 use std::collections::{BTreeMap, HashMap};
 use std::io::Write;
 use std::path::{Path, PathBuf};
-use std::process::{Command, Stdio};
+use std::process::Command;
 use std::sync::{Arc, Mutex, OnceLock};
-use std::thread;
 
 use anyhow::Context;
 use globset::{Glob, GlobSet, GlobSetBuilder};
@@ -247,21 +246,23 @@ fn probe_binary(binary: &str) -> Option<String> {
 /// Best-effort `--version` string for a present binary; `"found"` when the tool
 /// does not answer `--version`.
 fn version_of(binary: &str) -> String {
-    Command::new(binary)
-        .arg("--version")
-        .stdin(Stdio::null())
-        .output()
-        .ok()
-        .map(|out| {
-            let stdout = String::from_utf8_lossy(&out.stdout).trim().to_string();
-            if stdout.is_empty() {
-                String::from_utf8_lossy(&out.stderr).trim().to_string()
-            } else {
-                stdout
-            }
-        })
-        .filter(|version| !version.is_empty())
-        .unwrap_or_else(|| "found".to_string())
+    crate::tool_run::run(
+        Command::new(binary).arg("--version"),
+        binary,
+        None,
+        crate::tool_run::PROBE_TIMEOUT,
+    )
+    .ok()
+    .map(|out| {
+        let stdout = String::from_utf8_lossy(&out.stdout).trim().to_string();
+        if stdout.is_empty() {
+            String::from_utf8_lossy(&out.stderr).trim().to_string()
+        } else {
+            stdout
+        }
+    })
+    .filter(|version| !version.is_empty())
+    .unwrap_or_else(|| "found".to_string())
 }
 
 /// A catalog tool wired as an [`Engine`] for one enabled `[tools.<name>]`,
@@ -728,29 +729,13 @@ impl CatalogToolEngine {
     fn format_via_stdin(&self, src: &SourceFile) -> anyhow::Result<FormatOutput> {
         let binary = &self.tool.binary;
         let argv = self.argv_with_path("-");
-        let mut child = self
-            .base_command(binary)
-            .args(&argv)
-            .stdin(Stdio::piped())
-            .stdout(Stdio::piped())
-            .stderr(Stdio::null())
-            .spawn()
-            .with_context(|| format!("failed to spawn '{binary}'"))?;
-
-        let content = Arc::clone(&src.content);
-        let mut stdin_handle = child
-            .stdin
-            .take()
-            .ok_or_else(|| anyhow::anyhow!("'{binary}' stdin pipe was not created"))?;
-        let write_thread = thread::spawn(move || stdin_handle.write_all(content.as_bytes()));
-
-        let output = child
-            .wait_with_output()
-            .with_context(|| format!("'{binary}' wait_with_output failed"))?;
-
-        let write_result = write_thread
-            .join()
-            .map_err(|_| anyhow::anyhow!("stdin writer panicked for '{binary}'"))?;
+        let output = crate::tool_run::run(
+            self.base_command(binary).args(&argv),
+            binary,
+            Some(Arc::from(src.content.as_bytes())),
+            crate::tool_run::tool_timeout(),
+        )?;
+        let write_result = output.stdin_error.map_or(Ok(()), Err);
 
         if !output.status.success() {
             return Ok(FormatOutput::Unchanged);
@@ -775,17 +760,16 @@ impl CatalogToolEngine {
         temp.write_all(src.content.as_bytes())
             .context("writing source to temp file")?;
         temp.flush().context("flushing temp file")?;
+        let _registered = crate::tempreg::Registration::new(temp.path());
 
         let path = temp.path().to_string_lossy().to_string();
         let argv = self.argv_with_path(&path);
-        let output = self
-            .base_command(binary)
-            .args(&argv)
-            .stdin(Stdio::null())
-            .stdout(Stdio::null())
-            .stderr(Stdio::null())
-            .output()
-            .with_context(|| format!("failed to run '{binary}'"))?;
+        let output = crate::tool_run::run(
+            self.base_command(binary).args(&argv),
+            binary,
+            None,
+            crate::tool_run::tool_timeout(),
+        )?;
 
         if !output.status.success() {
             return Ok(FormatOutput::Unchanged);
@@ -800,26 +784,12 @@ impl CatalogToolEngine {
     fn lint_via_stdin(&self, src: &SourceFile) -> anyhow::Result<LintOutcome> {
         let binary = &self.tool.binary;
         let argv = self.argv_with_path("-");
-        let mut child = self
-            .base_command(binary)
-            .args(&argv)
-            .stdin(Stdio::piped())
-            .stdout(Stdio::piped())
-            .stderr(Stdio::piped())
-            .spawn()
-            .with_context(|| format!("failed to spawn '{binary}'"))?;
-
-        let content = Arc::clone(&src.content);
-        let mut stdin_handle = child
-            .stdin
-            .take()
-            .ok_or_else(|| anyhow::anyhow!("'{binary}' stdin pipe was not created"))?;
-        let write_thread = thread::spawn(move || stdin_handle.write_all(content.as_bytes()));
-
-        let output = child
-            .wait_with_output()
-            .with_context(|| format!("'{binary}' wait_with_output failed"))?;
-        let _ = write_thread.join();
+        let output = crate::tool_run::run(
+            self.base_command(binary).args(&argv),
+            binary,
+            Some(Arc::from(src.content.as_bytes())),
+            crate::tool_run::tool_timeout(),
+        )?;
         Ok(LintOutcome::new(
             output.status.success(),
             &output.stdout,
@@ -850,6 +820,7 @@ impl CatalogToolEngine {
         temp.write_all(src.content.as_bytes())
             .context("writing source to temp file")?;
         temp.flush().context("flushing temp file")?;
+        let _registered = crate::tempreg::Registration::new(temp.path());
         self.run_lint_on_path(&temp.path().to_string_lossy())
     }
 
@@ -859,14 +830,12 @@ impl CatalogToolEngine {
     fn run_lint_on_path(&self, path: &str) -> anyhow::Result<LintOutcome> {
         let binary = &self.tool.binary;
         let argv = self.argv_with_path(path);
-        let output = self
-            .base_command(binary)
-            .args(&argv)
-            .stdin(Stdio::null())
-            .stdout(Stdio::piped())
-            .stderr(Stdio::piped())
-            .output()
-            .with_context(|| format!("failed to run '{binary}'"))?;
+        let output = crate::tool_run::run(
+            self.base_command(binary).args(&argv),
+            binary,
+            None,
+            crate::tool_run::tool_timeout(),
+        )?;
         Ok(LintOutcome::new(
             output.status.success(),
             &output.stdout,

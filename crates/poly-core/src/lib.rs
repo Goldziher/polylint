@@ -56,6 +56,8 @@ pub mod report;
 #[doc(hidden)]
 pub mod resolve;
 pub mod runner;
+pub mod tempreg;
+pub(crate) mod tool_run;
 
 pub use config::{Config, Kind};
 pub use discover::{DiscoveryReport, ExcludedDirectory, ExcludedRule};

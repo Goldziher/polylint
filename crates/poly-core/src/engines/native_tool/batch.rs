@@ -20,7 +20,7 @@
 
 use std::ops::Range;
 use std::path::{Path, PathBuf};
-use std::process::{Command, Stdio};
+use std::process::Command;
 
 use anyhow::Context;
 
@@ -95,9 +95,7 @@ pub(crate) fn format_batch_via_tool(
     // `tempfile` crate creates it 0700 on Unix, which matters for the same
     // reason ADR 0019 hardens the staged snapshot — it holds a copy of the
     // repository's source.
-    let scratch = tempfile::Builder::new()
-        .prefix("poly-batch-")
-        .tempdir()
+    let scratch = crate::tempreg::RegisteredTempDir::new("poly-batch-")
         .context("creating scratch directory for batch formatting")?;
 
     let mut run = Run {
@@ -145,14 +143,14 @@ impl Members for Run<'_> {
             std::fs::write(&self.mirrored[index], self.batch[index].content.as_bytes())
                 .with_context(|| format!("writing batch input for {}", self.batch[index].path.display()))?;
         }
-        let output = Command::new(self.binary)
-            .args(&self.fixed_args)
-            .args(&self.mirrored[range.clone()])
-            .stdin(Stdio::null())
-            .stdout(Stdio::null())
-            .stderr(Stdio::null())
-            .output()
-            .with_context(|| format!("failed to run '{}' over a batch", self.binary))?;
+        let output = crate::tool_run::run(
+            Command::new(self.binary)
+                .args(&self.fixed_args)
+                .args(&self.mirrored[range.clone()]),
+            self.binary,
+            None,
+            crate::tool_run::tool_timeout(),
+        )?;
         Ok(output.status.success())
     }
 

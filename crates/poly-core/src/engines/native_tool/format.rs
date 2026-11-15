@@ -1,9 +1,7 @@
 //! Per-file format dispatch: pipe source content through a native formatter
 //! CLI and collect its stdout output.
 
-use std::io::Write;
-use std::process::{Command, Stdio};
-use std::thread;
+use std::process::Command;
 
 use anyhow::Context;
 
@@ -27,15 +25,17 @@ use super::spec::ToolSpec;
 /// matches `cargo fmt` either way.
 ///
 /// Returns:
-/// - [`FormatOutput::Unchanged`] when the tool exits non-zero (syntax error
-///   in the source — never corrupt the file), or when the output equals the
-///   input byte-for-byte.
+/// - [`FormatOutput::Unchanged`] when the output equals the input byte-for-byte.
 /// - [`FormatOutput::Formatted(s)`] when the tool produced different output.
+/// - `Err` when the tool exits non-zero or is killed (a bad tool config and a
+///   syntax error in the source look alike), naming the tool's first stderr
+///   line, and on timeout. Reporting either as unchanged would pass a file no
+///   formatter looked at.
 ///
 /// # Deadlock prevention
 ///
-/// stdin is always written from a dedicated OS thread while this thread drains
-/// stdout via `wait_with_output`. Feeding stdin and draining stdout concurrently
+/// stdin is always written from a dedicated OS thread while stdout is drained
+/// by another (see [`crate::tool_run::run`]). Feeding stdin and draining stdout concurrently
 /// prevents the classic pipe-buffer deadlock: a tool that emits to stdout while
 /// still reading stdin can fill its stdout pipe and block on the write, which —
 /// if this thread were itself blocked in a `write_all` on stdin instead of
@@ -73,33 +73,19 @@ pub(crate) fn format_via_tool(
     }
     cmd.args(spec.format_args);
 
-    let mut child = cmd
-        .stdin(Stdio::piped())
-        .stdout(Stdio::piped())
-        .stderr(Stdio::null())
-        .spawn()
-        .with_context(|| format!("failed to spawn '{format_binary}'"))?;
-
-    let content = std::sync::Arc::clone(&src.content);
-    let mut stdin_handle = child
-        .stdin
-        .take()
-        .ok_or_else(|| anyhow::anyhow!("'{format_binary}' stdin pipe was not created"))?;
-
-    let write_thread = thread::spawn(move || -> std::io::Result<()> { stdin_handle.write_all(content.as_bytes()) });
-
-    let output = child
-        .wait_with_output()
-        .with_context(|| format!("'{format_binary}' wait_with_output failed"))?;
-
-    let write_result = write_thread
-        .join()
-        .map_err(|_| anyhow::anyhow!("stdin write thread panicked for '{format_binary}'"))?;
+    let output = crate::tool_run::run(
+        &mut cmd,
+        format_binary,
+        Some(std::sync::Arc::from(src.content.as_bytes())),
+        crate::tool_run::tool_timeout(),
+    )?;
 
     if !output.status.success() {
-        return Ok(FormatOutput::Unchanged);
+        return Err(output.failure(format_binary));
     }
-    write_result.with_context(|| format!("failed to write to '{format_binary}' stdin"))?;
+    if let Some(error) = output.stdin_error {
+        return Err(error).with_context(|| format!("failed to write to '{format_binary}' stdin"));
+    }
 
     let formatted = normalize_newlines(
         String::from_utf8(output.stdout).with_context(|| format!("'{format_binary}' produced non-UTF-8 output"))?,
@@ -141,6 +127,65 @@ mod tests {
     #[test]
     fn lf_output_is_left_untouched() {
         assert_eq!(normalize_newlines("x <- 1\ny <- 2\n".to_string()), "x <- 1\ny <- 2\n");
+    }
+
+    fn spec_for(binary: &'static str) -> super::super::spec::ToolSpec {
+        super::super::spec::ToolSpec {
+            engine_name: "test-fake",
+            format_binary: Some(binary),
+            format_args: &[],
+            format_indent_flag: false,
+            lint_binary: None,
+            lint_args: &[],
+            version_binary: binary,
+            version_args: &[],
+            default_on: false,
+            edition_flag: false,
+            rustfmt_config_flag: false,
+            run_in_file_dir: false,
+            config_files: &[],
+            batch_format_args: None,
+        }
+    }
+
+    #[cfg(unix)]
+    fn rust_source() -> crate::engine::SourceFile {
+        crate::engine::SourceFile {
+            path: "x.rs".into(),
+            language: crate::language::Language::Rust,
+            content: "fn main(){}\n".into(),
+        }
+    }
+
+    /// A tool that exits non-zero must surface as an error carrying its stderr,
+    /// not as an unchanged file.
+    #[cfg(unix)]
+    #[test]
+    fn nonzero_exit_is_an_error_with_the_first_stderr_line() {
+        let dir = tempfile::tempdir().expect("dir");
+        let tool = crate::tool_run::fake_tool::script(
+            dir.path(),
+            "badfmt",
+            "cat >/dev/null; echo 'unknown key max_wdth' >&2; echo more >&2; exit 2",
+        );
+        let binary: &'static str = Box::leak(tool.to_string_lossy().into_owned().into_boxed_str());
+        let err = super::format_via_tool(&spec_for(binary), &rust_source(), 4, false).expect_err("exit 2 is an error");
+        let text = format!("{err:#}");
+        assert!(
+            text.contains("status 2") && text.contains("unknown key max_wdth"),
+            "{text}"
+        );
+        assert!(!text.contains("more"), "only the first stderr line is quoted: {text}");
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn a_signal_killed_tool_is_an_error() {
+        let dir = tempfile::tempdir().expect("dir");
+        let tool = crate::tool_run::fake_tool::script(dir.path(), "diefmt", "kill -9 $$");
+        let binary: &'static str = Box::leak(tool.to_string_lossy().into_owned().into_boxed_str());
+        let err = super::format_via_tool(&spec_for(binary), &rust_source(), 4, false).expect_err("signal is an error");
+        assert!(format!("{err:#}").contains("killed by a signal"), "{err:#}");
     }
 
     /// Regression: stdin must be fed while stdout is drained, never before it.

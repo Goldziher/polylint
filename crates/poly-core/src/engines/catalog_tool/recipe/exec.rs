@@ -2,9 +2,10 @@
 
 use std::collections::BTreeMap;
 use std::path::Path;
-use std::process::{Command, Stdio};
+use std::process::Command;
+use std::sync::Arc;
 
-use anyhow::{Context, Result};
+use anyhow::Result;
 
 use super::launch::Launcher;
 
@@ -54,22 +55,19 @@ pub(super) fn run_with_stdin(
     env: &BTreeMap<String, String>,
     input: &str,
 ) -> Result<Captured> {
-    let mut child = Command::new(&launcher.program)
+    let mut command = Command::new(&launcher.program);
+    command
         .args(&launcher.prefix)
         .args(argv)
         .current_dir(cwd)
         .envs(env)
-        .env("NO_COLOR", "1")
-        .stdin(Stdio::piped())
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped())
-        .spawn()
-        .with_context(|| format!("failed to run '{}'", launcher.program.display()))?;
-    let mut stdin = child.stdin.take().context("the child's stdin pipe was not created")?;
-    let bytes = input.as_bytes().to_vec();
-    let writer = std::thread::spawn(move || std::io::Write::write_all(&mut stdin, &bytes));
-    let output = child.wait_with_output().context("waiting for the tool")?;
-    let _ = writer.join();
+        .env("NO_COLOR", "1");
+    captured(command, launcher, Some(Arc::from(input.as_bytes())))
+}
+
+fn captured(mut command: Command, launcher: &Launcher, stdin: Option<Arc<[u8]>>) -> Result<Captured> {
+    let name = launcher.program.display().to_string();
+    let output = crate::tool_run::run(&mut command, &name, stdin, crate::tool_run::tool_timeout())?;
     Ok(Captured {
         code: output.status.code(),
         stdout: String::from_utf8_lossy(&output.stdout).into_owned(),
@@ -93,20 +91,11 @@ pub(super) fn run(
     for name in unset {
         command.env_remove(name);
     }
-    let output = command
+    command
         .args(&launcher.prefix)
         .args(argv)
         .current_dir(cwd)
         .envs(env)
-        .env("NO_COLOR", "1")
-        .stdin(Stdio::null())
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped())
-        .output()
-        .with_context(|| format!("failed to run '{}'", launcher.program.display()))?;
-    Ok(Captured {
-        code: output.status.code(),
-        stdout: String::from_utf8_lossy(&output.stdout).into_owned(),
-        stderr: String::from_utf8_lossy(&output.stderr).into_owned(),
-    })
+        .env("NO_COLOR", "1");
+    captured(command, launcher, None)
 }

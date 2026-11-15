@@ -17,14 +17,12 @@ use anyhow::{Context, Result};
 
 /// A scratch tree, removed on drop.
 pub(super) struct Mirror {
-    dir: tempfile::TempDir,
+    dir: crate::tempreg::RegisteredTempDir,
 }
 
 impl Mirror {
     pub(super) fn new() -> Result<Self> {
-        let dir = tempfile::Builder::new()
-            .prefix("poly-recipe-")
-            .tempdir()
+        let dir = crate::tempreg::RegisteredTempDir::new("poly-recipe-")
             .context("creating a scratch directory for a tool run")?;
         Ok(Mirror { dir })
     }

@@ -27,7 +27,7 @@
 //! Equivalence with the stdin path is asserted on a real corpus, not argued.
 
 use std::path::{Path, PathBuf};
-use std::process::{Command, Stdio};
+use std::process::Command;
 
 use anyhow::Context;
 
@@ -66,9 +66,7 @@ pub(crate) fn lint_batch_via_shellcheck(
         anyhow::bail!("shellcheck is configured to follow `source`; not batching");
     }
 
-    let scratch = tempfile::Builder::new()
-        .prefix("poly-batch-")
-        .tempdir()
+    let scratch = crate::tempreg::RegisteredTempDir::new("poly-batch-")
         .context("creating scratch directory for batch linting")?;
     let mut run = Run {
         binary,
@@ -131,13 +129,12 @@ impl Members for Run<'_> {
         if let Some(rc) = &self.rc {
             command.arg(format!("--rcfile={}", rc.display()));
         }
-        let output = command
-            .args(&self.mirrored[range.clone()])
-            .stdin(Stdio::null())
-            .stdout(Stdio::piped())
-            .stderr(Stdio::null())
-            .output()
-            .with_context(|| format!("failed to run '{}' over a batch", self.binary))?;
+        let output = crate::tool_run::run(
+            command.args(&self.mirrored[range.clone()]),
+            self.binary,
+            None,
+            crate::tool_run::tool_timeout(),
+        )?;
         // 0 and 1 are "scanned" (clean / findings). Anything higher means a file
         // could not be processed or the invocation was refused, and the JSON, if
         // any, is not an answer for every member.
@@ -182,6 +179,7 @@ impl Members for Run<'_> {
 
 #[cfg(test)]
 mod tests {
+    use std::process::Stdio;
     use std::sync::Arc;
 
     use super::super::lint::lint_via_shellcheck;
