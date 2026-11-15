@@ -143,7 +143,7 @@ participate in rule selection accept the uniform triple:
 | `select` | array | Replace the default rule set with these codes / categories. |
 | `extend_select` | array | Add to the default rule set. |
 | `ignore` | array | Remove from the selected set. |
-| `rules.<id>` | table | Per-rule override: `[engines.<id>.rules.<code>] level = "error" \| "warning" \| "info" \| "hint"`, plus rule parameters. |
+| `rules.<id>` | table | Per-rule override: `[engines.<id>.rules.<code>] level = "error" \| "warning" \| "info" \| "hint"`, plus rule parameters. When several `level` entries match a code, the longest wins: `F401` beats the family `F`. |
 
 Each engine also reads its own keys (`[engines.ruff] line_length`, `[engines.mago] php_version`, …).
 `poly lint` reports a key that no engine reads as `unknown-config-key` with a source span, and

@@ -162,8 +162,8 @@ impl PerFileIgnores {
 /// with no native severity config. Mirrors [`PerFileIgnores`]: compile once per
 /// engine plan, then apply per file.
 pub(crate) struct SeverityRemap {
-    /// `(rule_code, level)` pairs in config order; the first whose code matches a
-    /// diagnostic wins. Blank rule codes are dropped on construction so a stray
+    /// `(rule_code, level)` pairs in config order; the longest rule code matching a
+    /// diagnostic wins, the earlier entry on a tie. Blank rule codes are dropped on construction so a stray
     /// empty string cannot prefix-match (and thus remap) every code.
     entries: Vec<(String, Severity)>,
 }
@@ -184,10 +184,11 @@ impl SeverityRemap {
         self.entries.is_empty()
     }
 
-    /// Set each diagnostic's severity to the level of the FIRST rule whose code
-    /// matches its `code` (via [`code_matches_rule`], the same exact-or-prefix
-    /// semantics as per-file-ignores). Diagnostics without a code, or with no
-    /// matching rule, are left untouched.
+    /// Set each diagnostic's severity to the level of the most specific rule whose
+    /// code matches its `code` (via [`code_matches_rule`], the same exact-or-prefix
+    /// semantics as per-file-ignores): the longest rule code, so `F401` beats the
+    /// family `F` regardless of config order. Diagnostics without a code, or with
+    /// no matching rule, are left untouched.
     pub(crate) fn apply(&self, diagnostics: &mut [Diagnostic]) {
         if self.entries.is_empty() {
             return;
@@ -196,13 +197,14 @@ impl SeverityRemap {
             let Some(code) = diagnostic.code.as_deref() else {
                 continue;
             };
-            let level = self
-                .entries
-                .iter()
-                .find(|(rule, _)| code_matches_rule(code, rule))
-                .map(|(_, level)| *level);
-            if let Some(level) = level {
-                diagnostic.severity = level;
+            let mut best: Option<&(String, Severity)> = None;
+            for entry in &self.entries {
+                if code_matches_rule(code, &entry.0) && best.is_none_or(|b| entry.0.len() > b.0.len()) {
+                    best = Some(entry);
+                }
+            }
+            if let Some((_, level)) = best {
+                diagnostic.severity = *level;
             }
         }
     }
@@ -434,23 +436,42 @@ mod tests {
     }
 
     #[test]
-    fn severity_remap_honors_prefix_family_and_first_match_wins() {
+    fn severity_remap_exact_code_beats_family_prefix() {
+        for entries in [
+            vec![("F", Severity::Hint), ("F401", Severity::Error)],
+            vec![("F401", Severity::Error), ("F", Severity::Hint)],
+        ] {
+            let remap = SeverityRemap::new(entries.into_iter().map(|(r, l)| (r.to_string(), l)).collect());
+            let mut diags = vec![diag(Some("F401")), diag(Some("F841")), diag(Some("FOO"))];
+            for d in &mut diags {
+                d.severity = Severity::Warning;
+            }
+            remap.apply(&mut diags);
+            assert_eq!(
+                diags[0].severity,
+                Severity::Error,
+                "the exact code wins over its family"
+            );
+            assert_eq!(diags[1].severity, Severity::Hint, "the family still covers other codes");
+            assert_eq!(diags[2].severity, Severity::Warning, "FOO is not in the F family");
+        }
+    }
+
+    #[test]
+    fn severity_remap_longer_prefix_wins_and_ties_keep_config_order() {
         let remap = SeverityRemap::new(vec![
-            ("F".to_string(), Severity::Hint),
-            ("F401".to_string(), Severity::Error),
+            ("F4".to_string(), Severity::Hint),
+            ("F".to_string(), Severity::Error),
+            ("F4".to_string(), Severity::Warning),
         ]);
         let mut diags = vec![diag(Some("F401"))];
-        diags[0].severity = Severity::Warning;
+        diags[0].severity = Severity::Error;
         remap.apply(&mut diags);
         assert_eq!(
             diags[0].severity,
             Severity::Hint,
-            "the first matching rule wins (family prefix before the exact code)"
+            "F4 beats F; the first of equal rules wins"
         );
-        let mut other = vec![diag(Some("FOO"))];
-        other[0].severity = Severity::Warning;
-        remap.apply(&mut other);
-        assert_eq!(other[0].severity, Severity::Warning, "FOO is not in the F family");
     }
 
     #[test]
