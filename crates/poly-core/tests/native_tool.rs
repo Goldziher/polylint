@@ -3,7 +3,7 @@
 //! Each fixture is **gated on the tool being present** at runtime: when
 //! `gofmt` / `rustfmt` / `zig` is not on `PATH`, the test prints a skip
 //! notice and returns early so CI without the respective toolchain still
-//! passes.
+//! passes. `POLY_REQUIRE_NATIVE_TOOLS` (`1` or a comma list of tool names) makes a missing tool fail instead.
 //!
 //! Fixtures:
 //! - `go_known_unformatted` — a Go source file that gofmt reformats: asserts
@@ -29,6 +29,20 @@ fn make_src(path: &str, language: Language, content: &str) -> SourceFile {
         language,
         content: content.into(),
     }
+}
+
+/// Reports a missing native tool. `POLY_REQUIRE_NATIVE_TOOLS` (`1`, or a comma list such as
+/// `gofmt,rustfmt,shfmt,shellcheck`) turns the silent skip into a failure for the tools it names, so
+/// a CI job that installed them cannot pass with every such test skipped.
+fn missing_tool(tool: &str, test: &str) {
+    if let Ok(required) = std::env::var("POLY_REQUIRE_NATIVE_TOOLS") {
+        let required = required.trim();
+        assert!(
+            !(required == "1" || required.split(',').any(|name| name.trim() == tool)),
+            "POLY_REQUIRE_NATIVE_TOOLS requires {tool}, which is not on PATH: {test} would be skipped"
+        );
+    }
+    eprintln!("{tool} not found on PATH — skipping {test}");
 }
 
 fn disabled_cfg() -> EngineConfig {
@@ -177,7 +191,7 @@ const GO_UNFORMATTED: &str = concat!(
 fn go_known_unformatted_snapshot() {
     let engine = NativeToolEngine::for_language(Language::Go);
     if !engine.is_available() {
-        eprintln!("gofmt not found on PATH — skipping go_known_unformatted_snapshot");
+        missing_tool("gofmt", "go_known_unformatted_snapshot");
         return;
     }
 
@@ -208,7 +222,7 @@ const GO_MIXED_IMPORTS: &str = concat!(
 fn go_imports_are_grouped_like_goimports() {
     let engine = NativeToolEngine::for_language(Language::Go);
     if !engine.is_available() {
-        eprintln!("gofmt not found on PATH — skipping go_imports_are_grouped_like_goimports");
+        missing_tool("gofmt", "go_imports_are_grouped_like_goimports");
         return;
     }
 
@@ -230,7 +244,7 @@ const RUST_UNFORMATTED: &str = "fn main(){println!(\"hello\");let x=1+2;}\n";
 fn rust_known_unformatted_snapshot() {
     let engine = NativeToolEngine::for_language(Language::Rust);
     if !engine.is_available() {
-        eprintln!("rustfmt not found on PATH — skipping rust_known_unformatted_snapshot");
+        missing_tool("rustfmt", "rust_known_unformatted_snapshot");
         return;
     }
 
@@ -256,7 +270,7 @@ fn rust_known_unformatted_snapshot() {
 fn rustfmt_leaves_clean_2024_source_unchanged() {
     let engine = NativeToolEngine::for_language(Language::Rust);
     if !engine.is_available() {
-        eprintln!("rustfmt not found on PATH — skipping rustfmt_leaves_clean_2024_source_unchanged");
+        missing_tool("rustfmt", "rustfmt_leaves_clean_2024_source_unchanged");
         return;
     }
 
@@ -287,7 +301,7 @@ const ZIG_UNFORMATTED: &str = concat!(
 fn zig_known_unformatted_snapshot() {
     let engine = NativeToolEngine::for_language(Language::Zig);
     if !engine.is_available() {
-        eprintln!("zig not found on PATH — skipping zig_known_unformatted_snapshot");
+        missing_tool("zig", "zig_known_unformatted_snapshot");
         return;
     }
 
@@ -311,7 +325,7 @@ fn zig_known_unformatted_snapshot() {
 fn rustfmt_honors_rustfmt_toml_max_width() {
     let engine = NativeToolEngine::for_language(Language::Rust);
     if !engine.is_available() {
-        eprintln!("rustfmt not found on PATH — skipping rustfmt_honors_rustfmt_toml_max_width");
+        missing_tool("rustfmt", "rustfmt_honors_rustfmt_toml_max_width");
         return;
     }
 
@@ -354,7 +368,7 @@ const JAVA_UNFORMATTED: &str = concat!(
 fn java_native_known_unformatted_snapshot() {
     let engine = NativeToolEngine::for_language(Language::Java);
     if !engine.is_available() {
-        eprintln!("google-java-format not found on PATH — skipping java_native_known_unformatted_snapshot");
+        missing_tool("google-java-format", "java_native_known_unformatted_snapshot");
         return;
     }
     let src = make_src("Hello.java", Language::Java, JAVA_UNFORMATTED);
@@ -374,7 +388,7 @@ const KOTLIN_UNFORMATTED: &str = concat!("fun main() {\n", "println(\"hello\")\n
 fn kotlin_native_known_unformatted_snapshot() {
     let engine = NativeToolEngine::for_language(Language::Kotlin);
     if !engine.is_available() {
-        eprintln!("ktfmt not found on PATH — skipping kotlin_native_known_unformatted_snapshot");
+        missing_tool("ktfmt", "kotlin_native_known_unformatted_snapshot");
         return;
     }
     let src = make_src("main.kt", Language::Kotlin, KOTLIN_UNFORMATTED);
@@ -394,7 +408,7 @@ const R_UNFORMATTED: &str = concat!("x<-1+2\n", "y<-x*3\n", "print(y)\n",);
 fn r_native_known_unformatted_snapshot() {
     let engine = NativeToolEngine::for_language(Language::R);
     if !engine.is_available() {
-        eprintln!("Rscript not found on PATH — skipping r_native_known_unformatted_snapshot");
+        missing_tool("Rscript", "r_native_known_unformatted_snapshot");
         return;
     }
     let src = make_src("script.R", Language::R, R_UNFORMATTED);
@@ -414,7 +428,7 @@ const SWIFT_UNFORMATTED: &str = concat!("func greet(name:String)->String{\n", "r
 fn swift_native_known_unformatted_snapshot() {
     let engine = NativeToolEngine::for_language(Language::Swift);
     if !engine.is_available() {
-        eprintln!("swift-format not found on PATH — skipping swift_native_known_unformatted_snapshot");
+        missing_tool("swift-format", "swift_native_known_unformatted_snapshot");
         return;
     }
     let src = make_src("hello.swift", Language::Swift, SWIFT_UNFORMATTED);
@@ -434,7 +448,7 @@ const DART_UNFORMATTED: &str = "void main(){print('hello');}\n";
 fn dart_native_known_unformatted_snapshot() {
     let engine = NativeToolEngine::for_language(Language::Dart);
     if !engine.is_available() {
-        eprintln!("dart not found on PATH — skipping dart_native_known_unformatted_snapshot");
+        missing_tool("dart", "dart_native_known_unformatted_snapshot");
         return;
     }
     let src = make_src("main.dart", Language::Dart, DART_UNFORMATTED);
@@ -454,7 +468,7 @@ const GLEAM_UNFORMATTED: &str = concat!("pub fn main()->Nil{\n", "io.println(\"h
 fn gleam_native_known_unformatted_snapshot() {
     let engine = NativeToolEngine::for_language(Language::Gleam);
     if !engine.is_available() {
-        eprintln!("gleam not found on PATH — skipping gleam_native_known_unformatted_snapshot");
+        missing_tool("gleam", "gleam_native_known_unformatted_snapshot");
         return;
     }
     let src = make_src("main.gleam", Language::Gleam, GLEAM_UNFORMATTED);
@@ -476,7 +490,7 @@ fn gleam_native_known_unformatted_snapshot() {
 fn rustfmt_uses_own_default_without_config() {
     let engine = NativeToolEngine::for_language(Language::Rust);
     if !engine.is_available() {
-        eprintln!("rustfmt not found on PATH — skipping rustfmt_uses_own_default_without_config");
+        missing_tool("rustfmt", "rustfmt_uses_own_default_without_config");
         return;
     }
 
@@ -540,7 +554,7 @@ fn format_shell(cfg: &EngineConfig) -> String {
 fn shell_indents_with_spaces_by_default() {
     let engine = NativeToolEngine::shell_format();
     if !engine.is_available() {
-        eprintln!("shfmt not found on PATH — skipping shell_indents_with_spaces_by_default");
+        missing_tool("shfmt", "shell_indents_with_spaces_by_default");
         return;
     }
 
@@ -557,7 +571,7 @@ fn shell_indents_with_spaces_by_default() {
 fn shell_indents_with_tabs_when_configured() {
     let engine = NativeToolEngine::shell_format();
     if !engine.is_available() {
-        eprintln!("shfmt not found on PATH — skipping shell_indents_with_tabs_when_configured");
+        missing_tool("shfmt", "shell_indents_with_tabs_when_configured");
         return;
     }
 
@@ -571,7 +585,7 @@ fn shell_indents_with_tabs_when_configured() {
 fn shell_honours_a_non_default_indent_width() {
     let engine = NativeToolEngine::shell_format();
     if !engine.is_available() {
-        eprintln!("shfmt not found on PATH — skipping shell_honours_a_non_default_indent_width");
+        missing_tool("shfmt", "shell_honours_a_non_default_indent_width");
         return;
     }
 
@@ -584,7 +598,7 @@ fn shell_honours_a_non_default_indent_width() {
 fn shell_follows_editorconfig_unless_the_table_sets_the_indent() {
     let engine = NativeToolEngine::shell_format();
     if !engine.is_available() {
-        eprintln!("shfmt not found on PATH — skipping shell_follows_editorconfig_unless_the_table_sets_the_indent");
+        missing_tool("shfmt", "shell_follows_editorconfig_unless_the_table_sets_the_indent");
         return;
     }
     let dir = tempfile::tempdir().unwrap();

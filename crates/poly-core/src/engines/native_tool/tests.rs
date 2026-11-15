@@ -11,6 +11,20 @@ fn make_src(path: &str, language: Language, content: &str) -> SourceFile {
     }
 }
 
+/// Reports a missing native tool. `POLY_REQUIRE_NATIVE_TOOLS` (`1`, or a comma list such as
+/// `gofmt,rustfmt,shfmt,shellcheck`) turns the silent skip into a failure for the tools it names, so
+/// a CI job that installed them cannot pass with every such test skipped.
+fn missing_tool(tool: &str, test: &str) {
+    if let Ok(required) = std::env::var("POLY_REQUIRE_NATIVE_TOOLS") {
+        let required = required.trim();
+        assert!(
+            !(required == "1" || required.split(',').any(|name| name.trim() == tool)),
+            "POLY_REQUIRE_NATIVE_TOOLS requires {tool}, which is not on PATH: {test} would be skipped"
+        );
+    }
+    eprintln!("{tool} not found on PATH — skipping {test}");
+}
+
 /// Empty options → the tool's `default_on` policy decides (canonical tools
 /// on, opt-in tools off). This is the out-of-the-box config.
 fn default_cfg() -> EngineConfig {
@@ -324,7 +338,7 @@ fn default_rust_routes_by_rustfmt_presence() {
 fn go_native_formats_unformatted_source() {
     let engine = NativeToolEngine::for_language(Language::Go);
     if engine.probed_version().is_none() {
-        eprintln!("gofmt not found on PATH — skipping go_native_formats_unformatted_source");
+        missing_tool("gofmt", "go_native_formats_unformatted_source");
         return;
     }
 
@@ -353,7 +367,7 @@ fn go_native_formats_unformatted_source() {
 fn rust_native_formats_unformatted_source() {
     let engine = NativeToolEngine::for_language(Language::Rust);
     if engine.probed_version().is_none() {
-        eprintln!("rustfmt not found on PATH — skipping rust_native_formats_unformatted_source");
+        missing_tool("rustfmt", "rust_native_formats_unformatted_source");
         return;
     }
 
@@ -380,7 +394,7 @@ fn rust_native_formats_unformatted_source() {
 fn zig_native_formats_unformatted_source() {
     let engine = NativeToolEngine::for_language(Language::Zig);
     if engine.probed_version().is_none() {
-        eprintln!("zig not found on PATH — skipping zig_native_formats_unformatted_source");
+        missing_tool("zig", "zig_native_formats_unformatted_source");
         return;
     }
 
@@ -442,7 +456,7 @@ fn default_on_roles_stamp_the_marker_into_their_cache_key() {
 fn shfmt_formats_unformatted_shell() {
     let engine = NativeToolEngine::shell_format();
     if engine.probed_version().is_none() {
-        eprintln!("shfmt not found on PATH — skipping shfmt_formats_unformatted_shell");
+        missing_tool("shfmt", "shfmt_formats_unformatted_shell");
         return;
     }
 
@@ -475,7 +489,7 @@ fn shfmt_formats_unformatted_shell() {
 fn shellcheck_lint_produces_sc_diagnostics() {
     let engine = NativeToolEngine::shell_lint();
     if engine.probed_version().is_none() {
-        eprintln!("shellcheck not found on PATH — skipping shellcheck_lint_produces_sc_diagnostics");
+        missing_tool("shellcheck", "shellcheck_lint_produces_sc_diagnostics");
         return;
     }
 
@@ -501,7 +515,7 @@ fn shellcheck_lint_produces_sc_diagnostics() {
 fn go_native_unchanged_on_already_formatted() {
     let engine = NativeToolEngine::for_language(Language::Go);
     if engine.probed_version().is_none() {
-        eprintln!("gofmt not found on PATH — skipping go_native_unchanged_on_already_formatted");
+        missing_tool("gofmt", "go_native_unchanged_on_already_formatted");
         return;
     }
 
