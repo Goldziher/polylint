@@ -24,6 +24,7 @@
 //! tune them.
 
 use dockerfile_parser::{Dockerfile, Instruction};
+use poly_engine_api::line_index::LineIndex;
 use std::borrow::Cow;
 
 mod packages;
@@ -149,10 +150,11 @@ impl Engine for DockerfileEngine {
         let mut wget_span: Option<EngineSpan> = None;
         let mut curl_span: Option<EngineSpan> = None;
 
+        let index = LineIndex::new(&dockerfile.content);
         for (idx, ins) in dockerfile.instructions.iter().enumerate() {
             match ins {
                 Instruction::From(from) => {
-                    check_from(self.name(), from, &dockerfile, &mut diags);
+                    check_from(self.name(), from, &index, &mut diags);
                 }
 
                 Instruction::Run(run) => {
@@ -164,7 +166,7 @@ impl Engine for DockerfileEngine {
                             Severity::Warning,
                             "Multiple consecutive `RUN` instructions; \
                              consolidate into one using `&&`.",
-                            Some(span_of(run.span, &dockerfile)),
+                            Some(span_of(run.span, &index)),
                         ));
                     }
 
@@ -180,16 +182,16 @@ impl Engine for DockerfileEngine {
                                 Severity::Warning,
                                 "Delete the apt-get cache after installation: \
                                  `&& rm -rf /var/lib/apt/lists/*`.",
-                                Some(span_of(run.span, &dockerfile)),
+                                Some(span_of(run.span, &index)),
                             ));
                         }
 
                         // DL4001 accumulator: record first wget / curl sighting.
                         if wget_span.is_none() && contains_tool(&text, "wget") {
-                            wget_span = Some(span_of(run.span, &dockerfile));
+                            wget_span = Some(span_of(run.span, &index));
                         }
                         if curl_span.is_none() && contains_tool(&text, "curl") {
-                            curl_span = Some(span_of(run.span, &dockerfile));
+                            curl_span = Some(span_of(run.span, &index));
                         }
                     }
                 }
@@ -203,7 +205,7 @@ impl Engine for DockerfileEngine {
                             Severity::Warning,
                             "Use JSON exec notation for CMD: \
                              `CMD [\"executable\", \"arg1\"]`.",
-                            Some(span_of(cmd.span, &dockerfile)),
+                            Some(span_of(cmd.span, &index)),
                         ));
                     }
                 }
@@ -217,24 +219,24 @@ impl Engine for DockerfileEngine {
                             Severity::Warning,
                             "Use JSON exec notation for ENTRYPOINT: \
                              `ENTRYPOINT [\"executable\", \"arg1\"]`.",
-                            Some(span_of(ep.span, &dockerfile)),
+                            Some(span_of(ep.span, &index)),
                         ));
                     }
                 }
 
                 Instruction::Misc(misc) => {
-                    check_misc(self.name(), misc, &dockerfile, &mut diags);
+                    check_misc(self.name(), misc, &index, &mut diags);
                 }
 
                 // ARG, LABEL, COPY, ENV — no rules of their own.
                 _ => {}
             }
             for f in extra.on_instruction(ins) {
-                diags.push(finding_diag(self.name(), f, &dockerfile));
+                diags.push(finding_diag(self.name(), f, &index));
             }
         }
         if let Some(f) = extra.finish() {
-            diags.push(finding_diag(self.name(), f, &dockerfile));
+            diags.push(finding_diag(self.name(), f, &index));
         }
 
         // DL4001: emit once if both wget and curl are present in any RUN.
@@ -258,8 +260,8 @@ impl Engine for DockerfileEngine {
 }
 
 /// Anchor a [`rules::Finding`] to its instruction span as a [`Diagnostic`].
-fn finding_diag(engine: &str, f: rules::Finding, dockerfile: &Dockerfile) -> Diagnostic {
-    make_diag(engine, f.code, f.severity, f.message, Some(span_of(f.span, dockerfile)))
+fn finding_diag(engine: &str, f: rules::Finding, index: &LineIndex<'_>) -> Diagnostic {
+    make_diag(engine, f.code, f.severity, f.message, Some(span_of(f.span, index)))
 }
 
 /// Filter Dockerfile diagnostics by a `[lint.dockerfile]` rule selection.
@@ -316,7 +318,7 @@ fn apply_rule_selection(diags: Vec<Diagnostic>, selection: &RuleSelection) -> Ve
 fn check_from(
     engine: &str,
     from: &dockerfile_parser::FromInstruction,
-    dockerfile: &Dockerfile,
+    index: &LineIndex<'_>,
     diags: &mut Vec<Diagnostic>,
 ) {
     let image = &from.image_parsed;
@@ -333,7 +335,7 @@ fn check_from(
                  pin a version to avoid accidental `:latest` pulls.",
                 image.image
             ),
-            Some(span_of(from.span, dockerfile)),
+            Some(span_of(from.span, index)),
         ));
     }
 
@@ -347,7 +349,7 @@ fn check_from(
                 "Using `:latest` for `{}` is error-prone; pin a specific version.",
                 image.image
             ),
-            Some(span_of(from.span, dockerfile)),
+            Some(span_of(from.span, index)),
         ));
     }
 }
@@ -356,7 +358,7 @@ fn check_from(
 fn check_misc(
     engine: &str,
     misc: &dockerfile_parser::MiscInstruction,
-    dockerfile: &Dockerfile,
+    index: &LineIndex<'_>,
     diags: &mut Vec<Diagnostic>,
 ) {
     // Use the raw instruction name from the AST; uppercase for case-insensitive matching.
@@ -367,7 +369,7 @@ fn check_misc(
                 DL4000,
                 Severity::Warning,
                 "`MAINTAINER` is deprecated; replace with `LABEL maintainer=\"...\"` instead.",
-                Some(span_of(misc.span, dockerfile)),
+                Some(span_of(misc.span, index)),
             ));
         }
 
@@ -388,7 +390,7 @@ fn check_misc(
                         "WORKDIR path `{trimmed}` is relative; use an absolute path \
                          (starting with `/`)."
                     ),
-                    Some(span_of(misc.span, dockerfile)),
+                    Some(span_of(misc.span, index)),
                 ));
             }
         }
@@ -401,19 +403,20 @@ fn check_misc(
 // Span conversion
 // ---------------------------------------------------------------------------
 
-/// Convert a [`dockerfile_parser::Span`] (byte offsets into the file) to the
-/// engine's 1-based line/column [`EngineSpan`].
+/// Convert a [`dockerfile_parser::Span`] (absolute byte offsets into the file)
+/// to the engine's 1-based line/character-column [`EngineSpan`].
 ///
-/// `relative_span` walks the source bytes to find the line boundary, returning
-/// a 0-indexed line number and a line-relative byte-offset span.  We add 1 to
-/// both for the 1-based convention poly uses throughout.
-fn span_of(df_span: dockerfile_parser::Span, dockerfile: &Dockerfile) -> EngineSpan {
-    let (line_0, col_span) = df_span.relative_span(dockerfile);
+/// Both ends are resolved from the absolute offsets, so an instruction that
+/// spans several lines (a `RUN` with `\` continuations) ends on its last line
+/// rather than collapsing onto the first.
+fn span_of(df_span: dockerfile_parser::Span, index: &LineIndex<'_>) -> EngineSpan {
+    let (start_line, start_col) = index.line_col(df_span.start);
+    let (end_line, end_col) = index.line_col(df_span.end);
     EngineSpan {
-        start_line: (line_0 as u32).saturating_add(1),
-        start_col: (col_span.start as u32).saturating_add(1),
-        end_line: (line_0 as u32).saturating_add(1),
-        end_col: (col_span.end as u32).saturating_add(1),
+        start_line,
+        start_col,
+        end_line,
+        end_col,
     }
 }
 

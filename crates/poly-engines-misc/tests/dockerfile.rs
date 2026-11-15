@@ -433,3 +433,24 @@ fn hadolint_rules_honor_ignore_and_level() {
     let d = leveled.iter().find(|d| d.code.as_deref() == Some("DL3004")).unwrap();
     assert_eq!(d.severity, poly_engine_api::engine::Severity::Warning);
 }
+
+fn span_of_code(content: &str, code: &str) -> (u32, u32, u32, u32) {
+    let diags = DockerfileEngine.lint(&make_src(content), &engine_cfg()).unwrap();
+    let span = diags
+        .iter()
+        .find(|d| d.code.as_deref() == Some(code))
+        .and_then(|d| d.span.as_ref())
+        .unwrap_or_else(|| panic!("{code} with a span expected"));
+    (span.start_line, span.start_col, span.end_line, span.end_col)
+}
+
+#[test]
+fn multi_line_run_span_ends_on_its_last_line() {
+    let content = "FROM a:1\nRUN apt-get install -y curl \\\n    wget\n";
+    assert_eq!(span_of_code(content, "DL3009"), (2, 1, 3, 9));
+}
+
+#[test]
+fn span_columns_count_characters() {
+    assert_eq!(span_of_code("FROM a:1\nWORKDIR é日\n", "DL3000"), (2, 1, 2, 10));
+}
