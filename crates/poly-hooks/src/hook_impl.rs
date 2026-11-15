@@ -5,7 +5,7 @@
 //! --hook-type=<type> -- <git args>`. This module turns the `<git args>` (and,
 //! for `pre-push`, the stdin payload) into [`RunInputs`] — the resolved file /
 //! ref / message-file inputs the caller (`poly-cli`) folds into a
-//! [`crate::HookRunRequest`] alongside the lowered `Vec<StageSpec>` (B3).
+//! [`crate::HookRunRequest`] alongside the lowered `Vec<StageSpec>`.
 //!
 //! Out of scope (handled elsewhere or deliberately dropped): legacy-hook
 //! *execution* chaining / migration mode, env provisioning, config discovery,
@@ -82,7 +82,7 @@ impl RunInputs {
 ///
 /// Mirrors the contract in <https://git-scm.com/docs/githooks>.
 #[must_use]
-pub fn hook_num_args(hook_type: HookType) -> RangeInclusive<usize> {
+pub(crate) fn hook_num_args(hook_type: HookType) -> RangeInclusive<usize> {
     match hook_type {
         HookType::PostCheckout => 3..=3,
         HookType::PreCommit | HookType::PostCommit | HookType::PreMergeCommit => 0..=0,
@@ -95,7 +95,7 @@ pub fn hook_num_args(hook_type: HookType) -> RangeInclusive<usize> {
 
 /// Read the hook's stdin — only `pre-push` receives a payload; every other hook
 /// gets an empty buffer.
-pub fn read_hook_stdin(hook_type: HookType) -> Result<Vec<u8>> {
+pub(crate) fn read_hook_stdin(hook_type: HookType) -> Result<Vec<u8>> {
     use std::io::Read as _;
 
     if !matches!(hook_type, HookType::PrePush) {
@@ -137,7 +137,8 @@ pub struct PushInfo {
 /// Returns the range of the first line that describes something to push, or
 /// `Ok(None)` when none does. A push of several refs has one range per line; use
 /// [`parse_pre_push_infos`] to gate all of them.
-pub fn parse_pre_push_info(stdin: &[u8], remote_name: &str, root: &Path) -> Result<Option<PushInfo>> {
+#[cfg(test)]
+pub(crate) fn parse_pre_push_info(stdin: &[u8], remote_name: &str, root: &Path) -> Result<Option<PushInfo>> {
     Ok(parse_pre_push_infos(stdin, remote_name, root)?.into_iter().next())
 }
 
@@ -146,7 +147,7 @@ pub fn parse_pre_push_info(stdin: &[u8], remote_name: &str, root: &Path) -> Resu
 /// `git push origin a b`, `--all` and `--tags` send one line per ref; gating
 /// only the first would let the others through unchecked. Deletions,
 /// already-reachable tips and malformed lines yield no entry.
-pub fn parse_pre_push_infos(stdin: &[u8], remote_name: &str, root: &Path) -> Result<Vec<PushInfo>> {
+pub(crate) fn parse_pre_push_infos(stdin: &[u8], remote_name: &str, root: &Path) -> Result<Vec<PushInfo>> {
     let buffer = String::from_utf8_lossy(stdin);
     let mut infos = Vec::new();
     for line in buffer.lines() {
@@ -229,7 +230,12 @@ fn arg_str(arg: &OsStr) -> String {
 /// stdin (empty for everything but `pre-push`). Returns `Ok(None)` when there is
 /// nothing to do (a `pre-push` with nothing to push). Splitting the stdin read
 /// out of this function keeps it unit-testable.
-pub fn resolve_inputs(hook_type: HookType, args: &[OsString], stdin: &[u8], root: &Path) -> Result<Option<RunInputs>> {
+pub(crate) fn resolve_inputs(
+    hook_type: HookType,
+    args: &[OsString],
+    stdin: &[u8],
+    root: &Path,
+) -> Result<Option<RunInputs>> {
     let expected = hook_num_args(hook_type);
     if !expected.contains(&args.len()) {
         bail!(

@@ -164,7 +164,7 @@ impl std::fmt::Display for FilePattern {
 /// A path passes if:
 /// - `include` is `None` OR the path matches the include pattern, AND
 /// - `exclude` is `None` OR the path does NOT match the exclude pattern.
-pub struct FilenameFilter<'a> {
+pub(crate) struct FilenameFilter<'a> {
     include: Option<&'a FilePattern>,
     exclude: Option<&'a FilePattern>,
 }
@@ -194,7 +194,7 @@ impl<'a> FilenameFilter<'a> {
 }
 
 /// Filter files by tag intersection: `all`, `any`, and `exclude` tag sets.
-pub struct FileTagFilter<'a> {
+pub(crate) struct FileTagFilter<'a> {
     /// ALL of these tags must be present.
     all: Option<&'a TagSet>,
     /// AT LEAST ONE of these tags must be present (ignored if empty).
@@ -235,7 +235,7 @@ impl<'a> FileTagFilter<'a> {
 /// Unlike the upstream `polyhooks` version, this constructor takes explicit
 /// optional patterns rather than a `&Hook` reference — the `Hook` model is
 /// defined in the B1 phase.
-pub struct HookFileFilter<'a> {
+pub(crate) struct HookFileFilter<'a> {
     filename: FilenameFilter<'a>,
     tags: FileTagFilter<'a>,
 }
@@ -276,6 +276,7 @@ impl<'a> HookFileFilter<'a> {
 
     /// Return `true` if `filename` passes both the filename and tag filters,
     /// looking up tags via `tag_cache`.
+    #[cfg(test)]
     pub fn matches<'p>(&self, filename: &'p Path, tag_cache: &FileTagCache<'p>) -> bool {
         if !self.matches_filename(filename) {
             return false;
@@ -287,7 +288,7 @@ impl<'a> HookFileFilter<'a> {
 /// Per-file tag cache — computes tags lazily via [`tags_from_path`] and
 /// memoises the result in a `OnceCell` for re-use within a single hook run.
 #[derive(Default)]
-pub struct FileTagCache<'a> {
+pub(crate) struct FileTagCache<'a> {
     paths: Vec<&'a Path>,
     /// Path → index, so `tags_for` is O(1) instead of a linear scan over
     /// `paths` (which is O(files²·hooks) across a tag-filtered run).

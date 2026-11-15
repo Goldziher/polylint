@@ -18,7 +18,7 @@
 //! "passed" for content that never passed on its own. The same reasoning governs
 //! the write-back gate: it compares the worktree's **bytes** against the index
 //! blob rather than asking `git diff-files`, whose stat-based answer can call a
-//! genuinely-modified file clean (see [`crate::git::staged_blob`]).
+//! genuinely-modified file clean (see `git::staged_blob`).
 //!
 //! # Writing into someone else's tree
 //!

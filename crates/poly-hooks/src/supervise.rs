@@ -31,7 +31,7 @@
 //! terminal `Ctrl-C` reaches poly but not them. poly kills the group itself on
 //! timeout and on a launch/wait error; a `Ctrl-C` during a long hook is the one
 //! path that can still orphan a child, and closing it needs a signal handler in
-//! the binary (`cleanup::cleanup` is registered but not yet wired). Setting the
+//! the binary. Setting the
 //! timeout to `0`/`off` restores the previous, group-sharing behaviour.
 //!
 //! Output is drained on dedicated threads. `Command::output` does this

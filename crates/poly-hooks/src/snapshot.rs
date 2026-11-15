@@ -137,7 +137,7 @@ mod scope;
 mod submodule;
 mod symlinks;
 
-pub use self::link_guard::LinkGuard;
+pub(crate) use self::link_guard::LinkGuard;
 pub use self::scope::{SnapshotScope, referenced_paths};
 
 use self::include::materialize_includes;

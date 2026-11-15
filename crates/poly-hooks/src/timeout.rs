@@ -87,10 +87,10 @@ pub const DEFAULT_PRECONDITION_TIMEOUT: Duration = Duration::from_mins(1);
 ///
 /// Short enough that a hang names its culprit while the author is still
 /// watching, long enough that an ordinary run stays silent.
-pub const STILL_RUNNING_AFTER: Duration = Duration::from_secs(15);
+pub(crate) const STILL_RUNNING_AFTER: Duration = Duration::from_secs(15);
 
 /// How often a still-running process repeats its announcement after the first.
-pub const STILL_RUNNING_EVERY: Duration = Duration::from_mins(1);
+pub(crate) const STILL_RUNNING_EVERY: Duration = Duration::from_mins(1);
 
 /// The fraction of a hook's own budget poly will spend waiting, before spawning
 /// it, for a lock held outside the run (see [`crate::cargo_lock`]).
@@ -99,7 +99,7 @@ pub const STILL_RUNNING_EVERY: Duration = Duration::from_mins(1);
 /// a hook that waits out the whole bound and then overruns is still killed
 /// inside 1.5× its configured limit, which keeps the promise that a run is
 /// bounded while leaving the majority of the tolerance for the hook's own work.
-pub const LOCK_WAIT_BUDGET_DIVISOR: u32 = 2;
+pub(crate) const LOCK_WAIT_BUDGET_DIVISOR: u32 = 2;
 
 /// How long a pre-spawn lock wait runs before it announces itself.
 ///
@@ -108,7 +108,7 @@ pub const LOCK_WAIT_BUDGET_DIVISOR: u32 = 2;
 /// deliberately holding back is not normal at all. Anything above a second or
 /// two of poly doing nothing must say why, or it is indistinguishable from the
 /// silent hang the timeouts exist to prevent.
-pub const LOCK_WAIT_ANNOUNCE_AFTER: Duration = Duration::from_secs(2);
+pub(crate) const LOCK_WAIT_ANNOUNCE_AFTER: Duration = Duration::from_secs(2);
 
 /// Environment variable overriding the budget of a per-file hook.
 pub const HOOK_TIMEOUT_ENV: &str = "POLY_HOOK_TIMEOUT";

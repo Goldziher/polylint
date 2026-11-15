@@ -21,7 +21,7 @@
 //!
 //! The store/workspace/provisioning machinery and `init_template_dir` are
 //! intentionally **not** ported — they are out of scope for the crate-side shims
-//! (and `polyhooks` is removed in B4). The caller (`poly-cli`) resolves the hooks
+//! (and `polyhooks` is gone). The caller (`poly-cli`) resolves the hooks
 //! directory via [`crate::git::get_git_hooks_dir`] and passes it in, after
 //! checking it with [`shared_hooks_dir_refusal`]: a `core.hooksPath` outside the
 //! repository is shared by other repositories, so writing or pruning shims there
@@ -369,7 +369,8 @@ fn install_one(
 /// recorded). A pre-existing non-poly hook is preserved as `<name>.legacy`
 /// (unless `overwrite` is set, which discards it). Returns the paths of the
 /// shims that were written.
-pub fn install(hooks_dir: &Path, hook_types: &[HookType], overwrite: bool) -> Result<Vec<PathBuf>> {
+#[cfg(test)]
+pub(crate) fn install(hooks_dir: &Path, hook_types: &[HookType], overwrite: bool) -> Result<Vec<PathBuf>> {
     let options = InstallOptions {
         overwrite,
         ..InstallOptions::default()
@@ -377,8 +378,8 @@ pub fn install(hooks_dir: &Path, hook_types: &[HookType], overwrite: bool) -> Re
     Ok(install_with(hooks_dir, hook_types, options)?.written)
 }
 
-/// [`install`] with the full option set, reporting what became of any hook that
-/// was already installed.
+/// Install the shims with the full option set, reporting what became of any hook
+/// that was already installed.
 ///
 /// A foreign hook is kept as `<name>.legacy` and the new shim runs it before
 /// poly, with the same arguments and stdin. A lefthook hook is kept but not run
@@ -401,7 +402,7 @@ pub fn install_with(hooks_dir: &Path, hook_types: &[HookType], options: InstallO
 /// A directory that does not exist yet is judged by its nearest existing
 /// ancestor, so a not-yet-created `.githooks` still counts as in-repo.
 #[must_use]
-pub fn hooks_dir_within_repo(hooks_dir: &Path, repo_roots: &[PathBuf]) -> bool {
+pub(crate) fn hooks_dir_within_repo(hooks_dir: &Path, repo_roots: &[PathBuf]) -> bool {
     let resolved = canonical_or_ancestor(hooks_dir);
     repo_roots
         .iter()

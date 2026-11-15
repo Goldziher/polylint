@@ -22,7 +22,7 @@
 use std::path::{Path, PathBuf};
 use std::sync::LazyLock;
 
-use tracing::{debug, instrument};
+use tracing::instrument;
 
 use crate::fs::PathClean as _;
 use crate::process::{Cmd, Error as ProcessError, StatusError};
@@ -32,12 +32,14 @@ mod revision;
 #[cfg(test)]
 mod testutil;
 
-pub use self::index::{
-    StagedEntry, add, checkout_index_paths, get_staged_files, is_safe_relative_path, list_files, list_staged_entries,
-    list_submodule_gitlinks, stage_contents_from, staged_blob, staged_blobs, worktree_digest,
+pub(crate) use self::index::{
+    StagedEntry, add, checkout_index_paths, is_safe_relative_path, list_staged_entries, list_submodule_gitlinks,
+    stage_contents_from, staged_blobs, worktree_digest,
 };
-pub use self::revision::{
-    get_ancestors_not_in_remote, get_changed_files, get_parent_commit, get_root_commits, is_ancestor, rev_exists,
+pub use self::index::{get_staged_files, list_files};
+pub use self::revision::get_changed_files;
+pub(crate) use self::revision::{
+    get_ancestors_not_in_remote, get_parent_commit, get_root_commits, is_ancestor, rev_exists,
 };
 
 /// Errors returned by git helpers in this module.
@@ -77,16 +79,7 @@ pub enum Error {
 }
 
 /// Resolved path to the `git` binary (or the error from `which::which`).
-pub static GIT: LazyLock<Result<PathBuf, which::Error>> = LazyLock::new(|| which::which("git"));
-
-/// Resolved absolute path to the repository root, computed once at startup.
-pub static GIT_ROOT: LazyLock<Result<PathBuf, Error>> = LazyLock::new(|| {
-    get_root()
-        .map(|root| dunce::canonicalize(&root).unwrap_or(root))
-        .inspect(|root| {
-            debug!("Git root: {}", root.display());
-        })
-});
+pub(crate) static GIT: LazyLock<Result<PathBuf, which::Error>> = LazyLock::new(|| which::which("git"));
 
 /// `GIT_*` environment variables that should be removed when running
 /// subprocess git commands to avoid inheriting hook-injected state.
@@ -100,7 +93,7 @@ pub static GIT_ROOT: LazyLock<Result<PathBuf, Error>> = LazyLock::new(|| {
 /// see the index the in-flight commit is building; those act on **foreign**
 /// cached repositories, where the consumer's index corrupts an unrelated
 /// checkout. Same variable, opposing requirements: do not unify the two lists.
-pub static GIT_ENV_TO_REMOVE: LazyLock<Vec<String>> = LazyLock::new(|| {
+pub(crate) static GIT_ENV_TO_REMOVE: LazyLock<Vec<String>> = LazyLock::new(|| {
     const KEEP: &[&str] = &[
         "GIT_EXEC_PATH",
         "GIT_SSH",
@@ -127,7 +120,7 @@ pub static GIT_ENV_TO_REMOVE: LazyLock<Vec<String>> = LazyLock::new(|| {
 
 /// Build a base `Cmd` pointing at the `git` binary, with
 /// `core.useBuiltinFSMonitor=false` injected to avoid monitor overhead.
-pub fn git_cmd(summary: &str) -> Result<Cmd, Error> {
+pub(crate) fn git_cmd(summary: &str) -> Result<Cmd, Error> {
     let mut cmd = Cmd::new(GIT.as_ref().map_err(|&e| Error::GitNotFound(e))?, summary);
     cmd.arg("-c").arg("core.useBuiltinFSMonitor=false");
     Ok(cmd)
@@ -157,8 +150,7 @@ pub(crate) fn path_from_git_bytes(bytes: &[u8]) -> Result<PathBuf, std::str::Utf
 /// Return the top-level directory of the current working tree.
 ///
 /// Unlike most helpers here, this uses `std::process::Command` directly so it
-/// can be called to bootstrap the `GIT_ROOT` static before `Cmd` is fully
-/// initialised.
+/// can be called before `Cmd` is fully initialised.
 #[instrument(level = "trace")]
 pub fn get_root() -> Result<PathBuf, Error> {
     let git = GIT.as_ref().map_err(|&e| Error::GitNotFound(e))?;
@@ -180,34 +172,8 @@ pub fn get_root() -> Result<PathBuf, Error> {
     Ok(PathBuf::from(String::from_utf8_lossy(&output.stdout).trim_ascii()))
 }
 
-/// Capture the `git diff` for `path` (worktree vs. index).
-///
-/// Returns the raw diff bytes. On non-zero exit the diff is still returned
-/// (some CI environments have truncated objects — see comment in source).
-#[instrument(level = "trace")]
-pub fn get_diff(path: &Path) -> Result<Vec<u8>, Error> {
-    let output = git_cmd("git diff")?
-        .arg("diff")
-        .arg("--no-ext-diff")
-        .arg("--no-textconv")
-        .arg("--ignore-submodules")
-        .arg("--")
-        .arg(path)
-        .check(false)
-        .output()?;
-
-    if !output.status.success() {
-        debug!(
-            status = %output.status,
-            stderr = %String::from_utf8_lossy(&output.stderr),
-            "Continuing with git diff stdout despite non-zero exit status"
-        );
-    }
-    Ok(output.stdout)
-}
-
 /// Return the path to the `.git` directory (or git-dir for worktrees).
-pub fn get_git_dir() -> Result<PathBuf, Error> {
+pub(crate) fn get_git_dir() -> Result<PathBuf, Error> {
     let output = git_cmd("get git dir")?
         .arg("rev-parse")
         .arg("--git-dir")

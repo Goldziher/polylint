@@ -1,31 +1,27 @@
 //! `poly-hooks` — sync execution building blocks for the poly native hook runner.
 //!
-//! This crate is phase B0 of the hooks rewrite plan. It ports the low-level
-//! execution primitives from the vendored `polyhooks` (prek) fork into a
-//! synchronous, tokio-free form, ready for the rayon-based B1 runner.
+//! The low-level execution primitives ported from the vendored `polyhooks` (prek)
+//! fork in synchronous, tokio-free form, driven by a rayon-based runner.
 //!
 //! # Modules
 //!
-//! - [`consts`] — environment variable names + config filename constants.
 //! - [`identify`] — file-type tagging by filename, shebang, and interpreter.
 //! - [`stage`] — [`Stage`] enum + [`HookType`] and their mapping.
-//! - [`process`] — synchronous [`Cmd`] wrapper over [`std::process::Command`].
 //! - [`git`] — synchronous git helpers (staged files, diff, worktree state).
 //! - [`install`] — install/uninstall the git-hook shims that invoke `poly hooks hook-impl`.
 //! - [`hook_impl`] — parse a fired git hook's args/stdin into [`hook_impl::RunInputs`].
 //! - [`filter`] — filename + tag-based file filtering primitives.
-//! - [`reporter`] — output rendering helpers ([`reporter::OutputPreview`], status markers).
-//! - [`fs`] — path utilities (clean, simplify, normalize, relative).
-//! - [`cleanup`] — global cleanup hook registry.
-//! - [`pty`] (Unix-only) — blocking PTY primitives for colored subprocess output.
 //! - [`model`] — the in-memory hook model ([`Hook`], [`StageSpec`], request/outcome types).
-//! - [`concurrency`] — rayon pool sizing + `ARG_MAX` file batching.
 //! - [`snapshot`] — staged-content snapshots for whole-workspace hook isolation.
 //! - [`timeout`] — per-hook time budgets and the still-running announce cadence.
-//! - [`cargo_lock`] — probing cargo's package-cache lock so a holder outside the
-//!   run is waited out before a cargo hook's budget starts.
-//! - [`supervise`] — deadline-bounded child execution that kills the process tree.
 //! - [`runner`] — the native rayon hook runner ([`run`]).
+//!
+//! - [`process`] — synchronous [`Cmd`] wrapper over [`std::process::Command`].
+//! - [`pty`] (Unix-only) — blocking PTY primitives for colored subprocess output.
+//!
+//! Output rendering, concurrency sizing, cargo-lock probing and child
+//! supervision are crate-internal; [`HookRunReporter`] and [`CaptureSink`] are
+//! their public face.
 //!
 //! # Entry point
 //!
@@ -40,27 +36,24 @@
 //! its [`timeout`] budget. [`HookRunOutcome::validated_nothing`] tells a machine
 //! consumer that the run completed without checking anything.
 
-#![allow(missing_docs)]
-
-pub mod consts;
-pub mod identify;
-
-pub mod cargo_lock;
-pub mod cleanup;
-pub mod concurrency;
 pub mod filter;
-pub mod fs;
 pub mod git;
 pub mod hook_impl;
+pub mod identify;
 pub mod install;
 pub mod model;
 pub mod process;
-pub mod reporter;
 pub mod runner;
 pub mod snapshot;
 pub mod stage;
-pub mod supervise;
 pub mod timeout;
+
+pub(crate) mod cargo_lock;
+pub(crate) mod concurrency;
+pub(crate) mod consts;
+pub(crate) mod fs;
+pub(crate) mod reporter;
+pub(crate) mod supervise;
 
 #[cfg(unix)]
 pub mod pty;

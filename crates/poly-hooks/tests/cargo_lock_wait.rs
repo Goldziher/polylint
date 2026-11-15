@@ -23,7 +23,6 @@ use std::path::Path;
 use std::sync::{Mutex, MutexGuard, PoisonError};
 use std::time::{Duration, Instant};
 
-use poly_hooks::consts::env_vars::EnvVars;
 use poly_hooks::model::{CARGO_SERIAL_GROUP, HookStatus};
 use poly_hooks::timeout::HOOK_TIMEOUT_ENV;
 use poly_hooks::{Hook, HookRunRequest, Stage, StageSpec, run};
@@ -177,7 +176,7 @@ fn a_hook_is_not_charged_for_a_lock_held_outside_the_run() {
     let sentinel = repo.path().join("blocked");
     std::fs::write(&sentinel, b"blocked").expect("arm the sentinel");
 
-    env.set(EnvVars::CARGO_HOME, &cargo_home.path().display().to_string());
+    env.set("CARGO_HOME", &cargo_home.path().display().to_string());
     env.set(HOOK_TIMEOUT_ENV, &format!("{}ms", LIMIT.as_millis()));
 
     let holder = hold_package_cache(cargo_home.path(), &sentinel, None);
@@ -218,7 +217,7 @@ fn a_hook_outside_the_cargo_set_is_never_held_back() {
     let sentinel = repo.path().join("blocked");
     std::fs::write(&sentinel, b"blocked").expect("arm the sentinel");
 
-    env.set(EnvVars::CARGO_HOME, &cargo_home.path().display().to_string());
+    env.set("CARGO_HOME", &cargo_home.path().display().to_string());
     env.set(HOOK_TIMEOUT_ENV, &format!("{}ms", UNBOUNDED_LIMIT.as_millis()));
 
     let (release, released) = std::sync::mpsc::channel();
