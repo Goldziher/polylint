@@ -120,6 +120,13 @@ if ($Version -eq "latest") {
     if (-not $Version) { Die "Could not resolve the latest release" }
 }
 
+# X.Y.Z[-pre.release]; \A and \z so a trailing newline cannot slip through.
+$bare = if ($Version.StartsWith("v")) { $Version.Substring(1) } else { $Version }
+if ($bare -cnotmatch '\A[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z]+(\.[0-9A-Za-z]+)*)?\z') {
+    $shown = $Version -replace '[^0-9A-Za-z.+-]', '?'
+    Die "invalid version: $shown"
+}
+
 $tag = if ($Version.StartsWith("v")) { $Version } else { "v$Version" }
 $ver = $tag.TrimStart("v")
 $asset = "poly-$ver-$target.$ext"

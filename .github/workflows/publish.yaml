@@ -102,7 +102,7 @@ jobs:
           set -euo pipefail
           # A dispatch runs on a branch head; the release is built from the tag, so check the tag's commit.
           if [ "$EVENT_NAME" = "workflow_dispatch" ]; then
-            if ! [[ "$DISPATCH_TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+([.-][0-9A-Za-z.]+)?$ ]]; then
+            if ! [[ "$DISPATCH_TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z]+(\.[0-9A-Za-z]+)*)?$ ]]; then
               echo "::error::release tag is not a valid version tag"
               exit 1
             fi
@@ -195,7 +195,7 @@ jobs:
           else
             tag="${GITHUB_REF#refs/tags/}"
           fi
-          if ! [[ "$tag" =~ ^v[0-9]+\.[0-9]+\.[0-9]+([.-][0-9A-Za-z.]+)?$ ]]; then
+          if ! [[ "$tag" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z]+(\.[0-9A-Za-z]+)*)?$ ]]; then
             echo "::error::release tag is not a valid version tag"
             exit 1
           fi

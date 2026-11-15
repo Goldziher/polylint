@@ -126,8 +126,27 @@ if [ "$VERSION" = "latest" ]; then
   [ -n "$VERSION" ] || die "could not resolve the latest release"
 fi
 
-printf '%s\n' "${VERSION#v}" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+([.-][0-9A-Za-z.]+)?$' ||
-  die "invalid version: ${VERSION}"
+# X.Y.Z[-pre.release], matched without grep so an embedded newline cannot pass.
+valid_version() {
+  case "$1" in
+  "" | *[!0-9A-Za-z.-]*) return 1 ;;
+  esac
+  core="${1%%-*}"
+  pre="${1#"$core"}"
+  case "$core" in
+  *[!0-9.]* | .* | *. | *..* | *.*.*.*) return 1 ;;
+  [0-9]*.[0-9]*.[0-9]*) ;;
+  *) return 1 ;;
+  esac
+  [ -z "$pre" ] && return 0
+  pre="${pre#-}"
+  case "$pre" in
+  "" | .* | *. | *..* | -*) return 1 ;;
+  esac
+  return 0
+}
+
+valid_version "${VERSION#v}" || die "invalid version: $(printf '%s' "$VERSION" | tr -c '0-9A-Za-z.+-' '?')"
 
 tag="v${VERSION#v}"
 version="${tag#v}"

@@ -57,6 +57,7 @@ runs:
         INPUT_CONFIG_FILE: ${{ inputs.config-file }}
       run: |
         set -euo pipefail
+        clean() { printf '%s' "$1" | tr -d '\r\n%'; }
         version="${INPUT_VERSION}"
         if [ "$version" = "from-config" ]; then
           if [ ! -f "$INPUT_CONFIG_FILE" ]; then
@@ -90,14 +91,14 @@ runs:
               while [ "$(tr -cd . <<< "$upper" | wc -c)" -lt 2 ]; do upper="$upper.0"; done
               [ "${BASH_REMATCH[1]}" = "<=" ] && upper_inclusive=true
             else
-              echo "::error::required_version \"$requirement\": cannot read \"$part\" (supported: >=X[.Y[.Z]], =X.Y.Z, X.Y.Z, ^ and ~ lower bounds, and < or <= upper bounds; pass version explicitly otherwise)" >&2
+              echo "::error::required_version \"$(clean "$requirement")\": cannot read \"$(clean "$part")\" (supported: >=X[.Y[.Z]], =X.Y.Z, X.Y.Z, ^ and ~ lower bounds, and < or <= upper bounds; pass version explicitly otherwise)" >&2
               exit 1
             fi
           done
           if [ -n "$exact" ] && [ -z "$upper" ]; then
             version="$exact"
           elif [ -z "$lower" ]; then
-            echo "::error::required_version \"$requirement\" has no lower bound to resolve; pass version explicitly" >&2
+            echo "::error::required_version \"$(clean "$requirement")\" has no lower bound to resolve; pass version explicitly" >&2
             exit 1
           else
             ver_ge() { [ "$(printf '%s\n%s\n' "$1" "$2" | sort -V | head -n 1)" = "$2" ]; }
@@ -117,7 +118,7 @@ runs:
               if [ -z "$version" ] || ver_ge "$candidate" "$version"; then version="$candidate"; fi
             done <<< "$tags"
             if [ -z "$version" ]; then
-              echo "::error::no released poly version satisfies required_version \"$requirement\" (found $(grep -c . <<< "$tags" || true) releases)" >&2
+              echo "::error::no released poly version satisfies required_version \"$(clean "$requirement")\" (found $(grep -c . <<< "$tags" || true) releases)" >&2
               exit 1
             fi
           fi
@@ -130,8 +131,8 @@ runs:
           fi
         fi
         version="${version#v}"
-        if ! [[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+([.-][0-9A-Za-z.]+)?$ ]]; then
-          echo "::error::invalid poly version: $version" >&2
+        if ! [[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z]+(\.[0-9A-Za-z]+)*)?$ ]]; then
+          echo "::error::invalid poly version: $(clean "$version")" >&2
           exit 1
         fi
         install_dir="${RUNNER_TEMP}/poly-install"
