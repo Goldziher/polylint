@@ -1,6 +1,6 @@
 //! Run a child process under a deadline, and make the kill stick.
 //!
-//! [`run`] is [`std::process::Command::output`] with three additions a hook
+//! [`run_streaming`] is [`std::process::Command::output`] with three additions a hook
 //! runner needs and the standard library does not offer:
 //!
 //! 1. **A deadline.** The child is killed once its [`Budget::limit`] elapses,
@@ -108,29 +108,8 @@ impl Supervised {
     }
 }
 
-/// Spawn `command` and wait for it under `budget`, killing it if it overruns,
-/// discarding its output as it arrives.
-///
-/// `notify` is called on the supervising thread each time the announce cadence
-/// comes due, with the elapsed time and — when the child's last output said it
-/// is queued behind a lock — the resource it is waiting for.
-///
-/// # Errors
-///
-/// Returns the spawn or wait error. The child (and its group) is killed before
-/// a wait error propagates, so no supervised process outlives this call.
-// No production caller after the module became crate-private: the unit tests exercise it, and the
-// supervised hook path is expected to route through it.
-#[cfg_attr(not(test), allow(dead_code))]
-pub fn run(
-    command: &mut Command,
-    budget: Budget,
-    notify: &dyn Fn(Duration, Option<&str>),
-) -> std::io::Result<Supervised> {
-    run_streaming(command, budget, &mut |_| {}, notify)
-}
-
-/// [`run`], plus every byte the child produces handed to `stream` as it arrives.
+/// Spawn `command` and wait for it under `budget`, killing it if it overruns, handing every byte the
+/// child produces to `stream` as it arrives.
 ///
 /// `stream` is called only from the supervising thread — never from a drain
 /// thread — so an implementation needs no synchronisation of its own, and one
@@ -148,7 +127,8 @@ pub fn run(
 ///
 /// # Errors
 ///
-/// As [`run`].
+/// Returns the spawn or wait error. The child (and its group) is killed before a wait error
+/// propagates, so no supervised process outlives this call.
 pub fn run_streaming(
     command: &mut Command,
     budget: Budget,
@@ -487,7 +467,7 @@ mod tests {
         notify: &dyn Fn(Duration, Option<&str>),
     ) -> std::io::Result<Supervised> {
         let _quiet = QUIET.read().unwrap_or_else(PoisonError::into_inner);
-        super::run(command, budget, notify)
+        super::run_streaming(command, budget, &mut |_| {}, notify)
     }
 
     fn run_streaming(
@@ -793,8 +773,7 @@ mod tests {
                         } else {
                             SPENT + RAMP_STEP * u32::try_from(index % RAMP_STEPS).expect("ramp index fits")
                         };
-                        let supervised =
-                            super::run(&mut exits_immediately(), budget(Some(limit)), &|_, _| {}).expect("run");
+                        let supervised = run(&mut exits_immediately(), budget(Some(limit)), &|_, _| {}).expect("run");
                         match (supervised.output.status.code(), supervised.timed_out) {
                             (Some(0), true) => false_reports.fetch_add(1, Relaxed),
                             (Some(0), false) => own_exit.fetch_add(1, Relaxed),

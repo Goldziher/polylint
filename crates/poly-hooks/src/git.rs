@@ -93,8 +93,12 @@ pub(crate) static GIT: LazyLock<Result<PathBuf, which::Error>> = LazyLock::new(|
 /// see the index the in-flight commit is building; those act on **foreign**
 /// cached repositories, where the consumer's index corrupts an unrelated
 /// checkout. Same variable, opposing requirements: do not unify the two lists.
-pub(crate) static GIT_ENV_TO_REMOVE: LazyLock<Vec<String>> = LazyLock::new(|| {
+pub(crate) static GIT_ENV_TO_REMOVE: LazyLock<Vec<String>> = LazyLock::new(|| git_env_to_remove(std::env::vars()));
+
+/// The names among `vars` that [`GIT_ENV_TO_REMOVE`] strips from a git subprocess.
+fn git_env_to_remove(vars: impl Iterator<Item = (String, String)>) -> Vec<String> {
     const KEEP: &[&str] = &[
+        "GIT_INDEX_FILE",
         "GIT_EXEC_PATH",
         "GIT_SSH",
         "GIT_SSH_COMMAND",
@@ -107,21 +111,23 @@ pub(crate) static GIT_ENV_TO_REMOVE: LazyLock<Vec<String>> = LazyLock::new(|| {
         "GIT_ASKPASS",
     ];
 
-    std::env::vars()
-        .filter(|(k, _)| {
-            k.starts_with("GIT_")
-                && !k.starts_with("GIT_CONFIG_KEY_")
-                && !k.starts_with("GIT_CONFIG_VALUE_")
-                && !KEEP.contains(&k.as_str())
-        })
-        .map(|(key, _)| key)
-        .collect()
-});
+    vars.filter(|(k, _)| {
+        k.starts_with("GIT_")
+            && !k.starts_with("GIT_CONFIG_KEY_")
+            && !k.starts_with("GIT_CONFIG_VALUE_")
+            && !KEEP.contains(&k.as_str())
+    })
+    .map(|(key, _)| key)
+    .collect()
+}
 
 /// Build a base `Cmd` pointing at the `git` binary, with
-/// `core.useBuiltinFSMonitor=false` injected to avoid monitor overhead.
+/// `core.useBuiltinFSMonitor=false` injected to avoid monitor overhead and the inherited
+/// hook-injected `GIT_*` state (work tree, object directories, namespace, ...) removed, so the
+/// command resolves the repository from its own working directory.
 pub(crate) fn git_cmd(summary: &str) -> Result<Cmd, Error> {
     let mut cmd = Cmd::new(GIT.as_ref().map_err(|&e| Error::GitNotFound(e))?, summary);
+    cmd.remove_git_envs();
     cmd.arg("-c").arg("core.useBuiltinFSMonitor=false");
     Ok(cmd)
 }
@@ -237,6 +243,52 @@ mod tests {
         let input = b"a/b.rs\0c/d.rs\0\0";
         let result = zsplit(input).expect("valid utf-8");
         assert_eq!(result, vec![PathBuf::from("a/b.rs"), PathBuf::from("c/d.rs")]);
+    }
+
+    fn vars(names: &[&str]) -> impl Iterator<Item = (String, String)> {
+        names
+            .iter()
+            .map(|name| ((*name).to_owned(), "x".to_owned()))
+            .collect::<Vec<_>>()
+            .into_iter()
+    }
+
+    #[test]
+    fn hook_injected_git_state_is_scrubbed_but_the_index_and_transport_settings_stay() {
+        let removed = git_env_to_remove(vars(&[
+            "GIT_DIR",
+            "GIT_WORK_TREE",
+            "GIT_OBJECT_DIRECTORY",
+            "GIT_ALTERNATE_OBJECT_DIRECTORIES",
+            "GIT_NAMESPACE",
+            "GIT_INDEX_FILE",
+            "GIT_SSH_COMMAND",
+            "GIT_CONFIG_KEY_0",
+            "PATH",
+        ]));
+        assert_eq!(
+            removed,
+            [
+                "GIT_DIR",
+                "GIT_WORK_TREE",
+                "GIT_OBJECT_DIRECTORY",
+                "GIT_ALTERNATE_OBJECT_DIRECTORIES",
+                "GIT_NAMESPACE"
+            ]
+        );
+    }
+
+    #[test]
+    fn git_cmd_removes_every_scrubbed_variable() {
+        let cmd = git_cmd("scrub").expect("git");
+        let removed: Vec<String> = cmd
+            .get_envs()
+            .filter(|(_, value)| value.is_none())
+            .map(|(key, _)| key.to_string_lossy().into_owned())
+            .collect();
+        for key in GIT_ENV_TO_REMOVE.iter() {
+            assert!(removed.contains(key), "{key} reaches git: {removed:?}");
+        }
     }
 
     #[test]

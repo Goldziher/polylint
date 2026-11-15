@@ -78,18 +78,6 @@ impl Stage {
         Self::PreRebase,
         Self::PrepareCommitMsg,
     ];
-
-    /// Return the bitmask for this stage (used by B1 stage-set tracking).
-    #[allow(dead_code)]
-    pub(crate) const fn bit(self) -> u16 {
-        1u16 << (self as u8)
-    }
-
-    /// Look up a stage by its index in `ORDER`.
-    #[allow(dead_code)]
-    fn from_index(index: u32) -> Self {
-        Self::ORDER[index as usize]
-    }
 }
 
 /// The hook-type argument accepted by `poly hooks hook-impl --hook-type=<value>`.

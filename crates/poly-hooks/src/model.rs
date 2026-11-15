@@ -1,12 +1,12 @@
 //! The in-memory hook model and the runner's request/outcome types.
 //!
-//! This is the B1 model: a [`Hook`] is a single subprocess invocation, a
+//! A [`Hook`] is a single subprocess invocation, a
 //! [`StageSpec`] groups the hooks for one git stage with its
 //! `precondition`/`before`/`after` steps, and [`HookRunRequest`] /
 //! [`HookRunOutcome`] are the public entry/exit shapes for [`crate::run`].
 //!
 //! There is no YAML, no repo, and no provisioning here — config lowering
-//! (poly.toml → `Vec<StageSpec>`) is Workstream B3 and lives in `poly-cli`.
+//! (poly.toml → `Vec<StageSpec>`) lives in `poly-cli`.
 
 use std::collections::BTreeMap;
 use std::fmt;
@@ -83,8 +83,7 @@ pub const CARGO_SERIAL_GROUP: &str = "cargo";
 ///
 /// Mirrors the poly.toml `Job` shape but carries only what the runner needs:
 /// no globs-as-strings (patterns are pre-compiled into [`FilePattern`]), no
-/// cache declaration (Workstream C), no `skip`/`only` guards (resolved during
-/// lowering in B3).
+/// cache declaration, no `skip`/`only` guards (resolved during config lowering).
 #[allow(clippy::struct_excessive_bools)]
 #[derive(Debug, Clone, Default)]
 pub struct Hook {

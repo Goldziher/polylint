@@ -3,7 +3,7 @@
 //! Ported from `polyhooks/src/cli/run/filter.rs` and the relevant sections
 //! of `polyhooks/src/config.rs`. The `ProjectFiles`, `CollectOptions`,
 //! `collect_run_input`, and related workspace-coupled helpers are intentionally
-//! **not ported** — they belong to the B1 hook-runner phase.
+//! **not ported** — they belong to the hook runner.
 
 use std::cell::OnceCell;
 use std::path::Path;
@@ -234,7 +234,7 @@ impl<'a> FileTagFilter<'a> {
 ///
 /// Unlike the upstream `polyhooks` version, this constructor takes explicit
 /// optional patterns rather than a `&Hook` reference — the `Hook` model is
-/// defined in the B1 phase.
+/// defined in `model.rs`.
 pub(crate) struct HookFileFilter<'a> {
     filename: FilenameFilter<'a>,
     tags: FileTagFilter<'a>,
