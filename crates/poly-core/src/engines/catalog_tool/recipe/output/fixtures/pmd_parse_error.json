@@ -1,0 +1,15 @@
+{
+  "formatVersion": 0,
+  "pmdVersion": "7.29.0",
+  "timestamp": "2026-11-15T16:40:01.315+01:00",
+  "files": [],
+  "suppressedViolations": [],
+  "processingErrors": [
+    {
+      "filename": "Broken.java",
+      "message": "ParseException: Parse exception in file 'Broken.java' at line 2, column 11: Encountered \"{\".\nWas expecting:\n    \")\" ...",
+      "detail": "net.sourceforge.pmd.lang.ast.ParseException: Parse exception in file 'Broken.java' at line 2, column 11: Encountered \"{\".\nWas expecting:\n    \")\" ..."
+    }
+  ],
+  "configurationErrors": []
+}

@@ -35,11 +35,29 @@ pub(super) fn asset_for(release: &Release) -> Option<&Asset> {
     release.assets.get(&platform()).or_else(|| release.assets.get("any"))
 }
 
+/// The directory under a version's directory that a [`ReleaseKind::Dist`] archive is extracted into.
+const DIST_DIR: &str = "dist";
+
 /// Where a release of `tool` is stored: `<cache>/tools/<tool>/<version>/<file>`,
-/// where `<file>` is the archive member's name, or the download's own name.
-pub(super) fn destination(tool: &str, version: &str, asset: &Asset) -> Result<PathBuf> {
+/// where `<file>` is the archive member's name, or the download's own name. A
+/// [`ReleaseKind::Dist`] release keeps the archive's own layout, so the member
+/// is at `<cache>/tools/<tool>/<version>/dist/<member>`.
+pub(super) fn destination(tool: &str, version: &str, asset: &Asset, kind: ReleaseKind) -> Result<PathBuf> {
     if !super::resolve::valid_version(version) {
         bail!("`{version}` is not a version");
+    }
+    if kind == ReleaseKind::Dist {
+        let member = asset
+            .member
+            .as_deref()
+            .with_context(|| format!("{} is a distribution archive and needs a `member` to launch", asset.url))?;
+        let member = archive::member_path(member)?;
+        return Ok(poly_cache::cache_home()?
+            .join("tools")
+            .join(tool)
+            .join(version)
+            .join(DIST_DIR)
+            .join(member));
     }
     let named = match &asset.member {
         Some(member) => Path::new(member).file_name().and_then(|name| name.to_str()),
@@ -236,7 +254,8 @@ fn ensure_with(http: &Http, offline: bool, path: &Path, asset: &Asset, kind: Rel
             poly_config::network::offline_message(&format!("download {}", asset.url))
         );
     }
-    let directory = path.parent().context("install path has no parent directory")?;
+    let directory = version_dir(path, asset, kind)?;
+    let directory = directory.as_path();
     let tightened = secure_dir(directory)?;
     let _held = FileLock::acquire(&directory.join(".install.lock"))?;
     if !tightened && is_installed(path, asset) {
@@ -258,6 +277,10 @@ fn ensure_with(http: &Http, offline: bool, path: &Path, asset: &Asset, kind: Rel
             asset.sha256
         );
     }
+    if kind == ReleaseKind::Dist {
+        install_tree(&partial, asset, directory)?;
+        return record_stamp(path, &asset.sha256);
+    }
     let staged = match &asset.member {
         Some(member) => unpack(&partial, &asset.url, member, directory)?,
         None => partial,
@@ -273,6 +296,54 @@ fn ensure_with(http: &Http, offline: bool, path: &Path, asset: &Asset, kind: Rel
         .persist(path)
         .with_context(|| format!("installing to {}", path.display()))?;
     record_stamp(path, &asset.sha256)
+}
+
+/// The directory a release is installed into: the file's own directory, or for
+/// a distribution the version directory that holds `dist/`.
+fn version_dir(path: &Path, asset: &Asset, kind: ReleaseKind) -> Result<PathBuf> {
+    let depth = if kind == ReleaseKind::Dist {
+        let member = asset
+            .member
+            .as_deref()
+            .context("a distribution archive needs a `member`")?;
+        archive::member_path(member)?.components().count()
+    } else {
+        0
+    };
+    path.ancestors()
+        .nth(depth + 1)
+        .map(Path::to_path_buf)
+        .context("install path has no parent directory")
+}
+
+/// Extract the whole verified `download` into a scratch directory beside the
+/// final one, check the launcher `path` is a regular file in it, and swap it
+/// into `<directory>/dist`. A half-extracted tree is never visible there.
+fn install_tree(download: &NamedTempFile, asset: &Asset, directory: &Path) -> Result<()> {
+    let format =
+        Format::of(&asset.url).with_context(|| format!("{} is not a .tar.gz, .tgz or .zip archive", asset.url))?;
+    let member = asset
+        .member
+        .as_deref()
+        .context("a distribution archive needs a `member`")?;
+    let scratch = tempfile::Builder::new()
+        .prefix(".extract-")
+        .tempdir_in(directory)
+        .with_context(|| format!("creating an extraction directory in {}", directory.display()))?;
+    let source = download.reopen().context("reopening the download")?;
+    archive::extract_tree(source, format, scratch.path()).with_context(|| format!("extracting {}", asset.url))?;
+    let launcher = scratch.path().join(archive::member_path(member)?);
+    if !std::fs::symlink_metadata(&launcher).is_ok_and(|meta| meta.is_file()) {
+        bail!("the archive has no file `{member}` to launch the tool from");
+    }
+    let final_dir = directory.join(DIST_DIR);
+    if final_dir.exists() {
+        std::fs::remove_dir_all(&final_dir).with_context(|| format!("replacing {}", final_dir.display()))?;
+    }
+    std::fs::rename(scratch.path(), &final_dir).with_context(|| format!("installing to {}", final_dir.display()))?;
+    // The directory was renamed away; dropping the guard must not try to remove it.
+    let _ = scratch.keep();
+    Ok(())
 }
 
 /// Extract `member` from the verified `archive` download into a fresh file
@@ -389,13 +460,74 @@ mod tests {
     }
 
     #[test]
+    fn a_dist_archive_is_installed_whole_with_its_layout_and_the_member_is_stamped() {
+        let archive = archive::tar_gz(&[
+            ("pkg/lib/cli.jar", tar::EntryType::Regular, "cli"),
+            ("pkg/lib/dep.jar", tar::EntryType::Regular, "dep"),
+            ("pkg/conf/log.properties", tar::EntryType::Regular, "log"),
+        ]);
+        let asset = archive_asset(archive, "dist-1.0.tar.gz", "pkg/lib/cli.jar");
+        let dir = tempfile::tempdir().expect("tempdir");
+        let version_dir = dir.path().join("1.0");
+        let path = version_dir.join("dist/pkg/lib/cli.jar");
+        std::fs::create_dir_all(version_dir.join("dist/stale")).expect("stale");
+        ensure(&path, &asset, ReleaseKind::Dist).expect("install");
+        assert!(is_installed(&path, &asset));
+        assert_eq!(
+            std::fs::read(version_dir.join("dist/pkg/lib/dep.jar")).expect("read"),
+            b"dep"
+        );
+        assert_eq!(
+            std::fs::read(version_dir.join("dist/pkg/conf/log.properties")).expect("read"),
+            b"log"
+        );
+        assert!(!version_dir.join("dist/stale").exists(), "a previous tree is replaced");
+        let mut left: Vec<_> = std::fs::read_dir(&version_dir)
+            .expect("read_dir")
+            .map(|entry| entry.expect("entry").file_name())
+            .filter(|name| name != ".install.lock")
+            .collect();
+        left.sort();
+        assert_eq!(left, ["dist"], "no download or extraction directory remains");
+    }
+
+    #[test]
+    fn a_dist_archive_without_its_launcher_installs_nothing() {
+        let archive = archive::tar_gz(&[("pkg/lib/other.jar", tar::EntryType::Regular, "x")]);
+        let asset = archive_asset(archive, "dist-1.0.tar.gz", "pkg/lib/cli.jar");
+        let dir = tempfile::tempdir().expect("tempdir");
+        let version_dir = dir.path().join("1.0");
+        let path = version_dir.join("dist/pkg/lib/cli.jar");
+        let error = ensure(&path, &asset, ReleaseKind::Dist).expect_err("no launcher");
+        assert!(error.to_string().contains("no file `pkg/lib/cli.jar`"), "{error:#}");
+        assert!(!version_dir.join("dist").exists());
+    }
+
+    #[test]
+    fn a_dist_destination_keeps_the_member_path_and_needs_a_safe_member() {
+        let asset = |member: Option<&str>| Asset {
+            url: "https://example.invalid/pmd.zip".to_owned(),
+            sha256: String::new(),
+            member: member.map(str::to_owned),
+        };
+        let path = destination("pmd", "7.0.0", &asset(Some("pmd-bin/lib/cli.jar")), ReleaseKind::Dist).expect("dest");
+        assert!(
+            path.ends_with("tools/pmd/7.0.0/dist/pmd-bin/lib/cli.jar"),
+            "{}",
+            path.display()
+        );
+        assert!(destination("pmd", "7.0.0", &asset(None), ReleaseKind::Dist).is_err());
+        assert!(destination("pmd", "7.0.0", &asset(Some("../cli.jar")), ReleaseKind::Dist).is_err());
+    }
+
+    #[test]
     fn the_cache_file_of_an_archive_asset_is_named_after_the_member() {
         let asset = Asset {
             url: "https://example.invalid/helm-v4.tar.gz".to_owned(),
             sha256: String::new(),
             member: Some("linux-amd64/helm".to_owned()),
         };
-        let path = destination("helm", "4.0.0", &asset).expect("destination");
+        let path = destination("helm", "4.0.0", &asset, ReleaseKind::Binary).expect("destination");
         assert!(path.ends_with("tools/helm/4.0.0/helm"), "{}", path.display());
     }
 
@@ -411,11 +543,27 @@ mod tests {
             "https://example.invalid/..",
             "https://example.invalid/.",
         ] {
-            let error = destination("helm", "4.0.0", &asset(url)).expect_err(url);
+            let error = destination("helm", "4.0.0", &asset(url), ReleaseKind::Binary).expect_err(url);
             assert!(error.to_string().contains("does not name a file"), "{url}: {error:#}");
         }
-        assert!(destination("helm", "../x", &asset("https://example.invalid/helm")).is_err());
-        assert!(destination("helm", "4.0.0", &asset("https://example.invalid/helm")).is_ok());
+        assert!(
+            destination(
+                "helm",
+                "../x",
+                &asset("https://example.invalid/helm"),
+                ReleaseKind::Binary
+            )
+            .is_err()
+        );
+        assert!(
+            destination(
+                "helm",
+                "4.0.0",
+                &asset("https://example.invalid/helm"),
+                ReleaseKind::Binary
+            )
+            .is_ok()
+        );
     }
 
     #[test]

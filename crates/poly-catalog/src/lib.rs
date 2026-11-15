@@ -31,8 +31,8 @@ use std::sync::OnceLock;
 use anyhow::{Context, Result};
 
 pub use model::{
-    CATEGORY_FORMATTER, CATEGORY_LINTER, CATEGORY_SPELL_CHECK, Command, DIR_PLACEHOLDER, FILES_PLACEHOLDER,
-    PATH_PLACEHOLDER, ROOT_PLACEHOLDER, Tool, takes_files,
+    CATEGORY_FORMATTER, CATEGORY_LINTER, CATEGORY_SPELL_CHECK, Command, DIR_PLACEHOLDER, FILES_COMMA_PLACEHOLDER,
+    FILES_PLACEHOLDER, OUTPUT_PLACEHOLDER, PATH_PLACEHOLDER, ROOT_PLACEHOLDER, Tool, takes_files,
 };
 pub use recipe::{Asset, Findings, Group, Install, Output, Recipe, Release, ReleaseKind, Target};
 pub use source::{AssetSpec, Checksum, Latest, Source, URL_PLACEHOLDER, VERSION_PLACEHOLDER, version_from_tag};

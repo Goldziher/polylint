@@ -6,6 +6,7 @@
 //! |----------------|------------------------------------------------------|
 //! | `$FILES`       | every file of the invocation                         |
 //! | `$FILES:--path`| `--path a --path b`                                  |
+//! | `$FILES_COMMA` | `a,b` (every file, one argument); `$FILES_COMMA:-i` adds `-i` before it |
 //! | `$DIR`         | the directory of every file, once each (`./pkg`)     |
 //! | `…$DIR…`       | one invocation per directory, the token spliced in   |
 //! | `$ROOT`        | `.`, the project root the tool is run from           |
@@ -16,7 +17,7 @@
 
 use std::ops::Range;
 
-use poly_catalog::{DIR_PLACEHOLDER, FILES_PLACEHOLDER, PATH_PLACEHOLDER, ROOT_PLACEHOLDER};
+use poly_catalog::{DIR_PLACEHOLDER, FILES_COMMA_PLACEHOLDER, FILES_PLACEHOLDER, PATH_PLACEHOLDER, ROOT_PLACEHOLDER};
 
 /// Characters of arguments per invocation. Windows' `CreateProcess` caps a whole
 /// command line at 32,767; this leaves room for the program and the fixed flags
@@ -44,8 +45,14 @@ pub(super) struct Template {
     per_item: bool,
 }
 
+fn is_comma_form(token: &str) -> bool {
+    token == FILES_COMMA_PLACEHOLDER || token.starts_with("$FILES_COMMA:")
+}
+
 fn is_target(token: &str) -> bool {
     token == FILES_PLACEHOLDER
+        || token == FILES_COMMA_PLACEHOLDER
+        || token.starts_with("$FILES_COMMA:")
         || token.starts_with("$FILES:")
         || token == PATH_PLACEHOLDER
         || token == ROOT_PLACEHOLDER
@@ -66,7 +73,7 @@ impl Template {
             .any(|t| t != DIR_PLACEHOLDER && t.contains(DIR_PLACEHOLDER));
         let items = if tokens
             .iter()
-            .any(|t| t == FILES_PLACEHOLDER || t.starts_with("$FILES:"))
+            .any(|t| t == FILES_PLACEHOLDER || is_comma_form(t) || t.starts_with("$FILES:"))
         {
             Items::Files
         } else if tokens.iter().any(|t| t.contains(DIR_PLACEHOLDER)) {
@@ -109,7 +116,7 @@ impl Template {
         let flag = self
             .tokens
             .iter()
-            .find_map(|t| t.strip_prefix("$FILES:"))
+            .find_map(|t| t.strip_prefix("$FILES:").or_else(|| t.strip_prefix("$FILES_COMMA:")))
             .map_or(0, |flag| flag.len() + 1);
         let mut ranges = Vec::new();
         let mut start = 0;
@@ -136,6 +143,11 @@ impl Template {
         for token in &self.tokens {
             if token == FILES_PLACEHOLDER {
                 argv.extend(items.iter().cloned());
+            } else if is_comma_form(token) {
+                if let Some(flag) = token.strip_prefix("$FILES_COMMA:") {
+                    argv.push(flag.to_owned());
+                }
+                argv.push(items.join(","));
             } else if let Some(flag) = token.strip_prefix("$FILES:") {
                 for item in items {
                     argv.push(flag.to_owned());
@@ -171,6 +183,17 @@ mod tests {
         assert_eq!(
             template.render(&strings(&["A.java", "B.java"])),
             strings(&["-f", "xml", "-c", "cs.xml", "A.java", "B.java"])
+        );
+    }
+
+    #[test]
+    fn a_comma_token_joins_the_files_into_one_argument() {
+        let template = Template::new(&strings(&["--report", "sarif:$OUTPUT", "$FILES_COMMA:--input"]), &[]);
+        assert_eq!(template.items(), Items::Files);
+        assert_eq!(
+            template.render(&strings(&["A.kt", "B.kt"])),
+            strings(&["--report", "sarif:$OUTPUT", "--input", "A.kt,B.kt"]),
+            "$OUTPUT is left for the runner to resolve per invocation"
         );
     }
 

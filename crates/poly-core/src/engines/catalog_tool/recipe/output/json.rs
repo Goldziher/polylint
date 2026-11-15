@@ -1,5 +1,5 @@
 //! The JSON reports: actionlint, buf, hadolint, golangci-lint, buildifier,
-//! tflint, npm-groovy-lint, gh-actions-updater (`gau --lint-pins`), shellcheck, kubeconform, ktlint, credo, checkmake and RuboCop-compatible Ruby linters.
+//! tflint, npm-groovy-lint, gh-actions-updater (`gau --lint-pins`), shellcheck, kubeconform, ktlint, credo, checkmake, PMD and RuboCop-compatible Ruby linters.
 //!
 //! Each reader pulls only the fields it needs through `serde_json::Value`, so a
 //! tool adding a field never breaks it; a field it needs going missing, or the
@@ -460,6 +460,70 @@ fn locus(resource: &Value, pointer: &str) -> Option<Locus> {
         name: text(resource, "name").unwrap_or_default(),
         pointer: pointer.to_owned(),
     })
+}
+
+/// PMD's `check -f json`: violations per file, plus `processingErrors` (a file
+/// PMD could not parse, which it did not check) and `configurationErrors`.
+pub(super) fn pmd(stdout: &str) -> Result<Vec<Finding>> {
+    let report = document(stdout, "PMD")?;
+    let files = report
+        .get("files")
+        .and_then(Value::as_array)
+        .context("PMD's JSON report has no files list")?;
+    let mut findings = Vec::new();
+    for file in files {
+        let path = text(file, "filename");
+        for violation in file.get("violations").and_then(Value::as_array).into_iter().flatten() {
+            // PMD priority 1 is the most severe, 5 the least.
+            let severity = match violation.get("priority").and_then(Value::as_u64) {
+                Some(1 | 2) => Severity::Error,
+                Some(3) | None => Severity::Warning,
+                Some(_) => Severity::Info,
+            };
+            let mut finding = Finding::new(severity, text(violation, "description").unwrap_or_default());
+            finding.path.clone_from(&path);
+            finding.line = number(violation, "beginline");
+            finding.column = number(violation, "begincolumn");
+            finding.end_line = number(violation, "endline");
+            finding.end_column = number(violation, "endcolumn");
+            finding.code = text(violation, "rule");
+            finding.url = text(violation, "externalInfoUrl");
+            findings.push(finding);
+        }
+    }
+    for failure in report
+        .get("processingErrors")
+        .and_then(Value::as_array)
+        .into_iter()
+        .flatten()
+    {
+        let message = text(failure, "message").unwrap_or_default();
+        let mut finding = Finding::new(Severity::Error, message.clone());
+        finding.path = text(failure, "filename");
+        (finding.line, finding.column) = parse_error_position(&message);
+        findings.push(finding);
+    }
+    for problem in report
+        .get("configurationErrors")
+        .and_then(Value::as_array)
+        .into_iter()
+        .flatten()
+    {
+        let rule = text(problem, "rule").unwrap_or_default();
+        let issue = text(problem, "issue").unwrap_or_default();
+        findings.push(Finding::new(Severity::Error, format!("{rule}: {issue}")));
+    }
+    Ok(findings)
+}
+
+/// The `at line L, column C` a PMD parse failure names, when it does.
+fn parse_error_position(message: &str) -> (Option<u32>, Option<u32>) {
+    let number_after = |marker: &str| {
+        let rest = message.split_once(marker)?.1;
+        let digits: String = rest.chars().take_while(char::is_ascii_digit).collect();
+        position(digits.parse().ok())
+    };
+    (number_after("at line "), number_after(", column "))
 }
 
 /// ktlint's `--reporter=json`: a list of `{file, errors}` objects, each error

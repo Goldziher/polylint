@@ -138,9 +138,11 @@ fn children(entries: &[Entry<'_>], at: usize, end: usize) -> (usize, usize) {
 fn step(entries: &[Entry<'_>], lo: usize, hi: usize, segment: &str) -> Option<usize> {
     let block = entries.get(lo).filter(|_| lo < hi)?.indent;
     if let Ok(wanted) = segment.parse::<usize>() {
-        let dashes = (lo..hi).filter(|&i| entries[i].indent == block && entries[i].kind == Kind::Dash);
-        if let Some(found) = dashes.clone().nth(wanted) {
-            return Some(found);
+        let dash = (lo..hi)
+            .filter(|&i| entries[i].indent == block && entries[i].kind == Kind::Dash)
+            .nth(wanted);
+        if dash.is_some() {
+            return dash;
         }
     }
     (lo..hi).find(|&i| {

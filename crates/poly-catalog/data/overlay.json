@@ -1800,6 +1800,129 @@
     }
   },
   {
+    "name": "pmd",
+    "binary": "pmd",
+    "categories": [
+      "linter"
+    ],
+    "languages": [
+      "java"
+    ],
+    "homepage": "https://pmd.github.io",
+    "commands": {
+      "lint": {
+        "arguments": [
+          "check",
+          "-f",
+          "json",
+          "--no-cache",
+          "--no-progress",
+          "-R",
+          "rulesets/java/quickstart.xml",
+          "$FILES:-d"
+        ],
+        "stdin": false
+      }
+    },
+    "recipe": {
+      "output": "pmd_json",
+      "java": true,
+      "main_class": "net.sourceforge.pmd.cli.PmdCli",
+      "shard_floor": 25,
+      "ok_exits": [
+        4,
+        5
+      ],
+      "config_flags": [
+        "-R",
+        "--rulesets"
+      ],
+      "install": {
+        "hint": "brew install pmd, or set [tools.pmd] version to a pinned release poly can download (needs a host JRE); add rulesets with extra_args = [\"-R\", \"ruleset.xml\"]",
+        "source": {
+          "kind": "dist",
+          "github": "pmd/pmd",
+          "tag": "pmd_releases/{version}",
+          "assets": {
+            "any": {
+              "name": "pmd-dist-{version}-bin.zip",
+              "member": "pmd-bin-{version}/lib/pmd-cli-{version}.jar"
+            }
+          }
+        },
+        "releases": {
+          "7.29.0": {
+            "kind": "dist",
+            "assets": {
+              "any": {
+                "url": "https://github.com/pmd/pmd/releases/download/pmd_releases/7.29.0/pmd-dist-7.29.0-bin.zip",
+                "sha256": "d27177c185b837fa57f097e482d1253468aa035379c5eb2671fa0a279109b179",
+                "member": "pmd-bin-7.29.0/lib/pmd-cli-7.29.0.jar"
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  {
+    "name": "detekt",
+    "binary": "detekt-cli",
+    "categories": [
+      "linter"
+    ],
+    "languages": [
+      "kotlin"
+    ],
+    "homepage": "https://detekt.dev",
+    "commands": {
+      "lint": {
+        "arguments": [
+          "--build-upon-default-config",
+          "--report",
+          "sarif:$OUTPUT",
+          "$FILES_COMMA:--input"
+        ],
+        "stdin": false
+      }
+    },
+    "recipe": {
+      "output": "sarif",
+      "java": true,
+      "shard_floor": 25,
+      "ok_exits": [
+        2
+      ],
+      "config_flags": [
+        "--config",
+        "-c"
+      ],
+      "install": {
+        "hint": "brew install detekt, or set [tools.detekt] version to a pinned release poly can download (needs a host JRE); pass a config with extra_args = [\"--config\", \"detekt.yml\"]",
+        "source": {
+          "kind": "jar",
+          "github": "detekt/detekt",
+          "assets": {
+            "any": {
+              "name": "detekt-cli-{version}-all.jar"
+            }
+          }
+        },
+        "releases": {
+          "1.23.8": {
+            "kind": "jar",
+            "assets": {
+              "any": {
+                "url": "https://github.com/detekt/detekt/releases/download/v1.23.8/detekt-cli-1.23.8-all.jar",
+                "sha256": "2ce2ff952e150baf28a29cda70a363b0340b3e81a55f43e51ec5edffc3d066c1"
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  {
     "name": "mix",
     "binary": "mix",
     "categories": [

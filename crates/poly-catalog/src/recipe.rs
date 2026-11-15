@@ -65,6 +65,8 @@ pub enum Output {
     CheckmakeJson,
     /// RuboCop-compatible `--format json` (rbcop, RuboCop).
     RubocopJson,
+    /// PMD `check -f json`.
+    PmdJson,
 }
 
 /// How a run's files are split into invocations.
@@ -149,6 +151,9 @@ pub enum ReleaseKind {
     Binary,
     /// A jar run as `java -jar`.
     Jar,
+    /// A `.tar.gz` / `.tgz` / `.zip` extracted whole; the asset's `member` names
+    /// the file inside it the tool is launched from (PMD's `lib/pmd-cli-*.jar`).
+    Dist,
 }
 
 /// A downloadable file and the digest it must have.
@@ -201,6 +206,10 @@ pub struct Recipe {
     pub new_from_rev_flag: Option<String>,
     /// The tool is a JVM jar launched as `java -jar <jar>`.
     pub java: bool,
+    /// Main class of a [`ReleaseKind::Dist`] JVM tool: it is launched as
+    /// `java -cp <dir of the installed member>/* <main_class>`, so every jar
+    /// beside the member is on the classpath.
+    pub main_class: Option<String>,
     /// Reports may print a path with the invocation root's own directory name
     /// in front (`helm lint` prints `chart/templates/a.yaml`); the name is
     /// dropped when matching the path to a file.

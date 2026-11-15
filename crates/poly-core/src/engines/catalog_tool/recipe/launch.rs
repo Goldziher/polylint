@@ -172,7 +172,14 @@ fn resolve_jvm(tool: &Tool, recipe: &Recipe, config: &ToolConfig, pinned: Option
                 tool.name
             ));
         };
-        let prefix = vec!["-jar".to_owned(), jar.to_string_lossy().into_owned()];
+        let prefix = match &recipe.main_class {
+            Some(class) => vec![
+                "-cp".to_owned(),
+                format!("{}/*", jar.parent().unwrap_or(&jar).display()),
+                class.clone(),
+            ],
+            None => vec!["-jar".to_owned(), jar.to_string_lossy().into_owned()],
+        };
         return ready(java, prefix, &pin.version);
     }
     match which::which(&tool.binary) {
@@ -227,6 +234,10 @@ fn ready(program: PathBuf, prefix: Vec<String>, origin: &str) -> Resolved {
 fn identity(program: &Path, prefix: &[String], origin: &str) -> String {
     match prefix {
         [_, jar] => format!("{}:java={}", stamped(Path::new(jar), origin), stamped(program, "")),
+        [_, classpath, _] => {
+            let dir = classpath.strip_suffix("/*").unwrap_or(classpath);
+            format!("{}:java={}", stamped(Path::new(dir), origin), stamped(program, ""))
+        }
         _ => stamped(program, origin),
     }
 }
@@ -274,7 +285,9 @@ fn pinned_release(
 ) -> Result<Option<Pinned>, String> {
     let install = recipe.install.as_ref();
     let source = install.and_then(|install| install.source.as_ref());
-    let kind = if recipe.java {
+    let kind = if recipe.main_class.is_some() {
+        ReleaseKind::Dist
+    } else if recipe.java {
         ReleaseKind::Jar
     } else {
         ReleaseKind::Binary
@@ -465,7 +478,7 @@ fn no_source(tool: &Tool, request: &Request, seeds: Option<&std::collections::BT
 /// The installed path of the pinned release, downloading it first when the
 /// config allows.
 fn provision(tool: &Tool, config: &ToolConfig, pin: &Pinned) -> Result<PathBuf, String> {
-    let path = install::destination(&tool.name, &pin.version, &pin.asset)
+    let path = install::destination(&tool.name, &pin.version, &pin.asset, pin.kind)
         .map_err(|error| format!("locating poly's tool cache failed: {error:#}"))?;
     if install::is_installed(&path, &pin.asset) {
         return Ok(path);

@@ -5,7 +5,8 @@ use std::path::Path;
 use std::process::Command;
 use std::sync::Arc;
 
-use anyhow::Result;
+use anyhow::{Context, Result};
+use poly_catalog::OUTPUT_PLACEHOLDER;
 
 use super::launch::Launcher;
 
@@ -80,7 +81,39 @@ fn captured(mut command: Command, launcher: &Launcher, stdin: Option<Arc<[u8]>>)
 /// Tools are asked not to colour their reports (`NO_COLOR`): the parsers read
 /// plain text. The variables in `unset` are removed from the inherited
 /// environment.
+///
+/// An argument containing `$OUTPUT` names a file the tool writes its report to:
+/// the placeholder becomes a path in a registered scratch directory, and the
+/// file's content, read once the tool has exited, replaces `stdout`. A tool
+/// that wrote nothing there leaves `stdout` empty, which the report parser
+/// refuses rather than reading as a clean run.
 pub(super) fn run(
+    launcher: &Launcher,
+    argv: &[String],
+    cwd: &Path,
+    env: &BTreeMap<String, String>,
+    unset: &[&str],
+) -> Result<Captured> {
+    if !argv.iter().any(|arg| arg.contains(OUTPUT_PLACEHOLDER)) {
+        return run_plain(launcher, argv, cwd, env, unset);
+    }
+    let scratch = crate::tempreg::RegisteredTempDir::new("poly-report-").context("creating a report directory")?;
+    let report = scratch.path().join("report");
+    let report_arg = report.to_string_lossy();
+    let argv = substitute_output(argv, &report_arg);
+    let mut captured = run_plain(launcher, &argv, cwd, env, unset)?;
+    captured.stdout = std::fs::read(&report)
+        .map(|bytes| String::from_utf8_lossy(&bytes).into_owned())
+        .unwrap_or_default();
+    Ok(captured)
+}
+
+/// `argv` with `$OUTPUT` replaced by `path` wherever it appears in an argument.
+fn substitute_output(argv: &[String], path: &str) -> Vec<String> {
+    argv.iter().map(|arg| arg.replace(OUTPUT_PLACEHOLDER, path)).collect()
+}
+
+fn run_plain(
     launcher: &Launcher,
     argv: &[String],
     cwd: &Path,
@@ -98,4 +131,54 @@ pub(super) fn run(
         .envs(env)
         .env("NO_COLOR", "1");
     captured(command, launcher, None)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn the_output_placeholder_is_replaced_inside_an_argument() {
+        let argv = vec![
+            "--report".to_owned(),
+            "sarif:$OUTPUT".to_owned(),
+            "--input".to_owned(),
+            "a.kt".to_owned(),
+        ];
+        assert_eq!(
+            substitute_output(&argv, "/tmp/r/report"),
+            ["--report", "sarif:/tmp/r/report", "--input", "a.kt"]
+        );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn a_report_the_tool_wrote_replaces_stdout_and_replaces_stdout() {
+        let launcher = Launcher {
+            program: "/bin/sh".into(),
+            prefix: vec!["-c".to_owned()],
+            identity: String::new(),
+        };
+        let argv = vec![
+            "printf REPORT > \"$1\"; echo noise; echo err >&2".to_owned(),
+            "sh".to_owned(),
+            "$OUTPUT".to_owned(),
+        ];
+        let captured = run(&launcher, &argv, Path::new("/"), &BTreeMap::new(), &[]).expect("runs");
+        assert_eq!(captured.stdout, "REPORT");
+        assert_eq!(captured.stderr.trim(), "err");
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn a_tool_that_writes_no_report_leaves_stdout_empty() {
+        let launcher = Launcher {
+            program: "/bin/sh".into(),
+            prefix: vec!["-c".to_owned()],
+            identity: String::new(),
+        };
+        let argv = vec!["echo ignored".to_owned(), "sh".to_owned(), "$OUTPUT".to_owned()];
+        let captured = run(&launcher, &argv, Path::new("/"), &BTreeMap::new(), &[]).expect("runs");
+        assert_eq!(captured.stdout, "");
+    }
 }

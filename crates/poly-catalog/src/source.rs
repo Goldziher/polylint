@@ -199,6 +199,9 @@ impl Source {
             if spec.name.is_empty() || spec.name.contains('/') {
                 bail!("asset `{platform}` needs a plain file name, got `{}`", spec.name);
             }
+            if self.kind == ReleaseKind::Dist && spec.member.is_none() {
+                bail!("asset `{platform}` is a distribution archive and needs the `member` the tool launches from");
+            }
         }
         Ok(())
     }

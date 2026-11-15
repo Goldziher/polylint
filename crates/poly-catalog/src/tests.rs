@@ -403,6 +403,57 @@ fn ktlint_is_a_pinned_jar_for_the_host_jre_that_lints_and_fixes_kotlin() {
 }
 
 #[test]
+fn pmd_is_a_pinned_distribution_launched_by_class_on_the_host_jre() {
+    let recipe = recipe_of("pmd");
+    assert_eq!(recipe.output, Output::PmdJson);
+    assert!(recipe.java, "no bundled runtime: the host JRE runs it");
+    assert_eq!(recipe.main_class.as_deref(), Some("net.sourceforge.pmd.cli.PmdCli"));
+    assert_eq!(
+        recipe.ok_exits,
+        [4, 5],
+        "4 is violations, 5 is files it could not process"
+    );
+    let tool = Catalog::get().tool("pmd").expect("pmd");
+    let (_, lint) = tool.lint_command().expect("a lint command");
+    assert_eq!(&lint.arguments[..2], ["check", "-f"]);
+    assert_eq!(lint.arguments.last().map(String::as_str), Some("$FILES:-d"));
+    let release = recipe.install.as_ref().unwrap().releases.get("7.29.0").expect("7.29.0");
+    assert_eq!(release.kind, crate::ReleaseKind::Dist);
+    let asset = release.assets.get("any").expect("platform independent");
+    assert_eq!(asset.member.as_deref(), Some("pmd-bin-7.29.0/lib/pmd-cli-7.29.0.jar"));
+    assert_eq!(
+        asset.sha256,
+        "d27177c185b837fa57f097e482d1253468aa035379c5eb2671fa0a279109b179"
+    );
+}
+
+#[test]
+fn detekt_writes_its_sarif_report_to_a_file_the_runner_reads_back() {
+    let recipe = recipe_of("detekt");
+    assert_eq!(recipe.output, Output::Sarif);
+    assert!(recipe.java);
+    assert_eq!(recipe.main_class, None, "detekt ships one runnable jar");
+    assert_eq!(recipe.ok_exits, [2]);
+    let tool = Catalog::get().tool("detekt").expect("detekt");
+    let (_, lint) = tool.lint_command().expect("a lint command");
+    assert!(
+        lint.arguments.iter().any(|a| a == "sarif:$OUTPUT"),
+        "{:?}",
+        lint.arguments
+    );
+    assert!(lint.uses_files(), "$FILES_COMMA:--input counts as taking the files");
+    let release = recipe.install.as_ref().unwrap().releases.get("1.23.8").expect("1.23.8");
+    assert_eq!(release.kind, crate::ReleaseKind::Jar);
+}
+
+#[test]
+fn a_distribution_source_must_name_the_member_it_launches() {
+    let source: crate::Source =
+        serde_json::from_str(r#"{"kind":"dist","github":"o/r","assets":{"any":{"name":"x.zip"}}}"#).expect("parses");
+    assert!(source.validate().expect_err("no member").to_string().contains("member"));
+}
+
+#[test]
 fn elixir_tools_run_per_mix_project_on_the_host_and_download_nothing() {
     for (name, role) in [("mix", "format"), ("credo", "lint")] {
         let recipe = recipe_of(name);
@@ -750,7 +801,7 @@ fn buf_and_hadolint_are_pinned_for_every_desktop_and_server_platform() {
     }
 }
 
-const MIGRATED_TOOLS: [&str; 24] = [
+const MIGRATED_TOOLS: [&str; 26] = [
     "checkstyle",
     "palantir-java-format",
     "buildifier",
@@ -766,6 +817,8 @@ const MIGRATED_TOOLS: [&str; 24] = [
     "zizmor",
     "kubeconform",
     "ktlint",
+    "pmd",
+    "detekt",
     "google-java-format",
     "ktfmt",
     "air",

@@ -946,3 +946,86 @@ fn a_sequence_at_the_key_indent_is_followed() {
     };
     assert_eq!(super::yaml_locate::locate(content, &locus), Some(9));
 }
+
+const PMD_JSON: &str = include_str!("fixtures/pmd.json");
+const PMD_PARSE_ERROR: &str = include_str!("fixtures/pmd_parse_error.json");
+
+#[test]
+fn pmd_violations_carry_rule_position_and_documentation() {
+    let findings = parse(Output::PmdJson, PMD_JSON, "").expect("parses");
+    assert_eq!(findings.len(), 2, "{findings:?}");
+    assert_eq!(findings[0].path.as_deref(), Some("Bad.java"));
+    assert_eq!(findings[0].code.as_deref(), Some("NoPackage"));
+    assert_eq!((findings[0].line, findings[0].column), (Some(1), Some(14)));
+    assert_eq!(findings[1].code.as_deref(), Some("EmptyCatchBlock"));
+    assert_eq!(
+        (
+            findings[1].line,
+            findings[1].column,
+            findings[1].end_line,
+            findings[1].end_column
+        ),
+        (Some(6), Some(11), Some(7), Some(10))
+    );
+    assert_eq!(findings[1].message, "Avoid empty catch blocks");
+    assert_eq!(findings[1].severity, Severity::Warning, "priority 3");
+    assert_eq!(
+        findings[1].url.as_deref(),
+        Some("https://docs.pmd-code.org/snapshot/pmd_rules_java_errorprone.html#emptycatchblock")
+    );
+}
+
+#[test]
+fn a_file_pmd_could_not_parse_is_an_error_finding_at_the_reported_position() {
+    let findings = parse(Output::PmdJson, PMD_PARSE_ERROR, "").expect("parses");
+    let finding = one(findings);
+    assert_eq!(finding.path.as_deref(), Some("Broken.java"));
+    assert_eq!(finding.severity, Severity::Error);
+    assert_eq!((finding.line, finding.column), (Some(2), Some(11)));
+    assert!(finding.message.starts_with("ParseException"), "{}", finding.message);
+}
+
+#[test]
+fn pmd_priorities_map_to_severities_and_configuration_errors_are_findings() {
+    let json = r#"{"files":[{"filename":"A.java","violations":[
+{"beginline":1,"begincolumn":1,"endline":1,"endcolumn":2,"description":"a","rule":"R1","priority":1},
+{"beginline":2,"begincolumn":1,"endline":2,"endcolumn":2,"description":"b","rule":"R5","priority":5}]}],
+"processingErrors":[],"configurationErrors":[{"rule":"Bogus","issue":"Cannot resolve rule"}]}"#;
+    let findings = parse(Output::PmdJson, json, "").expect("parses");
+    assert_eq!(findings.len(), 3, "{findings:?}");
+    assert_eq!(findings[0].severity, Severity::Error);
+    assert_eq!(findings[1].severity, Severity::Info);
+    assert_eq!(findings[2].message, "Bogus: Cannot resolve rule");
+    assert_eq!(findings[2].path, None);
+}
+
+#[test]
+fn pmd_output_that_is_not_its_report_is_an_error_not_a_clean_run() {
+    for (stdout, why) in [
+        ("", "no output"),
+        (
+            "[main] ERROR net.sourceforge.pmd.cli - Cannot load ruleset",
+            "a log line",
+        ),
+        (r#"{}"#, "no files"),
+    ] {
+        assert!(parse(Output::PmdJson, stdout, "").is_err(), "{why}");
+    }
+}
+
+const DETEKT_SARIF: &str = include_str!("fixtures/detekt.sarif.json");
+
+#[test]
+fn detekt_sarif_findings_are_rule_named_with_positions_and_docs() {
+    let findings = parse(Output::Sarif, DETEKT_SARIF, "").expect("parses");
+    assert_eq!(findings.len(), 4, "{findings:?}");
+    let long = &findings[0];
+    assert_eq!(long.path.as_deref(), Some("/private/tmp/lintsrc/Bad.kt"));
+    assert_eq!(long.code.as_deref(), Some("detekt.complexity.LongParameterList"));
+    assert_eq!((long.line, long.column), (Some(6), Some(12)));
+    assert_eq!(long.severity, Severity::Warning);
+    assert_eq!(
+        long.url.as_deref(),
+        Some("https://detekt.dev/complexity.html#longparameterlist")
+    );
+}

@@ -1,0 +1,37 @@
+{
+  "formatVersion": 0,
+  "pmdVersion": "7.29.0",
+  "timestamp": "2026-11-15T16:36:50.598+01:00",
+  "files": [
+    {
+      "filename": "Bad.java",
+      "violations": [
+        {
+          "beginline": 1,
+          "begincolumn": 14,
+          "endline": 1,
+          "endcolumn": 17,
+          "description": "All classes, interfaces, enums and annotations must belong to a named package",
+          "rule": "NoPackage",
+          "ruleset": "Code Style",
+          "priority": 3,
+          "externalInfoUrl": "https://docs.pmd-code.org/snapshot/pmd_rules_java_codestyle.html#nopackage"
+        },
+        {
+          "beginline": 6,
+          "begincolumn": 11,
+          "endline": 7,
+          "endcolumn": 10,
+          "description": "Avoid empty catch blocks",
+          "rule": "EmptyCatchBlock",
+          "ruleset": "Error Prone",
+          "priority": 3,
+          "externalInfoUrl": "https://docs.pmd-code.org/snapshot/pmd_rules_java_errorprone.html#emptycatchblock"
+        }
+      ]
+    }
+  ],
+  "suppressedViolations": [],
+  "processingErrors": [],
+  "configurationErrors": []
+}

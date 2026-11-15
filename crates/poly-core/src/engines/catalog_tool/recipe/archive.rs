@@ -66,7 +66,7 @@ fn extract_capped<R: Read + Seek, W: Write>(
     }
 }
 
-fn member_path(member: &str) -> Result<PathBuf> {
+pub(super) fn member_path(member: &str) -> Result<PathBuf> {
     let path = Path::new(member);
     if member.is_empty() || !path.components().all(|part| matches!(part, Component::Normal(_))) {
         bail!("archive member `{member}` must be a relative path without `.` or `..` components");
@@ -118,6 +118,169 @@ fn copy_capped<R: Read, W: Write>(reader: R, out: &mut W, cap: u64) -> Result<u6
         bail!("the archive member is larger than the {cap}-byte limit");
     }
     Ok(copied)
+}
+
+/// The most entries, and the most bytes in all, poly extracts from a distribution archive.
+const MAX_TREE_ENTRIES: usize = 20_000;
+const MAX_TREE_BYTES: u64 = 1024 * 1024 * 1024;
+
+/// The caps a tree extraction enforces.
+#[derive(Clone, Copy)]
+struct TreeLimits {
+    entries: usize,
+    member_bytes: u64,
+    total_bytes: u64,
+}
+
+const TREE_LIMITS: TreeLimits = TreeLimits {
+    entries: MAX_TREE_ENTRIES,
+    member_bytes: MAX_MEMBER_BYTES,
+    total_bytes: MAX_TREE_BYTES,
+};
+
+/// Extract the whole archive `source` into the existing directory `dest`,
+/// returning the number of files written.
+///
+/// Same guarantees as [`extract_member`], applied to every entry: a path that is
+/// absolute or has a `..` component is an error (never silently skipped, so a
+/// hostile archive fails loudly), only directories and regular files are
+/// accepted (a symlink, hard link or device is an error), and the entry count,
+/// each file's size and the total size are capped. Files are created exclusively
+/// (`O_EXCL`), so an entry cannot write through anything already in `dest`.
+///
+/// # Errors
+///
+/// Returns `Err` on an unsafe or unsupported entry, an exceeded cap, or a corrupt archive.
+pub(super) fn extract_tree<R: Read + Seek>(source: R, format: Format, dest: &Path) -> Result<usize> {
+    extract_tree_capped(source, format, dest, TREE_LIMITS)
+}
+
+fn extract_tree_capped<R: Read + Seek>(source: R, format: Format, dest: &Path, limits: TreeLimits) -> Result<usize> {
+    let mut sink = TreeSink {
+        dest,
+        limits,
+        files: 0,
+        entries: 0,
+        bytes: 0,
+    };
+    match format {
+        Format::TarGz => {
+            let mut archive = tar::Archive::new(flate2::read::GzDecoder::new(source));
+            for entry in archive.entries().context("reading the tar archive")? {
+                let mut entry = entry.context("reading a tar entry")?;
+                let path = entry.path().context("reading a tar entry path")?.into_owned();
+                let kind = entry.header().entry_type();
+                if kind.is_dir() {
+                    sink.directory(&path)?;
+                } else if kind.is_file() {
+                    sink.file(&path, &mut entry)?;
+                } else if kind.is_pax_global_extensions() || kind.is_pax_local_extensions() {
+                    continue;
+                } else {
+                    bail!("`{}` in the archive is not a regular file or directory", path.display());
+                }
+            }
+        }
+        Format::Zip => {
+            let mut archive = zip::ZipArchive::new(source).context("reading the zip archive")?;
+            for index in 0..archive.len() {
+                let mut file = archive.by_index(index).context("reading a zip entry")?;
+                let Some(path) = file.enclosed_name() else {
+                    bail!("the zip entry `{}` escapes the archive root", file.name());
+                };
+                if file.is_symlink() {
+                    bail!("`{}` in the archive is a symlink", path.display());
+                }
+                if file.is_dir() {
+                    sink.directory(&path)?;
+                } else if file.is_file() {
+                    sink.file(&path, &mut file)?;
+                } else {
+                    bail!("`{}` in the archive is not a regular file or directory", path.display());
+                }
+            }
+        }
+    }
+    Ok(sink.files)
+}
+
+struct TreeSink<'a> {
+    dest: &'a Path,
+    limits: TreeLimits,
+    files: usize,
+    entries: usize,
+    bytes: u64,
+}
+
+impl TreeSink<'_> {
+    /// `path` as a relative path of plain components, `.` segments dropped.
+    fn target(&mut self, path: &Path) -> Result<PathBuf> {
+        self.entries += 1;
+        if self.entries > self.limits.entries {
+            bail!("the archive has more than {} entries", self.limits.entries);
+        }
+        let relative = normalised(path);
+        if relative.as_os_str().is_empty() {
+            return Ok(self.dest.to_path_buf());
+        }
+        if !relative.components().all(|part| matches!(part, Component::Normal(_))) {
+            bail!(
+                "the archive entry `{}` is absolute or escapes the archive root",
+                path.display()
+            );
+        }
+        Ok(self.dest.join(relative))
+    }
+
+    fn directory(&mut self, path: &Path) -> Result<()> {
+        let target = self.target(path)?;
+        make_dir(&target)
+    }
+
+    fn file<R: Read>(&mut self, path: &Path, reader: &mut R) -> Result<()> {
+        let target = self.target(path)?;
+        if target == self.dest {
+            bail!("the archive entry `{}` names the extraction root", path.display());
+        }
+        if let Some(parent) = target.parent() {
+            make_dir(parent)?;
+        }
+        let mut out = create_file(&target)?;
+        let remaining = self.limits.total_bytes - self.bytes;
+        let cap = self.limits.member_bytes.min(remaining);
+        let copied = copy_capped(reader, &mut out, cap).with_context(|| {
+            format!(
+                "extracting `{}` (a member or the whole archive is over its size limit)",
+                path.display()
+            )
+        })?;
+        self.bytes += copied;
+        self.files += 1;
+        Ok(())
+    }
+}
+
+fn make_dir(path: &Path) -> Result<()> {
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::DirBuilderExt;
+        std::fs::DirBuilder::new().recursive(true).mode(0o700).create(path)
+    }
+    #[cfg(not(unix))]
+    { std::fs::create_dir_all(path) }.with_context(|| format!("creating {}", path.display()))
+}
+
+fn create_file(path: &Path) -> Result<std::fs::File> {
+    let mut options = std::fs::OpenOptions::new();
+    options.write(true).create_new(true);
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::OpenOptionsExt;
+        options.mode(0o600);
+    }
+    options
+        .open(path)
+        .with_context(|| format!("creating {} (a duplicate entry?)", path.display()))
 }
 
 /// A `.tar.gz` holding `entries`, with names written verbatim (so a test can
@@ -268,6 +431,129 @@ mod tests {
         let mut out = Vec::new();
         let error = extract_capped(Cursor::new(archive), Format::Zip, "tflint", &mut out, 31).expect_err("over");
         assert!(error.to_string().contains("limit"), "{error:#}");
+    }
+
+    fn tree_into(archive: Vec<u8>, format: Format, limits: TreeLimits) -> (tempfile::TempDir, Result<usize>) {
+        let dest = tempfile::tempdir().expect("dest");
+        let outcome = extract_tree_capped(Cursor::new(archive), format, dest.path(), limits);
+        (dest, outcome)
+    }
+
+    fn files_under(root: &Path) -> Vec<String> {
+        let mut found = Vec::new();
+        let mut stack = vec![root.to_path_buf()];
+        while let Some(dir) = stack.pop() {
+            for entry in std::fs::read_dir(dir).expect("dir").flatten() {
+                let path = entry.path();
+                if path.is_dir() {
+                    stack.push(path);
+                } else {
+                    found.push(
+                        path.strip_prefix(root)
+                            .expect("under root")
+                            .to_string_lossy()
+                            .into_owned(),
+                    );
+                }
+            }
+        }
+        found.sort();
+        found
+    }
+
+    #[test]
+    fn a_tree_is_extracted_whole_from_tar_gz_and_zip() {
+        let tarball = tar_gz(&[
+            ("dist/", EntryType::Directory, ""),
+            regular("dist/bin/run", "script"),
+            regular("dist/lib/a.jar", "jar"),
+        ]);
+        let zipped = zip_of(&[("dist/bin/run", "script"), ("dist/lib/a.jar", "jar")]);
+        for (archive, format) in [(tarball, Format::TarGz), (zipped, Format::Zip)] {
+            let (dest, outcome) = tree_into(archive, format, TREE_LIMITS);
+            assert_eq!(outcome.expect("extracts"), 2, "{format:?}");
+            assert_eq!(
+                files_under(dest.path()),
+                ["dist/bin/run", "dist/lib/a.jar"],
+                "{format:?}"
+            );
+            assert_eq!(std::fs::read(dest.path().join("dist/lib/a.jar")).expect("read"), b"jar");
+        }
+    }
+
+    #[test]
+    fn a_tree_entry_that_escapes_or_is_absolute_fails_the_whole_extraction() {
+        for name in ["../evil", "dist/../../evil", "/tmp/evil"] {
+            let archive = tar_gz(&[regular("dist/ok", "x"), regular(name, "evil")]);
+            let (dest, outcome) = tree_into(archive, Format::TarGz, TREE_LIMITS);
+            let error = outcome.expect_err(name);
+            assert!(
+                error.to_string().contains("escapes") || error.to_string().contains("absolute"),
+                "{name}: {error:#}"
+            );
+            assert!(!dest.path().parent().expect("parent").join("evil").exists(), "{name}");
+        }
+        let (_, outcome) = tree_into(zip_of(&[("../evil", "x")]), Format::Zip, TREE_LIMITS);
+        assert!(outcome.expect_err("zip traversal").to_string().contains("escapes"));
+    }
+
+    #[test]
+    fn a_tree_with_a_symlink_hard_link_or_device_is_refused() {
+        for kind in [EntryType::Symlink, EntryType::Link, EntryType::Char] {
+            let archive = tar_gz(&[regular("dist/ok", "x"), ("dist/link", kind, "")]);
+            let (_, outcome) = tree_into(archive, Format::TarGz, TREE_LIMITS);
+            let error = outcome.expect_err("not extractable");
+            assert!(
+                error.to_string().contains("not a regular file or directory"),
+                "{error:#}"
+            );
+        }
+        let mut writer = zip::ZipWriter::new(Cursor::new(Vec::new()));
+        writer
+            .add_symlink("dist/link", "/etc/passwd", zip::write::SimpleFileOptions::default())
+            .expect("symlink");
+        let archive = writer.finish().expect("finish").into_inner();
+        let (_, outcome) = tree_into(archive, Format::Zip, TREE_LIMITS);
+        assert!(outcome.expect_err("zip symlink").to_string().contains("symlink"));
+    }
+
+    #[test]
+    fn a_tree_over_a_size_or_entry_cap_is_refused() {
+        let payload = "x".repeat(64);
+        let archive = tar_gz(&[regular("a", &payload), regular("b", &payload)]);
+        let member = TreeLimits {
+            member_bytes: 63,
+            ..TREE_LIMITS
+        };
+        let (_, outcome) = tree_into(archive.clone(), Format::TarGz, member);
+        assert!(format!("{:#}", outcome.expect_err("member cap")).contains("limit"));
+        let total = TreeLimits {
+            total_bytes: 100,
+            ..TREE_LIMITS
+        };
+        let (_, outcome) = tree_into(archive.clone(), Format::TarGz, total);
+        assert!(format!("{:#}", outcome.expect_err("total cap")).contains("limit"));
+        let few = TreeLimits {
+            entries: 1,
+            ..TREE_LIMITS
+        };
+        let (_, outcome) = tree_into(archive.clone(), Format::TarGz, few);
+        assert!(
+            outcome
+                .expect_err("entry cap")
+                .to_string()
+                .contains("more than 1 entries")
+        );
+        let (_, outcome) = tree_into(archive, Format::TarGz, TREE_LIMITS);
+        assert_eq!(outcome.expect("within the caps"), 2);
+    }
+
+    #[test]
+    fn a_duplicate_tree_entry_is_refused_rather_than_overwritten() {
+        let archive = tar_gz(&[regular("a", "first"), regular("a", "second")]);
+        let (dest, outcome) = tree_into(archive, Format::TarGz, TREE_LIMITS);
+        assert!(outcome.is_err());
+        assert_eq!(std::fs::read(dest.path().join("a")).expect("read"), b"first");
     }
 
     #[test]

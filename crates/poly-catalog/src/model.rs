@@ -16,6 +16,11 @@ pub const PATH_PLACEHOLDER: &str = "$PATH";
 /// the flag before each file (`--path a --path b`).
 pub const FILES_PLACEHOLDER: &str = "$FILES";
 
+/// Placeholder expanding to every file of an invocation as one comma-separated
+/// argument, for a tool that takes its inputs that way. `$FILES_COMMA:--input`
+/// puts the flag before it (`--input a.kt,b.kt`).
+pub const FILES_COMMA_PLACEHOLDER: &str = "$FILES_COMMA";
+
 /// Placeholder for the group's project root, relative to the invocation's
 /// working directory (always `.`).
 pub const ROOT_PLACEHOLDER: &str = "$ROOT";
@@ -23,6 +28,11 @@ pub const ROOT_PLACEHOLDER: &str = "$ROOT";
 /// Placeholder for the directory of the file under check, relative to the
 /// group's root and prefixed `./`.
 pub const DIR_PLACEHOLDER: &str = "$DIR";
+
+/// Placeholder for a file the tool writes its report to (`--report sarif:$OUTPUT`).
+/// poly replaces it with a path in a scratch directory and reads the report back
+/// from there instead of from stdout.
+pub const OUTPUT_PLACEHOLDER: &str = "$OUTPUT";
 
 /// The `formatter` category string used by the catalog.
 pub const CATEGORY_FORMATTER: &str = "formatter";
@@ -183,9 +193,12 @@ impl Command {
     }
 }
 
-/// Whether `arguments` contains the [`FILES_PLACEHOLDER`] in either form.
+/// Whether `arguments` contains the [`FILES_PLACEHOLDER`] in any of its forms.
 pub fn takes_files(arguments: &[String]) -> bool {
-    arguments
-        .iter()
-        .any(|argument| argument == FILES_PLACEHOLDER || argument.starts_with("$FILES:"))
+    arguments.iter().any(|argument| {
+        argument == FILES_PLACEHOLDER
+            || argument == FILES_COMMA_PLACEHOLDER
+            || argument.starts_with("$FILES:")
+            || argument.starts_with("$FILES_COMMA:")
+    })
 }

@@ -1,0 +1,157 @@
+{
+  "$schema": "https://raw.githubusercontent.com/oasis-tcs/sarif-spec/master/Schemata/sarif-schema-2.1.0.json",
+  "version": "2.1.0",
+  "runs": [
+    {
+      "results": [
+        {
+          "level": "warning",
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "file:///private/tmp/lintsrc/Bad.kt"
+                },
+                "region": {
+                  "endColumn": 68,
+                  "endLine": 6,
+                  "startColumn": 12,
+                  "startLine": 6
+                }
+              }
+            }
+          ],
+          "message": {
+            "text": "The function bar(a: Int, b: Int, c: Int, d: Int, e: Int, f: Int, g: Int) has too many parameters. The current threshold is set to 6."
+          },
+          "ruleId": "detekt.complexity.LongParameterList"
+        },
+        {
+          "level": "warning",
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "file:///private/tmp/lintsrc/Bad.kt"
+                },
+                "region": {
+                  "endColumn": 10,
+                  "endLine": 5,
+                  "startColumn": 7,
+                  "startLine": 5
+                }
+              }
+            }
+          ],
+          "message": {
+            "text": "The file name 'Bad' does not match the name of the single top-level declaration 'Foo'."
+          },
+          "ruleId": "detekt.naming.MatchingDeclarationName"
+        },
+        {
+          "level": "warning",
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "file:///private/tmp/lintsrc/Bad.kt"
+                },
+                "region": {
+                  "endColumn": 13,
+                  "endLine": 1,
+                  "startColumn": 1,
+                  "startLine": 1
+                }
+              }
+            }
+          ],
+          "message": {
+            "text": "The package declaration does not match the actual file location."
+          },
+          "ruleId": "detekt.naming.InvalidPackageDeclaration"
+        },
+        {
+          "level": "warning",
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "file:///private/tmp/lintsrc/Bad.kt"
+                },
+                "region": {
+                  "endColumn": 20,
+                  "endLine": 7,
+                  "startColumn": 18,
+                  "startLine": 7
+                }
+              }
+            }
+          ],
+          "message": {
+            "text": "This expression contains a magic number. Consider defining it to a well named constant."
+          },
+          "ruleId": "detekt.style.MagicNumber"
+        }
+      ],
+      "tool": {
+        "driver": {
+          "downloadUri": "https://github.com/detekt/detekt/releases/download/v1.23.8/detekt",
+          "fullName": "detekt",
+          "guid": "022ca8c2-f6a2-4c95-b107-bb72c43263f3",
+          "informationUri": "https://detekt.dev",
+          "language": "en",
+          "name": "detekt",
+          "organization": "detekt",
+          "rules": [
+            {
+              "defaultConfiguration": {
+                "level": "error"
+              },
+              "helpUri": "https://detekt.dev/complexity.html#longparameterlist",
+              "id": "detekt.complexity.LongParameterList",
+              "name": "LongParameterList",
+              "shortDescription": {
+                "text": "The more parameters a function has the more complex it is. Long parameter lists are often used to control complex algorithms and violate the Single Responsibility Principle. Prefer functions with short parameter lists."
+              }
+            },
+            {
+              "defaultConfiguration": {
+                "level": "error"
+              },
+              "helpUri": "https://detekt.dev/naming.html#matchingdeclarationname",
+              "id": "detekt.naming.MatchingDeclarationName",
+              "name": "MatchingDeclarationName",
+              "shortDescription": {
+                "text": "If a source file contains only a single non-private top-level class or object, the file name should reflect the case-sensitive name plus the .kt extension."
+              }
+            },
+            {
+              "defaultConfiguration": {
+                "level": "error"
+              },
+              "helpUri": "https://detekt.dev/naming.html#invalidpackagedeclaration",
+              "id": "detekt.naming.InvalidPackageDeclaration",
+              "name": "InvalidPackageDeclaration",
+              "shortDescription": {
+                "text": "Kotlin source files should be stored in the directory corresponding to its package statement."
+              }
+            },
+            {
+              "defaultConfiguration": {
+                "level": "error"
+              },
+              "helpUri": "https://detekt.dev/style.html#magicnumber",
+              "id": "detekt.style.MagicNumber",
+              "name": "MagicNumber",
+              "shortDescription": {
+                "text": "Report magic numbers. Magic number is a numeric literal that is not defined as a constant and hence it's unclear what the purpose of this number is. It's better to declare such numbers as constants and give them a proper name. By default, -1, 0, 1, and 2 are not considered to be magic numbers."
+              }
+            }
+          ],
+          "semanticVersion": "1.23.8",
+          "version": "1.23.8"
+        }
+      }
+    }
+  ]
+}
