@@ -16,6 +16,12 @@ use serde_json::{Map, Number, Value};
 
 use crate::doc::{Document, MAX_DEPTH, child, element, span_between};
 
+/// Most nodes one document may gain through alias and merge expansion; bounds a billion-laughs
+/// document to a fixed amount of memory.
+const MAX_EXPANDED_NODES: usize = 1_000_000;
+
+const EXPANSION_LIMIT: &str = "invalid YAML: yaml alias expansion limit exceeded";
+
 /// Where an event sits in the source.
 #[derive(Clone)]
 struct Loc {
@@ -39,7 +45,8 @@ struct Walker<'a> {
     lines: LineIndex<'a>,
     events: Vec<Option<(Kind, Loc)>>,
     at: usize,
-    anchors: HashMap<usize, Value>,
+    anchors: HashMap<usize, (Value, usize)>,
+    expanded: usize,
     spans: HashMap<String, Span>,
 }
 
@@ -78,6 +85,7 @@ pub(crate) fn parse(src: &str) -> Result<Vec<Document>, String> {
         events,
         at: 0,
         anchors: HashMap::new(),
+        expanded: 0,
         spans: HashMap::new(),
     };
     let mut documents = Vec::new();
@@ -86,6 +94,7 @@ pub(crate) fn parse(src: &str) -> Result<Vec<Document>, String> {
             continue;
         }
         walker.anchors.clear();
+        walker.expanded = 0;
         walker.spans.clear();
         let (root, loc) = walker
             .pull()
@@ -121,6 +130,15 @@ impl Walker<'_> {
         event
     }
 
+    /// Accounts `nodes` copied by an alias or merge against the document's expansion budget.
+    fn charge(&mut self, nodes: usize) -> Result<(), String> {
+        self.expanded = self.expanded.saturating_add(nodes);
+        if self.expanded > MAX_EXPANDED_NODES {
+            return Err(EXPANSION_LIMIT.to_owned());
+        }
+        Ok(())
+    }
+
     fn record(&mut self, pointer: &str, loc: &Loc) {
         let span = match &loc.bytes {
             Some(range) => span_between(&self.lines, range.start, range.end),
@@ -146,7 +164,14 @@ impl Walker<'_> {
         let (value, anchor) = match kind {
             Kind::Scalar { text, plain, anchor } => (scalar(&text, plain), anchor),
             Kind::Alias(anchor) => {
-                let value = self.anchors.get(&anchor).cloned().unwrap_or(Value::Null);
+                let value = match self.anchors.get(&anchor) {
+                    Some((value, size)) => {
+                        let size = *size;
+                        self.charge(size)?;
+                        value.clone()
+                    }
+                    None => Value::Null,
+                };
                 self.record(pointer, loc);
                 return Ok(value);
             }
@@ -181,6 +206,12 @@ impl Walker<'_> {
                         let value = self.node(kind, &value_loc, "/~merge", depth + 1)?;
                         match merge_sources(&value) {
                             Some(sources) => {
+                                self.charge(
+                                    sources
+                                        .iter()
+                                        .map(|source| 1 + source.values().map(node_count).sum::<usize>())
+                                        .sum(),
+                                )?;
                                 merged.extend(sources.into_iter().map(|source| (source, key_loc.clone())));
                                 continue;
                             }
@@ -209,10 +240,20 @@ impl Walker<'_> {
             }
         };
         if anchor != 0 {
-            self.anchors.insert(anchor, value.clone());
+            let size = node_count(&value);
+            self.anchors.insert(anchor, (value.clone(), size));
         }
         self.record(pointer, loc);
         Ok(value)
+    }
+}
+
+/// The number of nodes in `value`, itself included.
+fn node_count(value: &Value) -> usize {
+    match value {
+        Value::Array(items) => 1 + items.iter().map(node_count).sum::<usize>(),
+        Value::Object(map) => 1 + map.values().map(node_count).sum::<usize>(),
+        _ => 1,
     }
 }
 
@@ -354,6 +395,24 @@ mod tests {
         assert_eq!(scalar("1.2.3", true), Value::String("1.2.3".into()));
         assert_eq!(scalar("1e3", true), Value::from(1000.0));
         assert_eq!(scalar("true", false), Value::String("true".into()));
+    }
+
+    #[test]
+    fn a_billion_laughs_document_hits_the_expansion_limit() {
+        let mut src = String::from("a: &a0 [x, x, x, x, x, x, x, x, x]\n");
+        for level in 1..9 {
+            let prev = level - 1;
+            let refs = vec![format!("*a{prev}"); 9].join(", ");
+            src.push_str(&format!("l{level}: &a{level} [{refs}]\n"));
+        }
+        let error = parse(&src).expect_err("must be refused");
+        assert!(error.contains("yaml alias expansion limit exceeded"), "{error}");
+    }
+
+    #[test]
+    fn modest_alias_use_stays_within_the_budget() {
+        let docs = parse("a: &a [1, 2, 3]\nb: [*a, *a, *a]\n").expect("parses");
+        assert_eq!(docs[0].value["b"], serde_json::json!([[1, 2, 3], [1, 2, 3], [1, 2, 3]]));
     }
 
     #[test]
