@@ -150,3 +150,11 @@ harness = false
 [[bench]]
 name = "runner_e2e"
 harness = false
+
+[[bench]]
+name = "runner_modes"
+harness = false
+
+[[bench]]
+name = "discover_walk"
+harness = false
