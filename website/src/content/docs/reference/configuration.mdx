@@ -431,6 +431,11 @@ extends = [
 replace the inherited one rather than accumulate. A symbolic (branch/tag) `git`
 ref must be locked first: `poly lock` records it (so does `poly hooks install`).
 
+Remote `git` bases and `[[hooks.sources]]` are fetched over `https` or `ssh` (including scp-like
+`host:path`) only; `git://`, `http://`, `file://` and `ext::` URLs are rejected. Plain local paths are
+unaffected. `POLY_GIT_ALLOW_PROTOCOLS` (a `:`-separated list, passed to git as `GIT_ALLOW_PROTOCOL`,
+for example `https:ssh:git`) replaces the default list.
+
 <Aside type="tip" title="What did poly actually resolve?">
     `poly config show` prints the effective, fully-merged config after `extends`,
     the cascade and `poly.local.toml`. `poly config --help` lists every `poly

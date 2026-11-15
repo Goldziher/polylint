@@ -23,6 +23,7 @@
 
 pub mod checkout;
 pub mod git;
+pub mod protocol;
 
 use std::path::{Path, PathBuf};
 

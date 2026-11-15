@@ -79,6 +79,15 @@ pub fn run_git(directory: &Path, args: &[&str]) -> anyhow::Result<()> {
     run_command(git_command().arg("-C").arg(directory).args(args), "run git")
 }
 
+/// `git -C <directory> <args...>` for a command that contacts `url`, under the transport policy
+/// of [`super::protocol`].
+pub fn run_remote_git(directory: &Path, url: &str, args: &[&str]) -> anyhow::Result<()> {
+    super::protocol::check_url(url)?;
+    let mut command = git_command();
+    super::protocol::restrict(&mut command, url);
+    run_command(command.arg("-C").arg(directory).args(args), "run git")
+}
+
 /// Run `git -C <directory> <args...>` and return its trimmed stdout.
 pub fn git_output(directory: &Path, args: &[&str]) -> anyhow::Result<String> {
     let output = git_command()
@@ -134,6 +143,7 @@ fn head_lines(text: &str) -> String {
 /// origin-URL check reads the raw stored value (bypassing the user's Git
 /// `insteadOf` rewrites) to block a cache-poisoning source substitution.
 pub fn ensure_mirror(mirror: &Path, url: &str) -> anyhow::Result<()> {
+    super::protocol::check_url(url)?;
     if !mirror.is_dir() {
         let parent = mirror.parent().context("source mirror has no parent")?;
         let temporary = tempfile::Builder::new()
@@ -172,13 +182,15 @@ pub fn ensure_mirror(mirror: &Path, url: &str) -> anyhow::Result<()> {
 /// without `uploadpack.allowAnySHA1InWant`) falls back to fetching every branch
 /// and tag; if that fails too, the error carries both failures.
 pub fn ensure_commit(mirror: &Path, url: &str, revision: &str) -> anyhow::Result<()> {
+    super::protocol::check_url(url)?;
     if git_object_exists(mirror, revision)? {
         return Ok(());
     }
     poly_config::network::require_online(&format!("fetch locked source commit {revision} from {url}"))?;
     let pinned = format!("+{revision}:refs/heads/poly-pinned/{revision}");
-    let shallow = run_git(
+    let shallow = run_remote_git(
         mirror,
+        url,
         &["fetch", "--quiet", "--no-tags", "--depth", "1", "origin", &pinned],
     );
     let shallow = match shallow {
@@ -186,8 +198,9 @@ pub fn ensure_commit(mirror: &Path, url: &str, revision: &str) -> anyhow::Result
         Ok(()) => format!("shallow fetch of {revision} did not deliver it"),
         Err(error) => format!("shallow fetch of {revision} failed: {error:#}"),
     };
-    run_git(
+    run_remote_git(
         mirror,
+        url,
         &[
             "fetch",
             "--quiet",
@@ -218,12 +231,15 @@ pub fn ensure_commit(mirror: &Path, url: &str, revision: &str) -> anyhow::Result
 /// credential settings could resolve the ref somewhere other than the origin the
 /// cache mirror verifies.
 pub fn resolve_remote_revision(url: &str, revision: &str, neutral_dir: &Path) -> anyhow::Result<String> {
+    super::protocol::check_url(url)?;
     if validate_locked_revision(revision).is_ok() {
         return Ok(revision.to_owned());
     }
     poly_config::network::require_online(&format!("resolve {revision} on {url}"))?;
     let peeled = format!("{revision}^{{}}");
-    let output = git_command()
+    let mut command = git_command();
+    super::protocol::restrict(&mut command, url);
+    let output = command
         .current_dir(neutral_dir)
         .env("GIT_CEILING_DIRECTORIES", neutral_dir)
         .args(["ls-remote", "--", url, revision, &peeled])
