@@ -11,7 +11,7 @@ use super::spec::ToolSpec;
 ///
 /// Returns `Some(version_string)` on success, `None` when the binary cannot
 /// be spawned (not on `PATH` or not executable) or does not answer in time; callers cache
-that negative result.
+/// that negative result.
 ///
 /// The probe is inexpensive: it spawns the binary once with null I/O (just
 /// to confirm it exists), then runs the version command. Callers cache the

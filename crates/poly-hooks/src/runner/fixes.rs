@@ -404,8 +404,8 @@ fn write_atomic(path: &Path, contents: &[u8]) -> anyhow::Result<()> {
 }
 
 /// Directories already swept this process: one `read_dir` per directory, not one per written file.
-static SWEPT: std::sync::Mutex<std::collections::HashSet<PathBuf>> =
-    std::sync::Mutex::new(std::collections::HashSet::new());
+static SWEPT: std::sync::LazyLock<std::sync::Mutex<std::collections::HashSet<PathBuf>>> =
+    std::sync::LazyLock::new(Default::default);
 
 /// Distinct temp names tried before giving up when each is already taken.
 const TMP_ATTEMPTS: u32 = 8;

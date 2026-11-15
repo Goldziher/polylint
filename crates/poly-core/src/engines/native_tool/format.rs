@@ -86,6 +86,9 @@ pub(crate) fn format_via_tool(
     if let Some(error) = output.stdin_error {
         return Err(error).with_context(|| format!("failed to write to '{format_binary}' stdin"));
     }
+    if output.drain_incomplete {
+        anyhow::bail!("'{format_binary}' left its output pipe open after exiting; its output may be cut short");
+    }
 
     let formatted = normalize_newlines(
         String::from_utf8(output.stdout).with_context(|| format!("'{format_binary}' produced non-UTF-8 output"))?,

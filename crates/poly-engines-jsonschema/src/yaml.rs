@@ -164,11 +164,11 @@ impl Walker<'_> {
         let (value, anchor) = match kind {
             Kind::Scalar { text, plain, anchor } => (scalar(&text, plain), anchor),
             Kind::Alias(anchor) => {
-                let value = match self.anchors.get(&anchor) {
+                let found = self.anchors.get(&anchor).map(|(value, size)| (value.clone(), *size));
+                let value = match found {
                     Some((value, size)) => {
-                        let size = *size;
                         self.charge(size)?;
-                        value.clone()
+                        value
                     }
                     None => Value::Null,
                 };

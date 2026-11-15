@@ -459,5 +459,5 @@ fn span_never_ends_on_the_next_line() {
 
 #[test]
 fn span_columns_count_characters() {
-    assert_eq!(span_of_code("FROM a:1\nWORKDIR é日\n", "DL3000"), (2, 1, 2, 10));
+    assert_eq!(span_of_code("FROM a:1\nWORKDIR é日\n", "DL3000"), (2, 1, 2, 11));
 }

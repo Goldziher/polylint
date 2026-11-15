@@ -15,7 +15,7 @@ const TMP_SUFFIX: &str = ".poly.tmp";
 const STALE_TMP_AGE: Duration = Duration::from_secs(24 * 60 * 60);
 
 /// Directories already swept this process: one `read_dir` per directory, not one per written file.
-static SWEPT: Mutex<HashSet<PathBuf>> = Mutex::new(HashSet::new());
+static SWEPT: std::sync::LazyLock<Mutex<HashSet<PathBuf>>> = std::sync::LazyLock::new(Default::default);
 
 /// Distinct temp names tried before giving up when each is already taken.
 const TMP_ATTEMPTS: u32 = 8;

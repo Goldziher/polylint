@@ -12,7 +12,7 @@
 
 use std::path::{Path, PathBuf};
 
-use anyhow::{bail, Context, Result};
+use anyhow::{Context, Result, bail};
 use poly_catalog::{Asset, Release, ReleaseKind};
 use tempfile::NamedTempFile;
 
@@ -195,9 +195,17 @@ fn adopt_existing(path: &Path, asset: &Asset) -> bool {
 
 fn file_digest(path: &Path) -> Option<String> {
     use sha2::{Digest, Sha256};
+    use std::io::Read as _;
     let mut file = std::fs::File::open(path).ok()?;
     let mut hasher = Sha256::new();
-    std::io::copy(&mut file, &mut hasher).ok()?;
+    let mut buffer = [0_u8; 64 * 1024];
+    loop {
+        let read = file.read(&mut buffer).ok()?;
+        if read == 0 {
+            break;
+        }
+        hasher.update(&buffer[..read]);
+    }
     Some(super::net::hex(&hasher.finalize()))
 }
 
@@ -485,9 +493,11 @@ mod tests {
         assert!(!is_installed(&path, &asset));
         ensure_when(true, &path, &asset, ReleaseKind::Binary).expect("upgraded, so no network is needed");
         assert!(is_installed(&path, &asset));
-        assert!(std::fs::read_to_string(stamp(&path))
-            .expect("stamp")
-            .starts_with("sha256="));
+        assert!(
+            std::fs::read_to_string(stamp(&path))
+                .expect("stamp")
+                .starts_with("sha256=")
+        );
     }
 
     #[test]

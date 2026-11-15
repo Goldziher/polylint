@@ -110,6 +110,19 @@ fn schema_value(schema: &std::path::Path, bytes: &[u8]) -> Result<Value, String>
     })
 }
 
+/// Every violation of the compiled schema in `document`.
+pub(crate) fn findings(validator: &Validator, document: &Document) -> Vec<Finding> {
+    validator
+        .iter_errors(&document.value)
+        .map(|error| Finding {
+            pointer: error.instance_path().to_string(),
+            keyword: error.kind().keyword().to_owned(),
+            message: error.to_string(),
+            schema_path: error.schema_path().to_string(),
+        })
+        .collect()
+}
+
 #[cfg(test)]
 mod tests {
     use std::path::Path;
@@ -136,17 +149,4 @@ mod tests {
         let error = schema_value(Path::new("schema"), b"{type: object}").expect_err("not JSON");
         assert!(error.starts_with("is not valid JSON"), "{error}");
     }
-}
-
-/// Every violation of the compiled schema in `document`.
-pub(crate) fn findings(validator: &Validator, document: &Document) -> Vec<Finding> {
-    validator
-        .iter_errors(&document.value)
-        .map(|error| Finding {
-            pointer: error.instance_path().to_string(),
-            keyword: error.kind().keyword().to_owned(),
-            message: error.to_string(),
-            schema_path: error.schema_path().to_string(),
-        })
-        .collect()
 }
