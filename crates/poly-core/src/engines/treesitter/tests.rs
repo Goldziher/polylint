@@ -1522,3 +1522,24 @@ fn rust_nested_macro_bodies_stay_verbatim_after_the_inner_one_closes() {
     );
     assert_eq!(format_rust(input, &cfg(4)), input);
 }
+
+#[test]
+fn deep_operator_chain_does_not_overflow_the_case_collectors() {
+    let chain = vec!["a"; 200_000].join(" + ");
+    let cases = [
+        ("main.go", "go", format!("package main\n\nvar x = {chain}\n")),
+        ("main.cs", "csharp", format!("class C {{ int x = {chain}; }}\n")),
+        ("main.swift", "swift", format!("let x = {chain}\n")),
+    ];
+    std::thread::Builder::new()
+        .stack_size(8 << 20)
+        .spawn(move || {
+            for (path, name, content) in cases {
+                let s = src(path, Language::Other(name.into()), &content);
+                let _ = TreeSitterEngine.format(&s, &cfg(4));
+            }
+        })
+        .unwrap()
+        .join()
+        .unwrap();
+}

@@ -406,9 +406,12 @@ fn collect_swift_case_adjustments(
     case_body_extra: &mut Vec<(usize, usize)>,
     case_label_dedent: &mut Vec<(usize, usize)>,
 ) {
-    if root.kind() == "switch_entry" {
-        case_label_dedent.push((root.start_byte(), root.end_byte()));
-        let mut cursor = root.walk();
+    for_each_node(root, |node| {
+        if node.kind() != "switch_entry" {
+            return;
+        }
+        case_label_dedent.push((node.start_byte(), node.end_byte()));
+        let mut cursor = node.walk();
         if cursor.goto_first_child() {
             loop {
                 let child = cursor.node();
@@ -420,13 +423,21 @@ fn collect_swift_case_adjustments(
                 }
             }
         }
-    }
+    });
+}
+
+/// Visit `root` and every descendant in pre-order without recursing, so a tree nested hundreds of
+/// thousands of levels deep cannot overflow the stack.
+fn for_each_node<'t>(root: &Node<'t>, mut visit: impl FnMut(&Node<'t>)) {
     let mut cursor = root.walk();
-    if cursor.goto_first_child() {
-        loop {
-            collect_swift_case_adjustments(&cursor.node(), case_body_extra, case_label_dedent);
-            if !cursor.goto_next_sibling() {
-                break;
+    loop {
+        visit(&cursor.node());
+        if cursor.goto_first_child() {
+            continue;
+        }
+        while !cursor.goto_next_sibling() {
+            if !cursor.goto_parent() {
+                return;
             }
         }
     }
@@ -446,61 +457,54 @@ fn collect_go_case_adjustments(
     case_body_extra: &mut Vec<(usize, usize)>,
     case_label_dedent: &mut Vec<(usize, usize)>,
 ) {
-    let kind = root.kind();
-    if matches!(
-        kind.as_ref(),
-        "expression_case" | "default_case" | "type_case" | "communication_case"
-    ) {
-        case_label_dedent.push((root.start_byte(), root.end_byte()));
-        let mut after_colon = false;
-        let mut trailing_comments: Vec<(usize, usize)> = Vec::new();
-        let mut cursor = root.walk();
-        if cursor.goto_first_child() {
-            loop {
-                let child = cursor.node();
-                if after_colon {
-                    case_body_extra.push((child.start_byte(), child.end_byte()));
-                    track_trailing_comment(&child, &mut trailing_comments);
-                }
-                if child.kind() == ":" {
-                    after_colon = true;
-                }
-                if !cursor.goto_next_sibling() {
-                    break;
-                }
-            }
-        }
-        case_label_dedent.extend(trailing_comments);
-    } else if matches!(
-        kind.as_ref(),
-        "expression_switch_statement" | "type_switch_statement" | "select_statement"
-    ) {
-        let mut cursor = root.walk();
-        if cursor.goto_first_child() {
-            loop {
-                let child = cursor.node();
-                if child.kind() == "comment" {
-                    case_label_dedent.push((child.start_byte(), child.end_byte()));
-                }
-                if !cursor.goto_next_sibling() {
-                    break;
+    for_each_node(root, |node| {
+        let kind = node.kind();
+        if matches!(
+            kind.as_ref(),
+            "expression_case" | "default_case" | "type_case" | "communication_case"
+        ) {
+            case_label_dedent.push((node.start_byte(), node.end_byte()));
+            let mut after_colon = false;
+            let mut trailing_comments: Vec<(usize, usize)> = Vec::new();
+            let mut cursor = node.walk();
+            if cursor.goto_first_child() {
+                loop {
+                    let child = cursor.node();
+                    if after_colon {
+                        case_body_extra.push((child.start_byte(), child.end_byte()));
+                        track_trailing_comment(&child, &mut trailing_comments);
+                    }
+                    if child.kind() == ":" {
+                        after_colon = true;
+                    }
+                    if !cursor.goto_next_sibling() {
+                        break;
+                    }
                 }
             }
-        }
-    } else if kind == "labeled_statement"
-        && let Some(label) = root.child(0)
-    {
-        case_label_dedent.push((label.start_byte(), label.end_byte()));
-    }
-    let mut cursor = root.walk();
-    if cursor.goto_first_child() {
-        loop {
-            collect_go_case_adjustments(&cursor.node(), case_body_extra, case_label_dedent);
-            if !cursor.goto_next_sibling() {
-                break;
+            case_label_dedent.extend(trailing_comments);
+        } else if matches!(
+            kind.as_ref(),
+            "expression_switch_statement" | "type_switch_statement" | "select_statement"
+        ) {
+            let mut cursor = node.walk();
+            if cursor.goto_first_child() {
+                loop {
+                    let child = cursor.node();
+                    if child.kind() == "comment" {
+                        case_label_dedent.push((child.start_byte(), child.end_byte()));
+                    }
+                    if !cursor.goto_next_sibling() {
+                        break;
+                    }
+                }
             }
+        } else if kind == "labeled_statement"
+            && let Some(label) = node.child(0)
+        {
+            case_label_dedent.push((label.start_byte(), label.end_byte()));
         }
-    }
+    });
 }
 
 /// Keep `trailing` holding the comments that follow the last non-comment node seen so far.
@@ -521,10 +525,13 @@ fn collect_switch_case_bodies(
     default_kind: &str,
     case_body_extra: &mut Vec<(usize, usize)>,
 ) {
-    let kind = root.kind();
-    if kind == case_kind || kind == default_kind {
+    for_each_node(root, |node| {
+        let kind = node.kind();
+        if kind != case_kind && kind != default_kind {
+            return;
+        }
         let mut after_colon = false;
-        let mut cursor = root.walk();
+        let mut cursor = node.walk();
         if cursor.goto_first_child() {
             loop {
                 let child = cursor.node();
@@ -539,16 +546,7 @@ fn collect_switch_case_bodies(
                 }
             }
         }
-    }
-    let mut cursor = root.walk();
-    if cursor.goto_first_child() {
-        loop {
-            collect_switch_case_bodies(&cursor.node(), case_kind, default_kind, case_body_extra);
-            if !cursor.goto_next_sibling() {
-                break;
-            }
-        }
-    }
+    });
 }
 
 /// The indent unit string for a grammar: a tab for Go (gofmt), two spaces for
