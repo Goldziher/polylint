@@ -329,6 +329,13 @@ fn levenshtein(a: &str, b: &str) -> usize {
     previous[b_chars.len()]
 }
 
+/// An absolute executable path on the host running the tests; Windows needs a drive.
+#[cfg(all(test, windows))]
+const ABSOLUTE_BIN: &str = "C:/opt/tools/bin/tool";
+/// An absolute executable path on the host running the tests.
+#[cfg(all(test, not(windows)))]
+const ABSOLUTE_BIN: &str = "/opt/tools/bin/tool";
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -487,7 +494,7 @@ mod recipe_keys {
 
     #[test]
     fn should_parse_extra_args_pins_and_install_policy() {
-        let tools: ToolsConfig = toml::from_str(
+        let tools: ToolsConfig = toml::from_str(&format!(
             r#"
 [checkstyle]
 enabled = true
@@ -495,13 +502,13 @@ extra_args = ["-c", "checkstyle.xml"]
 lint_extra_args = ["-p", "checkstyle.properties"]
 version = "12.3.1"
 install = "auto"
-bin = "/opt/jdk/bin/java"
+bin = "{ABSOLUTE_BIN}"
 
 [buildifier]
 enabled = true
 format_extra_args = ["-lint=fix"]
-"#,
-        )
+"#
+        ))
         .expect("parse");
         let checkstyle = tools.get("checkstyle").expect("checkstyle");
         assert_eq!(checkstyle.extra_args, ["-c", "checkstyle.xml"]);
@@ -533,7 +540,7 @@ mod restrictions {
     #[test]
     fn bin_is_a_bare_name_or_an_absolute_path() {
         validate("[shfmt]\nbin = \"shfmt\"\n").expect("a PATH lookup");
-        validate("[shfmt]\nbin = \"/opt/tools/shfmt\"\n").expect("an absolute path");
+        validate(&format!("[shfmt]\nbin = \"{ABSOLUTE_BIN}\"\n")).expect("an absolute path");
         for bin in ["./shfmt", "bin/shfmt", "../shfmt"] {
             let error = validate(&format!("[shfmt]\nbin = \"{bin}\"\n")).expect_err(bin);
             assert!(
