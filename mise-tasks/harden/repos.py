@@ -318,6 +318,14 @@ def tree_hash(copy: Path) -> str:
     return git("write-tree", cwd=copy).stdout.strip()
 
 
+def after_drift(run: Run) -> list[str]:
+    """Files the final dry run reports as would-change; per-file errors are not drift."""
+    doc = parse_json(run.stdout)
+    if doc is None:
+        return []
+    return [str(r.get("path")) for r in doc.get("results", []) if r.get("changed") and not r.get("error")]
+
+
 def fmt_phase(res: RepoResult, ctx: dict) -> None:
     poly, copy = ctx["poly"], ctx["copy"]
 
@@ -343,7 +351,7 @@ def fmt_phase(res: RepoResult, ctx: dict) -> None:
     res.changed_by_fmt = git("diff", "--name-only", base, tree1, cwd=copy).stdout.split()
     second = go("fmt-fix-2", "--fix", "--no-cache", "--exit-nonzero-on-fix")
     tree2 = tree_hash(copy)
-    after = go("fmt-after", "--no-cache")
+    after = go("fmt-after", "--format", "json", "--no-cache")
     if first.timed_out or second.timed_out or after.timed_out:
         return
     res.converged = True
@@ -351,9 +359,16 @@ def fmt_phase(res: RepoResult, ctx: dict) -> None:
         res.converged = False
         drift = git("diff", "--name-only", tree1, tree2, cwd=copy).stdout.split()
         res.flag("non-convergence", f"second --fix pass rewrote {len(drift)} files: {', '.join(drift[:5])}")
-    if after.rc not in (0, None):
+    drifted = after_drift(after)
+    if drifted:
         res.converged = False
-        res.flag("non-convergence", f"dry run after --fix still reports drift (exit {after.rc})")
+        res.flag(
+            "non-convergence",
+            f"dry run after --fix still reports drift in {len(drifted)} files: {', '.join(drifted[:5])}",
+        )
+    elif after.rc == 1:
+        res.converged = False
+        res.flag("non-convergence", "dry run after --fix exits 1 but names no changed file")
     if first.rc == 2 or second.rc == 2:
         res.flag("poly-error-exit", "fmt --fix: exit code 2")
 
