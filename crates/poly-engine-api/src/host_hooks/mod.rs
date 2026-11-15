@@ -79,7 +79,11 @@ pub fn run_context(hook: HostHook, cfg: &EngineConfig) -> String {
             editorconfig::forget();
             String::new()
         }
-        HostHook::None | HostHook::OxfmtScope | HostHook::Oxc | HostHook::GoMod | HostHook::JsonSchema => String::new(),
+        HostHook::None | HostHook::OxfmtScope | HostHook::Oxc | HostHook::GoMod => String::new(),
+        HostHook::JsonSchema => {
+            jsonschema_source::forget();
+            String::new()
+        }
         HostHook::RuffContext => {
             let src_roots: Vec<std::path::PathBuf> = cfg
                 .options

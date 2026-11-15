@@ -14,7 +14,7 @@
 
 use std::collections::{BTreeSet, HashMap};
 use std::path::{Path, PathBuf};
-use std::sync::{Mutex, OnceLock};
+use std::sync::{Arc, Mutex, OnceLock};
 use std::time::SystemTime;
 
 use crate::config::EngineConfig;
@@ -58,20 +58,13 @@ impl Scope {
     /// The scope for `file` under `cfg`.
     #[must_use]
     pub fn for_file(file: &Path, cfg: &EngineConfig) -> Scope {
-        let cwd = std::env::current_dir().unwrap_or_default();
         let absolute = if file.is_absolute() {
             file.to_path_buf()
         } else {
-            cwd.join(file)
+            std::env::current_dir().unwrap_or_default().join(file)
         };
         let file = canonical(&absolute).unwrap_or(absolute);
-        let root = file
-            .ancestors()
-            .skip(1)
-            .find(|dir| dir.join(CONFIG_FILE).is_file())
-            .map(Path::to_path_buf)
-            .or_else(|| canonical(&cwd).ok())
-            .unwrap_or(cwd);
+        let root = project_root(&file);
         let cache_dir = match cfg.options.get("cache_dir").and_then(toml::Value::as_str) {
             Some(dir) if Path::new(dir).is_absolute() => PathBuf::from(dir),
             Some(dir) => root.join(dir),
@@ -156,10 +149,9 @@ impl Scope {
     pub fn mapped(&self, cfg: &EngineConfig) -> Option<String> {
         let relative = self.file.strip_prefix(&self.root).unwrap_or(&self.file);
         let relative = relative.to_string_lossy().replace('\\', "/");
-        mappings(cfg).into_iter().find_map(|(glob, schema)| {
-            let matcher = globset::Glob::new(&glob).ok()?.compile_matcher();
-            matcher.is_match(&relative).then_some(schema)
-        })
+        compiled_mappings(cfg)
+            .iter()
+            .find_map(|(matcher, schema)| matcher.is_match(&relative).then(|| schema.clone()))
     }
 
     /// The directory an in-file reference is relative to: the file's own.
@@ -167,6 +159,89 @@ impl Scope {
     pub fn base_dir(&self) -> &Path {
         self.file.parent().unwrap_or(&self.root)
     }
+}
+
+/// Most directories whose project root is remembered.
+const MAX_ROOTS: usize = 4096;
+/// Most distinct configs whose compiled `schemas` mappings are remembered.
+const MAX_MAPPINGS: usize = 64;
+/// Most schema closures remembered.
+const MAX_CLOSURES: usize = 64;
+
+type RootMemo = Mutex<HashMap<PathBuf, Option<PathBuf>>>;
+
+fn root_memo() -> &'static RootMemo {
+    static MEMO: OnceLock<RootMemo> = OnceLock::new();
+    MEMO.get_or_init(Mutex::default)
+}
+
+/// Forgets the project roots found so far; called at the start of a run, so a `poly.toml` created
+/// or removed between runs of one process is seen.
+pub fn forget() {
+    root_memo()
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner)
+        .clear();
+}
+
+/// The nearest ancestor of the canonical `file` holding a `poly.toml`, else the working directory.
+/// The ancestor walk is remembered per directory: every file of a directory shares one answer.
+fn project_root(file: &Path) -> PathBuf {
+    let found = match file.parent() {
+        Some(dir) => {
+            let cached = root_memo()
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner)
+                .get(dir)
+                .cloned();
+            cached.unwrap_or_else(|| {
+                let found = find_root(file);
+                let mut memo = root_memo().lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+                if memo.len() >= MAX_ROOTS {
+                    memo.clear();
+                }
+                memo.insert(dir.to_path_buf(), found.clone());
+                found
+            })
+        }
+        None => None,
+    };
+    found.unwrap_or_else(|| {
+        let cwd = std::env::current_dir().unwrap_or_default();
+        canonical(&cwd).unwrap_or(cwd)
+    })
+}
+
+fn find_root(file: &Path) -> Option<PathBuf> {
+    file.ancestors()
+        .skip(1)
+        .find(|dir| dir.join(CONFIG_FILE).is_file())
+        .map(Path::to_path_buf)
+}
+
+type Matchers = Arc<Vec<(globset::GlobMatcher, String)>>;
+
+/// The `schemas` mappings of `cfg` with their globs compiled, remembered per config so a run does
+/// not rebuild every matcher for every file.
+fn compiled_mappings(cfg: &EngineConfig) -> Matchers {
+    static MEMO: OnceLock<Mutex<HashMap<[u8; 32], Matchers>>> = OnceLock::new();
+    let key = cfg.fingerprint();
+    let memo = MEMO.get_or_init(Mutex::default);
+    if let Some(found) = memo.lock().unwrap_or_else(std::sync::PoisonError::into_inner).get(&key) {
+        return Arc::clone(found);
+    }
+    let built: Matchers = Arc::new(
+        mappings(cfg)
+            .into_iter()
+            .filter_map(|(glob, schema)| Some((globset::Glob::new(&glob).ok()?.compile_matcher(), schema)))
+            .collect(),
+    );
+    let mut memo = memo.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+    if memo.len() >= MAX_MAPPINGS {
+        memo.clear();
+    }
+    memo.insert(key, Arc::clone(&built));
+    built
 }
 
 /// The `(glob, schema)` pairs of `[engines.jsonschema] schemas`, in the order written; entries
@@ -194,7 +269,12 @@ pub fn mappings(cfg: &EngineConfig) -> Vec<(String, String)> {
 /// mapping, anything else that cannot be used is [`SchemaSource::Unavailable`].
 #[must_use]
 pub fn resolve(file: &Path, in_file: Option<&str>, cfg: &EngineConfig) -> SchemaSource {
-    let scope = Scope::for_file(file, cfg);
+    resolve_in(&Scope::for_file(file, cfg), in_file, cfg)
+}
+
+/// [`resolve`] for a file whose [`Scope`] the caller already holds.
+#[must_use]
+pub fn resolve_in(scope: &Scope, in_file: Option<&str>, cfg: &EngineConfig) -> SchemaSource {
     if let Some(reference) = in_file.map(str::trim).filter(|reference| !reference.is_empty()) {
         match scope.locate(reference, scope.base_dir()) {
             Ok(path) => return SchemaSource::Local(path),
@@ -284,28 +364,126 @@ pub fn salt(cfg: &EngineConfig, path: &Path) -> Option<String> {
     references.extend(declared_json_refs(&content));
 
     let mut unresolved = BTreeSet::new();
-    let mut seen: BTreeSet<PathBuf> = BTreeSet::new();
-    let mut note = |reference: &str, base: &Path, seen: &mut BTreeSet<PathBuf>| match scope.locate(reference, base) {
+    let mut seeds: BTreeSet<PathBuf> = BTreeSet::new();
+    for reference in &references {
+        note(&scope, reference, scope.base_dir(), &mut seeds, &mut unresolved);
+    }
+    if let Some(schema) = scope.mapped(cfg) {
+        note(&scope, &schema, &scope.root, &mut seeds, &mut unresolved);
+    }
+    let closure = ref_closure(&scope, seeds);
+    let seen = &closure.seen;
+    unresolved.extend(closure.unresolved.iter().cloned());
+
+    if seen.is_empty() && unresolved.is_empty() {
+        return None;
+    }
+    let mut hasher = blake3::Hasher::new();
+    for line in &unresolved {
+        hasher.update(line.as_bytes());
+        hasher.update(b"\0");
+    }
+    for file in seen {
+        hasher.update(file.to_string_lossy().as_bytes());
+        hasher.update(b"\0");
+        hasher.update(file_digest(file).as_bytes());
+    }
+    Some(format!("jsonschema:{}", hasher.finalize().to_hex()))
+}
+
+/// Resolves `reference` against `base`: the file into `seen`, or the reason it is missing into
+/// `unresolved`. Whether it resolved.
+fn note(
+    scope: &Scope,
+    reference: &str,
+    base: &Path,
+    seen: &mut BTreeSet<PathBuf>,
+    unresolved: &mut BTreeSet<String>,
+) -> bool {
+    match scope.locate(reference, base) {
         Ok(found) => {
             seen.insert(found);
+            true
         }
         Err(_) => {
             unresolved.insert(format!("unresolved:{reference}"));
+            false
         }
-    };
-    for reference in &references {
-        note(reference, scope.base_dir(), &mut seen);
     }
-    if let Some(schema) = scope.mapped(cfg) {
-        note(&schema, &scope.root, &mut seen);
-    }
+}
 
+type Stamp = Option<(SystemTime, u64)>;
+
+fn stamp(path: &Path) -> Stamp {
+    let meta = std::fs::metadata(path).ok()?;
+    Some((meta.modified().ok()?, meta.len()))
+}
+
+/// The local files the schemas of one file reach through `$ref`, with what each looked like when
+/// the closure was built.
+struct Closure {
+    seen: BTreeSet<PathBuf>,
+    unresolved: BTreeSet<String>,
+    /// Every file read to build the closure, and its stamp then.
+    read: Vec<(PathBuf, Stamp)>,
+    /// References that did not resolve, with the directory they were relative to.
+    missing: Vec<(String, PathBuf)>,
+}
+
+impl Closure {
+    /// Whether nothing the closure was built from has changed: each file read still has its stamp
+    /// and each missing reference is still missing.
+    fn is_current(&self, scope: &Scope) -> bool {
+        self.read.iter().all(|(path, was)| stamp(path) == *was)
+            && self
+                .missing
+                .iter()
+                .all(|(reference, base)| scope.locate(reference, base).is_err())
+    }
+}
+
+type ClosureKey = (BTreeSet<PathBuf>, PathBuf, PathBuf);
+
+/// The closure of `seeds` under `$ref`, remembered while every file it read is unchanged, so a
+/// run linting many files against one schema reads that schema once.
+fn ref_closure(scope: &Scope, seeds: BTreeSet<PathBuf>) -> Arc<Closure> {
+    static MEMO: OnceLock<Mutex<HashMap<ClosureKey, Arc<Closure>>>> = OnceLock::new();
+    let memo = MEMO.get_or_init(Mutex::default);
+    let key = (seeds, scope.root.clone(), scope.cache_dir.clone());
+    let cached = memo
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner)
+        .get(&key)
+        .cloned();
+    if let Some(closure) = cached
+        && closure.is_current(scope)
+    {
+        return closure;
+    }
+    let built = Arc::new(build_closure(scope, key.0.clone()));
+    if built.read.iter().all(|(_, was)| was.is_some()) {
+        let mut memo = memo.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+        if memo.len() >= MAX_CLOSURES {
+            memo.clear();
+        }
+        memo.insert(key, Arc::clone(&built));
+    }
+    built
+}
+
+fn build_closure(scope: &Scope, mut seen: BTreeSet<PathBuf>) -> Closure {
+    let mut unresolved = BTreeSet::new();
+    let mut read = Vec::new();
+    let mut missing = Vec::new();
     let mut queue: Vec<PathBuf> = seen.iter().cloned().collect();
     while let Some(file) = queue.pop() {
         if seen.len() >= MAX_CLOSURE {
             break;
         }
-        let Ok(text) = std::fs::read_to_string(&file) else {
+        let was = stamp(&file);
+        let text = std::fs::read_to_string(&file);
+        read.push((file.clone(), was));
+        let Ok(text) = text else {
             continue;
         };
         let base = file.parent().unwrap_or(&scope.root).to_path_buf();
@@ -318,25 +496,18 @@ pub fn salt(cfg: &EngineConfig, path: &Path) -> Option<String> {
                 continue;
             }
             let before = seen.clone();
-            note(&reference, &base, &mut seen);
+            if !note(scope, &reference, &base, &mut seen, &mut unresolved) {
+                missing.push((reference, base.clone()));
+            }
             queue.extend(seen.difference(&before).cloned());
         }
     }
-
-    if seen.is_empty() && unresolved.is_empty() {
-        return None;
+    Closure {
+        seen,
+        unresolved,
+        read,
+        missing,
     }
-    let mut hasher = blake3::Hasher::new();
-    for line in &unresolved {
-        hasher.update(line.as_bytes());
-        hasher.update(b"\0");
-    }
-    for file in &seen {
-        hasher.update(file.to_string_lossy().as_bytes());
-        hasher.update(b"\0");
-        hasher.update(file_digest(file).as_bytes());
-    }
-    Some(format!("jsonschema:{}", hasher.finalize().to_hex()))
 }
 
 /// Digest of one file's bytes, memoized on its modification time and length so a warm run over
@@ -707,6 +878,90 @@ k = 1
         let second = salt(&cfg(""), &doc).expect("salt");
         assert_ne!(first, second, "editing a $ref'd file must change the salt");
         assert_eq!(salt(&cfg(""), &dir.path().join("plain.yaml")), None);
+    }
+
+    #[test]
+    fn the_scope_root_matches_an_uncached_walk_and_follows_a_forget() {
+        let dir = project();
+        let nested = dir.path().join("a/b/c");
+        std::fs::create_dir_all(&nested).expect("nested");
+        let file = nested.join("doc.json");
+        std::fs::write(&file, "{}").expect("doc");
+        let canonical_file = canonical(&file).expect("canonical");
+        let uncached = find_root(&canonical_file).expect("root");
+        assert_eq!(Scope::for_file(&file, &cfg("")).root, uncached);
+        assert_eq!(Scope::for_file(&file, &cfg("")).root, uncached);
+        assert_eq!(uncached, canonical(dir.path()).expect("canonical root"));
+
+        std::fs::write(dir.path().join("a/b/poly.toml"), "").expect("inner poly.toml");
+        forget();
+        let inner = canonical(&dir.path().join("a/b")).expect("canonical inner");
+        assert_eq!(Scope::for_file(&file, &cfg("")).root, inner);
+    }
+
+    #[test]
+    fn compiled_mappings_match_the_configured_globs_and_skip_bad_ones() {
+        let dir = project();
+        let options = r#"schemas = [
+            { glob = "[", schema = "bad.json" },
+            { glob = "**/*.yaml", schema = "good.json" },
+        ]"#;
+        let scope = Scope::for_file(&dir.path().join("x/app.yaml"), &cfg(options));
+        assert_eq!(scope.mapped(&cfg(options)).as_deref(), Some("good.json"));
+        assert_eq!(scope.mapped(&cfg(options)).as_deref(), Some("good.json"));
+        assert_eq!(scope.mapped(&cfg("")), None);
+    }
+
+    fn bump(path: &Path, seconds: u64) {
+        let file = std::fs::OpenOptions::new().write(true).open(path).expect("open");
+        let modified = std::fs::metadata(path).expect("meta").modified().expect("mtime");
+        file.set_modified(modified + std::time::Duration::from_secs(seconds))
+            .expect("set mtime");
+    }
+
+    #[test]
+    fn the_ref_closure_memo_is_invalidated_when_a_referenced_file_changes() {
+        let dir = project();
+        let main = dir.path().join("main.json");
+        let part = dir.path().join("part.json");
+        let extra = dir.path().join("extra.json");
+        std::fs::write(&main, r#"{"$ref": "part.json"}"#).expect("main");
+        std::fs::write(&part, r#"{"type": "object"}"#).expect("part");
+        std::fs::write(&extra, r#"{"type": "string"}"#).expect("extra");
+        let doc = dir.path().join("doc.yaml");
+        std::fs::write(&doc, "#:schema main.json\nk: v\n").expect("doc");
+        let first = salt(&cfg(""), &doc).expect("salt");
+        assert_eq!(salt(&cfg(""), &doc).as_deref(), Some(first.as_str()));
+
+        // Same length, so only the modification time tells the memos the file changed.
+        std::fs::write(&part, r#"{"type": "string"}"#).expect("edit part");
+        bump(&part, 5);
+        let second = salt(&cfg(""), &doc).expect("salt");
+        assert_ne!(first, second);
+
+        std::fs::write(&part, r#"{"$ref": "extra.json"}"#).expect("part refs extra");
+        bump(&part, 10);
+        let third = salt(&cfg(""), &doc).expect("salt");
+        assert_ne!(second, third);
+        std::fs::write(&extra, r#"{"type": "number"}"#).expect("edit extra");
+        bump(&extra, 15);
+        assert_ne!(
+            third,
+            salt(&cfg(""), &doc).expect("salt"),
+            "a file only reached through a $ref counts"
+        );
+    }
+
+    #[test]
+    fn a_ref_that_was_missing_invalidates_the_memo_when_it_appears() {
+        let dir = project();
+        std::fs::write(dir.path().join("main.json"), r#"{"$ref": "later.json"}"#).expect("main");
+        let doc = dir.path().join("doc.yaml");
+        std::fs::write(&doc, "#:schema main.json\nk: v\n").expect("doc");
+        let before = salt(&cfg(""), &doc).expect("salt");
+        assert_eq!(salt(&cfg(""), &doc).as_deref(), Some(before.as_str()));
+        std::fs::write(dir.path().join("later.json"), "{}").expect("later");
+        assert_ne!(before, salt(&cfg(""), &doc).expect("salt"));
     }
 
     #[test]

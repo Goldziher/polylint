@@ -20,7 +20,7 @@ use poly_engine_api::engine::{
 };
 use poly_engine_api::host_hooks::HostHook;
 use poly_engine_api::host_hooks::jsonschema_source::{
-    SchemaSource, Scope, declared_json_refs, directive_ref, is_metaschema, resolve,
+    SchemaSource, Scope, declared_json_refs, directive_ref, is_metaschema, resolve_in,
 };
 use poly_engine_api::language::Language;
 
@@ -133,7 +133,7 @@ impl Engine for JsonSchemaEngine {
         let documents = match doc::parse(&src.language, content) {
             Ok(documents) => documents,
             Err(reason) => {
-                return Ok(match resolve(&src.path, textual.as_deref(), cfg) {
+                return Ok(match resolve_in(&scope, textual.as_deref(), cfg) {
                     SchemaSource::None => Vec::new(),
                     _ => vec![note(
                         "schema-unparseable",
@@ -156,7 +156,7 @@ impl Engine for JsonSchemaEngine {
         } else {
             textual
         };
-        match resolve(&src.path, in_file.as_deref(), cfg) {
+        match resolve_in(&scope, in_file.as_deref(), cfg) {
             SchemaSource::None => Ok(Vec::new()),
             SchemaSource::Unavailable { reference, reason } => Ok(vec![note(
                 "schema-unavailable",
