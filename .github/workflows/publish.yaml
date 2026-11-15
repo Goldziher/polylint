@@ -1053,8 +1053,9 @@ jobs:
           # poly-bundled crate of the components/ workspace (every engine statically linked, including
           # the git-pinned oxc, biome and rubyfmt ones) and is given no POLY_COMPONENT_LOCK_FILE, so it
           # embeds no lock and downloads no component. CARGO_TARGET_DIR puts its output at
-          # target/release/poly. cargo-auditable is the static musl build mise installed on the host.
-          auditable="$(command -v cargo-auditable)"
+          # target/release/poly. cargo-auditable is the static musl build mise installed on the host (its real
+          # path, not a shim, so the container can run it).
+          auditable="$(mise which cargo-auditable)"
           docker run --rm -v "$PWD":/work -v "$(dirname "$auditable")":/opt/cargo-auditable:ro -w /work \
             -e CARGO_TARGET_DIR=/work/target \
             -e POLY_BUILD_ID="$POLY_BUILD_ID" \
