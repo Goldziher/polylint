@@ -81,6 +81,19 @@ pub(super) enum Withdrawal {
 }
 
 impl Withdrawal {
+    /// A missing-component withdrawal for `reason`, which comes from outside poly's own wording.
+    ///
+    /// [`is_withdrawal_reason`] classifies by text, so a reason that opens like an instruction's
+    /// would escape `--deny-skips`. Such a reason is prefixed with `component: `, which no
+    /// instruction's reason starts with; every ordinary reason is kept verbatim.
+    pub(super) fn component_missing(reason: &str) -> Self {
+        if is_withdrawal_reason(reason) {
+            Self::ComponentMissing(format!("component: {reason}"))
+        } else {
+            Self::ComponentMissing(reason.to_owned())
+        }
+    }
+
     /// The reason string a reader sees, naming the instruction responsible.
     pub(super) fn reason(&self) -> String {
         match self {
@@ -360,6 +373,23 @@ fn excluded_rather_than_unmatched(path: &Path, configs: &ConfigSet, exclude: &[S
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_component_reason_cannot_pose_as_a_caller_instruction() {
+        for spoof in [
+            FILTERED_SKIP.to_owned(),
+            format!("{DISABLED_SKIP_PREFIX} [lint.python.ruff]"),
+        ] {
+            let withdrawal = Withdrawal::component_missing(&spoof);
+            assert!(
+                !is_withdrawal_reason(&withdrawal.reason()),
+                "{spoof:?} must stay charged to --deny-skips"
+            );
+        }
+        let ordinary = Withdrawal::component_missing("component not installed: python (offline)");
+        assert_eq!(ordinary.reason(), "component not installed: python (offline)");
+        assert!(is_withdrawal_reason(&Withdrawal::Selection.reason()));
+    }
 
     #[test]
     fn size_limits_gate_on_the_per_config_limit() {

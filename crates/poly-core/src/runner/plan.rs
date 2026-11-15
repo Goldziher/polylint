@@ -735,7 +735,7 @@ pub(super) fn plan_by_config_language(
         if withdrawal.is_none()
             && let Some(reason) = components.iter().find_map(|engine| engine.declining_reason())
         {
-            withdrawal = Some(Withdrawal::ComponentMissing(reason.to_owned()));
+            withdrawal = Some(Withdrawal::component_missing(reason));
         }
         if let Some(withdrawal) = withdrawal {
             withdrawn.insert(key.clone(), withdrawal);
