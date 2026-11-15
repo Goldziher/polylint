@@ -21,6 +21,12 @@ shfmt = "3.14.1"
 "github:xberg-io/alef" = "0.129.4"
 # Resolves the release archives the way `cargo binstall` users do (mise run verify:binstall).
 cargo-binstall = "1.26.2"
+# Release supply chain (ADR 0057): cargo-auditable embeds the dependency list in the release binaries,
+# cargo-cyclonedx and cyclonedx-gomod write the CycloneDX SBOMs attached to each release archive. The
+# static musl cargo-auditable on Linux also runs in the Alpine container that builds the musl release.
+"github:rust-secure-code/cargo-auditable" = { version = "0.7.7", platforms = { linux-x64 = { asset_pattern = "cargo-auditable-x86_64-unknown-linux-musl.tar.xz" }, linux-arm64 = { asset_pattern = "cargo-auditable-aarch64-unknown-linux-musl.tar.xz" } } }
+"github:CycloneDX/cyclonedx-rust-cargo" = { version = "0.5.10", version_prefix = "cargo-cyclonedx-" }
+"github:CycloneDX/cyclonedx-gomod" = "1.12.0"
 
 [vars]
 # Tasks run the bundled poly (core plus the web, biome and ruby engines, built from components/) from this

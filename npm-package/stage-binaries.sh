@@ -26,6 +26,9 @@ TARGETS=(
 # Shipped beside the binary (under bin/, which every platform package already publishes): the binary
 # links third-party code whose licences and the tsrs NOTICE must accompany it.
 NOTICE_FILES=(ATTRIBUTIONS.md THIRD-PARTY-LICENSES.md)
+# The archive's CycloneDX SBOM (release asset <archive>.cdx.json, ADR 0057) ships beside the binary
+# as bin/poly.cdx.json, so the package describes the same dependencies the release does.
+SBOM_NAME="poly.cdx.json"
 
 usage() {
   echo "usage: $0 --artifacts <dir> | --local <path-to-poly>" >&2
@@ -87,6 +90,11 @@ stage_from_archive() {
       return 1
     }
   done
+  [[ -f "$archive.cdx.json" ]] || {
+    echo "error: missing SBOM $archive.cdx.json" >&2
+    return 1
+  }
+  cp "$archive.cdx.json" "$dest/$SBOM_NAME"
   echo "  ✓ $name ← poly-$VERSION-$triple"
 }
 

@@ -510,10 +510,11 @@ jobs:
           targets: ${{ matrix.triple }}
 
       # go builds the sh component, an executable producer (alef.toml); the manylinux containers get it by mount.
-      - name: Setup mise (alef, go)
+      # The CycloneDX tools write each built component's SBOM.
+      - name: Setup mise (alef, go, SBOM tools)
         uses: xberg-io/actions/setup-mise@v1
         with:
-          tools: github:xberg-io/alef go
+          tools: github:xberg-io/alef go github:CycloneDX/cyclonedx-rust-cargo github:CycloneDX/cyclonedx-gomod
 
       - name: Download the previous component lock
         uses: actions/download-artifact@v8
@@ -580,6 +581,24 @@ jobs:
         if: ${{ !matrix.image }}
         shell: bash
         run: mise run components:release build "${{ matrix.triple }}"
+
+      # Reads the same Cargo.lock and go.sum the build used, for the target triple; it builds nothing.
+      - name: Write the SBOM of every component built here
+        shell: bash
+        env:
+          MISE_TASK_RUN_AUTO_INSTALL: "false"
+        run: |
+          set -euo pipefail
+          out="target/components-release/${{ matrix.triple }}"
+          mise run release:sbom components "${{ matrix.triple }}" "$out/sbom" "$out/plan/plan.json"
+
+      - name: Save the component SBOMs
+        uses: actions/upload-artifact@v7
+        with:
+          name: component-sboms-${{ matrix.triple }}
+          path: target/components-release/${{ matrix.triple }}/sbom/
+          # Empty when the plan reuses every component for this triple.
+          if-no-files-found: ignore
 
       - name: Stage the unsigned payloads and record their digests
         shell: bash
@@ -812,6 +831,40 @@ jobs:
       - name: Merge into one signed lock (reused entries carried over)
         run: mise run components:release lock plans components poly-components.lock.json
 
+      - name: Download every triple's component SBOMs
+        # Absent when the plan reuses every component on every triple.
+        continue-on-error: true
+        uses: actions/download-artifact@v8
+        with:
+          pattern: component-sboms-*
+          path: sboms
+
+      # Each built archive's SBOM becomes the release asset <archive>.cdx.json, matched through the
+      # signed record's identity rather than by guessing the archive name.
+      - name: Name each component SBOM after its archive
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+          mkdir -p component-sboms
+          n=0
+          for record in components/*.record.json; do
+            archive="$(jq -er .archive "$record")"
+            component="$(jq -er .identity.component "$record")"
+            target="$(jq -er .identity.target "$record")"
+            sbom="sboms/component-sboms-$target/$component.cdx.json"
+            [ -f "$sbom" ] || { echo "::error::no SBOM for $component on $target ($archive)"; exit 1; }
+            cp "$sbom" "component-sboms/$archive.cdx.json"
+            n=$((n + 1))
+          done
+          echo "named $n component SBOMs"
+
+      - name: Save the component SBOMs for the checksums
+        uses: actions/upload-artifact@v7
+        with:
+          name: releases-components-sboms
+          path: component-sboms/
+          if-no-files-found: ignore
+
       - name: Assert the lock is complete and signed
         env:
           RELEASE_TAG: ${{ needs.meta.outputs.tag }}
@@ -917,12 +970,18 @@ jobs:
         run: echo "PROFILE_DIR=${{ matrix.alpine && 'release' || 'core' }}" >> "$GITHUB_ENV"
         shell: bash
 
+      # The musl leg builds in its container; the host toolchain there only reads metadata for the SBOM.
       - name: Setup Rust
-        if: ${{ !matrix.alpine }}
         uses: dtolnay/rust-toolchain@v1
         with:
           toolchain: ${{ env.RUST_TOOLCHAIN }}
           targets: ${{ matrix.triple }}
+
+      # cargo-auditable embeds the dependency list in the binary; cargo-cyclonedx writes its SBOM.
+      - name: Setup mise (cargo-auditable, cargo-cyclonedx)
+        uses: xberg-io/actions/setup-mise@v1
+        with:
+          tools: github:rust-secure-code/cargo-auditable github:CycloneDX/cyclonedx-rust-cargo
 
       - name: Install clang for bindgen (Linux)
         if: ${{ runner.os == 'Linux' && !matrix.alpine }}
@@ -954,7 +1013,7 @@ jobs:
           POLY_COMPONENT_LOCK_FILE: ${{ github.workspace }}/components-lock/poly-components.lock.json
         # The core flavour (ADR 0039): every other engine family and the MCP server are components
         # this binary downloads on first use, from the lock embedded above.
-        run: cargo build --profile core --locked --target ${{ matrix.triple }} -p poly-cli --no-default-features --features core
+        run: cargo auditable build --profile core --locked --target ${{ matrix.triple }} -p poly-cli --no-default-features --features core
         shell: bash
 
       - name: Build binary (musl, Alpine container)
@@ -978,8 +1037,9 @@ jobs:
           # poly-bundled crate of the components/ workspace (every engine statically linked, including
           # the git-pinned oxc, biome and rubyfmt ones) and is given no POLY_COMPONENT_LOCK_FILE, so it
           # embeds no lock and downloads no component. CARGO_TARGET_DIR puts its output at
-          # target/release/poly.
-          docker run --rm -v "$PWD":/work -w /work \
+          # target/release/poly. cargo-auditable is the static musl build mise installed on the host.
+          auditable="$(command -v cargo-auditable)"
+          docker run --rm -v "$PWD":/work -v "$(dirname "$auditable")":/opt/cargo-auditable:ro -w /work \
             -e CARGO_TARGET_DIR=/work/target \
             -e POLY_BUILD_ID="$POLY_BUILD_ID" \
             "$MUSL_BUILD_IMAGE" sh -c '
@@ -990,7 +1050,8 @@ jobs:
               mkdir -p /tmp/static-unwind
               ln -sf "$unwind" /tmp/static-unwind/libgcc_s.a
               export RUSTFLAGS="-C target-feature=-crt-static -L native=/tmp/static-unwind"
-              cargo build --release --locked --manifest-path components/Cargo.toml -p poly-bundled
+              export PATH="/opt/cargo-auditable:$PATH"
+              cargo auditable build --release --locked --manifest-path components/Cargo.toml -p poly-bundled
               mkdir -p "target/${{ matrix.triple }}/release"
               cp target/release/poly "target/${{ matrix.triple }}/release/poly"
               strip "target/${{ matrix.triple }}/release/poly"
@@ -1066,6 +1127,17 @@ jobs:
             exit 1
           fi
           echo "dev-lock absent from $bin"
+        shell: bash
+
+      - name: Assert the dependency list is embedded (cargo-auditable)
+        # cargo-auditable stores the dependency tree in a `.dep-v0` linker section (ELF, Mach-O and PE), whose
+        # name is in the binary's section table, so reading the artifact shows the build carries it.
+        run: |
+          set -euo pipefail
+          bin="target/${{ matrix.triple }}/$PROFILE_DIR/poly"
+          case "${{ matrix.triple }}" in *windows*) bin="$bin.exe" ;; esac
+          grep -aq '\.dep-v0' "$bin" || { echo "::error::$bin has no .dep-v0 section; was it built with cargo auditable?"; exit 1; }
+          echo "dependency list embedded in $bin"
         shell: bash
 
       - name: Assert the core is under 14 MiB
@@ -1222,6 +1294,24 @@ jobs:
           done
         shell: bash
 
+      # The SBOM of the archive's binary, from the same manifest, features and target it was built with.
+      - name: Write the archive's SBOM
+        env:
+          MISE_TASK_RUN_AUTO_INSTALL: "false"
+        run: |
+          set -euo pipefail
+          case "${{ matrix.triple }}" in
+            *windows*) archive="poly-${{ needs.meta.outputs.version }}-${{ matrix.triple }}.zip" ;;
+            *) archive="poly-${{ needs.meta.outputs.version }}-${{ matrix.triple }}.tar.gz" ;;
+          esac
+          if [ "${{ matrix.alpine }}" = "true" ]; then
+            mise run release:sbom binary "${{ matrix.triple }}" "$archive.cdx.json" components/crates/poly-bundled/Cargo.toml
+          else
+            mise run release:sbom binary "${{ matrix.triple }}" "$archive.cdx.json" crates/poly-cli/Cargo.toml \
+              --no-default-features --features core
+          fi
+        shell: bash
+
       - name: Save artifact for checksums
         uses: actions/upload-artifact@v7
         with:
@@ -1229,7 +1319,8 @@ jobs:
           path: |
             poly-${{ needs.meta.outputs.version }}-${{ matrix.triple }}.tar.gz
             poly-${{ needs.meta.outputs.version }}-${{ matrix.triple }}.zip
-          if-no-files-found: ignore
+            poly-${{ needs.meta.outputs.version }}-${{ matrix.triple }}.*.cdx.json
+          if-no-files-found: error
 
   checksums:
     if: ${{ !inputs.plugins-only }}
@@ -1238,6 +1329,8 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: read
+    outputs:
+      sbom_pairs: ${{ steps.sbom_pairs.outputs.pairs }}
     steps:
       - name: Checkout
         uses: actions/checkout@v7
@@ -1332,15 +1425,62 @@ jobs:
           [ "$missing" -eq 0 ] || exit 1
           echo "✓ the lock has $total component artifacts, $built built for $RELEASE_TAG with their assets present, $((total - built)) reused"
 
+      # Every archive built for this tag, poly's and each component's, ships its SBOM as <archive>.cdx.json.
+      - name: Verify every archive has its SBOM
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+          cd artifacts
+          archives=(poly-*.tar.gz poly-*.zip)
+          missing=0
+          for archive in "${archives[@]}"; do
+            if [ ! -f "$archive.cdx.json" ]; then
+              echo "::error::missing SBOM $archive.cdx.json"
+              missing=$((missing + 1))
+            fi
+          done
+          sboms=(*.cdx.json)
+          [ "$missing" -eq 0 ] && [ "${#sboms[@]}" -eq "${#archives[@]}" ] || {
+            echo "::error::${#archives[@]} archives, ${#sboms[@]} SBOMs, $missing missing"
+            exit 1
+          }
+          echo "✓ ${#archives[@]} archives, each with its SBOM"
+
       - name: Generate checksums
         run: |
           set -euo pipefail
           cd artifacts
-          # Core and component archives, component records, and the lock. Every
+          # Core and component archives, their SBOMs, component records, and the lock. Every
           # name starts with poly-, which is the pattern the registry jobs download and check.
-          find . -type f \( -name "*.tar.gz" -o -name "*.zip" -o -name "*.record.json" \
+          find . -type f \( -name "*.tar.gz" -o -name "*.zip" -o -name "*.record.json" -o -name "*.cdx.json" \
             -o -name "poly-components.lock.json" \) -exec sha256sum {} \; | sort > ../sha256sums.txt
           cat ../sha256sums.txt
+
+      # One SBOM attestation per archive: actions/attest-sbom binds one SBOM to its subject per call, so
+      # attest_sboms runs a matrix over these pairs, by digest, with only the SBOMs downloaded.
+      - name: List the SBOM attestations
+        id: sbom_pairs
+        run: |
+          set -euo pipefail
+          pairs="$(awk '{ n = $NF; sub(/^\.\//, "", n); print $1 "\t" n }' sha256sums.txt | jq -Rsc '
+            [split("\n")[] | select(length > 0) | split("\t") | {digest: ("sha256:" + .[0]), name: .[1]}]
+            | (map({(.name): .digest}) | add) as $digests
+            | [.[] | select(.name | endswith(".cdx.json")) | (.name | rtrimstr(".cdx.json")) as $subject
+               | {sbom: .name, subject: $subject, digest: $digests[$subject]}]')"
+          count="$(jq 'length' <<< "$pairs")"
+          jq -e 'length > 0 and length <= 256 and all(.[]; .digest != null)' <<< "$pairs" > /dev/null || {
+            echo "::error::$count SBOM pairs, or one without its archive's digest"
+            exit 1
+          }
+          echo "pairs=$pairs" >> "$GITHUB_OUTPUT"
+          echo "$count SBOM attestations to make"
+
+      - name: Save the SBOMs for attestation
+        uses: actions/upload-artifact@v7
+        with:
+          name: release-sboms
+          path: artifacts/*.cdx.json
+          if-no-files-found: error
 
       - name: Save the checksums for the upload
         uses: actions/upload-artifact@v7
@@ -1348,6 +1488,69 @@ jobs:
           name: release-checksums
           path: sha256sums.txt
           if-no-files-found: error
+
+  # Build provenance (SLSA, signed through Sigstore with this workflow's OIDC identity) for every file
+  # sha256sums.txt lists, the poly and component archives and the lock among them, and for
+  # sha256sums.txt itself. Subjects are named by digest, so nothing large is downloaded.
+  attest_provenance:
+    if: ${{ !inputs.plugins-only }}
+    name: Attest build provenance
+    needs: [meta, checksums]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+      attestations: write
+    steps:
+      - name: Download the checksums
+        uses: actions/download-artifact@v8
+        with:
+          name: release-checksums
+          path: sums
+
+      - name: Name the subjects without the ./ prefix
+        run: |
+          set -euo pipefail
+          awk '{ n = $NF; sub(/^\.\//, "", n); print $1 "  " n }' sums/sha256sums.txt > subjects.sha256
+          wc -l < subjects.sha256
+
+      - name: Attest the release files
+        uses: actions/attest-build-provenance@v4
+        with:
+          subject-checksums: subjects.sha256
+
+      - name: Attest sha256sums.txt
+        uses: actions/attest-build-provenance@v4
+        with:
+          subject-path: sums/sha256sums.txt
+
+  attest_sboms:
+    if: ${{ !inputs.plugins-only }}
+    name: Attest SBOM / ${{ matrix.subject }}
+    needs: [meta, checksums]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+      attestations: write
+    strategy:
+      fail-fast: false
+      max-parallel: 16
+      matrix:
+        include: ${{ fromJSON(needs.checksums.outputs.sbom_pairs) }}
+    steps:
+      - name: Download the SBOMs
+        uses: actions/download-artifact@v8
+        with:
+          name: release-sboms
+          path: sboms
+
+      - name: Attest the SBOM of ${{ matrix.subject }}
+        uses: actions/attest-sbom@v4
+        with:
+          subject-name: ${{ matrix.subject }}
+          subject-digest: ${{ matrix.digest }}
+          sbom-path: sboms/${{ matrix.sbom }}
 
   # The only build-path job with a write token: it uploads exactly the files sha256sums.txt lists,
   # after checking each against it, and builds nothing.
@@ -1389,7 +1592,7 @@ jobs:
 
   finalize_release:
     name: Publish GitHub release
-    needs: [meta, checksums, publish_assets]
+    needs: [meta, checksums, publish_assets, attest_provenance, attest_sboms]
     if: >-
       !inputs.plugins-only && (always() && needs.meta.result == 'success')
     runs-on: ubuntu-latest
@@ -1417,6 +1620,11 @@ jobs:
             "poly-${version}-aarch64-unknown-linux-gnu.tar.gz"
             "poly-${version}-aarch64-apple-darwin.tar.gz"
             "poly-${version}-x86_64-pc-windows-msvc.zip"
+            "poly-${version}-x86_64-unknown-linux-gnu.tar.gz.cdx.json"
+            "poly-${version}-x86_64-unknown-linux-musl.tar.gz.cdx.json"
+            "poly-${version}-aarch64-unknown-linux-gnu.tar.gz.cdx.json"
+            "poly-${version}-aarch64-apple-darwin.tar.gz.cdx.json"
+            "poly-${version}-x86_64-pc-windows-msvc.zip.cdx.json"
             "poly-components.lock.json"
             "sha256sums.txt"
           )
@@ -1443,7 +1651,7 @@ jobs:
             while IFS= read -r url; do
               [ -n "$url" ] || continue
               archive="${url#"$prefix"}"
-              for asset in "$archive" "$archive.record.json"; do
+              for asset in "$archive" "$archive.record.json" "$archive.cdx.json"; do
                 if ! grep -qx "$asset" /tmp/assets.txt; then
                   echo "::error::release $tag is missing component asset $asset"
                   missing=$((missing + 1))

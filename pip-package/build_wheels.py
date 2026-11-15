@@ -69,6 +69,10 @@ TARGETS = (
 
 NOTICE_FILES = ("ATTRIBUTIONS.md", "THIRD-PARTY-LICENSES.md")
 
+# The archive's CycloneDX SBOM (release asset ``<archive>.cdx.json``, ADR 0057), shipped in the wheel
+# so it describes the same dependencies the release does.
+SBOM_NAME = "poly.cdx.json"
+
 GLIBC_SYMBOL = re.compile(rb"GLIBC_2\.(\d+)")
 
 
@@ -160,6 +164,12 @@ def extract_binary(archive: Path, target: Target, destination: Path) -> Path:
                     shutil.copyfileobj(member, sink)
 
     output.chmod(0o755)
+
+    sbom = archive.with_name(archive.name + ".cdx.json")
+    if not sbom.is_file():
+        message = f"missing SBOM {sbom}"
+        raise SystemExit(message)
+    shutil.copyfile(sbom, destination / SBOM_NAME)
     return output
 
 
@@ -198,6 +208,7 @@ def run_build(out_dir: Path, env_overrides: dict[str, str]) -> Path:
     env.pop("POLY_WHEEL_TAG", None)
     env.pop("POLY_WHEEL_BINARY", None)
     env.pop("POLY_WHEEL_NOTICES", None)
+    env.pop("POLY_WHEEL_SBOM", None)
     env.update(env_overrides)
 
     subprocess.run(  # noqa: S603 - fixed argv
@@ -224,6 +235,8 @@ def build_platform_wheel(
     overrides = {"POLY_WHEEL_TAG": tag, "POLY_WHEEL_BINARY": str(binary)}
     if all((binary.parent / name).is_file() for name in NOTICE_FILES):
         overrides["POLY_WHEEL_NOTICES"] = str(binary.parent)
+    if (binary.parent / SBOM_NAME).is_file():
+        overrides["POLY_WHEEL_SBOM"] = str(binary.parent / SBOM_NAME)
     wheel = run_build(out_dir, overrides)
     force_executable_bit(wheel)
     print(f"  ✓ {target.triple:32} → {wheel.name}")

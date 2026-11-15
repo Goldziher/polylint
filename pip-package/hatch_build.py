@@ -46,3 +46,7 @@ class CustomBuildHook(BuildHookInterface):
         if notices:
             for name in ("ATTRIBUTIONS.md", "THIRD-PARTY-LICENSES.md"):
                 build_data["force_include"][str(Path(notices) / name)] = f"polylint/licenses/{name}"
+
+        sbom = os.environ.get("POLY_WHEEL_SBOM")
+        if sbom:
+            build_data["force_include"][sbom] = "polylint/sbom/poly.cdx.json"

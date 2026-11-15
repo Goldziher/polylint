@@ -31,6 +31,112 @@ url = "https://github.com/cargo-bins/cargo-binstall/releases/download/v1.26.2/ca
 url_api = "https://api.github.com/repos/cargo-bins/cargo-binstall/releases/assets/695464456"
 provenance = "github-attestations"
 
+[[tools."github:CycloneDX/cyclonedx-gomod"]]
+version = "1.12.0"
+backend = "github:CycloneDX/cyclonedx-gomod"
+specifiers = ["1.12.0"]
+
+[tools."github:CycloneDX/cyclonedx-gomod"."platforms.linux-arm64"]
+checksum = "sha256:b6dd6424755e61c0f7fcd36074fbb78798a33c52f1bd35dd177ba62eccadf404"
+checksum_source = "mise-versions"
+url = "https://github.com/CycloneDX/cyclonedx-gomod/releases/download/v1.12.0/cyclonedx-gomod_1.12.0_linux_arm64.tar.gz"
+url_api = "https://api.github.com/repos/CycloneDX/cyclonedx-gomod/releases/assets/524971566"
+
+[tools."github:CycloneDX/cyclonedx-gomod"."platforms.linux-x64"]
+checksum = "sha256:004b9f5cc595b797fb5423e2ae4c97bcf0f18c712ed2faee1640b09e5efd6d15"
+checksum_source = "mise-versions"
+url = "https://github.com/CycloneDX/cyclonedx-gomod/releases/download/v1.12.0/cyclonedx-gomod_1.12.0_linux_amd64.tar.gz"
+url_api = "https://api.github.com/repos/CycloneDX/cyclonedx-gomod/releases/assets/524971569"
+
+[tools."github:CycloneDX/cyclonedx-gomod"."platforms.macos-arm64"]
+checksum = "sha256:43dcd58b7a7ef9d84a2d21df9c6eeeb907d5b4ee2b1fe6c1330e5bc9b478281e"
+checksum_source = "mise-versions"
+url = "https://github.com/CycloneDX/cyclonedx-gomod/releases/download/v1.12.0/cyclonedx-gomod_1.12.0_darwin_arm64.tar.gz"
+url_api = "https://api.github.com/repos/CycloneDX/cyclonedx-gomod/releases/assets/524971570"
+
+[tools."github:CycloneDX/cyclonedx-gomod"."platforms.windows-x64"]
+checksum = "sha256:b5d2fc679928a0e1ff6d8d6f76e273c1c801f3b69d9d1cf71920f41e5661bcb7"
+checksum_source = "mise-versions"
+url = "https://github.com/CycloneDX/cyclonedx-gomod/releases/download/v1.12.0/cyclonedx-gomod_1.12.0_windows_amd64.zip"
+url_api = "https://api.github.com/repos/CycloneDX/cyclonedx-gomod/releases/assets/524971585"
+
+[[tools."github:CycloneDX/cyclonedx-rust-cargo"]]
+version = "0.5.10"
+backend = "github:CycloneDX/cyclonedx-rust-cargo"
+specifiers = ["0.5.10"]
+
+[tools."github:CycloneDX/cyclonedx-rust-cargo".options]
+version_prefix = "cargo-cyclonedx-"
+
+[tools."github:CycloneDX/cyclonedx-rust-cargo"."platforms.linux-arm64"]
+checksum = "sha256:6931b234914fa9be8686f46bd1ce71358b4be6d4cd3ce6b7082bec2313e59a8e"
+url = "https://github.com/CycloneDX/cyclonedx-rust-cargo/releases/download/cargo-cyclonedx-0.5.10/cargo-cyclonedx-aarch64-unknown-linux-gnu.tar.xz"
+url_api = "https://api.github.com/repos/CycloneDX/cyclonedx-rust-cargo/releases/assets/730879154"
+provenance = "github-attestations"
+
+[tools."github:CycloneDX/cyclonedx-rust-cargo"."platforms.linux-x64"]
+checksum = "sha256:2e4ef64a53c0a38d4b7d805c593b5f47ecd29821e98d81e484d03abaa0edb95f"
+url = "https://github.com/CycloneDX/cyclonedx-rust-cargo/releases/download/cargo-cyclonedx-0.5.10/cargo-cyclonedx-x86_64-unknown-linux-gnu.tar.xz"
+url_api = "https://api.github.com/repos/CycloneDX/cyclonedx-rust-cargo/releases/assets/730879213"
+provenance = "github-attestations"
+
+[tools."github:CycloneDX/cyclonedx-rust-cargo"."platforms.macos-arm64"]
+checksum = "sha256:4c39e13494d51c9d7f63e2923e7afdb5648a7a806a9ed7684dbe3786d2e2d1da"
+url = "https://github.com/CycloneDX/cyclonedx-rust-cargo/releases/download/cargo-cyclonedx-0.5.10/cargo-cyclonedx-aarch64-apple-darwin.tar.xz"
+url_api = "https://api.github.com/repos/CycloneDX/cyclonedx-rust-cargo/releases/assets/730879159"
+provenance = "github-attestations"
+
+[tools."github:CycloneDX/cyclonedx-rust-cargo"."platforms.windows-x64"]
+checksum = "sha256:b0cdf58875a4b3c83e13fbea19eb6a85d63498aeab90f50456179173c370b3ce"
+url = "https://github.com/CycloneDX/cyclonedx-rust-cargo/releases/download/cargo-cyclonedx-0.5.10/cargo-cyclonedx-x86_64-pc-windows-msvc.zip"
+url_api = "https://api.github.com/repos/CycloneDX/cyclonedx-rust-cargo/releases/assets/730879191"
+provenance = "github-attestations"
+
+[[tools."github:rust-secure-code/cargo-auditable"]]
+version = "0.7.7"
+backend = "github:rust-secure-code/cargo-auditable"
+specifiers = ["0.7.7"]
+
+[tools."github:rust-secure-code/cargo-auditable".options]
+asset_pattern = "cargo-auditable-aarch64-unknown-linux-musl.tar.xz"
+
+[tools."github:rust-secure-code/cargo-auditable"."platforms.linux-arm64"]
+checksum = "sha256:c324af56990601354bbf40080f582ba46f8ec8b807a1388e25bb7e429d285c18"
+checksum_source = "mise-versions"
+url = "https://github.com/rust-secure-code/cargo-auditable/releases/download/v0.7.7/cargo-auditable-aarch64-unknown-linux-musl.tar.xz"
+url_api = "https://api.github.com/repos/rust-secure-code/cargo-auditable/releases/assets/605646416"
+
+[[tools."github:rust-secure-code/cargo-auditable"]]
+version = "0.7.7"
+backend = "github:rust-secure-code/cargo-auditable"
+specifiers = ["0.7.7"]
+
+[tools."github:rust-secure-code/cargo-auditable".options]
+asset_pattern = "cargo-auditable-x86_64-unknown-linux-musl.tar.xz"
+
+[tools."github:rust-secure-code/cargo-auditable"."platforms.linux-x64"]
+checksum = "sha256:7676443367c5e33d9fb22acef63cccb5e9202de12dae1b0579995eb3e2bc7a18"
+checksum_source = "mise-versions"
+url = "https://github.com/rust-secure-code/cargo-auditable/releases/download/v0.7.7/cargo-auditable-x86_64-unknown-linux-musl.tar.xz"
+url_api = "https://api.github.com/repos/rust-secure-code/cargo-auditable/releases/assets/605646444"
+
+[[tools."github:rust-secure-code/cargo-auditable"]]
+version = "0.7.7"
+backend = "github:rust-secure-code/cargo-auditable"
+specifiers = ["0.7.7"]
+
+[tools."github:rust-secure-code/cargo-auditable"."platforms.macos-arm64"]
+checksum = "sha256:a66ad6392861ca1abfe0b02b522622d91edf63e5d7b60f4d3088b5c23d240c72"
+checksum_source = "mise-versions"
+url = "https://github.com/rust-secure-code/cargo-auditable/releases/download/v0.7.7/cargo-auditable-aarch64-apple-darwin.tar.xz"
+url_api = "https://api.github.com/repos/rust-secure-code/cargo-auditable/releases/assets/605646408"
+
+[tools."github:rust-secure-code/cargo-auditable"."platforms.windows-x64"]
+checksum = "sha256:717ba2d3ed7997c501e9987ee7c94bebf9d7219b18b185a03009420ec7029c7d"
+checksum_source = "mise-versions"
+url = "https://github.com/rust-secure-code/cargo-auditable/releases/download/v0.7.7/cargo-auditable-x86_64-pc-windows-msvc.zip"
+url_api = "https://api.github.com/repos/rust-secure-code/cargo-auditable/releases/assets/605646426"
+
 [[tools."github:xberg-io/alef"]]
 version = "0.129.4"
 backend = "github:xberg-io/alef"
