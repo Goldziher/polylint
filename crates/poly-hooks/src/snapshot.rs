@@ -31,7 +31,9 @@
 //! that writes to its matched files into an arbitrary file write.
 //!
 //! Each refresh therefore **removes** any materialized symlink whose target
-//! does not lexically resolve inside the snapshot ([`sanitize_symlinks`]).
+//! does not resolve inside the snapshot, judged lexically and then physically
+//! through `canonicalize`, since `..` after a link in the path is resolved by the
+//! kernel, not by text ([`symlinks::sanitize_symlinks`]).
 //! Escaping links are removed rather than all symlinks being skipped: a
 //! *relative, in-tree* link is ordinary repository content that a workspace
 //! build may legitimately follow (a shared config, a fixture), and dropping
@@ -121,7 +123,7 @@
 
 use std::path::{Path, PathBuf};
 
-use tracing::{debug, warn};
+use tracing::debug;
 
 use crate::git;
 
@@ -133,6 +135,7 @@ mod manifest;
 mod repository;
 mod scope;
 mod submodule;
+mod symlinks;
 
 pub use self::link_guard::LinkGuard;
 pub use self::scope::{SnapshotScope, referenced_paths};
@@ -140,6 +143,7 @@ pub use self::scope::{SnapshotScope, referenced_paths};
 use self::include::materialize_includes;
 use self::manifest::{is_up_to_date, prune_stale, read_manifest, write_manifest};
 use self::submodule::materialize_submodules;
+use self::symlinks::sanitize_symlinks;
 
 /// Errors returned while creating or refreshing a [`StagedSnapshot`].
 #[derive(Debug, thiserror::Error)]
@@ -240,7 +244,8 @@ fn refresh(root: &Path, dir: &Path, includes: &[String], scope: SnapshotScope<'_
     // checkout's omitted file, a worktree deletion).
     to_checkout.extend(links::materialize(root, dir, &selection.links, &all)?);
     git::checkout_index_paths(root, dir, &to_checkout)?;
-    sanitize_symlinks(dir, &staged);
+    // `all`, not `staged`: a mirrored directory's tracked links are copied verbatim.
+    sanitize_symlinks(dir, &all);
 
     materialize_submodules(root, dir)?;
     // After the sanitizing pass and outside the manifest, for the reasons the
@@ -284,58 +289,9 @@ fn select_with_extended_configs(
     Ok(selection)
 }
 
-/// Remove every materialized symlink whose target does not resolve inside the
-/// snapshot (see the module docs). Runs on every refresh, not just on the run
-/// that materialized the entry, so a link that survived an earlier poly is
-/// cleaned up too.
-fn sanitize_symlinks(dir: &Path, staged: &[git::StagedEntry]) {
-    for entry in staged.iter().filter(|entry| entry.is_symlink) {
-        let link = dir.join(&entry.path);
-        let Ok(target) = std::fs::read_link(&link) else {
-            continue;
-        };
-        if resolves_inside_tree(&entry.path, &target) {
-            continue;
-        }
-        warn!(
-            path = %entry.path.display(),
-            target = %target.display(),
-            "removing a staged symlink whose target escapes the snapshot"
-        );
-        // `remove_file` unlinks the symlink itself, never its target.
-        let _ = std::fs::remove_file(&link);
-    }
-}
-
-/// Whether a symlink staged at `link_path` (repo-relative) with content
-/// `target` resolves to somewhere inside the tree it was materialized into.
-///
-/// Purely lexical, and deliberately so: the answer must not depend on what
-/// happens to exist on this machine, and a canonicalizing check would itself
-/// follow the link it is meant to judge. An absolute target — or one whose `..`
-/// components climb past the root — escapes.
-fn resolves_inside_tree(link_path: &Path, target: &Path) -> bool {
-    use std::path::Component;
-
-    let mut depth = link_path.components().count().saturating_sub(1);
-    for component in target.components() {
-        match component {
-            Component::Normal(_) => depth += 1,
-            Component::CurDir => {}
-            Component::ParentDir => {
-                if depth == 0 {
-                    return false;
-                }
-                depth -= 1;
-            }
-            Component::RootDir | Component::Prefix(_) => return false,
-        }
-    }
-    true
-}
-
 #[cfg(test)]
 mod tests {
+    use super::symlinks::resolves_inside_tree;
     use super::*;
     use std::process::Command;
     use tempfile::TempDir;
@@ -728,7 +684,7 @@ mod tests {
     }
 
     #[test]
-    fn resolves_inside_tree_judges_targets_lexically() {
+    fn resolves_inside_tree_is_only_the_lexical_prefilter() {
         let inside = |link: &str, target: &str| resolves_inside_tree(Path::new(link), Path::new(target));
 
         assert!(inside("a/link", "sibling.rs"));
