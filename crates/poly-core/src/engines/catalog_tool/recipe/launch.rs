@@ -208,12 +208,16 @@ fn java_program(config: &ToolConfig) -> Option<PathBuf> {
     which::which("java").ok()
 }
 
+/// `bin` as a program on `PATH` or an absolute file. A relative path with a
+/// separator would resolve against wherever poly runs, so it is never used (ADR 0057).
 fn locate(bin: &str) -> Option<PathBuf> {
     let path = Path::new(bin);
-    if path.components().count() > 1 {
+    if path.is_absolute() {
         path.is_file().then(|| path.to_path_buf())
-    } else {
+    } else if path.components().count() == 1 {
         which::which(bin).ok()
+    } else {
+        None
     }
 }
 
@@ -296,6 +300,13 @@ fn pinned_release(
         if !resolve::valid_version(version) {
             return Err(format!("tool `{}`: `{version}` is not a version", tool.name));
         }
+        origin::check_config_url(
+            &tool.name,
+            url,
+            version,
+            source,
+            install.map(|install| &install.releases),
+        )?;
         return Ok(Some(Pinned {
             version: version.clone(),
             asset: Asset {
@@ -469,7 +480,8 @@ fn no_source(tool: &Tool, request: &Request, seeds: Option<&std::collections::BT
         Request::Exact(version) => version.clone(),
     };
     format!(
-        "tool `{}` has no release source to resolve {wanted} from; known: [{}]. Give `url` and `sha256` to pin another.",
+        "tool `{}` has no release source to resolve {wanted} from; known: [{}]. Give `url` and `sha256` on a host \
+         the catalog names to pin another.",
         tool.name,
         known.join(", ")
     )

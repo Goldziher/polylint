@@ -79,8 +79,10 @@ fn poly(fixture: &Fixture, args: &[&str]) -> Output {
         .args(args)
         .current_dir(fixture.repo.path())
         .env("POLY_CACHE_HOME", fixture.cache.path())
-        // A `[tools]` url pin is honoured only in a trusted repository (ADR 0057).
+        // A `[tools]` url pin is honoured only in a trusted repository, and only on a
+        // host the catalog names or the user's own API override (ADR 0057).
         .env("POLY_TRUST", "1")
+        .env("POLY_GITHUB_API_URL", fixture.url.trim_end_matches("/golangci-lint"))
         .env("NO_COLOR", "1")
         .env_remove("RUST_LOG")
         .env_remove("POLY_OFFLINE")

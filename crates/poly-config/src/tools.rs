@@ -80,17 +80,20 @@ impl ToolsConfig {
     }
 
     /// Validate every configured tool name against the vendored
-    /// [`poly_catalog::Catalog`] (allowlist).
+    /// [`poly_catalog::Catalog`] (allowlist), then each tool's
+    /// [always-on restrictions](ToolConfig::validate_restrictions).
     ///
     /// Returns a human-readable error for the first name not present in the
     /// catalog, suggesting the closest known name when one is within a small
     /// edit distance.
     pub fn validate(&self) -> Result<(), String> {
         let catalog = Catalog::get();
-        for name in self.0.keys() {
+        for (name, tool) in &self.0 {
             if catalog.tool(name).is_none() {
                 return Err(unknown_tool_message(name, catalog));
             }
+            tool.validate_restrictions()
+                .map_err(|reason| format!("[tools.{name}] {reason}"))?;
         }
         Ok(())
     }
@@ -209,6 +212,83 @@ pub struct ToolConfig {
     /// with the inherited environment.
     #[serde(default)]
     pub goos: Vec<String>,
+}
+
+/// Environment variables `[tools.<name>] env` may never set, trusted or not
+/// (ADR 0057): each makes the dynamic loader, git, a shell or a language runtime
+/// load code the tool itself never asked for. Matched case-insensitively, since
+/// Windows environment names are.
+const DENIED_ENV: &[&str] = &[
+    "BASH_ENV",
+    "ENV",
+    "GIT_ASKPASS",
+    "GIT_EXEC_PATH",
+    "GIT_EXTERNAL_DIFF",
+    "GIT_PROXY_COMMAND",
+    "GIT_SSH",
+    "GIT_SSH_COMMAND",
+    "JAVA_TOOL_OPTIONS",
+    "JDK_JAVA_OPTIONS",
+    "NODE_OPTIONS",
+    "PERL5OPT",
+    "PYTHONSTARTUP",
+    "RUBYOPT",
+    "_JAVA_OPTIONS",
+];
+
+/// Prefixes of [`DENIED_ENV`]-like families: the Linux and macOS loaders'
+/// `LD_*`/`DYLD_*` (preload, library and audit paths) and git's `GIT_CONFIG*`,
+/// which injects configuration such as `core.fsmonitor` that runs a command.
+const DENIED_ENV_PREFIXES: &[&str] = &["DYLD_", "GIT_CONFIG", "LD_"];
+
+/// Whether `[tools.<name>] env` may not set `name`.
+#[must_use]
+pub fn env_key_denied(name: &str) -> bool {
+    let upper = name.to_ascii_uppercase();
+    DENIED_ENV.contains(&upper.as_str()) || DENIED_ENV_PREFIXES.iter().any(|prefix| upper.starts_with(prefix))
+}
+
+impl ToolConfig {
+    /// The restrictions that hold whether or not the repository is trusted: `bin`
+    /// is a bare program name or an absolute path, never a path relative to
+    /// wherever poly runs; `root` stays inside the repository; `env` sets none of
+    /// the [`DENIED_ENV`] variables.
+    ///
+    /// # Errors
+    ///
+    /// A message naming the first offending key.
+    pub fn validate_restrictions(&self) -> Result<(), String> {
+        if let Some(bin) = &self.bin
+            && !crate::trust::is_bare_program(bin)
+            && !std::path::Path::new(bin).is_absolute()
+        {
+            return Err(format!(
+                "`bin = \"{bin}\"` must be a program name looked up on PATH or an absolute path"
+            ));
+        }
+        if let Some(root) = &self.root
+            && escapes_repository(root)
+        {
+            return Err(format!(
+                "`root = \"{root}\"` must be a relative path inside the repository, without `..`"
+            ));
+        }
+        if let Some(name) = self.env.keys().find(|name| env_key_denied(name)) {
+            return Err(format!(
+                "`env` may not set `{name}`: it would make the loader, git or a runtime run code the tool did not \
+                 ask for"
+            ));
+        }
+        Ok(())
+    }
+}
+
+/// Whether `root` names a place outside the repository: rooted, drive-qualified,
+/// or climbing with `..`. Inspected as a string so every host gives the same answer.
+fn escapes_repository(root: &str) -> bool {
+    let mut chars = root.chars();
+    let drive = matches!((chars.next(), chars.next()), (Some(letter), Some(':')) if letter.is_ascii_alphabetic());
+    root.starts_with(['/', '\\']) || drive || root.split(['/', '\\']).any(|segment| segment == "..")
 }
 
 /// Maximum edit distance at which a closest-match name is worth suggesting.
@@ -439,5 +519,63 @@ format_extra_args = ["-lint=fix"]
     fn should_reject_an_unknown_install_policy() {
         let result: Result<ToolsConfig, _> = toml::from_str("[buf]\ninstall = \"sometimes\"\n");
         assert!(result.is_err());
+    }
+}
+
+#[cfg(test)]
+mod restrictions {
+    use super::*;
+
+    fn validate(toml: &str) -> Result<(), String> {
+        toml::from_str::<ToolsConfig>(toml).expect("parse").validate()
+    }
+
+    #[test]
+    fn bin_is_a_bare_name_or_an_absolute_path() {
+        validate("[shfmt]\nbin = \"shfmt\"\n").expect("a PATH lookup");
+        validate("[shfmt]\nbin = \"/opt/tools/shfmt\"\n").expect("an absolute path");
+        for bin in ["./shfmt", "bin/shfmt", "../shfmt"] {
+            let error = validate(&format!("[shfmt]\nbin = \"{bin}\"\n")).expect_err(bin);
+            assert!(
+                error.contains("[tools.shfmt]") && error.contains("absolute path"),
+                "{error}"
+            );
+        }
+    }
+
+    #[test]
+    fn root_stays_inside_the_repository() {
+        validate("[shfmt]\nroot = \"packages/shell\"\n").expect("a subdirectory");
+        for root in [
+            "../elsewhere",
+            "a/../../b",
+            "/etc",
+            "C:\\\\x",
+            "\\\\\\\\server\\\\share",
+        ] {
+            let error = validate(&format!("[shfmt]\nroot = \"{root}\"\n")).expect_err(root);
+            assert!(error.contains("inside the repository"), "{root}: {error}");
+        }
+    }
+
+    #[test]
+    fn env_may_not_inject_code() {
+        validate("[shfmt.env]\nGOFLAGS = \"-mod=mod\"\nPATH = \"/opt/go/bin\"\nJAVA_HOME = \"/opt/jdk\"\n")
+            .expect("ordinary variables");
+        for name in [
+            "LD_PRELOAD",
+            "ld_library_path",
+            "LD_AUDIT",
+            "DYLD_INSERT_LIBRARIES",
+            "GIT_CONFIG_COUNT",
+            "GIT_CONFIG_PARAMETERS",
+            "GIT_SSH_COMMAND",
+            "BASH_ENV",
+            "NODE_OPTIONS",
+            "JAVA_TOOL_OPTIONS",
+        ] {
+            let error = validate(&format!("[shfmt.env]\n{name} = \"x\"\n")).expect_err(name);
+            assert!(error.contains(name), "{error}");
+        }
     }
 }

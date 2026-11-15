@@ -1,8 +1,10 @@
-//! Which hosts a locked download may come from.
+//! Which hosts a locked or configured download may come from.
 //!
 //! `poly.lock` is a file a pull request can change on its own, so its asset URLs
 //! are not trusted by themselves: a locked URL is used only when it is https and
-//! its origin is one the tool's catalog entry already names.
+//! its origin is one the tool's catalog entry already names. A `[tools.<name>]
+//! url` is held to the same binding even in a trusted repository (ADR 0057), so a
+//! config cannot point poly at a binary from an arbitrary host either.
 
 use std::collections::BTreeMap;
 
@@ -27,6 +29,9 @@ struct Allowed {
     prefix: String,
     /// GitHub treats owner and repo names case-insensitively.
     fold_case: bool,
+    /// Named by the user's own `POLY_GITHUB_API_URL`, scheme included, so a plain
+    /// http mirror (or a local test server) they chose is accepted as written.
+    from_env: bool,
 }
 
 /// Check that the locked `url` of `tool` at `version` may be downloaded.
@@ -51,19 +56,47 @@ pub(super) fn check_locked_url(
     check(tool, url, &allowed)
 }
 
-fn check(tool: &str, url: &str, allowed: &[Allowed]) -> Result<(), String> {
-    match Origin::of(url) {
-        Some(origin)
-            if origin.is_https() && clean_path(url) && allowed.iter().any(|entry| entry.admits(&origin, url)) =>
-        {
-            Ok(())
-        }
-        _ => Err(format!(
-            "poly.lock pins tool `{tool}` to {url}, which is not https or not hosted where the catalog publishes \
-             it; refusing to download it. Run `poly lock --upgrade` to regenerate the lock, or set `url` and \
-             `sha256` in [tools.{tool}] to trust another host"
-        )),
+/// Check that the `[tools.<tool>] url` pin for `version` may be downloaded: the
+/// same locations [`check_locked_url`] allows.
+///
+/// # Errors
+///
+/// Returns a message naming the key when the URL is not https, carries
+/// userinfo, or sits outside every location the catalog allows.
+pub(super) fn check_config_url(
+    tool: &str,
+    url: &str,
+    version: &str,
+    source: Option<&Source>,
+    seeds: Option<&BTreeMap<String, Release>>,
+) -> Result<(), String> {
+    let allowed = allowed_origins(version, source, seeds, std::env::var(API_ENV).ok().as_deref());
+    if admitted(url, &allowed) {
+        return Ok(());
     }
+    Err(format!(
+        "[tools.{tool}] url = \"{url}\" is not https or not hosted where the catalog publishes `{tool}`; \
+         refusing to download it. Install the tool yourself and set `bin`, or name a mirror with {API_ENV}"
+    ))
+}
+
+fn check(tool: &str, url: &str, allowed: &[Allowed]) -> Result<(), String> {
+    if admitted(url, allowed) {
+        return Ok(());
+    }
+    Err(format!(
+        "poly.lock pins tool `{tool}` to {url}, which is not https or not hosted where the catalog publishes \
+         it; refusing to download it. Run `poly lock --upgrade` to regenerate the lock"
+    ))
+}
+
+fn admitted(url: &str, allowed: &[Allowed]) -> bool {
+    Origin::of(url).is_some_and(|origin| {
+        clean_path(url)
+            && allowed
+                .iter()
+                .any(|entry| (origin.is_https() || entry.from_env) && entry.admits(&origin, url))
+    })
 }
 
 impl Allowed {
@@ -72,6 +105,7 @@ impl Allowed {
             origin: Origin::of(url)?,
             prefix,
             fold_case,
+            from_env: false,
         })
     }
 
@@ -138,7 +172,14 @@ fn allowed_origins(
             allowed.extend(Allowed::new(&asset.url, with_slash(directory), false));
         }
     }
-    allowed.extend(api_override.and_then(|url| Allowed::new(url, "/".to_owned(), false)));
+    allowed.extend(
+        api_override
+            .and_then(|url| Allowed::new(url, "/".to_owned(), false))
+            .map(|entry| Allowed {
+                from_env: true,
+                ..entry
+            }),
+    );
     allowed
 }
 
@@ -248,6 +289,36 @@ mod tests {
             )
             .is_err()
         );
+    }
+
+    #[test]
+    fn a_configured_url_is_held_to_the_catalog_origins() {
+        let allowed = github();
+        assert!(admitted("https://github.com/o/r/releases/download/v1/t.zip", &allowed));
+        for url in [
+            "https://attacker.example/t.zip",
+            "http://github.com/o/r/releases/download/v1/t.zip",
+            "https://github.com/attacker/x/releases/download/v1/t.zip",
+            "file:///tmp/t.zip",
+        ] {
+            assert!(!admitted(url, &allowed), "{url}");
+        }
+        let error = check_config_url("t", "https://attacker.example/t.zip", "1.0.0", None, None).expect_err("foreign");
+        assert!(
+            error.contains("[tools.t] url") && error.contains("attacker.example"),
+            "{error}"
+        );
+    }
+
+    #[test]
+    fn the_users_own_api_override_may_be_plain_http() {
+        let origins = allowed_origins("1.0.0", None, None, Some("http://127.0.0.1:8080"));
+        assert!(admitted("http://127.0.0.1:8080/t", &origins));
+        assert!(
+            !admitted("http://127.0.0.1:9090/t", &origins),
+            "another port is another origin"
+        );
+        assert!(!admitted("http://github.com/o/r/releases/download/t", &github()));
     }
 
     #[test]
