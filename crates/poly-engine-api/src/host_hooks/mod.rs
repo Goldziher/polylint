@@ -70,6 +70,9 @@ pub enum HostHook {
     /// `[engines.jsonschema] schemas` maps to it, and the local files that schema `$ref`s
     /// ([`jsonschema_source`]): the `jsonschema` engine.
     JsonSchema,
+    /// Lint results follow the nearest `go.mod`'s root and module path ([`go_mod::lint_salt`]): the
+    /// ast-grep engine, whose Go architecture rules resolve import paths and path globs against it.
+    GoModLint,
 }
 
 /// Inputs shared by every file of a run (see [`Engine::run_context`](crate::engine::Engine::run_context)).
@@ -80,7 +83,7 @@ pub fn run_context(hook: HostHook, cfg: &EngineConfig) -> String {
             editorconfig::forget();
             String::new()
         }
-        HostHook::None | HostHook::OxfmtScope | HostHook::Oxc | HostHook::GoMod => String::new(),
+        HostHook::None | HostHook::OxfmtScope | HostHook::Oxc | HostHook::GoMod | HostHook::GoModLint => String::new(),
         HostHook::JsonSchema => {
             jsonschema_source::forget();
             String::new()
@@ -105,7 +108,7 @@ pub fn file_context(hook: HostHook, path: &Path, cfg: &EngineConfig) -> Option<S
     match hook {
         HostHook::None => None,
         HostHook::OxfmtScope | HostHook::Editorconfig | HostHook::GoMod => format_input_salt(hook, path, cfg),
-        HostHook::JsonSchema => lint_input_salt(hook, path, cfg),
+        HostHook::JsonSchema | HostHook::GoModLint => lint_input_salt(hook, path, cfg),
         HostHook::Oxc => match (lint_input_salt(hook, path, cfg), format_input_salt(hook, path, cfg)) {
             (None, None) => None,
             (lint, format) => Some(format!("{}|{}", lint.unwrap_or_default(), format.unwrap_or_default())),
@@ -125,6 +128,7 @@ pub fn lint_input_salt(hook: HostHook, path: &Path, cfg: &EngineConfig) -> Optio
     match hook {
         HostHook::Oxc => oxlintrc::governing_for(cfg, path).map(|governing| governing.digest.clone()),
         HostHook::JsonSchema => jsonschema_source::salt(cfg, path),
+        HostHook::GoModLint => go_mod::lint_salt(path),
         HostHook::None | HostHook::OxfmtScope | HostHook::RuffContext | HostHook::Editorconfig | HostHook::GoMod => {
             None
         }
@@ -145,7 +149,7 @@ pub fn format_input_salt(hook: HostHook, path: &Path, cfg: &EngineConfig) -> Opt
             })
         }
         HostHook::GoMod => go_mod::salt(cfg, path),
-        HostHook::None | HostHook::RuffContext | HostHook::JsonSchema => None,
+        HostHook::None | HostHook::RuffContext | HostHook::JsonSchema | HostHook::GoModLint => None,
     }
 }
 
@@ -162,7 +166,7 @@ pub fn format_config<'a>(
         HostHook::OxfmtScope | HostHook::Oxc => oxfmt_scope::path_config(cfg, src, engine),
         HostHook::Editorconfig => editorconfig::apply(cfg, &src.path),
         HostHook::GoMod => go_mod::apply(cfg, &src.path),
-        HostHook::None | HostHook::RuffContext | HostHook::JsonSchema => Cow::Borrowed(cfg),
+        HostHook::None | HostHook::RuffContext | HostHook::JsonSchema | HostHook::GoModLint => Cow::Borrowed(cfg),
     }
 }
 

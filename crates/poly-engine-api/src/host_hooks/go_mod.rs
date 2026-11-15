@@ -63,8 +63,34 @@ fn load(dir: &Path) -> Option<Arc<GoMod>> {
 /// The `go.mod` governing `path`: the nearest one in its directory or above.
 #[must_use]
 pub fn nearest(path: &Path) -> Option<Arc<GoMod>> {
+    nearest_root(path).map(|(_, module)| module)
+}
+
+/// The directory holding the `go.mod` governing `path`, with that `go.mod`: the module root a
+/// file's module-relative path and its module-internal import paths are resolved against.
+#[must_use]
+pub fn nearest_root(path: &Path) -> Option<(PathBuf, Arc<GoMod>)> {
     let absolute = std::path::absolute(path).ok()?;
-    absolute.parent()?.ancestors().find_map(load)
+    absolute
+        .parent()?
+        .ancestors()
+        .find_map(|dir| load(dir).map(|module| (dir.to_path_buf(), module)))
+}
+
+/// What the *lint* result of a Go file depends on beyond its bytes: the module root and path the
+/// ast-grep Go architecture rules resolve imports and path globs against. `None` for any other
+/// file, and for a Go file outside a module.
+#[must_use]
+pub fn lint_salt(path: &Path) -> Option<String> {
+    if path.extension().is_none_or(|ext| ext != "go") {
+        return None;
+    }
+    let (root, module) = nearest_root(path)?;
+    Some(format!(
+        "go-mod-lint:{}:{}",
+        root.display(),
+        module.module.as_deref().unwrap_or_default()
+    ))
 }
 
 /// The `(option key, go.mod value)` pairs the options table has not already set.
@@ -168,6 +194,31 @@ mod tests {
         let all = cfg("lang_version = \"1.18\"\nmodule_path = \"x\"\n");
         assert!(matches!(apply(&all, &path), Cow::Borrowed(_)));
         assert_eq!(salt(&all, &path), None);
+    }
+
+    #[test]
+    fn the_nearest_root_is_the_directory_of_the_nearest_go_mod() {
+        let repo = repo(&[
+            ("go.mod", "module example.com/root\n"),
+            ("sub/go.mod", "module example.com/sub\n"),
+            ("sub/pkg/a.go", "package pkg\n"),
+            ("b.go", "package b\n"),
+        ]);
+        let (root, module) = nearest_root(&repo.path().join("sub/pkg/a.go")).unwrap();
+        assert_eq!(root, std::path::absolute(repo.path().join("sub")).unwrap());
+        assert_eq!(module.module.as_deref(), Some("example.com/sub"));
+        let (root, _) = nearest_root(&repo.path().join("b.go")).unwrap();
+        assert_eq!(root, std::path::absolute(repo.path()).unwrap());
+    }
+
+    #[test]
+    fn the_lint_salt_names_the_module_for_go_files_only() {
+        let repo = repo(&[("go.mod", "module example.com/m\n"), ("a.go", ""), ("a.rs", "")]);
+        let salt = lint_salt(&repo.path().join("a.go")).unwrap();
+        assert!(salt.ends_with(":example.com/m"), "{salt}");
+        assert_eq!(lint_salt(&repo.path().join("a.rs")), None);
+        let bare = tempfile::tempdir().unwrap();
+        assert_eq!(lint_salt(&bare.path().join("a.go")), None);
     }
 
     #[test]
