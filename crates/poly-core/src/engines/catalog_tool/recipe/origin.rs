@@ -3,7 +3,7 @@
 //! `poly.lock` is a file a pull request can change on its own, so its asset URLs
 //! are not trusted by themselves: a locked URL is used only when it is https and
 //! its origin is one the tool's catalog entry already names. A `[tools.<name>]
-//! url` is held to the same binding even in a trusted repository (ADR 0057), so a
+//! url` is held to the same binding even in a trusted repository (ADR 0059), so a
 //! config cannot point poly at a binary from an arbitrary host either.
 
 use std::collections::BTreeMap;

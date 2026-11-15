@@ -154,7 +154,7 @@ fn poly(root: &Path, args: &[&str]) -> Output {
     Command::new(POLY)
         .args(args)
         .current_dir(root)
-        // The fixture's whole-project `[hooks]` must run, which takes trust (ADR 0057).
+        // The fixture's whole-project `[hooks]` must run, which takes trust (ADR 0059).
         .env("POLY_TRUST", "1")
         .output()
         .expect("run poly")

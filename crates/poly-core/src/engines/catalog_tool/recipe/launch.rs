@@ -209,7 +209,7 @@ fn java_program(config: &ToolConfig) -> Option<PathBuf> {
 }
 
 /// `bin` as a program on `PATH` or an absolute file. A relative path with a
-/// separator would resolve against wherever poly runs, so it is never used (ADR 0057).
+/// separator would resolve against wherever poly runs, so it is never used (ADR 0059).
 fn locate(bin: &str) -> Option<PathBuf> {
     let path = Path::new(bin);
     if path.is_absolute() {

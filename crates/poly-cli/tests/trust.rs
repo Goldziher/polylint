@@ -1,4 +1,4 @@
-//! Repository trust end to end (ADR 0057): a hostile `poly.toml` runs nothing
+//! Repository trust end to end (ADR 0059): a hostile `poly.toml` runs nothing
 //! until the user trusts it, and changing what it runs untrusts it again.
 //!
 //! Every program the fixtures could make poly run is a script that appends to a

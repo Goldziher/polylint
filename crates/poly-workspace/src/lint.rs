@@ -95,7 +95,7 @@ pub struct WorkspaceLintOutcome {
     /// (disabled, or no whole-project tools configured).
     pub tools: Vec<WorkspaceToolResult>,
     /// Whether the phase was skipped because the repository is not trusted to
-    /// run its `[hooks]` (ADR 0057). Such a run neither lowers the hooks, which
+    /// run its `[hooks]` (ADR 0059). Such a run neither lowers the hooks, which
     /// would evaluate their `skip`/`only` guards, nor runs any tool.
     pub untrusted: bool,
 }

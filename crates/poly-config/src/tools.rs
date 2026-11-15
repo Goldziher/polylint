@@ -215,7 +215,7 @@ pub struct ToolConfig {
 }
 
 /// Environment variables `[tools.<name>] env` may never set, trusted or not
-/// (ADR 0057): each makes the dynamic loader, git, a shell or a language runtime
+/// (ADR 0059): each makes the dynamic loader, git, a shell or a language runtime
 /// load code the tool itself never asked for. Matched case-insensitively, since
 /// Windows environment names are.
 const DENIED_ENV: &[&str] = &[

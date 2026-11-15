@@ -310,7 +310,7 @@ fn install(args: InstallArgs) -> Result<ExitCode> {
         crate::auto_lock::lock_missing("poly hooks install")
             .context("locking missing poly.lock entries (pass --locked to skip)")?;
     }
-    // Installing hooks is the user's act of trusting this repository (ADR 0057): the
+    // Installing hooks is the user's act of trusting this repository (ADR 0059): the
     // shims will run its `[hooks]` on every commit.
     if poly_config::find_config(&root).is_some() {
         let trusted = crate::trust_cmd::trust_repo(&root).context("recording trust for this repository")?;

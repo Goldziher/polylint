@@ -168,7 +168,7 @@ pub struct WorkspaceReport {
     /// Per-tool results, in run order. Empty when the phase did not run.
     pub tools: Vec<WorkspaceToolReport>,
     /// Set when the phase did not run because the repository is not trusted to
-    /// run its `[hooks]` (ADR 0057): why, and how the user allows it.
+    /// run its `[hooks]` (ADR 0059): why, and how the user allows it.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub untrusted: Option<String>,
 }
