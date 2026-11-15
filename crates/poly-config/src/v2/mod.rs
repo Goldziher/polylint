@@ -5,8 +5,9 @@
 //! components, and `required_version` / `root` / `[workspace] run` /
 //! `per_file_ignores` replace their v1 spellings.
 //!
-//! This module is additive: the loader still reads v1. [`detect_v1`] and
-//! [`PolyConfigV2`] are wired into loading by the engine-first resolution work.
+//! The loader reads both schemas: a config with `[engines.*]` resolves engine-first and ignores
+//! v1 `[lint|fmt.*]` tables. [`detect_v1`] finds the v1 constructs `poly migrate --to-v2`
+//! rewrites, and `poly config validate` rejects a file that mixes the two.
 
 use std::collections::BTreeMap;
 

@@ -92,7 +92,7 @@ pub fn detect_v1(table: &toml::Table) -> Vec<V1Marker> {
 }
 
 /// The hard-error message for a v1 config, naming each marker and the
-/// `poly migrate --write` fix.
+/// `poly migrate --to-v2` fix.
 #[must_use]
 pub fn v1_error(markers: &[V1Marker]) -> String {
     let mut message = String::from("this poly.toml uses the v1 schema, which poly v2 no longer reads:\n");
@@ -101,6 +101,6 @@ pub fn v1_error(markers: &[V1Marker]) -> String {
         message.push_str(&marker.to_string());
         message.push('\n');
     }
-    message.push_str("run `poly migrate --write` to convert it to the v2 schema");
+    message.push_str("run `poly migrate --to-v2` to convert it to the v2 schema");
     message
 }

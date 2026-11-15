@@ -68,7 +68,19 @@ pub fn validate_source(source: &str) -> ValidationReport {
             return report;
         }
     };
-    if !detect_v1(&table).is_empty() {
+    let v1 = detect_v1(&table);
+    if !v1.is_empty() && table.contains_key("engines") {
+        report.problems.push(problem(
+            "",
+            format!(
+                "this file mixes the v1 schema ({}) with `[engines.*]`; a v2 config ignores the v1 tables. \
+                 Run `poly migrate --to-v2` to convert it",
+                v1.iter().map(ToString::to_string).collect::<Vec<_>>().join("; ")
+            ),
+        ));
+        return report;
+    }
+    if !v1.is_empty() {
         for diagnostic in config_keys::check_source(source) {
             let line = diagnostic
                 .span

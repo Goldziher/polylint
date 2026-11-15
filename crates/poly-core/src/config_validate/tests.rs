@@ -176,3 +176,22 @@ fn a_misspelled_defaults_key_is_caught_in_v1_and_v2_documents() {
     }
     assert!(validate_source("[defaults]\nline_length = 100\n").is_valid());
 }
+
+#[test]
+fn a_file_mixing_v1_tables_with_engines_is_an_error() {
+    let report = validate_source("[lint.python.ruff]\nselect = [\"E\"]\n\n[engines.ruff]\nline_length = 100\n");
+    let messages = messages(&report);
+    assert_eq!(messages.len(), 1, "{messages:?}");
+    assert!(messages[0].contains("poly migrate --to-v2"), "{messages:?}");
+    assert!(messages[0].contains("[engines.*]"), "{messages:?}");
+}
+
+#[test]
+fn a_pure_v1_file_is_still_checked_as_v1() {
+    let report = validate_source("[lint.python.ruff]\nselect = [\"E\"]\n");
+    assert!(
+        !messages(&report).iter().any(|m| m.contains("mixes")),
+        "{:?}",
+        messages(&report)
+    );
+}

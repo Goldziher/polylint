@@ -155,7 +155,7 @@ fn should_name_the_migration_command_in_the_v1_error() {
         [V1Marker::LintTable, V1Marker::LintWorkspace, V1Marker::RulesTable]
     );
     let message = v1_error(&markers);
-    assert!(message.contains("poly migrate --write"));
+    assert!(message.contains("poly migrate --to-v2"));
     assert!(message.contains("[rules]"));
 }
 
