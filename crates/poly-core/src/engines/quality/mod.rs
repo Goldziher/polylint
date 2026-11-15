@@ -266,6 +266,7 @@ fn run_structural_rules(grammar: &str, src: &SourceFile, settings: &Settings, di
             diagnostics.extend(demeter::scan_with(
                 kind_table,
                 root,
+                &LineIndex::new(&src.content),
                 usize_threshold(settings.law_of_demeter_depth),
             ));
         }

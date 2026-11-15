@@ -328,7 +328,7 @@ fn deep_operator_chain_does_not_overflow_the_structural_walks() {
             let root = tree.root_node();
             let _ = super::nesting::analyze(grammar, root, 4);
             let _ = super::complexity::analyze(grammar, root, 20);
-            let _ = super::demeter::scan(root, 3);
+            let _ = super::demeter::scan(root, source, 3);
             let _ = super::magic_number::scan(root, source.as_bytes(), &[0, 1]);
         }
     });
@@ -345,7 +345,7 @@ fn deep_operator_chain_findings_are_still_reported() {
 
         let source = format!("x = a{}\n", ".b".repeat(DEEP_OPERANDS));
         let tree = parse("python", &source);
-        let findings = super::demeter::scan(tree.root_node(), 3);
+        let findings = super::demeter::scan(tree.root_node(), &source, 3);
         assert_eq!(findings.len(), 1, "one finding for the outermost chain");
     });
 }

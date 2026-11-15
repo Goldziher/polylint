@@ -177,7 +177,7 @@ pub fn complexity_diagnostic(
 /// Build a 1-based [`crate::engine::Span`] covering the byte range
 /// `[start, end)` of `index`'s text, with character columns. Mirrors
 /// `engines/uncomment.rs::span_of`.
-fn span_of(index: &LineIndex<'_>, start: usize, end: usize) -> crate::engine::Span {
+pub(super) fn span_of(index: &LineIndex<'_>, start: usize, end: usize) -> crate::engine::Span {
     let (start_line, start_col) = index.line_col(start);
     let (end_line, end_col) = index.line_col(end);
     crate::engine::Span {

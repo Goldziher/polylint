@@ -18,8 +18,10 @@
 use tree_sitter::Node;
 
 use super::kinds::KindTable;
+use super::metrics::span_of;
 use super::walk::walk;
-use crate::engine::{Diagnostic, Severity, Span};
+use crate::engine::{Diagnostic, Severity};
+use crate::engines::line_index::LineIndex;
 
 const CHAIN_KIND_MARKERS: &[&str] = &[
     "member_expression",
@@ -33,12 +35,17 @@ const CHAIN_KIND_MARKERS: &[&str] = &[
 /// Reported at the outermost chain node only: a chain-kind node whose parent is also chain-kind is
 /// a link in a longer chain. Call arguments and index expressions are still searched for chains of
 /// their own, since their parent is not a chain-kind node.
-pub fn scan(root: Node, max_depth: usize) -> Vec<Diagnostic> {
-    scan_with(&KindTable::build("", &root.language()), root, max_depth)
+pub fn scan(root: Node, source: &str, max_depth: usize) -> Vec<Diagnostic> {
+    scan_with(
+        &KindTable::build("", &root.language()),
+        root,
+        &LineIndex::new(source),
+        max_depth,
+    )
 }
 
 /// [`scan`] against a prebuilt per-grammar [`KindTable`].
-pub fn scan_with(table: &KindTable, root: Node, max_depth: usize) -> Vec<Diagnostic> {
+pub fn scan_with(table: &KindTable, root: Node, index: &LineIndex<'_>, max_depth: usize) -> Vec<Diagnostic> {
     let mut out = Vec::new();
     walk(
         root,
@@ -50,7 +57,7 @@ pub fn scan_with(table: &KindTable, root: Node, max_depth: usize) -> Vec<Diagnos
             {
                 let depth = chain_depth(table, node);
                 if depth > max_depth {
-                    out.push(diagnostic(node, depth));
+                    out.push(diagnostic(node, index, depth));
                 }
             }
         },
@@ -81,21 +88,14 @@ fn chain_depth(table: &KindTable, node: Node) -> usize {
     depth
 }
 
-fn diagnostic(node: Node, depth: usize) -> Diagnostic {
-    let start = node.start_position();
-    let end = node.end_position();
+fn diagnostic(node: Node, index: &LineIndex<'_>, depth: usize) -> Diagnostic {
     Diagnostic {
         engine: "quality".to_owned(),
         code: Some("law-of-demeter".to_owned()),
         severity: Severity::Warning,
         title: format!("access chain is {depth} levels deep"),
         description: Some("reach through fewer objects' internals, or add a helper method".to_owned()),
-        span: Some(Span {
-            start_line: start.row as u32 + 1,
-            start_col: start.column as u32 + 1,
-            end_line: end.row as u32 + 1,
-            end_col: end.column as u32 + 1,
-        }),
+        span: Some(span_of(index, node.start_byte(), node.end_byte())),
         url: None,
         fix: Vec::new(),
         metadata: std::collections::BTreeMap::new(),
@@ -120,7 +120,7 @@ mod tests {
     fn flags_a_deep_attribute_chain() {
         let source = "a.b.c.d.e\n";
         let tree = parse("python", source);
-        let findings = scan(tree.root_node(), 3);
+        let findings = scan(tree.root_node(), source, 3);
         assert_eq!(findings.len(), 1, "expected exactly one finding for the whole chain");
         assert_eq!(findings[0].code.as_deref(), Some("law-of-demeter"));
     }
@@ -129,7 +129,7 @@ mod tests {
     fn does_not_flag_a_shallow_chain() {
         let source = "a.b.c\n";
         let tree = parse("python", source);
-        assert!(scan(tree.root_node(), 3).is_empty());
+        assert!(scan(tree.root_node(), source, 3).is_empty());
     }
 
     #[test]
@@ -137,8 +137,28 @@ mod tests {
         let source = "a.b().c().d().e()\n";
         let tree = parse("python", source);
         assert!(
-            scan(tree.root_node(), 3).is_empty(),
+            scan(tree.root_node(), source, 3).is_empty(),
             "call chains are a different smell"
         );
+    }
+
+    #[test]
+    fn columns_count_characters_not_bytes() {
+        let source = "# caf\u{e9}\u{e9}\nx = \u{e9}.b.c.d.e\n";
+        let tree = parse("python", source);
+        let findings = scan(tree.root_node(), source, 3);
+        assert_eq!(findings.len(), 1);
+        let span = findings[0].span.as_ref().expect("span");
+        assert_eq!((span.start_line, span.start_col), (2, 5), "start after `x = `");
+        assert_eq!((span.end_line, span.end_col), (2, 14));
+    }
+
+    #[test]
+    fn non_ascii_before_the_chain_on_the_same_line_shifts_columns_by_characters() {
+        let source = "s = \"\u{e9}\u{e9}\"; a.b.c.d.e\n";
+        let tree = parse("python", source);
+        let findings = scan(tree.root_node(), source, 3);
+        let span = findings[0].span.as_ref().expect("span");
+        assert_eq!(span.start_col, 11, "`s = \"éé\"; ` is 10 characters but 12 bytes");
     }
 }
