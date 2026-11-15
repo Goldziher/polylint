@@ -23,6 +23,10 @@ binary drives lint, format, hooks, and commit checks from one `poly.toml`.
 
 - **Dockerfiles, `.env` and INI files format the same in every build.** The bundled build left them with no formatter,
   while the core build normalised them through the generic tier; both now use the generic tier.
+- **Log lines no longer land on the progress spinner.** `tracing` output and still-running notices erase the spinner frame
+  first, so `installed component` and similar lines start on their own line. The whole-project phase no longer draws a
+  second spinner over its per-tool bars, and a failed whole-project tool with no output (a launch error, a timeout, a
+  silent non-zero exit) now prints why it failed.
 - **Language-agnostic catalog tools now run when enabled.** A catalog tool that names no language (codespell, typos, proselint, dprint, editorconfig-checker and similar) matched no file, so `[tools.<name>] enabled = true` did nothing. It now applies to every discovered file.
 - **A project check no longer depends on how a path is spelled.** `poly lint docs/adr`, `poly lint docs/adr/0003-x.md`
   and a relative path named from a subdirectory skipped the adrlint tree-wide and lock rules (`MADR41`-`MADR44`,

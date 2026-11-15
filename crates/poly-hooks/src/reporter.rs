@@ -32,6 +32,7 @@ use console::strip_ansi_codes;
 use unicode_width::{UnicodeWidthChar as _, UnicodeWidthStr as _};
 
 mod failure;
+pub mod live;
 mod markers;
 mod notice;
 pub mod progress;

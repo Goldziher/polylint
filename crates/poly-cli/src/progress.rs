@@ -21,18 +21,18 @@
 //! - **Erases itself.** The line is cleared on stop and on drop, so a panic or
 //!   an early return cannot leave half a frame on screen.
 //!
-//! One known cosmetic limit: a `tracing` warning emitted mid-run lands on the
-//! same line as the frame that was drawn last, so it reads as
-//! `⠹ linting… 5.0s WARN …`. Nothing is lost — the log line ends in a newline,
-//! which moves the cursor off that line before the next frame clears anything —
-//! and removing it would mean routing the subscriber through this module, which
-//! is a far larger change than the blemish warrants.
+//! Log lines and the spinner share one line of stderr, so `tracing` output goes
+//! through [`LogWriter`], which erases the current frame before writing; the
+//! next tick redraws it below the log line.
 
-use std::io::{IsTerminal, Write};
+use std::io::{IsTerminal, Write as _};
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::thread::JoinHandle;
 use std::time::{Duration, Instant};
+
+use poly_hooks::live;
+use tracing_subscriber::fmt::MakeWriter;
 
 /// Frames of the spinner, one per tick.
 const FRAMES: [&str; 10] = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"];
@@ -47,9 +47,6 @@ const TICK: Duration = Duration::from_millis(80);
 /// flashing a spinner for two frames is noise. Only the runs that would
 /// otherwise look like a hang get one.
 const APPEAR_AFTER: Duration = Duration::from_millis(400);
-
-/// Erase the current line and return the cursor to its start.
-const CLEAR_LINE: &str = "\r\x1b[2K";
 
 /// A running progress indicator. Stops and erases itself when dropped.
 pub struct Progress {
@@ -85,21 +82,16 @@ impl Progress {
                 if elapsed < APPEAR_AFTER {
                     continue;
                 }
-                let mut stderr = std::io::stderr().lock();
-                let _ = write!(
-                    stderr,
-                    "{CLEAR_LINE}{} {label}… {:.1}s",
+                live::draw_spinner_frame(Some(&format!(
+                    "{} {label}… {:.1}s",
                     FRAMES[frame % FRAMES.len()],
                     elapsed.as_secs_f64()
-                );
-                let _ = stderr.flush();
+                )));
                 drawn = true;
                 frame += 1;
             }
             if drawn {
-                let mut stderr = std::io::stderr().lock();
-                let _ = write!(stderr, "{CLEAR_LINE}");
-                let _ = stderr.flush();
+                live::draw_spinner_frame(None);
             }
         });
         Self {
@@ -125,5 +117,29 @@ impl Progress {
 impl Drop for Progress {
     fn drop(&mut self) {
         self.stop_now();
+    }
+}
+
+/// The `tracing` writer: stderr, routed so a log line never lands on a spinner
+/// frame. Without a frame on screen it writes exactly what it is given.
+#[derive(Clone, Copy, Default)]
+pub struct LogWriter;
+
+impl std::io::Write for LogWriter {
+    fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
+        live::write_above_spinner(buf)?;
+        Ok(buf.len())
+    }
+
+    fn flush(&mut self) -> std::io::Result<()> {
+        std::io::stderr().flush()
+    }
+}
+
+impl<'a> MakeWriter<'a> for LogWriter {
+    type Writer = Self;
+
+    fn make_writer(&'a self) -> Self::Writer {
+        *self
     }
 }

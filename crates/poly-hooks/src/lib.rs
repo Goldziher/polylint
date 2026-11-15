@@ -64,6 +64,6 @@ pub use model::{
     SkipReason, StageOutcome, StageSpec, StageStatus, StepOutcome, TimedOutPhase, TimeoutReason, UnknownReason,
 };
 pub use process::{Cmd, OutputSink};
-pub use reporter::{CaptureSink, HookRunReporter};
+pub use reporter::{CaptureSink, HookRunReporter, live};
 pub use runner::run;
 pub use stage::{HookType, Stage};

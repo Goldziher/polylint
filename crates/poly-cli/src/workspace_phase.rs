@@ -61,7 +61,9 @@ pub(crate) fn run(
         None => {
             // `cargo clippy` over a cold target directory is the longest silence poly
             // ever produces, and the phase renders only once every tool has finished.
-            let spinner = progress::Progress::start("running whole-project checks", animate);
+            // With live per-tool bars on, indicatif owns the lines; a second spinner would overdraw them.
+            let live_bars = poly_workspace::show_progress();
+            let spinner = progress::Progress::start("running whole-project checks", animate && !live_bars);
             let outcome = match plan {
                 Some(plan) => plan.and_then(|planned| {
                     poly_workspace::run_planned_workspace_lint(

@@ -77,6 +77,10 @@ pub struct WorkspaceToolResult {
     pub cached: bool,
     /// The tool's captured combined output (may contain ANSI colour codes).
     pub output: Vec<u8>,
+    /// Why a failed tool failed, when its output alone does not say: a launch
+    /// error, a timeout, an unknown verdict, a withheld fix, or a non-zero exit
+    /// with no output. `None` for a pass and for a failure whose output explains it.
+    pub reason: Option<String>,
 }
 
 /// The outcome of the whole-project lint phase: the overall pass/fail plus each
@@ -111,6 +115,7 @@ impl WorkspaceLintOutcome {
                     failed: hook.status.is_failure(),
                     cached: hook.cached,
                     output: hook.output.clone(),
+                    reason: failure_reason(&hook.status, &hook.output),
                 });
             }
         }
@@ -118,6 +123,23 @@ impl WorkspaceLintOutcome {
             passed: outcome.success(),
             tools,
         }
+    }
+}
+
+/// The reason a failed hook failed, for the cases its captured output does not carry.
+fn failure_reason(status: &poly_hooks::HookStatus, output: &[u8]) -> Option<String> {
+    use poly_hooks::HookStatus;
+    let silent = output.iter().all(u8::is_ascii_whitespace);
+    match status {
+        HookStatus::Failed { code } if silent => Some(match code {
+            Some(code) => format!("exited with code {code} and printed nothing"),
+            None => "terminated without an exit code and printed nothing".to_string(),
+        }),
+        HookStatus::Error(message) => Some(format!("failed to launch: {message}")),
+        HookStatus::Unknown(reason) => Some(format!("verdict unknown: {reason}")),
+        HookStatus::TimedOut(reason) => Some(reason.to_string()),
+        HookStatus::FixWithheld(fixes) => Some(format!("{} fix(es) could not be written back", fixes.len())),
+        _ => None,
     }
 }
 
@@ -351,6 +373,9 @@ pub fn render_workspace_outcome(outcome: &WorkspaceLintOutcome, report_to_stdout
         let suffix = if tool.cached { " (cached)" } else { "" };
         buffer.push_str(&format!("  {marker} {}{suffix}\n", tool.id));
         if tool.failed {
+            if let Some(reason) = &tool.reason {
+                buffer.push_str(&format!("      {reason}\n"));
+            }
             append_output(&mut buffer, &tool.output, color);
         }
     }
@@ -398,8 +423,8 @@ fn append_output(buffer: &mut String, output: &[u8], color: bool) {
 #[cfg(test)]
 mod tests {
     use super::{
-        PlannedWorkspace, append_output, force_child_color, plan_workspace_lint, retain_workspace_hooks,
-        workspace_lint_disabled, workspace_phase_disabled,
+        PlannedWorkspace, append_output, failure_reason, force_child_color, plan_workspace_lint,
+        retain_workspace_hooks, workspace_lint_disabled, workspace_phase_disabled,
     };
 
     #[test]
@@ -420,6 +445,32 @@ mod tests {
         let mut config = poly_config::PolyConfig::default();
         config.workspace.run = Some(poly_config::v2::RunMode::Never);
         assert!(plan_workspace_lint(&config).expect("plan").is_none());
+    }
+
+    #[test]
+    fn a_silent_failure_reports_its_exit_code() {
+        let reason = failure_reason(&poly_hooks::HookStatus::Failed { code: Some(1) }, b" \n");
+        assert_eq!(reason.as_deref(), Some("exited with code 1 and printed nothing"));
+    }
+
+    #[test]
+    fn a_failure_with_output_needs_no_extra_reason() {
+        let reason = failure_reason(&poly_hooks::HookStatus::Failed { code: Some(1) }, b"error: boom\n");
+        assert_eq!(reason, None);
+    }
+
+    #[test]
+    fn a_launch_error_carries_its_message() {
+        let status = poly_hooks::HookStatus::Error("pyrefly: not found".to_string());
+        assert_eq!(
+            failure_reason(&status, b"").as_deref(),
+            Some("failed to launch: pyrefly: not found")
+        );
+    }
+
+    #[test]
+    fn a_pass_has_no_reason() {
+        assert_eq!(failure_reason(&poly_hooks::HookStatus::Passed, b""), None);
     }
 
     const RED_HELLO: &str = "\x1b[31mhello\x1b[0m";

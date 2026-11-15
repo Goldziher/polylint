@@ -87,7 +87,7 @@ pub fn init_logging_at(debug: bool, quiet: bool) {
         .with_env_filter(filter)
         .with_target(false)
         .with_ansi(ansi)
-        .with_writer(std::io::stderr)
+        .with_writer(progress::LogWriter)
         .try_init();
 }
 

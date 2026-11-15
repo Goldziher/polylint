@@ -121,7 +121,7 @@ fn announce_still_running(
 fn announce(bar: Option<&ProgressBar>, line: String) {
     match bar.filter(|bar| !bar.is_hidden()) {
         Some(bar) => bar.println(line),
-        None => eprintln!("{line}"),
+        None => crate::reporter::live::eprintln_above_spinner(&line),
     }
 }
 
