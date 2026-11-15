@@ -8,7 +8,7 @@ use std::collections::BTreeMap;
 
 use poly_catalog::{Release, Source};
 
-use super::resolve::{Origin, API_ENV};
+use super::resolve::{API_ENV, Origin};
 
 const GITHUB_RELEASES: &str = "https://github.com/";
 
@@ -204,12 +204,14 @@ mod tests {
             error.contains("poly lock") && error.contains("attacker.example"),
             "{error}"
         );
-        assert!(check(
-            "t",
-            "https://github.com.evil.example/o/r/releases/download/t.zip",
-            &github()
-        )
-        .is_err());
+        assert!(
+            check(
+                "t",
+                "https://github.com.evil.example/o/r/releases/download/t.zip",
+                &github()
+            )
+            .is_err()
+        );
         assert!(check("t", "https://github.com:8443/o/r/releases/download/t.zip", &github()).is_err());
     }
 
@@ -238,12 +240,14 @@ mod tests {
     fn the_api_override_host_is_allowed_only_when_set() {
         let origins = allowed_origins("1.0.0", None, None, Some("https://ghe.example/api/v3"));
         assert!(check("t", "https://ghe.example/o/r/t.zip", &origins).is_ok());
-        assert!(check(
-            "t",
-            "https://ghe.example/t.zip",
-            &allowed_origins("1.0.0", None, None, None)
-        )
-        .is_err());
+        assert!(
+            check(
+                "t",
+                "https://ghe.example/t.zip",
+                &allowed_origins("1.0.0", None, None, None)
+            )
+            .is_err()
+        );
     }
 
     #[test]

@@ -337,7 +337,10 @@ mod tests {
         for argument in ["vite/client", "vitest/globals", "@scope/pkg/sub", "vite"] {
             assert!(found.is_missing(2688, Some(argument)), "{argument}");
         }
-        assert!(!found.is_missing(2688, Some("foo/bar")), "an undeclared package is reported");
+        assert!(
+            !found.is_missing(2688, Some("foo/bar")),
+            "an undeclared package is reported"
+        );
         assert!(!found.is_missing(2688, Some("@other/pkg/sub")));
     }
 

@@ -80,7 +80,11 @@ impl WorkspaceGuard {
             "the working directory `{}` is {}, so confining requests to it would confine nothing; start \
              `poly mcp` in the project directory, or pass `--allow-outside-workspace`",
             self.root.display(),
-            if is_home { "the home directory" } else { "a filesystem root" }
+            if is_home {
+                "the home directory"
+            } else {
+                "a filesystem root"
+            }
         );
         Ok(())
     }
@@ -137,7 +141,11 @@ fn resolve(requested: &str) -> anyhow::Result<PathBuf> {
     let mut tail = Vec::new();
     loop {
         // A dangling symlink exists but does not resolve; its target is unknown, so refuse it.
-        anyhow::ensure!(std::fs::symlink_metadata(&current).is_err(), "`{}` does not resolve", current.display());
+        anyhow::ensure!(
+            std::fs::symlink_metadata(&current).is_err(),
+            "`{}` does not resolve",
+            current.display()
+        );
         let name = current.file_name().map(std::ffi::OsStr::to_owned);
         let (Some(name), Some(parent)) = (name, current.parent().map(Path::to_path_buf)) else {
             anyhow::bail!("`{requested}` has no resolvable ancestor");
@@ -261,7 +269,8 @@ mod tests {
         let home = WorkspaceGuard::new(root.path(), None, false).unwrap();
         let error = home.refuse_unconfining_root(Some(root.path())).unwrap_err();
         assert!(error.to_string().contains("--allow-outside-workspace"), "{error}");
-        home.refuse_unconfining_root(Some(Path::new("/definitely/not/home"))).unwrap();
+        home.refuse_unconfining_root(Some(Path::new("/definitely/not/home")))
+            .unwrap();
         home.refuse_unconfining_root(None).unwrap();
     }
 }

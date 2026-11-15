@@ -185,10 +185,9 @@ fn walk(root: &Path) -> Vec<String> {
         .filter_entry(|entry| {
             entry.depth() == 0
                 || !entry.file_type().is_some_and(|t| t.is_dir())
-                || entry
-                    .file_name()
-                    .to_str()
-                    .is_some_and(|name| is_identifier(name) && !SKIPPED_DIRS.contains(&name) && !is_virtualenv(entry.path()))
+                || entry.file_name().to_str().is_some_and(|name| {
+                    is_identifier(name) && !SKIPPED_DIRS.contains(&name) && !is_virtualenv(entry.path())
+                })
         })
         .build();
     for entry in walker.flatten() {

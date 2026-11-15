@@ -236,3 +236,10 @@ hyperfine -N --warmup 3 --runs 20 'poly fmt .'
 
 The size delta must be measured with the existing procedure (`mise run measure:core-size`); the
 ceiling stays 14 MiB.
+
+## Hot-path overrides reverted
+
+The `[profile.core.package.*] opt-level = 3` overrides added for #192 were reverted: the `core-size` gate
+(ceiling 14 MiB) measured the Linux x86_64 core at 15,620,648 bytes with them and the other changes since
+v0.35.0, 940,584 bytes over. Their speed benefit was never measured. Re-evaluate them one package at a time
+with `mise run bench:hyperfine` (warm lint) and `mise run check:core-size`, keeping only what pays for its size.

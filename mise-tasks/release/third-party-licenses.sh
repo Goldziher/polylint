@@ -21,7 +21,7 @@ out="${1:-THIRD-PARTY-LICENSES.md}"
 [[ "$out" == /* ]] || out="$PWD/$out"
 
 for tool in cargo jq; do
-  command -v "$tool" > /dev/null || {
+  command -v "$tool" >/dev/null || {
     echo "error: $tool is required" >&2
     exit 1
   }
@@ -50,7 +50,7 @@ for manifest in "${manifests[@]}"; do
     jq -r '.packages[] | select(.source != null) |
       [.name, .version,
        ((.license // (if .license_file then "see licence file" else "UNKNOWN" end)) | gsub("\\|"; "/")),
-       (.repository // .homepage // "")] | @tsv' >> "$rows"
+       (.repository // .homepage // "")] | @tsv' >>"$rows"
 done
 
 count="$(LC_ALL=C sort -u "$rows" | wc -l | tr -d ' ')"
@@ -74,5 +74,5 @@ count="$(LC_ALL=C sort -u "$rows" | wc -l | tr -d ' ')"
   echo "## Attributions"
   echo
   cat "$root/ATTRIBUTIONS.md"
-} > "$out"
+} >"$out"
 echo "wrote $out ($count crate versions)" >&2

@@ -714,6 +714,10 @@ mod verify_tests {
     /// the run reaches nothing, so the first assertion cannot pass vacuously.
     /// Flipping `verify_options().force_exclude` to `true` fails this test and
     /// nothing else in the suite.
+    ///
+    /// Needs the Python engine linked: the core build serves it from a downloaded component, so
+    /// there nothing is formatted and the file count is zero either way.
+    #[cfg(feature = "all-engines")]
     #[test]
     fn verify_options_still_reach_a_directory_an_ancestor_config_excludes() {
         let root = tempfile::tempdir().unwrap();

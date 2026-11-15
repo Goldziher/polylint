@@ -234,7 +234,8 @@ jobs:
       - uses: taiki-e/install-action@v2
         with:
           tool: cargo-hack
-      - run: cargo hack check --locked -p poly-core --each-feature --no-dev-deps
+      # No --locked: --no-dev-deps rewrites the manifests, which makes cargo re-resolve the lock file.
+      - run: cargo hack check -p poly-core --each-feature --no-dev-deps
 
   plugin-tests:
     name: plugin tests
@@ -243,6 +244,8 @@ jobs:
     steps:
       - uses: actions/checkout@v7
       - uses: xberg-io/actions/setup-mise@v1
+      # test_release_bump.py runs bump.sh, which regenerates the plugin outputs with ai-rulez.
+      - uses: xberg-io/actions/setup-ai-rulez@v1
       - run: mise run plugin:test
         env:
           MISE_TASK_RUN_AUTO_INSTALL: "false"
