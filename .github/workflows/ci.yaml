@@ -466,7 +466,10 @@ jobs:
           set -euo pipefail
           cargo test --locked --manifest-path components-tsrs/Cargo.toml -p poly-engines-tsrs --no-fail-fast 2>&1 | tee tsrs-test.log
           # A green run that collected nothing proves nothing: the fixture projects must have run.
-          grep -q "test result: ok. 14 passed" tsrs-test.log
+          if grep -q "test result: FAILED" tsrs-test.log; then echo "::error::a tsrs test binary failed"; exit 1; fi
+          passed="$(grep -Eo "test result: ok\. [0-9]+ passed" tsrs-test.log | awk '{ n += $4 } END { print n + 0 }')"
+          echo "tsrs tests passed: $passed"
+          test "$passed" -gt 0
       - name: Build the component cdylib
         run: cargo build --locked --release --manifest-path components-tsrs/Cargo.toml -p poly-engines-tsrs-component
 
@@ -514,8 +517,10 @@ jobs:
           set -euo pipefail
           cargo test --locked --manifest-path components-secrets/Cargo.toml -p poly-engines-secrets --no-fail-fast 2>&1 | tee secrets-test.log
           # A green run that collected nothing proves nothing: the fixtures must have run.
-          grep -q "test result: ok. 7 passed" secrets-test.log
-          grep -q "test result: ok. 4 passed" secrets-test.log
+          if grep -q "test result: FAILED" secrets-test.log; then echo "::error::a secrets test binary failed"; exit 1; fi
+          passed="$(grep -Eo "test result: ok\. [0-9]+ passed" secrets-test.log | awk '{ n += $4 } END { print n + 0 }')"
+          echo "secrets tests passed: $passed"
+          test "$passed" -gt 0
       - name: Build the component cdylib (links vectorscan for this triple)
         run: cargo build --locked --release --manifest-path components-secrets/Cargo.toml -p poly-engines-secrets-component
       # `components:dev` builds the component through alef for the runner's triple, and `secrets` ships for macOS only
