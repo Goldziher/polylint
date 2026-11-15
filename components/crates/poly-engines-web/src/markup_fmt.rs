@@ -180,19 +180,11 @@ impl Engine for MarkupFmtEngine {
             };
             let formatted = super::oxc::with_arena(|allocator| match hints.ext {
                 "css" | "scss" | "less" => {
-                    let variant = match hints.ext {
-                        "scss" => oxc_formatter_css::CssVariant::Scss,
-                        "less" => oxc_formatter_css::CssVariant::Less,
-                        _ => oxc_formatter_css::CssVariant::Css,
-                    };
-                    oxc_formatter_css::format(
-                        allocator,
-                        code,
-                        super::malva::oxc_css_options(embedded_scratch, variant),
-                    )
-                    .ok()
-                    .and_then(|formatted| formatted.print().ok())
-                    .map(|printed| printed.into_code())
+                    let options = super::malva::oxc_css_options(embedded_scratch, css_variant(hints.ext));
+                    oxc_formatter_css::format(allocator, code, options)
+                        .ok()
+                        .and_then(|formatted| formatted.print().ok())
+                        .map(|printed| printed.into_code())
                 }
                 _ if !script_ext.is_empty() && (src.language != Language::Html || is_js_ext(script_ext)) => {
                     super::oxc::format_embedded_js(allocator, code, script_ext, embedded_scratch).ok()
@@ -217,6 +209,14 @@ impl Engine for MarkupFmtEngine {
         } else {
             Ok(FormatOutput::Formatted(formatted))
         }
+    }
+}
+
+fn css_variant(ext: &str) -> oxc_formatter_css::CssVariant {
+    match ext {
+        "scss" => oxc_formatter_css::CssVariant::Scss,
+        "less" => oxc_formatter_css::CssVariant::Less,
+        _ => oxc_formatter_css::CssVariant::Css,
     }
 }
 
