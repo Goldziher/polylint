@@ -55,17 +55,96 @@ pub(super) fn destination(tool: &str, version: &str, asset: &Asset) -> Result<Pa
         .join(file))
 }
 
-/// Whether `path` is a complete, verified install of `asset`. The digest is
-/// recorded next to the file when it is verified, so later runs compare a short
-/// stamp instead of hashing 90 MB.
+/// Whether `path` is a complete, verified install of `asset`.
+///
+/// A stamp beside the file records the digest the download was verified against
+/// together with the file's size and mtime, so later runs compare a short stamp
+/// instead of hashing 90 MB, yet a file swapped after verification no longer
+/// matches it. The directory must also be private to the current user: anyone who
+/// can write there could replace the binary and its stamp together.
 pub(super) fn is_installed(path: &Path, asset: &Asset) -> bool {
-    path.is_file() && std::fs::read_to_string(stamp(path)).is_ok_and(|stamped| stamped.trim() == asset.sha256)
+    let Ok(meta) = std::fs::metadata(path) else {
+        return false;
+    };
+    meta.is_file()
+        && path.parent().is_some_and(dir_is_private)
+        && std::fs::read_to_string(stamp(path)).is_ok_and(|text| text == stamp_text(&asset.sha256, &meta))
 }
 
 fn stamp(path: &Path) -> PathBuf {
     let mut name = path.as_os_str().to_owned();
     name.push(".sha256");
     PathBuf::from(name)
+}
+
+fn stamp_text(sha256: &str, meta: &std::fs::Metadata) -> String {
+    let mtime_ns = meta
+        .modified()
+        .ok()
+        .and_then(|time| time.duration_since(std::time::UNIX_EPOCH).ok())
+        .map_or(0, |elapsed| elapsed.as_nanos());
+    format!("sha256={sha256}\nsize={}\nmtime_ns={mtime_ns}\n", meta.len())
+}
+
+fn record_stamp(path: &Path, sha256: &str) -> Result<()> {
+    let meta = std::fs::metadata(path).with_context(|| format!("reading {}", path.display()))?;
+    std::fs::write(stamp(path), stamp_text(sha256, &meta)).context("recording the install digest")
+}
+
+/// Whether `directory` is owned by the current user and writable by nobody else.
+#[cfg(unix)]
+fn dir_is_private(directory: &Path) -> bool {
+    use std::os::unix::fs::MetadataExt;
+    std::fs::symlink_metadata(directory)
+        .is_ok_and(|meta| meta.is_dir() && meta.uid() == current_uid() && meta.mode() & 0o022 == 0)
+}
+
+#[cfg(not(unix))]
+fn dir_is_private(_directory: &Path) -> bool {
+    true
+}
+
+#[cfg(unix)]
+fn current_uid() -> u32 {
+    // SAFETY: geteuid has no preconditions and cannot fail.
+    unsafe { libc::geteuid() }
+}
+
+/// Create `directory` (mode 0700 where new) and make sure only the current user
+/// can write to it. Returns whether an existing directory had to be tightened,
+/// in which case nothing already inside it can be trusted.
+///
+/// # Errors
+///
+/// Returns `Err` when the directory cannot be created, is a symlink, or belongs
+/// to another user.
+#[cfg(unix)]
+fn secure_dir(directory: &Path) -> Result<bool> {
+    use std::os::unix::fs::{DirBuilderExt, MetadataExt, PermissionsExt};
+    std::fs::DirBuilder::new()
+        .recursive(true)
+        .mode(0o700)
+        .create(directory)
+        .with_context(|| format!("creating {}", directory.display()))?;
+    let meta = std::fs::symlink_metadata(directory).with_context(|| format!("reading {}", directory.display()))?;
+    if !meta.is_dir() || meta.uid() != current_uid() {
+        bail!(
+            "{} is not a directory owned by the current user; refusing to install a tool into it",
+            directory.display()
+        );
+    }
+    if meta.mode() & 0o022 == 0 {
+        return Ok(false);
+    }
+    std::fs::set_permissions(directory, std::fs::Permissions::from_mode(0o700))
+        .with_context(|| format!("restricting {}", directory.display()))?;
+    Ok(true)
+}
+
+#[cfg(not(unix))]
+fn secure_dir(directory: &Path) -> Result<bool> {
+    std::fs::create_dir_all(directory).with_context(|| format!("creating {}", directory.display()))?;
+    Ok(false)
 }
 
 /// Download `asset` to `path` unless it is already installed, verifying the
@@ -99,9 +178,9 @@ fn ensure_with(http: &Http, offline: bool, path: &Path, asset: &Asset, kind: Rel
         );
     }
     let directory = path.parent().context("install path has no parent directory")?;
-    std::fs::create_dir_all(directory).with_context(|| format!("creating {}", directory.display()))?;
+    let tightened = secure_dir(directory)?;
     let _held = FileLock::acquire(&directory.join(".install.lock"))?;
-    if is_installed(path, asset) {
+    if !tightened && is_installed(path, asset) {
         return Ok(());
     }
     let partial = tempfile::Builder::new()
@@ -134,8 +213,7 @@ fn ensure_with(http: &Http, offline: bool, path: &Path, asset: &Asset, kind: Rel
     staged
         .persist(path)
         .with_context(|| format!("installing to {}", path.display()))?;
-    std::fs::write(stamp(path), format!("{}\n", asset.sha256)).context("recording the install digest")?;
-    Ok(())
+    record_stamp(path, &asset.sha256)
 }
 
 /// Extract `member` from the verified `archive` download into a fresh file
@@ -343,7 +421,7 @@ mod tests {
         let dir = tempfile::tempdir().expect("tempdir");
         let path = dir.path().join("tool");
         std::fs::write(&path, body).expect("write");
-        std::fs::write(stamp(&path), format!("{}\n", asset.sha256)).expect("stamp");
+        record_stamp(&path, &asset.sha256).expect("stamp");
         ensure(&path, &asset, ReleaseKind::Binary).expect("already installed, so no network is needed");
     }
 
@@ -372,7 +450,7 @@ mod tests {
         let dir = tempfile::tempdir().expect("tempdir");
         let path = dir.path().join("tool");
         std::fs::write(&path, body).expect("write");
-        std::fs::write(stamp(&path), format!("{}\n", asset.sha256)).expect("stamp");
+        record_stamp(&path, &asset.sha256).expect("stamp");
         ensure_when(true, &path, &asset, ReleaseKind::Binary).expect("installed tools need no network");
     }
 
@@ -500,6 +578,92 @@ mod tests {
             1,
             "the later installers find the first one's result"
         );
+    }
+
+    fn installed(body: &'static [u8]) -> (tempfile::TempDir, PathBuf, Asset) {
+        let asset = Asset {
+            url: "http://127.0.0.1:1/unreachable".to_owned(),
+            sha256: sha(body),
+            member: None,
+        };
+        let dir = tempfile::tempdir().expect("tempdir");
+        let path = dir.path().join("tool");
+        std::fs::write(&path, body).expect("write");
+        record_stamp(&path, &asset.sha256).expect("stamp");
+        (dir, path, asset)
+    }
+
+    #[test]
+    fn a_stamp_that_is_only_a_digest_does_not_vouch_for_a_file() {
+        let (_dir, path, asset) = installed(b"payload");
+        assert!(is_installed(&path, &asset));
+        std::fs::write(stamp(&path), format!("{}\n", asset.sha256)).expect("plant");
+        assert!(
+            !is_installed(&path, &asset),
+            "a planted binary with a bare digest stamp"
+        );
+    }
+
+    #[test]
+    fn replacing_the_binary_invalidates_its_stamp() {
+        let (_dir, path, asset) = installed(b"payload");
+        std::fs::write(&path, b"longer payload").expect("swap");
+        assert!(!is_installed(&path, &asset), "different size");
+        let (_dir, path, asset) = installed(b"payload");
+        let file = std::fs::OpenOptions::new().write(true).open(&path).expect("open");
+        file.set_modified(std::time::UNIX_EPOCH + std::time::Duration::from_secs(1))
+            .expect("set mtime");
+        assert!(!is_installed(&path, &asset), "same size, different mtime");
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn a_writable_cache_directory_is_never_trusted_and_is_reinstalled_into() {
+        use std::os::unix::fs::PermissionsExt;
+        let body: &'static [u8] = b"#!/bin/sh\nexit 0\n";
+        let url = serve(body);
+        let asset = Asset {
+            url,
+            sha256: sha(body),
+            member: None,
+        };
+        let dir = tempfile::tempdir().expect("tempdir");
+        let path = dir.path().join("tool-1.0");
+        std::fs::write(&path, b"planted").expect("plant");
+        record_stamp(&path, &asset.sha256).expect("stamp");
+        assert!(is_installed(&path, &asset));
+        std::fs::set_permissions(dir.path(), std::fs::Permissions::from_mode(0o777)).expect("chmod");
+        assert!(!is_installed(&path, &asset), "world-writable directory");
+        ensure(&path, &asset, ReleaseKind::Binary).expect("reinstall");
+        assert_eq!(
+            std::fs::read(&path).expect("read"),
+            body,
+            "the planted file was replaced"
+        );
+        assert_eq!(
+            std::fs::metadata(dir.path()).expect("meta").permissions().mode() & 0o777,
+            0o700
+        );
+        assert!(is_installed(&path, &asset));
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn new_cache_directories_are_private() {
+        use std::os::unix::fs::PermissionsExt;
+        let body: &'static [u8] = b"payload";
+        let asset = Asset {
+            url: serve(body),
+            sha256: sha(body),
+            member: None,
+        };
+        let dir = tempfile::tempdir().expect("tempdir");
+        let path = dir.path().join("tools").join("tool").join("1.0").join("tool-1.0");
+        ensure(&path, &asset, ReleaseKind::Binary).expect("install");
+        for directory in [path.parent().unwrap(), path.parent().unwrap().parent().unwrap()] {
+            let mode = std::fs::metadata(directory).expect("meta").permissions().mode();
+            assert_eq!(mode & 0o077, 0, "{}: {mode:o}", directory.display());
+        }
     }
 
     #[test]

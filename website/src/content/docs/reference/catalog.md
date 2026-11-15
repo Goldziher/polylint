@@ -124,6 +124,15 @@ How they differ from the breadth tier above:
   not set and `latest` cannot be looked up, poly warns once and uses the newest release the catalog bundles, else the
   tool on `PATH`; an explicit `version` never falls back. With `--offline` / `POLY_OFFLINE` only the
   lock, the cache and installed binaries are used; a tool with none is reported as skipped.
+- **Trust model.** Without a lock entry or `sha256`, the digest of a resolved `latest` comes from the
+  same upstream response as the download URL, so the first download is trusted on first use: it
+  proves the file was not corrupted, not that upstream is honest. Pin `version` and commit
+  `poly.lock` (or `sha256`) to make later runs verify against a digest you reviewed. A locked URL
+  is used only if it is https and on a host the catalog names for that tool; a lock that points
+  elsewhere is refused with a pointer to `poly lock`. The install records the binary's digest, size
+  and mtime beside it, and poly reinstalls when they no longer match or when the cache directory
+  is writable by anyone but you. The GitHub token is sent only to `api.github.com`, never to a
+  `POLY_GITHUB_API_URL` override on another host.
 - **helm.** `prepare` runs `helm dependency build` once per chart (skipped when `charts/` already
   satisfies `Chart.lock`, or when `POLY_OFFLINE` is set), retried `prepare_attempts` (5) times with
   a doubling `prepare_backoff_secs` (4) plus up to `prepare_jitter_secs` (4) of jitter.
