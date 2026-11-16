@@ -1,5 +1,8 @@
 # Size baseline: core, engine families and cold start
 
+> ADR 0065 moved the shipped core to `opt-level = 3` (fat LTO, stripped) under a 22 MiB ceiling: 16,514,080 bytes
+> on `aarch64-apple-darwin`. The measurements below are the history behind the earlier `s` choice.
+
 Measurements behind the component split (#48, gate #49). All numbers are from
 `x86_64-unknown-linux-gnu`, rustc 1.99.1, poly `7f601d4` (0.32.3), on a 4-core Xeon @ 2.30 GHz with
 SHA-NI.

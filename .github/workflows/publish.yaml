@@ -1069,14 +1069,14 @@ jobs:
           echo "dependency list embedded in $bin"
         shell: bash
 
-      - name: Assert the core is under 14 MiB
+      - name: Assert the core is under 22 MiB
         # The ceiling is for the shipped binary, lock included, on the largest native triple.
         if: ${{ matrix.triple == 'x86_64-unknown-linux-gnu' }}
         run: |
           set -euo pipefail
           size="$(wc -c < "target/${{ matrix.triple }}/$PROFILE_DIR/poly" | tr -d ' ')"
           echo "core binary: $size bytes"
-          [ "$size" -gt 1000000 ] && [ "$size" -le 14680064 ] || { echo "::error::the core binary is $size bytes, outside 1 MB..14 MiB"; exit 1; }
+          [ "$size" -gt 1000000 ] && [ "$size" -le 23068672 ] || { echo "::error::the core binary is $size bytes, outside 1 MB..22 MiB (ADR 0065)"; exit 1; }
         shell: bash
 
       - name: Assert the component lock is embedded (absent for musl)

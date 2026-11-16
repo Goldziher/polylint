@@ -24,7 +24,7 @@ Not supported: **Intel macOS** from the release after 0.34.0 (build from source;
 [ADR 0046](https://github.com/polylint/polylint/blob/main/adrs/0046-drop-intel-macos.md)),
 Windows arm64 and Linux musl aarch64.
 
-- A **core** build (under 14 MiB) embeds the release's signed component lock. Its engines are
+- A **core** build (under 22 MiB) embeds the release's signed component lock. Its engines are
   components it downloads the first time a run needs them — the first `poly lint` in a Python and
   TypeScript repository fetches `python` and `web`, among others — verified against that lock and cached.
   Later runs download nothing.

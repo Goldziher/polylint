@@ -79,6 +79,7 @@ Context, Decision, Consequences (positive and negative/risks), and Alternatives 
 | [0062](0062-polylint-organization-distribution.md) | Distribute Through the `polylint` Organization | Accepted |
 | [0063](0063-sidecar-stdio-protocol-2.md) | Sidecars Speak alef's Stdio Protocol 2 | Accepted |
 | [0064](0064-sign-components-without-a-toolchain.md) | Sign Components Without a Toolchain | Accepted |
+| [0065](0065-ship-the-core-at-opt-level-3.md) | Ship the Core at opt-level 3 | Accepted |
 
 ## Conventions
 

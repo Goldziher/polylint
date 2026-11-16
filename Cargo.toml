@@ -228,11 +228,12 @@ inherits = "release"
 debug = "line-tables-only"
 strip = false
 
-# The released core binary (ADR 0039, ADR 0043): fat LTO and one codegen unit for size, stripped.
+# The released core binary (ADR 0039, ADR 0065): built for speed at opt-level 3 with fat LTO and one
+# codegen unit, stripped.
 # panic stays unwind because engine_guard catches an engine panic.
 [profile.core]
 inherits = "release"
 lto = "fat"
 codegen-units = 1
 strip = true
-opt-level = "s"
+opt-level = 3

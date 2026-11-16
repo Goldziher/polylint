@@ -218,7 +218,7 @@ registries; **the command is `poly` on every channel**, with `polylint` as an al
 Intel macOS is not supported from the release after 0.34.0 (build from source); Windows arm64 and Linux musl
 aarch64 have no release binary.
 
-A **core** build is under 14 MiB (11.1 MB on macOS arm64) and downloads engine components on first use. The **bundled** build links every
+A **core** build is under 22 MiB (16.5 MB on macOS arm64) and downloads engine components on first use. The **bundled** build links every
 engine and the MCP server in and downloads nothing. For controlled networks:
 
 ```sh
