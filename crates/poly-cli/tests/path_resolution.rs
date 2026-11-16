@@ -4,9 +4,9 @@
 //! A glob key is relative to the directory of the `poly.toml` declaring it, so
 //! `poly lint docs/adr` must apply `"docs/adr/*.c"` exactly as `poly lint .` does,
 //! and a run from a subdirectory with relative paths must resolve the `poly.toml`
-//! above it. `file-too-long` is a `quality` rule that counts newlines, so these
-//! need no component engine.
-#![cfg(unix)]
+//! above it. `file-too-long` is a `quality` rule that counts newlines.
+// The core flavour has no C grammar for the quality engine, so the rule never fires there.
+#![cfg(all(unix, feature = "all-engines"))]
 
 use std::path::Path;
 use std::process::Command;
