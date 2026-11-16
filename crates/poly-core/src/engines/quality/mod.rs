@@ -81,7 +81,7 @@ use settings::Settings;
 /// (grammars can change) or this engine's own detection/threshold logic
 /// changes in a way that alters output.
 const QUALITY_VERSION: &str =
-    "quality-6+parse-limit+tslp1.25.0+no-rust-allow+max-in-title+no-prose-lazy-ignore+uncollected-test-file+cols1";
+    "quality-6+parse-limit+tslp1.25.2+no-rust-allow+max-in-title+no-prose-lazy-ignore+uncollected-test-file+cols1";
 
 /// A grammar's pooled parser and its kind-class table, both built once per thread,
 /// and the grammar itself, which keys the lint pass's shared tree (ADR 0057).

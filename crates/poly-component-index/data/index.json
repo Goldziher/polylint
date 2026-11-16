@@ -2367,7 +2367,7 @@
             "fix": true,
             "project": false
           },
-          "version": "ast-grep-core-0.51.2-engine-5+tslp1.25.0+builtin-pack-4",
+          "version": "ast-grep-core-0.51.2-engine-5+tslp1.25.2+builtin-pack-4",
           "option_keys": [
             {
               "table": "Lint",
