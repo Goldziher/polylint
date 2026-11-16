@@ -502,6 +502,35 @@
           },
           "required": ["Rules"],
           "additionalProperties": false
+        },
+        {
+          "description": "An ADR log maintenance operation (`poly adr`). Only the component that hosts the adrlint\nengine answers it; any other answers [`WireErrorKind::Unsupported`]. The component reads and\nwrites nothing: the host hands over the files and writes the answer's\n[`WireAdrPlan::writes`] itself.",
+          "type": "object",
+          "properties": {
+            "Adr": {
+              "type": "object",
+              "properties": {
+                "op": {
+                  "description": "The operation.",
+                  "$ref": "#/$defs/WireAdrOp"
+                },
+                "config": {
+                  "description": "The resolved adrlint engine config, as in [`Request::RegisterConfig`].",
+                  "$ref": "#/$defs/WireValue"
+                },
+                "files": {
+                  "description": "The files the operation reads, relative to the project root; their contents are slices of\n`body`. The lock manifest is the member whose path is the config's `lock` option.",
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/$defs/WireFileSlice"
+                  }
+                }
+              },
+              "required": ["op", "config", "files"]
+            }
+          },
+          "required": ["Adr"],
+          "additionalProperties": false
         }
       ]
     },
@@ -718,6 +747,77 @@
         }
       ]
     },
+    "WireAdrOp": {
+      "description": "The operation of a [`Request::Adr`].",
+      "oneOf": [
+        {
+          "description": "Write or refresh the lock manifest for every record whose status is locked (`accepted`,\n`rejected`), or for every numbered record when `all` is set. `files` holds the log's Markdown\nand the manifest, when it exists.",
+          "type": "object",
+          "properties": {
+            "Lock": {
+              "type": "object",
+              "properties": {
+                "all": {
+                  "description": "Lock every numbered record whatever its status; also re-locks a manifest written by an\nolder canonical serializer.",
+                  "type": "boolean"
+                },
+                "check": {
+                  "description": "Plan for `--check`: a stale manifest is a pending write rather than an error, and a log with\nno manifest and nothing to lock is an empty plan, as `adrlint lock --check` reports them.",
+                  "type": "boolean"
+                }
+              },
+              "required": ["all", "check"]
+            }
+          },
+          "required": ["Lock"],
+          "additionalProperties": false
+        },
+        {
+          "description": "Remove one record's entry from the manifest. `files` holds the manifest.",
+          "type": "object",
+          "properties": {
+            "Unlock": {
+              "type": "object",
+              "properties": {
+                "path": {
+                  "description": "The record, relative to the project root with `/` separators: its manifest key.",
+                  "type": "string"
+                }
+              },
+              "required": ["path"]
+            }
+          },
+          "required": ["Unlock"],
+          "additionalProperties": false
+        },
+        {
+          "description": "Create the next numbered record in `dir`. `files` holds the Markdown of every configured ADR\ndirectory: the next number follows the highest among them, and a `template.md` or\n`NNNN-template.md` directly in `dir` is the template, otherwise the MADR one is used.",
+          "type": "object",
+          "properties": {
+            "New": {
+              "type": "object",
+              "properties": {
+                "dir": {
+                  "description": "The ADR directory, relative to the project root with `/` separators (empty for the root).",
+                  "type": "string"
+                },
+                "title": {
+                  "description": "The record's title.",
+                  "type": "string"
+                },
+                "date": {
+                  "description": "The date written into the record's front matter, `YYYY-MM-DD`, chosen by the host.",
+                  "type": "string"
+                }
+              },
+              "required": ["dir", "title", "date"]
+            }
+          },
+          "required": ["New"],
+          "additionalProperties": false
+        }
+      ]
+    },
     "Response": {
       "description": "The answer to every call.",
       "type": "object",
@@ -924,6 +1024,17 @@
             }
           },
           "required": ["Rules"],
+          "additionalProperties": false
+        },
+        {
+          "description": "Answer to `Adr`.",
+          "type": "object",
+          "properties": {
+            "Adr": {
+              "$ref": "#/$defs/WireAdrPlan"
+            }
+          },
+          "required": ["Adr"],
           "additionalProperties": false
         }
       ]
@@ -1364,6 +1475,50 @@
         }
       },
       "required": ["rule_id", "kind", "index", "passed"]
+    },
+    "WireAdrPlan": {
+      "description": "The answer to [`Request::Adr`]: what to write and what to tell the user.",
+      "type": "object",
+      "properties": {
+        "writes": {
+          "description": "Files to write; empty when the log is already in the requested state.",
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/WireAdrWrite"
+          }
+        },
+        "changes": {
+          "description": "One line per changed manifest entry or record (`add <key>`, `update <key>`, `remove <key>`,\n`create <path>`).",
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "summary": {
+          "description": "A one-line summary of the outcome.",
+          "type": "string"
+        }
+      },
+      "required": ["writes", "changes", "summary"]
+    },
+    "WireAdrWrite": {
+      "description": "One file a [`WireAdrPlan`] asks the host to write.",
+      "type": "object",
+      "properties": {
+        "path": {
+          "description": "Path relative to the project root, `/` separated.",
+          "type": "string"
+        },
+        "content": {
+          "description": "The whole new content.",
+          "type": "string"
+        },
+        "create": {
+          "description": "The file must not exist yet (a new record); otherwise it is replaced (the manifest).",
+          "type": "boolean"
+        }
+      },
+      "required": ["path", "content", "create"]
     },
     "WireLog": {
       "description": "A log record emitted by the component during a call.",
