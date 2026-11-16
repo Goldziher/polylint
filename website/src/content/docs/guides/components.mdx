@@ -43,6 +43,8 @@ Three components are not part of a bundled build, and `poly components list` say
 - **`pyrefly`**: it is built in a workspace of its own, so no bundled build links it, and a bundled build
   embeds no lock to download it. `[engines.python-types] backend = "pyrefly"` therefore fails the run
   (exit `2`) with that reason. Keep the default `backend = "ty"`, or use a core build.
+- **`r`**: air and jarl pin a biome revision of their own, so no bundled build links the component; every build
+  downloads it when the run has R files, and a missing component is never replaced by the tree-sitter reindenter.
 - **`tsrs`**: no bundled build links it (the compiler is large and the engine experimental), so
   `[engines.tsrs] enabled = true` needs a build that can download the component; elsewhere it fails the run with
   the same reason as `pyrefly`.
@@ -54,6 +56,7 @@ Three components are not part of a bundled build, and `poly components list` say
 | `web` | JavaScript, TypeScript, JSON (oxc), YAML, TOML, Markdown, CSS (malva), HTML and the other markup languages, adrlint, skif |
 | `python` | ruff, and `ty` for type checking |
 | `pyrefly` | pyrefly type checking (opt-in, fetched when `[engines.python-types] backend = "pyrefly"`) |
+| `r` | air R formatting and jarl R linting |
 | `tsrs` | tsrs TypeScript type checking (opt-in and experimental, fetched when `[engines.tsrs] enabled = true`) |
 | `sql` | sqruff |
 | `php` | mago |

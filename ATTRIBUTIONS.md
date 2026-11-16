@@ -133,6 +133,40 @@ crates. Nothing is vendored. The crates carry data that needs credit:
   word-frequency list that `kingfisher-rules` redistributes unmodified. Robyn Speer must be credited by that name. The
   share-alike term covers the data, not poly. `components-secrets/deny.toml` allows the licence for that one crate.
 
+## air and jarl — R formatter and linter (Cargo dependencies)
+
+- Projects: <https://github.com/posit-dev/air> (parser, formatter and `air.toml` reader),
+  <https://github.com/etiennebacher/jarl> (`jarl-core`, `jarl-semantic`) and <https://github.com/posit-dev/ark>
+  (the semantic-analysis crates jarl is built on)
+- License: MIT
+- Copyright © 2024 Posit Software, PBC (air, ark); Copyright © 2025 Etienne Bacher (jarl)
+
+The `r` component (`components-r/`, ADR 0070) links these crates at pinned git revisions. Nothing is vendored. air's
+formatter is built on the biome formatter framework (MIT OR Apache-2.0, <https://github.com/biomejs/biome>). The
+licence text of all three projects is the MIT licence:
+
+```text
+MIT License
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+```
+
 ## skif-js-types — tsrs file system and program owner (adapted)
 
 - Project: <https://github.com/polylint/skif> (`crates/skif-js-types`)

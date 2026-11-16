@@ -61,7 +61,7 @@ checksummed release (macOS and Linux), and `RT` one that needs a host runtime.
 | Zig | opt-in `zig fmt`, tree-sitter fallback otherwise | no | yes | host |
 | Dart | opt-in `dart format`, tree-sitter fallback otherwise | no | yes | host |
 | Gleam | opt-in `gleam format`, tree-sitter fallback otherwise | no | yes | host |
-| R | opt-in `jarl` (recipe); opt-in `air` (recipe, no R install needed) or `styler` (via `Rscript`), tree-sitter fallback otherwise | opt-in | yes | host; recipes `air`, `jarl` ↓ |
+| R | `jarl` (rules, safe fixes; configured by `jarl.toml`), `air` formatter (configured by `air.toml`); both in process, no R install needed; opt-in `styler` (via `Rscript`) runs after air; opt-in recipes `air`, `jarl` ↓ take over when enabled | yes | yes | component `r`; recipes `air`, `jarl` ↓ |
 | Groovy | opt-in `npm-groovy-lint` | opt-in | opt-in | recipe RT (Node) |
 | Protobuf | opt-in `buf`, tree-sitter fallback otherwise | opt-in | yes | recipe `buf` ↓ |
 | Starlark / Bazel (`BUILD`, `*.bzl`, `WORKSPACE`, `Tiltfile`, …) | opt-in `buildifier`, tree-sitter fallback otherwise | opt-in | yes | recipe `buildifier` ↓ |

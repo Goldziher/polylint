@@ -1,5 +1,5 @@
 //! The R engine family: formatting with [air](https://github.com/posit-dev/air), linting with
-//! [jarl](https://github.com/etiennebacher/jarl), and the `r` component serving both (ADR 0066).
+//! [jarl](https://github.com/etiennebacher/jarl), and the `r` component serving both (ADR 0070).
 //!
 //! Both tools are Rust libraries built on one parser and one biome formatter, so a run needs no R installation.
 //! They are configured the way their own CLIs are, by the project's `air.toml` and `jarl.toml`, with poly's

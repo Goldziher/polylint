@@ -36,8 +36,8 @@ an installer (see release-versioning).
 ## Workspace root
 
 - `Cargo.toml` — `[workspace]` (resolver 3, edition 2024, `rust-version = "1.100"`). Thirty-eight
-  members (plus four excluded workspaces: `components/`, `components-pyrefly/`, `components-secrets/`,
-  `components-tsrs/`): `poly-core` (the engine library), `poly-cli` (builds the `poly` binary),
+  members (plus five excluded workspaces: `components/`, `components-pyrefly/`, `components-r/`,
+  `components-secrets/`, `components-tsrs/`): `poly-core` (the engine library), `poly-cli` (builds the `poly` binary),
   `poly-config`, `poly-cache`, `poly-catalog`, `poly-hooks`, `poly-workspace`, `poly-mcp`,
   `poly-buildinfo`, the engine split (`poly-engine-api`, `poly-engines`, the
   `poly-engines-*` family crates and their `-component` builds, `poly-grammar` and the three `poly-component-*` crates, below),

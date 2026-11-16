@@ -26,6 +26,13 @@ binary drives lint, format, hooks, and commit checks from one `poly.toml`.
   the new `lua` component. `stylua.toml` / `.stylua.toml` and `selene.toml` are read from the nearest directory up to the
   repository root, with `[engines.stylua]` and `[engines.selene]` layered on top. selene runs its built-in `lua51`, `lua52`,
   `lua53` and `luau` standard libraries; a `std` that names a library file reports `unsupported-std`. (ADR 0069, #173)
+- **R formatting with air and linting with jarl, no R installation.** The new `r` component runs Posit's `air`
+  formatter and the `jarl` linter in process: `poly fmt` and `poly lint` on R files read the project's `air.toml` and
+  `jarl.toml` and need neither R nor `Rscript`. `[engines.air]` (`line_width`, `indent_width`, `indent_style`,
+  `line_ending`, `persistent_line_breaks`, `assignment_style`, `skip`, `table`, `default_table`) and `[engines.jarl]`
+  (`select`, `extend_select`, `ignore`, `rules.<name>.level`, `check_roxygen`, `min_r_version`) override them; jarl's
+  safe fixes apply with `--fix`. `styler` stays an opt-in host formatter, and the component is the default for R
+  when it is installed (ADR 0070, #130).
 - **`poly adr lock`, `poly adr unlock <file> --reason <text>` and `poly adr new <title>`.** Maintain `adrlint.lock`
   and create numbered records with the bundled adrlint and the `[engines.adrlint]` settings, so a repository no
   longer needs the standalone adrlint CLI or `.adrlint.toml`. `lock` refuses while `poly lint` reports an adrlint

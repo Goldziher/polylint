@@ -333,6 +333,52 @@ any: config, syntax, then semantic errors.
 One program is checked: set `project` to the `tsconfig` of the package you want in a monorepo, one `poly.toml` scope per
 package. tsrs reads its own `TSRS_*` environment variables; poly sets none and reads none.
 
+### R formatting and linting
+
+R is formatted by [air](https://github.com/posit-dev/air) and linted by [jarl](https://github.com/etiennebacher/jarl),
+both in process in the `r` component (ADR 0070); no R installation is involved. Each reads its own project config the
+way its CLI does, and the `[engines.*]` table is laid over it.
+
+```toml
+[engines.air]            # the formatter; the nearest air.toml (or .air.toml) above the file is read first
+line_width = 100         # default 120 without an air.toml (air's own default is 80)
+indent_width = 2
+indent_style = "space"   # or "tab"
+line_ending = "lf"       # "auto", "lf", "crlf" or "native"
+persistent_line_breaks = true
+assignment_style = "arrow" # "equal" or "preserve"
+skip = ["graph_from_literal"]  # calls that are left as written
+table = ["my_table"]           # calls formatted as tables
+default_table = true
+
+[engines.jarl]           # the linter; the nearest jarl.toml (or .jarl.toml) above the file is read first
+select = ["PERF", "any_is_na"]   # rule names or categories (CORR, SUSP, PERF, READ, ...); replaces the default set
+extend_select = ["assignment"]
+ignore = ["seq"]
+check_roxygen = true             # lint the @examples of roxygen comments
+min_r_version = "4.1"            # switches off rules that need a newer R
+
+[engines.jarl.rules.assignment]
+operator = "="                   # the rule's own option, as in [lint.assignment] of jarl.toml
+[engines.jarl.rules.seq]
+level = "error"                  # severity for one rule
+```
+
+A project with an `air.toml` is formatted exactly as `air format` formats it: poly's 120-column default is not laid
+under the file, so a key it omits keeps air's default (80 columns). Without one, poly's `[defaults]` line width and
+line ending and the language's indent width apply. air's `exclude` and `default-exclude` patterns (`renv/`,
+`RcppExports.R`, `import-standalone-*.R`, ...) are reported as skipped files. A file that does not parse is an error.
+
+jarl reports a rule's findings with its rule name as the code. Rules in the `CORR` category (code that is outright wrong
+or useless) are errors and every other rule is a warning, unless `level` says otherwise. Only safe fixes are attached,
+so `poly lint --fix` applies them; an unsafe fix is reported with `fix = "unsafe"` in the finding's metadata. jarl's
+`exclude` and `include` file filters are not applied: use `[discovery]` and `[per_file_ignores]`. Rules that look
+functions up in installed packages see only what the file and the project's `NAMESPACE` declare, since poly never
+starts R.
+
+`styler` remains an opt-in host formatter (`[engines.styler] enabled = true`); it then runs after air. Set
+`[engines.air] enabled = false` to format with `styler` alone. An enabled `air` recipe under [`[tools]`](#tools) still takes R formatting over from the component.
+
 ## `[workspace]`
 
 | Key | Type | Default | Meaning |

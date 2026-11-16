@@ -158,7 +158,7 @@ targets = ["aarch64-apple-darwin", "x86_64-unknown-linux-gnu", "aarch64-unknown-
 
 # R formatting with air and linting with jarl. Both pin a biome revision of their own (8c43bc0), which is not the one
 # `components/` pins for its biome engine, so the family crate lives in the separate `components-r/` workspace and alef
-# generates and builds the producer there (ADR 0066).
+# generates and builds the producer there (ADR 0070).
 [[crates.components]]
 name = "r"
 provides = [{ contract = "poly", implementation = "poly_engines_r::RComponent" }]

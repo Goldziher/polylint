@@ -456,7 +456,7 @@ jobs:
         working-directory: components/sidecars/go
         run: go test -count=1 -v -run TestBuiltExecutableDescribesAndFormats ./...
 
-  # air and jarl, the R formatter and linter, are pure Rust with a lockfile of their own (ADR 0066), so a native build on
+  # air and jarl, the R formatter and linter, are pure Rust with a lockfile of their own (ADR 0070), so a native build on
   # each platform the component ships for is the whole check: the engine tests format and lint real R fixtures (the
   # exact output and findings), and the component cdylib must build.
   r:

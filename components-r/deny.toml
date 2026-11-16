@@ -50,7 +50,7 @@ unknown-git = "deny"
 # air (the formatter), jarl (the linter) and ark (the R tooling jarl's semantic analysis is built on) are only available
 # from git: none of their crates is published (air's are `publish = false`), and the crates.io `jarl` is an unrelated
 # crate. biome is the formatter framework both are built on, at the one rev air and jarl share; the biome crates air
-# needs are not published at that rev either (ADR 0066).
+# needs are not published at that rev either (ADR 0070).
 allow-git = [
   "https://github.com/biomejs/biome",
   "https://github.com/etiennebacher/jarl",
