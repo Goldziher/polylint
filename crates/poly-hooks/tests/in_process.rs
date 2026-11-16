@@ -49,7 +49,9 @@ fn handler(call: &Call<'_>) -> Option<anyhow::Result<Outcome>> {
     }))
 }
 
-/// An in-process hook whose re-exec line is `line`, so a test can tell which form ran.
+/// An in-process hook whose re-exec line is `line`, so a test can tell which form ran. The
+/// runner appends the file names to a line, and bash's `exit` refuses extra operands, so a line
+/// that must exit with a given code wraps it in `sh -c '...' --`.
 fn in_process_hook(name: &str, line: &str) -> Hook {
     let mut hook = Hook::run(name, line);
     hook.command = HookCommand::InProcess {
@@ -104,14 +106,14 @@ fn an_in_process_hook_judges_the_staged_snapshot_and_reports_its_output() {
 #[test]
 fn a_declined_check_runs_its_command_line() {
     let (repo, snapshot) = broken_index();
-    let (status, _) = staged_run(&repo, &snapshot, in_process_hook("not-handled", "exit 3"));
+    let (status, _) = staged_run(&repo, &snapshot, in_process_hook("not-handled", "sh -c 'exit 3' --"));
     assert_eq!(status, HookStatus::Failed { code: Some(3) });
 }
 
 #[test]
 fn a_hook_with_its_own_env_keeps_the_reexec() {
     let (repo, snapshot) = broken_index();
-    let mut hook = in_process_hook("reject-broken", "exit 0");
+    let mut hook = in_process_hook("reject-broken", "sh -c 'exit 0' --");
     hook.env.insert("EXTRA".to_string(), "1".to_string());
     let (status, _) = staged_run(&repo, &snapshot, hook);
     assert_eq!(status, HookStatus::Passed);
