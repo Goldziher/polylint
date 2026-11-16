@@ -13,7 +13,8 @@ x-ai-rulez:
 `src/`:
 
 - `lib.rs` — public re-exports.
-- `engine.rs` — re-exports `poly-engine-api`'s `engine`: the **`Engine` trait** contract plus `SourceFile`, `Capabilities`,
+- `engine.rs` — re-exports `poly-engine-api`'s `engine`: the **`Engine` trait** contract, its optional facets
+  (`Batching`, `ProjectAnalysis`, `PlanPolicy`, `CatalogTakeover`; ADR 0072), plus `SourceFile`, `Capabilities`,
   `Severity`, `Span`, `Edit`, `Diagnostic`, `FormatOutput`. This is the keystone abstraction.
 - `registry.rs` — crate-private `engines_for(&Language) -> Vec<Box<dyn Engine>>`. A static
   `match`: the native crate backend(s) registered for the language, else the

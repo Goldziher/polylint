@@ -20,27 +20,52 @@ there is no external pre-commit-framework dependency in between.
 
 ## The `Engine` trait contract (`engine.rs`)
 
-Every backend — native crate or generic tier — implements the same trait:
+Every backend — native crate or generic tier — implements the same trait, which holds what the
+runner asks of every engine for every file:
 
 ```rust
 pub trait Engine: Send + Sync {
     fn name(&self) -> &'static str;                    // the *tool* id, not the Rust type
     fn languages(&self) -> &'static [Language];        // empty == cross-cutting
-    fn capabilities(&self) -> Capabilities;            // lint / format / fix
+    fn capabilities(&self) -> Capabilities;            // lint / format / fix / project
     fn version(&self) -> &str;                         // folded into the cache key
 
     // Defaulted methods:
     fn option_keys(&self, table: OptionTable) -> OptionKeys;      // declared lint/format option keys
-    fn provides_language_lint(&self, language: &Language, cfg: &EngineConfig) -> bool;
-    fn skip_reason(&self, src: &SourceFile) -> Option<&'static str>;
+    fn overridden_hooks(&self) -> u32;                             // component-index hook bits
+    fn skip_reason(&self, src: &SourceFile) -> Option<Cow<'static, str>>;
     fn lint(&self, src: &SourceFile, cfg: &EngineConfig) -> anyhow::Result<Vec<Diagnostic>>;
     fn format(&self, src: &SourceFile, cfg: &EngineConfig) -> anyhow::Result<FormatOutput>;
-    fn self_manages_enabled(&self) -> bool;
-    fn supersedes_generic_formatter(&self) -> bool;
-    // ...31 methods in all; the rest are cache salts (`*_context`, `*_salt`), batching (`*_batch`) and catalog takeover.
+    // cache inputs: host_hook, run_context, file_context, lint_input_salt, format_input_salt,
+    // format_config, lint_cache_salt, lint_cache_version
+
+    // Facet accessors, all defaulting to `None`:
+    fn batching(&self) -> Option<&dyn Batching>;
+    fn project_analysis(&self) -> Option<&dyn ProjectAnalysis>;
+    fn plan_policy(&self) -> Option<&dyn PlanPolicy>;
+    fn catalog_takeover(&self) -> Option<&dyn CatalogTakeover>;
 }
 pub enum FormatOutput { Unchanged, Formatted(String) }
 ```
+
+Concerns only some backends have are **facets** (ADR 0072), traits in
+`poly-engine-api/src/engine/facets.rs` that a backend implements only when it has the concern,
+returning `Some(self)` from the matching accessor:
+
+| Facet | Methods |
+| --- | --- |
+| `Batching` | `batch_support`, `format_batch`, `lint_batch`, `batch_shard_floor` (ADR 0033) |
+| `ProjectAnalysis` | `project_check`, `project_inputs`, `selection` (whole-project checks) |
+| `PlanPolicy` | `provides_language_lint`, `provides_language_format`, `self_manages_enabled`, `supersedes_generic_formatter` |
+| `CatalogTakeover` | `takes_over_tier_one`, `claimed_paths`, `supplements_tier_one` (catalog tier) |
+
+Callers never touch the accessors: `impl dyn Engine` carries a method of the same name for every
+facet method (`engine.batch_support(cfg)`, `engine.provides_language_lint(..)`), which answers
+the backend's facet or the facet's default, so a `dyn Engine` call site reads as before and each
+default lives in one place. A facet method called on a *concrete* type needs the facet trait in
+scope, and a concrete type without the facet must go through `&dyn Engine` for the default. The
+per-file path (`skip_reason`, the cache inputs, `lint`, `format`) stays on `Engine` itself, so it
+gains no indirect call.
 
 Contract rules: `Engine` is `Send + Sync` (it runs inside a rayon `par_iter`); `version()`
 must change whenever output could change, because it is part of the cache key (other inputs,
@@ -57,7 +82,8 @@ rather than globally: it keys `[<kind>.<lang>.<engine>]`, the `engine` field of 
 `Diagnostic`, and the cache key. Hence `NixFmtEngine` is `"alejandra"`, and `BiomeCssEngine` /
 `BiomeGraphqlEngine` are both `"biome"`.
 
-The four defaulted predicates carry the coverage, skip and enablement accounting:
+Four predicates carry the coverage, skip and enablement accounting — `skip_reason` on `Engine`,
+the other three on the `PlanPolicy` facet:
 
 - `provides_language_lint(language, cfg)` — "did anything in this run know how to lint this
   file?" It drives the `no lint rules for <language>` skip, the `checked` count, the JSON

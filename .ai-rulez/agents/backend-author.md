@@ -27,7 +27,13 @@ your lane: one backend, with worktree isolation when run in parallel with siblin
    vendor** — there is no `vendor/` directory; the one in-tree fork, `crates/dockerfile-parser`,
    exists only because its upstream is archived (ADR 0003 amendment), and is not a precedent.
    Confirm `cargo deny` still passes (no GPL/AGPL).
-2. **Implement the `Engine` trait** (`crates/poly-engine-api/src/engine.rs`, re-exported by `poly-core`):
+2. **Implement the `Engine` trait** (`crates/poly-engine-api/src/engine.rs`, re-exported by `poly-core`),
+   and a facet (`engine/facets.rs`, ADR 0072) only for a concern the backend has: `Batching`
+   (one call over many files), `ProjectAnalysis` (whole-project check), `PlanPolicy` (the
+   coverage and enablement predicates below) or `CatalogTakeover` (catalog tier only). A facet
+   is `impl <Facet> for MyEngine { … }` plus the accessor `fn plan_policy(&self) ->
+   Option<&dyn PlanPolicy> { Some(self) }` in the `Engine` impl; without it the facet's
+   defaults apply. A test calling a facet method on the concrete type imports the facet trait.
    - `name() -> &'static str` — the **tool** id (`"biome"`, `"alejandra"`), not the Rust type;
      it is the `[<kind>.<lang>.<engine>]` config key and the cache-key id. Unique *per
      language*, not globally.
@@ -40,7 +46,7 @@ your lane: one backend, with worktree isolation when run in parallel with siblin
      `version()` does not embed its version (registry deps) or short git rev (git deps), and
      `registry::tests::every_registered_engine_is_audited_or_declared_exempt` fails if you
      do not add a `check(...)` entry there at all.
-   - `provides_language_lint(&self, language, cfg) -> bool` — whether this backend carries
+   - `provides_language_lint(&self, language, cfg) -> bool` (`PlanPolicy`) — whether this backend carries
      lint rules *for that language* under `cfg`. It drives the `no lint rules for <language>`
      skip, the run's `checked` count, the JSON `skipped` field, and `--deny-skips`. The
      default (`!languages().is_empty()`) is right for a tier-1 backend. If you override it —
@@ -51,18 +57,18 @@ your lane: one backend, with worktree isolation when run in parallel with siblin
      flag claims every file in every repository as linted and deletes the skip entirely.
      Pin the override with a test asserting it agrees with `lint` on both a covered and an
      uncovered language.
-   - `skip_reason(&self, src) -> Option<&'static str>` — decline content you cannot safely
+   - `skip_reason(&self, src) -> Option<Cow<'static, str>>` — decline content you cannot safely
      handle *here*, so the runner can count and report the skip, rather than bailing out
      silently inside `lint`/`format`.
    - `lint` / `format` — `format` returns `FormatOutput::Unchanged` rather than echoing
      input. Both default to no-ops, so implement only what you declared.
-   - `self_manages_enabled()` — leave `false` (the default) unless this backend is its
+   - `self_manages_enabled()` (`PlanPolicy`) — leave `false` (the default) unless this backend is its
      language's **only** registry slot and hands the file to the tier-2 reindenter itself when
      `enabled = false` (see `native_tool`). Getting this wrong is silent: the runner drops a
      `false`-answering engine from the plan before the file loop, so an `enabled = false` on
      a backend that should have answered `true` leaves that language with no formatter at all
      and every one of its files unformatted, with nothing in the report to say so.
-   - `supersedes_generic_formatter()` — return `true` only when the backend is both
+   - `supersedes_generic_formatter()` (`PlanPolicy`) — return `true` only when the backend is both
      configured and actually runnable, so it displaces the generic reindenter instead of
      fighting it.
 3. **Apply defaults layering:** tool default → opinionated override (line length 120, always

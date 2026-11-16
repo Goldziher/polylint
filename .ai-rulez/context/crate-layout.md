@@ -49,7 +49,7 @@ an installer (see release-versioning).
   and
   `poly-engines` is their feature-gated facade plus `producer/`, which adapts engines to the
   `PolyComponent` contract trait (defined in `poly-component-protocol`'s `contract.rs` and
-  re-exported). `poly-engine-api` holds the `Engine` trait, config, `host_hooks/`, `rule_config`,
+  re-exported). `poly-engine-api` holds the `Engine` trait and its facets, config, `host_hooks/`, `rule_config`,
   `template` and `line_index`; `poly-grammar` the shared tree-sitter grammar memo;
   `poly-component-protocol`, `poly-component-index` and `poly-component-host` the component wire
   protocol, compiled component index and host-side runtime; `poly-core`'s
