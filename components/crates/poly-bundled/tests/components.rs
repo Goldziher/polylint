@@ -77,9 +77,23 @@ fn status_needs_nothing_for_a_ruby_file() {
 }
 
 #[test]
-fn install_all_is_a_noop_when_every_family_is_linked() {
+fn installing_the_linked_families_is_a_noop() {
     let sandbox = Sandbox::new();
-    let value = sandbox.json(&["component", "install", "all", "--format", "json"]);
+    // `all` also names components built in workspaces of their own (`r`), which a bundled build downloads; install
+    // only the engine components this build links.
+    let listed = sandbox.json(&["components", "list", "--format", "json"]);
+    let linked: Vec<&str> = listed["components"]
+        .as_array()
+        .expect("components")
+        .iter()
+        .filter(|c| c["kind"] == "engines" && c["state"] == "bundled")
+        .filter_map(|c| c["name"].as_str())
+        .collect();
+    assert!(!linked.is_empty(), "{listed}");
+    let mut args = vec!["component", "install"];
+    args.extend(&linked);
+    args.extend(["--format", "json"]);
+    let value = sandbox.json(&args);
     assert_eq!(value["ok"], true);
     let results = value["results"].as_array().expect("results");
     assert!(!results.is_empty());
