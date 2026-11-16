@@ -1,0 +1,13 @@
+---
+source: crates/poly-engines-lua/tests/lua.rs
+expression: formatted
+---
+local function greet(name)
+    local message = "hello, " .. name
+    print(message)
+    return message
+end
+
+if x then
+    print("yes")
+end

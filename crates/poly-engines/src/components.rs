@@ -114,6 +114,13 @@ family_component!(
     ]
 );
 family_component!(
+    "lua",
+    lua,
+    LuaComponent,
+    "The `lua` component: the StyLua formatter and the selene linter.",
+    crate::lua::engines_for(&poly_engine_api::language::Language::Lua)
+);
+family_component!(
     "uncomment",
     uncomment,
     UncommentComponent,

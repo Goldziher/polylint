@@ -11,6 +11,8 @@ pub mod producer;
 pub use components::AstgrepComponent;
 #[cfg(feature = "jsonschema")]
 pub use components::JsonSchemaComponent;
+#[cfg(feature = "lua")]
+pub use components::LuaComponent;
 #[cfg(feature = "mcp")]
 pub use components::McpComponent;
 #[cfg(feature = "misc")]
@@ -36,6 +38,8 @@ pub use producer::Producer;
 pub use poly_engines_astgrep as astgrep;
 #[cfg(feature = "jsonschema")]
 pub use poly_engines_jsonschema as jsonschema;
+#[cfg(feature = "lua")]
+pub use poly_engines_lua as lua;
 #[cfg(feature = "misc")]
 pub use poly_engines_misc as misc;
 #[cfg(feature = "nix")]

@@ -459,6 +459,8 @@ const ENGINE_SOURCES: &[(&str, &[&str])] = &[
     ("ini", &["../../../poly-engines-misc/src/ini.rs"]),
     ("typstyle", &["../../../poly-engines-misc/src/typst.rs"]),
     ("tex-fmt", &["../../../poly-engines-misc/src/latex.rs"]),
+    ("stylua", &["../../../poly-engines-lua/src/stylua.rs"]),
+    ("selene", &["../../../poly-engines-lua/src/selene.rs"]),
     ("treesitter", &["treesitter/mod.rs"]),
     ("polyconfig", &["config_keys/mod.rs"]),
     // The four cross-cutting backends read a table `Config` merged for them, so

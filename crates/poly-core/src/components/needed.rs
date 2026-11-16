@@ -47,6 +47,8 @@ const LINKED_FEATURES: &[&str] = &[
     "engine-typst",
     #[cfg(feature = "engine-latex")]
     "engine-latex",
+    #[cfg(feature = "engine-lua")]
+    "engine-lua",
     #[cfg(feature = "engine-shfmt")]
     "engine-shfmt",
     #[cfg(feature = "engine-gofmt")]

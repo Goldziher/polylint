@@ -181,6 +181,8 @@ pub fn engines_for(lang: &Language) -> Vec<Box<dyn Engine>> {
         Language::Typst => poly_engines_misc::engines_for(lang),
         #[cfg(feature = "engine-latex")]
         Language::Latex => poly_engines_misc::engines_for(lang),
+        #[cfg(feature = "engine-lua")]
+        Language::Lua => poly_engines_lua::engines_for(lang),
         Language::Go => vec![Box::new(NativeToolEngine::for_language(Language::Go))],
         Language::Rust => vec![Box::new(NativeToolEngine::for_language(Language::Rust))],
         Language::Zig => vec![Box::new(NativeToolEngine::for_language(Language::Zig))],
@@ -420,6 +422,7 @@ pub(crate) fn all_languages() -> Vec<Language> {
         Language::Ini,
         Language::Typst,
         Language::Latex,
+        Language::Lua,
     ]
 }
 
@@ -519,6 +522,7 @@ pub(crate) mod tests {
             | Language::Ini
             | Language::Typst
             | Language::Latex
+            | Language::Lua
             | Language::Other(_) => {}
         }
     }

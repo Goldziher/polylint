@@ -39,6 +39,8 @@ const PLACEMENT: &[(&str, Placement)] = &[
     ("ini", In("misc")),
     ("typstyle", In("misc")),
     ("tex-fmt", In("misc")),
+    ("stylua", In("lua")),
+    ("selene", In("lua")),
     ("uncomment", In("uncomment")),
     ("jsonschema", In("jsonschema")),
     ("harper", In("prose")),
@@ -92,6 +94,7 @@ const COMPONENTS: &[(&str, ComponentKind, bool, &[&str])] = &[
     ("uncomment", ComponentKind::Engines, true, &["engine-uncomment"]),
     ("jsonschema", ComponentKind::Engines, true, &["engine-jsonschema"]),
     ("prose", ComponentKind::Engines, true, &["engine-prose"]),
+    ("lua", ComponentKind::Engines, false, &["engine-lua"]),
     (
         "misc",
         ComponentKind::Engines,
@@ -147,6 +150,7 @@ const ALIASES: &[(&str, &[&str])] = &[
     ("dotenv", &["dotenv"]),
     ("typst", &["typst"]),
     ("latex", &["latex"]),
+    ("lua", &["lua"]),
 ];
 
 fn index_path() -> PathBuf {

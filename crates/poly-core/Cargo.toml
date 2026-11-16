@@ -57,6 +57,7 @@ all-engines = [
   "engine-graphql",
   "engine-typst",
   "engine-latex",
+  "engine-lua",
   "engine-shfmt",
   "engine-gofmt",
 ]
@@ -84,6 +85,7 @@ engine-hcl = ["dep:poly-engines-misc", "poly-engines-misc/hcl"]
 engine-graphql = ["dep:poly-engines-misc", "poly-engines-misc/graphql"]
 engine-typst = ["dep:poly-engines-misc", "poly-engines-misc/typst"]
 engine-latex = ["dep:poly-engines-misc", "poly-engines-misc/latex"]
+engine-lua = ["dep:poly-engines-lua"]
 
 [dependencies]
 anyhow.workspace = true
@@ -102,6 +104,7 @@ poly-config.workspace = true
 poly-engine-api.workspace = true
 poly-engines-astgrep = { workspace = true, optional = true }
 poly-engines-jsonschema = { workspace = true, optional = true }
+poly-engines-lua = { workspace = true, optional = true }
 poly-engines-misc = { workspace = true, optional = true }
 poly-engines-nix = { workspace = true, optional = true }
 poly-engines-php = { workspace = true, optional = true }

@@ -19,6 +19,8 @@ members = [
   "crates/poly-engines-astgrep-component",
   "crates/poly-engines-jsonschema",
   "crates/poly-engines-jsonschema-component",
+  "crates/poly-engines-lua",
+  "crates/poly-engines-lua-component",
   "crates/poly-engines-mcp-component",
   "crates/poly-engines-misc",
   "crates/poly-engines-misc-component",
@@ -87,6 +89,9 @@ fancy-regex = "0.20.2"
 flate2 = "1.1"
 fs-err = "3.3.2"
 fs2 = "0.4"
+# selene-lib 0.31 is built on full_moon 2 while stylua 2.6 is built on full_moon 3, so cargo keeps both. This alias is
+# selene's copy, used to parse a file for selene; it is pinned to the exact version selene-lib resolves.
+full_moon_2 = { package = "full_moon", version = "=2.2.0" }
 gitfluff = { version = "0.11.2", default-features = false }
 globset = "0.4.21"
 granit-parser = "2.1"
@@ -139,6 +144,7 @@ poly-engine-api = { path = "crates/poly-engine-api" }
 poly-engines = { path = "crates/poly-engines" }
 poly-engines-astgrep = { path = "crates/poly-engines-astgrep" }
 poly-engines-jsonschema = { path = "crates/poly-engines-jsonschema" }
+poly-engines-lua = { path = "crates/poly-engines-lua" }
 poly-engines-misc = { path = "crates/poly-engines-misc", default-features = false }
 poly-engines-nix = { path = "crates/poly-engines-nix" }
 poly-engines-php = { path = "crates/poly-engines-php" }
@@ -178,6 +184,8 @@ salsa = { version = "=0.28.5", default-features = false, features = ["macros", "
 same-file = "1.0.6"
 schemars = "1.2.3"
 seahash = "4.1.0"
+# selene-lib: Lua linter (MPL-2.0). Exact pin: the lint set and messages change between 0.x minors.
+selene-lib = "=0.31.0"
 semver = { version = "1.0.28", features = ["serde"] }
 serde = { version = "1", features = ["derive"] }
 serde-saphyr = { version = "2.1.1", default-features = false, features = ["deserialize", "serialize"] }
@@ -191,6 +199,8 @@ similar = "3.2.1"
 sqruff-lib = "0.44"
 sqruff-lib-core = "0.44"
 strum = { version = "0.28.0", features = ["derive"] }
+# stylua: Lua formatter (MPL-2.0), its library half. Exact pin: formatter output changes between releases.
+stylua = { version = "=2.6.0", default-features = false, features = ["lua52", "lua53", "lua54", "luajit", "luau"] }
 tar = { version = "0.4", default-features = false }
 target-lexicon = "0.13.6"
 tempfile = "3"

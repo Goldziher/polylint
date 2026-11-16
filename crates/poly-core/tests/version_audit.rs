@@ -44,7 +44,9 @@ use poly_core::engines::mago::MagoEngine;
 use poly_core::engines::nixfmt::NixFmtEngine;
 use poly_core::engines::quality::QualityEngine;
 use poly_core::engines::ruff::RuffEngine;
+use poly_core::engines::selene::SeleneEngine;
 use poly_core::engines::sqruff::SqruffEngine;
+use poly_core::engines::stylua::StyluaEngine;
 use poly_core::engines::treesitter::TreeSitterEngine;
 use poly_core::engines::ty::TyEngine;
 use poly_core::engines::typos::TyposEngine;
@@ -143,6 +145,8 @@ fn engine_versions_track_cargo_lock() {
         check("ini", IniEngine.version(), vec!["rust-ini"]),
         check("typstyle", TypstEngine.version(), vec!["typstyle-core"]),
         check("tex-fmt", LatexEngine.version(), vec!["tex-fmt"]),
+        check("stylua", StyluaEngine.version(), vec!["stylua"]),
+        check("selene", SeleneEngine.version(), vec!["selene-lib"]),
         // `astgrep` parses with the same grammar pack as `treesitter`, so both
         // must embed the same `tree-sitter-language-pack` version — new grammars
         // change what rules match. It was omitted from this list until the pack

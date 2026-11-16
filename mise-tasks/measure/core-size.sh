@@ -27,7 +27,7 @@ FEATURES=("${@:2}")
 [[ ${#FEATURES[@]} -gt 0 ]] || FEATURES=(
   poly-core/engine-astgrep poly-core/engine-uncomment poly-core/engine-typos
   poly-core/engine-dockerfile poly-core/engine-dotenv poly-core/engine-ini poly-core/engine-hcl
-  poly-core/engine-graphql poly-core/engine-typst poly-core/engine-latex bundled-mcp
+  poly-core/engine-graphql poly-core/engine-typst poly-core/engine-latex poly-core/engine-lua bundled-mcp
   poly-core/engine-python poly-core/engine-php poly-core/engine-sql
   poly-core/engine-nix
 )

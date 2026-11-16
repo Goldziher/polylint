@@ -48,6 +48,11 @@ ignore = [
   # `proc-macro-error2` is unmaintained (RUSTSEC-2026-0173): a build-time proc-macro dependency of `merge_derive`,
   # reached through `tex-fmt` (LaTeX formatting); a maintenance notice, not a vulnerability.
   "RUSTSEC-2026-0173",
+  # `atty` (RUSTSEC-2024-0375) and `proc-macro-error` (RUSTSEC-2024-0370) are unmaintained, reached through `clap` 3,
+  # which the `stylua` crate declares as a non-optional dependency of its CLI; poly links only its library half.
+  # Maintenance notices, not vulnerabilities.
+  "RUSTSEC-2024-0370",
+  "RUSTSEC-2024-0375",
 ]
 
 [sources]

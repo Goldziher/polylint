@@ -21,7 +21,7 @@ export POLY_COMPONENT_DEV_LOCK="${POLY_COMPONENT_DEV_LOCK:-${CARGO_TARGET_DIR:-$
 }
 
 # `engine-sql` is the only family left out; every other engine family stays linked.
-FEATURES="dev-lock,engine-python,engine-php,engine-nix,engine-typos,engine-quality,engine-astgrep,engine-uncomment,engine-jsonschema,engine-prose,engine-dockerfile,engine-dotenv,engine-ini,engine-hcl,engine-graphql,engine-typst,engine-latex"
+FEATURES="dev-lock,engine-python,engine-php,engine-nix,engine-typos,engine-quality,engine-astgrep,engine-uncomment,engine-jsonschema,engine-prose,engine-dockerfile,engine-dotenv,engine-ini,engine-hcl,engine-graphql,engine-typst,engine-latex,engine-lua"
 
 cargo test -p poly-core --locked --no-default-features --features "${FEATURES}" --no-fail-fast \
   --test component_parity --test components

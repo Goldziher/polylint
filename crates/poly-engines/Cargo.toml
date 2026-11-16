@@ -20,6 +20,7 @@ astgrep = ["dep:poly-engines-astgrep"]
 # The MCP frontend component: poly-mcp (rmcp, tokio) behind the `PolyFrontend` contract.
 mcp = ["dep:alef-component-abi", "dep:poly-frontend-api", "dep:poly-mcp", "dep:serde_json"]
 jsonschema = ["dep:poly-engines-jsonschema"]
+lua = ["dep:poly-engines-lua"]
 misc = [
   "dep:poly-engines-misc",
   "poly-engines-misc/dockerfile",
@@ -45,6 +46,7 @@ poly-component-protocol.workspace = true
 poly-engine-api.workspace = true
 poly-engines-astgrep = { workspace = true, optional = true }
 poly-engines-jsonschema = { workspace = true, optional = true }
+poly-engines-lua = { workspace = true, optional = true }
 poly-engines-misc = { workspace = true, optional = true }
 poly-engines-nix = { workspace = true, optional = true }
 poly-engines-php = { workspace = true, optional = true }

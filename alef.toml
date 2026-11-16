@@ -57,6 +57,14 @@ features = ["nix"]
 default_features = false
 targets = ["aarch64-apple-darwin", "x86_64-unknown-linux-gnu", "aarch64-unknown-linux-gnu", "x86_64-pc-windows-msvc"]
 
+# The lua family: the StyLua formatter and the selene linter.
+[[crates.components]]
+name = "lua"
+provides = [{ contract = "poly", implementation = "poly_engines::LuaComponent" }]
+features = ["lua"]
+default_features = false
+targets = ["aarch64-apple-darwin", "x86_64-unknown-linux-gnu", "aarch64-unknown-linux-gnu", "x86_64-pc-windows-msvc"]
+
 # The typos family: the typos spell-checker, opt-in.
 [[crates.components]]
 name = "typos"

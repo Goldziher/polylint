@@ -35,6 +35,8 @@ pub use poly_engines_misc::latex;
 #[cfg(feature = "engine-typst")]
 pub use poly_engines_misc::typst;
 pub mod line_index;
+#[cfg(feature = "engine-lua")]
+pub use poly_engines_lua::{selene, stylua};
 #[cfg(feature = "engine-php")]
 pub use poly_engines_php::mago;
 pub mod native_tool;

@@ -33,13 +33,16 @@ pub mod editorconfig;
 pub mod file_bytes;
 pub mod go_mod;
 pub mod jsonschema_source;
+pub mod native_config;
 pub mod oxfmt_native;
 pub mod oxfmt_scope;
 pub mod oxlintrc;
 pub mod path_ignore;
 pub mod ruff_context;
 pub mod ruff_target;
+pub mod selene_config;
 pub mod shell_dialect;
+pub mod stylua_config;
 pub mod typos_options;
 pub mod uncomment_options;
 
@@ -74,6 +77,10 @@ pub enum HostHook {
     /// Lint results follow the nearest `go.mod`'s root and module path ([`go_mod::lint_salt`]): the
     /// ast-grep engine, whose Go architecture rules resolve import paths and path globs against it.
     GoModLint,
+    /// Formatting follows the nearest `stylua.toml` / `.stylua.toml` ([`stylua_config`]): the `stylua` engine.
+    StyluaConfig,
+    /// Lint results follow the nearest `selene.toml` ([`selene_config`]): the `selene` engine.
+    SeleneConfig,
 }
 
 /// Inputs shared by every file of a run (see [`Engine::run_context`](crate::engine::Engine::run_context)).
@@ -82,6 +89,10 @@ pub fn run_context(hook: HostHook, cfg: &EngineConfig) -> String {
     match hook {
         HostHook::Editorconfig => {
             editorconfig::forget();
+            String::new()
+        }
+        HostHook::StyluaConfig | HostHook::SeleneConfig => {
+            native_config::forget();
             String::new()
         }
         HostHook::None | HostHook::OxfmtScope | HostHook::Oxc | HostHook::GoMod | HostHook::GoModLint => String::new(),
@@ -104,8 +115,10 @@ pub fn run_context(hook: HostHook, cfg: &EngineConfig) -> String {
 pub fn file_context(hook: HostHook, path: &Path, cfg: &EngineConfig) -> Option<String> {
     match hook {
         HostHook::None => None,
-        HostHook::OxfmtScope | HostHook::Editorconfig | HostHook::GoMod => format_input_salt(hook, path, cfg),
-        HostHook::JsonSchema | HostHook::GoModLint => lint_input_salt(hook, path, cfg),
+        HostHook::OxfmtScope | HostHook::Editorconfig | HostHook::GoMod | HostHook::StyluaConfig => {
+            format_input_salt(hook, path, cfg)
+        }
+        HostHook::JsonSchema | HostHook::GoModLint | HostHook::SeleneConfig => lint_input_salt(hook, path, cfg),
         HostHook::Oxc => match (lint_input_salt(hook, path, cfg), format_input_salt(hook, path, cfg)) {
             (None, None) => None,
             (lint, format) => Some(format!("{}|{}", lint.unwrap_or_default(), format.unwrap_or_default())),
@@ -126,9 +139,13 @@ pub fn lint_input_salt(hook: HostHook, path: &Path, cfg: &EngineConfig) -> Optio
         HostHook::Oxc => oxlintrc::governing_for(cfg, path).map(|governing| governing.digest.clone()),
         HostHook::JsonSchema => jsonschema_source::salt(cfg, path),
         HostHook::GoModLint => go_mod::lint_salt(path),
-        HostHook::None | HostHook::OxfmtScope | HostHook::RuffContext | HostHook::Editorconfig | HostHook::GoMod => {
-            None
-        }
+        HostHook::SeleneConfig => selene_config::salt(path),
+        HostHook::None
+        | HostHook::OxfmtScope
+        | HostHook::RuffContext
+        | HostHook::Editorconfig
+        | HostHook::GoMod
+        | HostHook::StyluaConfig => None,
     }
 }
 
@@ -146,7 +163,12 @@ pub fn format_input_salt(hook: HostHook, path: &Path, cfg: &EngineConfig) -> Opt
             })
         }
         HostHook::GoMod => go_mod::salt(cfg, path),
-        HostHook::None | HostHook::RuffContext | HostHook::JsonSchema | HostHook::GoModLint => None,
+        HostHook::StyluaConfig => stylua_config::salt(path),
+        HostHook::None
+        | HostHook::RuffContext
+        | HostHook::JsonSchema
+        | HostHook::GoModLint
+        | HostHook::SeleneConfig => None,
     }
 }
 
@@ -163,7 +185,12 @@ pub fn format_config<'a>(
         HostHook::OxfmtScope | HostHook::Oxc => oxfmt_scope::path_config(cfg, src, engine),
         HostHook::Editorconfig => editorconfig::apply(cfg, &src.path),
         HostHook::GoMod => go_mod::apply(cfg, &src.path),
-        HostHook::None | HostHook::RuffContext | HostHook::JsonSchema | HostHook::GoModLint => Cow::Borrowed(cfg),
+        HostHook::StyluaConfig => stylua_config::apply(cfg, &src.path),
+        HostHook::None
+        | HostHook::RuffContext
+        | HostHook::JsonSchema
+        | HostHook::GoModLint
+        | HostHook::SeleneConfig => Cow::Borrowed(cfg),
     }
 }
 

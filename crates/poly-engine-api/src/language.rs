@@ -104,6 +104,8 @@ pub enum Language {
     Typst,
     /// LaTeX (`.tex`, `.sty`, `.cls`).
     Latex,
+    /// Lua (`.lua`).
+    Lua,
     /// Any other language, identified by its tree-sitter-language-pack id.
     Other(String),
 }
@@ -204,6 +206,7 @@ impl Language {
             Language::Ini => "ini",
             Language::Typst => "typst",
             Language::Latex => "latex",
+            Language::Lua => "lua",
             Language::Other(s) => s.as_str(),
         }
     }
@@ -321,6 +324,7 @@ impl Language {
             "cs" => Language::CSharp,
             "typ" => Language::Typst,
             "tex" | "sty" | "cls" => Language::Latex,
+            "lua" => Language::Lua,
             _ => return None,
         };
         Some(lang)
@@ -387,6 +391,7 @@ impl Language {
             "ini" => Language::Ini,
             "typst" => Language::Typst,
             "latex" | "tex" => Language::Latex,
+            "lua" => Language::Lua,
             "make" | "makefile" => Language::Other("make".to_string()),
             "vim" | "vimscript" => Language::Other("vim".to_string()),
             other => Language::Other(other.to_string()),
@@ -727,6 +732,9 @@ mod tests {
         assert_eq!(Language::from_catalog_name("latex"), Language::Latex);
         assert_eq!(Language::Typst.id(), "typst");
         assert_eq!(Language::Latex.id(), "latex");
+        assert_eq!(Language::from_path(Path::new("init.lua")), Some(Language::Lua));
+        assert_eq!(Language::from_catalog_name("lua"), Language::Lua);
+        assert_eq!(Language::Lua.id(), "lua");
     }
 
     /// Shell is two-space, not four.

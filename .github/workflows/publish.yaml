@@ -1157,6 +1157,7 @@ jobs:
           printf 'a = 1\n' > "$fixture/a.toml"
           printf '# a\n' > "$fixture/a.md"
           printf '[a]\nk = 1\n' > "$fixture/a.ini"
+          printf 'local a = 1\n' > "$fixture/a.lua"
           files="$(find "$fixture" -type f | wc -l | tr -d ' ')"
           for mode in lint fmt; do
             set +e

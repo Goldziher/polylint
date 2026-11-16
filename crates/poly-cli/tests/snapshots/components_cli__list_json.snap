@@ -160,6 +160,16 @@ expression: json
       ]
     },
     {
+      "name": "lua",
+      "kind": "engines",
+      "state": "bundled",
+      "opt_in": false,
+      "engines": [
+        "selene",
+        "stylua"
+      ]
+    },
+    {
       "name": "misc",
       "kind": "engines",
       "state": "bundled",

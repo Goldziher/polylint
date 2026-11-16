@@ -58,4 +58,5 @@ describe_test!(
     "astgrep",
     poly_engines::AstgrepComponent
 );
+describe_test!("lua", lua_matches_the_index, "lua", poly_engines::LuaComponent);
 describe_test!("misc", misc_matches_the_index, "misc", poly_engines::MiscComponent);
