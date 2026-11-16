@@ -86,6 +86,7 @@ Context, Decision, Consequences (positive and negative/risks), and Alternatives 
 | [0069](0069-lua-engines-stylua-and-selene.md) | Lua Engines: StyLua and selene | Accepted |
 | [0070](0070-r-air-and-jarl-component.md) | R Formatting and Linting with air and jarl in a Workspace of Their Own | Accepted |
 | [0071](0071-lint-fmt-and-commit-hooks-in-process.md) | Run the lint, fmt and commit Hooks In Process Where the Child Can Be Reproduced | Accepted |
+| [0072](0072-engine-facets.md) | Optional Engine Concerns as Facets of the Engine Trait | Accepted |
 
 ## Conventions
 
