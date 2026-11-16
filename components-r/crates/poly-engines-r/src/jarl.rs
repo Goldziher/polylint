@@ -110,10 +110,10 @@ impl Engine for JarlEngine {
         let index = LineIndex::new(&src.content);
         let (findings, syntax_errors) = match check_contents(&src.content, &path, (*config).clone()) {
             Ok(findings) => (findings, Vec::new()),
-            Err(error) => match error.downcast::<ParseError>() {
-                Ok(parse) => (parse.diagnostics, parse.syntax_errors),
-                Err(error) => return Err(error),
-            },
+            Err(error) => {
+                let parse = error.downcast::<ParseError>()?;
+                (parse.diagnostics, parse.syntax_errors)
+            }
         };
         let mut diagnostics: Vec<Diagnostic> = syntax_errors
             .into_iter()
