@@ -398,6 +398,11 @@ Defaults are hang detectors, not performance budgets:
 A hook still running after 15 seconds announces itself on stderr, then every minute, naming the
 hook and its kill deadline.
 
+poly's own builtins that run inside `poly hooks` rather than as a child (`file_safety`, `commit`,
+and `lint` / `fmt` when no staged snapshot is in use) take the same budget and the same notices.
+A thread cannot be killed, so one past its limit is reported as killed and left to finish
+unobserved until `poly hooks` exits.
+
 Set a per-job budget with `timeout` — whole seconds, or a duration (`500ms`, `30s`, `10m`, `1h`),
 or `0` / `off` / `none` to run it unbounded:
 

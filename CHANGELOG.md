@@ -12,6 +12,7 @@ binary drives lint, format, hooks, and commit checks from one `poly.toml`.
 - **The core binary is built for speed.** `--profile core` moves from `opt-level = "s"` to `opt-level = 3` (fat LTO, stripped), and the size gate moves from 14 MiB to 22 MiB (ADR 0065). The `release` profile used by the bundled build and every component also moves to fat LTO with stripped symbols.
 - **Cargo hooks hash their declared inputs once per run.** The clippy, sort, machete and deny hooks share one `git ls-files` listing and one parallel, streamed blake3 pass, and the staged-run mutation probe streams index blobs into hashes instead of holding the tracked tree in memory. (#215)
 - **The `file_safety` hook runs inside `poly hooks`.** It no longer starts a `poly hooks check` process per commit; the runner calls the same checks over the staged snapshot and reports the same lines. `lint`, `fmt` and `commit` still run as child processes. (ADR 0067, #215)
+- **The `commit`, `lint` and `fmt` hooks run inside `poly hooks` too.** `commit` always does; `lint` and `fmt` do when the hook runs from the repository root without a staged snapshot (`--all-files`, `pre-push`, `isolate = false`), and a staged pre-commit run still starts a child. The output and exit code are the child's. Every in-process hook now runs under the hook timeout and is reported as killed past it. (ADR 0071, #215)
 
 ### Fixed
 
