@@ -47,6 +47,17 @@ pub(super) fn run<T: Relativize + Send>(
     Ok(done)
 }
 
+/// Call `body` over `paths` as [`run`] would see them, on the calling thread with the root
+/// entered, for a question asked before a run (no pool, nothing re-spelled).
+pub(super) fn probe<T>(opts: &RunOptions, paths: &[PathBuf], body: impl FnOnce(&[PathBuf]) -> T) -> T {
+    let Some(root) = opts.root.as_deref() else {
+        return body(paths);
+    };
+    let joined: Vec<PathBuf> = paths.iter().map(|path| root.join(path)).collect();
+    let _entered = run_root::enter(Some(Arc::from(root)));
+    body(&joined)
+}
+
 /// The root as it prefixes a path and as it appears inside a message.
 pub(super) struct Prefix<'a> {
     root: &'a Path,

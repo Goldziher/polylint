@@ -24,7 +24,7 @@ mod select;
 
 pub use call::{call_engine_component, call_engine_component_with_body, engine_project_inputs};
 pub use needed::register_linked_features;
-pub(crate) use preplan::{ResolvedComponents, resolve};
+pub(crate) use preplan::{ResolvedComponents, needed, resolve};
 pub use report::{ComponentsReport, MissingComponent};
 pub use seam::ComponentInjection;
 #[cfg(feature = "dev-lock")]

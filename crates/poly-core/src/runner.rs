@@ -438,6 +438,29 @@ fn add_unmatched_paths(env: &RunEnv, skipped: &mut Vec<SkippedFile>) {
 /// Build the run's [`ConfigSet`]: a single explicit config (`--config`) bypasses
 /// hierarchical resolution; otherwise `config` is the root and the walked paths
 /// are scanned for nested `poly.toml` files (ADR 0018).
+/// Whether a run over `paths` under `config` and `opts` would serve any engine from a
+/// downloadable component, rather than only from engines linked into this binary.
+///
+/// The same answer the run's own component pass computes (config resolution, discovery and the
+/// needed-component selection, the configs above the named paths included), evaluated at
+/// [`RunOptions::root`] when one is set; nothing is installed and no host is built. A run rooted
+/// away from the process directory asks it first: a component engine runs inside its own copy of
+/// the engine API, which never sees the root (ADR 0073).
+///
+/// # Errors
+///
+/// When the configs under `paths` cannot be resolved.
+pub fn needs_components(paths: &[PathBuf], config: &Config, opts: &RunOptions) -> anyhow::Result<bool> {
+    rooted::probe(opts, paths, |paths| {
+        let configs = build_config_set(paths, config, opts)?;
+        let (files, _) = discover_reporting(paths, &configs, &opts.exclude, opts.force_exclude);
+        let ancestors = project::ancestor_configs(&configs, paths);
+        let index = crate::components::run_index(opts);
+        let needed = crate::components::needed(index, &files, &configs, opts, &ancestors);
+        Ok(!needed.components.is_empty())
+    })
+}
+
 fn build_config_set(paths: &[PathBuf], config: &Config, opts: &RunOptions) -> anyhow::Result<ConfigSet> {
     if opts.explicit_config {
         Ok(ConfigSet::single(config.clone()))

@@ -56,25 +56,31 @@ ruff's format `exclude` and the Go architecture rules.
   the rooted run now uses, so a snapshot run and a worktree run cannot share an entry.
 - **The hook handler** roots a `lint` / `fmt` call at the hook's directory (canonical, as the child's `getcwd` is)
   whenever it is not the process directory, and loads the config and the `extends` resolver's repository from there.
-  It declines a rooted call that names no file (the child would walk `.`) or a file the directory does not hold (the
-  child reports it in its own spelling). ADR 0071's other conditions stand.
+  It declines a rooted call that names no file (the child would walk `.`), a file the directory does not hold (the
+  child reports it in its own spelling), or a config it cannot load there.
+- **A rooted run stays in process only when no component is needed.** A downloaded component engine runs inside its
+  own copy of `poly-engine-api` and never sees the root: ruff's default isort source roots and the `oxfmt` fallback
+  directory would follow this process's working directory, not the snapshot. Before running, the handler asks
+  `poly_core::needs_components` (the run's own component selection, `components::needed`, over the hook's files and
+  the snapshot's configs, the configs above them included; nothing installed) and declines when any component would
+  serve an engine, so the hook re-execs. A build that links every engine the files need (the bundled musl build, the
+  dev `all-engines` build) keeps the in-process path; the core build keeps it for files whose engines it links. An
+  unrooted in-process run is unaffected: there a component sees the same working directory as the child. ADR 0071's
+  other conditions stand.
 
 ## Consequences
 
-- Good, because the default `git commit` run no longer starts a `poly` process per `lint` / `fmt` hook, which is the
-  case #215 exists for, and its output and exit code are the child's.
+- Good, because the default `git commit` run no longer starts a `poly` process per `lint` / `fmt` hook whose engines
+  are all linked, which is the case #215 exists for, and its output and exit code are the child's.
+- Bad, because in the core build, which serves ruff, the web engines and the rest as components, a staged hook over
+  any file one of them handles still re-execs, and the in-process run pays one extra config resolution and
+  discovery to find that out.
 - Good, because concurrent in-process `lint` and `fmt` hooks over a snapshot each get a pool sized by their own `-j`,
   not the global pool sized by the first one.
 - Good, because a run without a root takes exactly the code path it took before: no extra pool, no path rewriting,
   and the thread-local is read only at the sites listed above, never per file except on a rooted run's native-tool
   version lookup and ruff settings lookup, which borrow and allocate nothing once warm.
-- Bad, because an engine served by a downloaded component (the core build) runs inside its own copy of
-  `poly-engine-api` and does not see the root. It gets the absolute snapshot path, so every config it finds from the
-  file's location is the snapshot's, but two process-directory reads remain inside components: ruff's default
-  isort source roots (first-party detection can see an untracked worktree module the snapshot lacks) and the
-  `oxfmt` fallback directory under `external = true` with no config. A glob a component engine matches against the
-  full path also sees the snapshot's own ancestor directories. Carrying the root over the wire would change the
-  component protocol.
+- Bad, because staying in process with components would need the root on the component wire, a protocol change.
 - Bad, because a few rules relate the file path to ruff's `project_root` / `src` spelled differently from the child's
   (opt-in `A005`, `INP001`), and a project check reports from an absolute project root; the run removes the root
   from what it reports, but a rule that compares the two spellings can still answer differently.
@@ -88,5 +94,8 @@ ruff's format `exclude` and the Go architecture rules.
   resolve a relative path against the process directory themselves, inside crates poly does not own.
 - **Add the root to `SourceFile` or `EngineConfig`.** Rejected: several hundred struct literals change, and the
   component wire protocol with them.
+- **Run in process with components and accept the difference.** Rejected: ruff's isort roots and the `oxfmt`
+  fallback directory would read the worktree, which is the false pass ADR 0019 exists to prevent, in the build most
+  users run.
 - **Keep the global pool and enter the root around each task.** Rejected: a worker blocked inside one run's task
   steals tasks of another run, and every task entry point would need a guard.

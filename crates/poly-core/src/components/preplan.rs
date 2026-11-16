@@ -219,6 +219,32 @@ pub(crate) fn resolve(
 ) -> ResolvedComponents {
     let injected = opts.component_injection.as_ref();
     let index: &ComponentIndex = super::seam::run_index(opts);
+    let needed = needed(index, files, configs, opts, ancestors);
+    if needed.components.is_empty() {
+        return ResolvedComponents::default();
+    }
+    hosted_components(needed, configs, opts, injected, index)
+}
+
+/// What [`needed`] found: the components, and the `(config, language)` pairs they were selected
+/// for, which the planner later asks for their engines.
+pub(crate) struct Needed<'a> {
+    /// The downloadable components the run needs, in index order.
+    pub(crate) components: Vec<&'a Component>,
+    pairs: Vec<(usize, Language)>,
+    ancestor_pairs: Vec<(usize, Language)>,
+}
+
+/// The downloadable components a run of `files` under `configs` needs, the `ancestors` configs'
+/// whole-tree components included, in index order: what [`resolve`] installs. Pure: nothing is
+/// installed and no host is built.
+pub(crate) fn needed<'a>(
+    index: &'a ComponentIndex,
+    files: &[DiscoveredFile],
+    configs: &ConfigSet,
+    opts: &RunOptions,
+    ancestors: &[usize],
+) -> Needed<'a> {
     let mut seen: FxHashSet<(usize, Language)> = FxHashSet::default();
     let mut pairs = Vec::new();
     for file in files {
@@ -253,11 +279,31 @@ pub(crate) fn resolve(
                 })
         })
         .collect();
-    let needed = needed_components_with_ancestors(index, &all, &pairs, &ancestor_pairs, &feature_is_linked, &selected);
-    if needed.is_empty() {
-        return ResolvedComponents::default();
+    let components =
+        needed_components_with_ancestors(index, &all, &pairs, &ancestor_pairs, &feature_is_linked, &selected);
+    Needed {
+        components,
+        pairs,
+        ancestor_pairs,
     }
+}
 
+/// [`resolve`] past its pure half: ensure every `needed` component through one host and record
+/// its engines, or why it is unusable.
+fn hosted_components(
+    needed: Needed<'_>,
+    configs: &ConfigSet,
+    opts: &RunOptions,
+    injected: Option<&ComponentInjection>,
+    index: &ComponentIndex,
+) -> ResolvedComponents {
+    let Needed {
+        components: needed,
+        pairs,
+        ancestor_pairs,
+    } = needed;
+    let selection = crate::runner::selection::EngineSelection::new(&opts.only, &opts.skip);
+    let selected = |name: &str, table: Option<&str>| selection.selects_declared(name, table);
     let root = &configs.config(0).components;
     let on_missing = opts.on_missing.unwrap_or(root.on_missing);
     let allow_install = opts.install.unwrap_or(root.install) == ComponentInstallPolicy::Auto;

@@ -9,7 +9,8 @@
 //!   0073): the run reads its config, files and every working-directory anchor
 //!   there, as the child started in it does. Such a call is declined when it
 //!   names no file or a file the directory does not hold, whose report the child
-//!   spells from paths this process does not have.
+//!   spells from paths this process does not have, and when it would serve any
+//!   engine from a downloadable component, which never sees the root.
 //! - The parent's `--offline` and `--trust` flags, and a colour forced through
 //!   the environment, would reach an in-process run but not the child.
 //! - Only the arguments the lowering produces, plus flags that only feed
@@ -83,12 +84,17 @@ pub(super) fn run(call: &Call<'_>) -> Option<Result<Outcome>> {
     match call.name {
         LINT => {
             let args = LintCommand::try_parse_from(super::argv(LINT, call)).ok()?.args;
-            (args.workspace == WorkspaceMode::Never && reproducible(&args.common))
-                .then(|| Ok(lint(&args.common, root.as_deref())))
+            if args.workspace != WorkspaceMode::Never || !reproducible(&args.common) {
+                return None;
+            }
+            lint(&args.common, root.as_deref()).map(Ok)
         }
         FMT => {
             let args = FmtCommand::try_parse_from(super::argv(FMT, call)).ok()?.args;
-            (!args.check && reproducible(&args.common)).then(|| Ok(fmt(&args, root.as_deref())))
+            if args.check || !reproducible(&args.common) {
+                return None;
+            }
+            fmt(&args, root.as_deref()).map(Ok)
         }
         _ => None,
     }
@@ -126,17 +132,20 @@ fn reproducible(common: &CommonArgs) -> bool {
 }
 
 /// `poly lint --workspace never`'s pretty path (`crate::run_lint`), rooted at
-/// `root` when the hook's directory is not this process's.
-fn lint(common: &CommonArgs, root: Option<&Path>) -> Outcome {
+/// `root` when the hook's directory is not this process's. `None` declines; see
+/// [`prepared`].
+fn lint(common: &CommonArgs, root: Option<&Path>) -> Option<Outcome> {
     let mut streams = Streams::default();
-    let Some((paths, config, opts)) = prepare(common, root, &mut streams) else {
-        return streams.finish(EXIT_NOT_VERIFIED);
+    let (paths, config, opts) = match prepared(common, root, &mut streams) {
+        Prepared::Run(prepared) => *prepared,
+        Prepared::Stop => return Some(streams.finish(EXIT_NOT_VERIFIED)),
+        Prepared::Decline => return None,
     };
     let run = match poly_core::lint_run(&paths, &config, &opts, common.fix, false) {
         Ok(run) => run,
         Err(error) => {
             let _ = writeln!(streams.stderr, "error: {error:#}");
-            return streams.finish(EXIT_NOT_VERIFIED);
+            return Some(streams.finish(EXIT_NOT_VERIFIED));
         }
     };
     let (text, _) = report::render_lint_pretty_run(&run, Verbosity::from_flags(false, false, false));
@@ -147,22 +156,24 @@ fn lint(common: &CommonArgs, root: Option<&Path>) -> Outcome {
     } else {
         u8::from(crate::lint_has_errors(&run.results))
     };
-    streams.finish(code)
+    Some(streams.finish(code))
 }
 
-/// `poly fmt`'s pretty path (`crate::run_fmt`), rooted as [`lint`] is.
-fn fmt(args: &FmtArgs, root: Option<&Path>) -> Outcome {
+/// `poly fmt`'s pretty path (`crate::run_fmt`), rooted and declining as [`lint`] does.
+fn fmt(args: &FmtArgs, root: Option<&Path>) -> Option<Outcome> {
     let common = &args.common;
     let mut streams = Streams::default();
-    let Some((paths, config, opts)) = prepare(common, root, &mut streams) else {
-        return streams.finish(EXIT_NOT_VERIFIED);
+    let (paths, config, opts) = match prepared(common, root, &mut streams) {
+        Prepared::Run(prepared) => *prepared,
+        Prepared::Stop => return Some(streams.finish(EXIT_NOT_VERIFIED)),
+        Prepared::Decline => return None,
     };
     let write = common.fix;
     let run = match poly_core::format_run(&paths, &config, &opts, write, false) {
         Ok(run) => run,
         Err(error) => {
             let _ = writeln!(streams.stderr, "error: {error:#}");
-            return streams.finish(EXIT_NOT_VERIFIED);
+            return Some(streams.finish(EXIT_NOT_VERIFIED));
         }
     };
     // `run_fmt` reports the components before the report itself.
@@ -174,7 +185,42 @@ fn fmt(args: &FmtArgs, root: Option<&Path>) -> Outcome {
     } else {
         u8::from(changed > 0 && !(write && !args.exit_nonzero_on_fix))
     };
-    streams.finish(code)
+    Some(streams.finish(code))
+}
+
+/// What [`prepared`] decided.
+enum Prepared {
+    /// Run with these paths, config and options.
+    Run(Box<(Vec<PathBuf>, Config, RunOptions)>),
+    /// Stop: the reason is in the streams, as the child prints it.
+    Stop,
+    /// Leave the call to the child.
+    Decline,
+}
+
+/// [`prepare`], and for a rooted run the decision to leave it to the child: when
+/// it cannot be prepared (the child reports that in its own terms), or when it
+/// would serve any engine from a downloadable component. A component engine runs
+/// in its own copy of the engine API, which never sees the root, so it would read
+/// this process's working directory where the child reads the snapshot (ADR 0073).
+fn prepared(common: &CommonArgs, root: Option<&Path>, streams: &mut Streams) -> Prepared {
+    match (prepare(common, root, streams), root) {
+        (None, None) => Prepared::Stop,
+        (None, Some(_)) => Prepared::Decline,
+        (Some(prepared), None) => Prepared::Run(Box::new(prepared)),
+        (Some((paths, config, opts)), Some(_)) => {
+            if needs_components(&paths, &config, &opts) {
+                Prepared::Decline
+            } else {
+                Prepared::Run(Box::new((paths, config, opts)))
+            }
+        }
+    }
+}
+
+/// Whether the run would load an engine from a component, or cannot tell.
+fn needs_components(paths: &[PathBuf], config: &Config, opts: &RunOptions) -> bool {
+    poly_core::needs_components(paths, config, opts).unwrap_or(true)
 }
 
 /// The child's `prepare` (`crate::prepare_with_poly`) without its process-wide
@@ -307,5 +353,31 @@ mod tests {
             None,
             "the child reports a missing file"
         );
+    }
+
+    /// A run rooted away from this process's directory is left to the child when it would load
+    /// an engine from a component: `secrets` is never linked into this binary.
+    #[test]
+    fn a_rooted_run_that_needs_a_component_is_declined() {
+        const SECRETS: &str = "[engines.secrets]\nenabled = true\n";
+        let dir = tempfile::tempdir().expect("tempdir");
+        let root = dir.path().canonicalize().expect("canonical");
+        std::fs::write(root.join("a.py"), "x = 1\n").expect("write");
+        let common = lint_args(&["--workspace", "never", "a.py"]).common;
+        let decision = |config: &str| {
+            std::fs::write(root.join("poly.toml"), config).expect("write config");
+            let mut streams = Streams::default();
+            match prepared(&common, Some(&root), &mut streams) {
+                Prepared::Run(_) => "run",
+                Prepared::Stop => "stop",
+                Prepared::Decline => "decline",
+            }
+        };
+        assert_eq!(decision(SECRETS), "decline");
+        let (paths, config, opts) =
+            prepare(&common, Some(&root), &mut Streams::default()).expect("the config loads, so the decline is real");
+        assert!(poly_core::needs_components(&paths, &config, &opts).expect("components resolve"));
+        #[cfg(feature = "all-engines")]
+        assert_eq!(decision(""), "run", "every engine a Python file needs is linked");
     }
 }

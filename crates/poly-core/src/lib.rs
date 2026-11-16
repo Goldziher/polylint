@@ -77,4 +77,5 @@ pub use runner::{
     DISABLED_SKIP_PREFIX, EngineDebug, FILTERED_SKIP, FormatError, FormatResult, FormatRun, GENERATED_SKIP,
     LOCKFILE_SKIP, LintError, LintResult, LintRun, NO_ENGINE_SKIP, NO_LINT_RULES_SKIP_PREFIX, RunDebug, RunOptions,
     SkippedFile, SuppressedDiagnostic, SuppressionReason, format, format_run, is_withdrawal_reason, lint, lint_run,
+    needs_components,
 };
