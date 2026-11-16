@@ -249,7 +249,17 @@ fn the_schema_comment_stays_first_and_points_at_v2() {
     let output = migrate(PER_LANGUAGE);
     assert_eq!(
         output.lines().next(),
-        Some("#:schema https://goldziher.github.io/polylint/poly-v2.schema.json")
+        Some("#:schema https://polylint.github.io/polylint/poly-v2.schema.json")
+    );
+}
+
+#[test]
+fn the_schema_comment_leaves_the_pre_transfer_docs_base() {
+    let input = PER_LANGUAGE.replacen("goldziher.github.io/poly/", "goldziher.github.io/polylint/", 1);
+    let output = migrate(&input);
+    assert_eq!(
+        output.lines().next(),
+        Some("#:schema https://polylint.github.io/polylint/poly-v2.schema.json")
     );
 }
 

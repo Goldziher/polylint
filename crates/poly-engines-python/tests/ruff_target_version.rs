@@ -1,5 +1,5 @@
 //! The Python version ruff lints for comes from the project's own ruff config
-//! (Goldziher/poly#42).
+//! (polylint/polylint#42).
 //!
 //! poly never read `[tool.ruff] target-version` or `requires-python`; it only
 //! looked like it did while ruff's default target was 3.10. The 0.17 ruff line

@@ -6,7 +6,7 @@
 //! probe the tree by existence, but it hides every file under it from a walker
 //! that does not follow directory symlinks — `ai-rulez validate` resolves its
 //! rule globs that way, and a glob over an unchanged directory then matched
-//! nothing (`AR101`, Goldziher/poly#45). The mirror therefore has to be a real
+//! nothing (`AR101`, polylint/polylint#45). The mirror therefore has to be a real
 //! tree.
 //!
 //! It is built from the **index entries** under each link root, not from a walk

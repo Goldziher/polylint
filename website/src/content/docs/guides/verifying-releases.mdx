@@ -29,7 +29,7 @@ platform you install.
 1. Download the archive, its SBOM and the checksums:
 
    ```sh
-   gh release download vX.Y.Z --repo Goldziher/polylint \
+   gh release download vX.Y.Z --repo polylint/polylint \
      --pattern 'poly-X.Y.Z-x86_64-unknown-linux-gnu.tar.gz*' --pattern sha256sums.txt
    ```
 
@@ -44,17 +44,26 @@ platform you install.
 3. Check that the release workflow built the archive:
 
    ```sh
-   gh attestation verify poly-X.Y.Z-x86_64-unknown-linux-gnu.tar.gz --repo Goldziher/polylint \
-     --signer-workflow Goldziher/polylint/.github/workflows/publish.yaml
+   gh attestation verify poly-X.Y.Z-x86_64-unknown-linux-gnu.tar.gz --repo polylint/polylint \
+     --signer-workflow polylint/polylint/.github/workflows/publish.yaml
    ```
 
    The output names the workflow run, the commit and the tag. The same command verifies
    `sha256sums.txt`, `poly-components.lock.json` and any `poly-component-*.tar.gz`.
 
-4. Check the SBOM attestation, which binds `poly-X.Y.Z-x86_64-unknown-linux-gnu.tar.gz.cdx.json` to the archive:
+   Releases up to and including v0.35.0 were published before the repository moved to the
+   `polylint` organization, and their attestations keep the identity they were signed under.
+   For those, name the old repository in both places:
 
    ```sh
    gh attestation verify poly-X.Y.Z-x86_64-unknown-linux-gnu.tar.gz --repo Goldziher/polylint \
+     --signer-workflow Goldziher/polylint/.github/workflows/publish.yaml
+   ```
+
+4. Check the SBOM attestation, which binds `poly-X.Y.Z-x86_64-unknown-linux-gnu.tar.gz.cdx.json` to the archive:
+
+   ```sh
+   gh attestation verify poly-X.Y.Z-x86_64-unknown-linux-gnu.tar.gz --repo polylint/polylint \
      --predicate-type https://cyclonedx.org/bom
    ```
 
@@ -68,21 +77,22 @@ The npm platform packages carry the same SBOM as `bin/poly.cdx.json`, and the Py
 ## Require the attestation when installing
 
 The installer scripts always check the archive against `sha256sums.txt`. With `POLY_VERIFY_ATTESTATION=1` they also
-run `gh attestation verify` and refuse to install when it fails or when `gh` is missing:
+run `gh attestation verify` and refuse to install when it fails or when `gh` is missing. They accept either
+signing identity, `polylint/polylint` or the pre-transfer `Goldziher/polylint`:
 
 ```sh
-curl -fsSL https://raw.githubusercontent.com/Goldziher/polylint/main/install.sh | POLY_VERIFY_ATTESTATION=1 sh
+curl -fsSL https://raw.githubusercontent.com/polylint/polylint/main/install.sh | POLY_VERIFY_ATTESTATION=1 sh
 ```
 
 ```powershell
 $env:POLY_VERIFY_ATTESTATION = "1"
-irm https://raw.githubusercontent.com/Goldziher/polylint/main/install.ps1 | iex
+irm https://raw.githubusercontent.com/polylint/polylint/main/install.ps1 | iex
 ```
 
 In GitHub Actions, the setup action takes the same switch. The job's token is enough for `gh`:
 
 ```yaml
-- uses: Goldziher/polylint@v0
+- uses: polylint/polylint@v0
   with:
     verify-attestation: true
 ```
@@ -96,4 +106,4 @@ A core build downloads engine components on demand and checks each against the a
 in the component lock compiled into the binary, so no extra step is needed. To audit one by hand, download the
 `poly-component-*.tar.gz` from the release that built it (the lock's `url`) and run step 3 on it. How the signing key
 is kept apart from the build and rotated is recorded in
-[ADR 0060](https://github.com/Goldziher/polylint/blob/main/adrs/0060-release-signing-and-attestations.md).
+[ADR 0060](https://github.com/polylint/polylint/blob/main/adrs/0060-release-signing-and-attestations.md).

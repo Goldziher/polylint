@@ -1,4 +1,4 @@
-module github.com/Goldziher/poly/components/sidecars/sh
+module github.com/polylint/polylint/components/sidecars/sh
 
 go 1.27.3
 

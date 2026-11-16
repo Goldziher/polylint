@@ -50,7 +50,7 @@
 //! symlink — the pre-0.32.1 shape — is invisible to a walker that does not
 //! follow directory links, so `ai-rulez validate` saw no tracked file under an
 //! unchanged directory and reported every rule glob over one as `AR101`
-//! (Goldziher/poly#45). The mirror is a real tree, so a non-following walk sees
+//! (polylint/polylint#45). The mirror is a real tree, so a non-following walk sees
 //! every path the index tracks, while an unchanged file still costs no byte copy
 //! and keeps its worktree mtime. A mirrored path is never a staged file (the
 //! selection plus its directory context covers those), so what the run validates

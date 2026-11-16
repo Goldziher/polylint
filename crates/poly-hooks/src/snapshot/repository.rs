@@ -7,7 +7,7 @@
 //! environment, though: ai-rulez resolves a rule glob against the files a
 //! repository tracks, finds no repository in the snapshot, and falls back to a
 //! filesystem walk that skips hidden directories — so `.agents/plugins/**`
-//! matches nothing even though the snapshot holds the file (Goldziher/poly#45).
+//! matches nothing even though the snapshot holds the file (polylint/polylint#45).
 //!
 //! A `.git` **file** containing `gitdir: <absolute git dir>` is what makes the
 //! snapshot a work tree to those tools. It adds no capability a hook did not

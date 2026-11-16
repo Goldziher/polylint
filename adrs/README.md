@@ -76,6 +76,7 @@ Context, Decision, Consequences (positive and negative/risks), and Alternatives 
 | [0059](0059-repository-trust.md) | Repository Trust for Config Keys That Run Programs | Accepted |
 | [0060](0060-release-signing-and-attestations.md) | Release Signing Isolation, SBOMs and Attestations | Accepted |
 | [0061](0061-adr-maintenance-commands.md) | ADR Log Maintenance Through `poly adr` | Accepted |
+| [0062](0062-polylint-organization-distribution.md) | Distribute Through the `polylint` Organization | Accepted |
 
 ## Conventions
 

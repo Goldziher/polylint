@@ -517,7 +517,7 @@ fn pydocstyle_with_binary(binary: &str) -> &'static Tool {
     Box::leak(Box::new(tool))
 }
 
-/// Goldziher/poly#36: pydocstyle was classified as a formatter, so its check ran
+/// polylint/polylint#36: pydocstyle was classified as a formatter, so its check ran
 /// through the format path, where a non-zero exit reads as "unchanged" and the
 /// violation vanished. As a linter, the violation is a diagnostic and a clean
 /// file passes. The stub mimics pydocstyle's CLI: report-only, exit 1 on a

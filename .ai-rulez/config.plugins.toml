@@ -5,7 +5,7 @@ type = "github"
 
 [[marketplaces]]
 name = "poly"
-source = "Goldziher/polylint"
+source = "polylint/polylint"
 type = "github"
 
 [marketplace]

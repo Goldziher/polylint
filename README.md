@@ -16,12 +16,12 @@ code and one cache.
 40+ languages and file formats with a dedicated tool · tree-sitter formatting for 300+ more · git hooks and
 commit linting · monorepo-aware config · MCP server and agent plugins
 
-[![CI](https://img.shields.io/github/actions/workflow/status/Goldziher/polylint/ci.yaml?style=flat-square&cacheSeconds=300)](https://github.com/Goldziher/polylint/actions/workflows/ci.yaml)
+[![CI](https://img.shields.io/github/actions/workflow/status/polylint/polylint/ci.yaml?style=flat-square&cacheSeconds=300)](https://github.com/polylint/polylint/actions/workflows/ci.yaml)
 [![License: MIT](https://img.shields.io/badge/license-MIT-green?style=flat-square)](LICENSE)
-[![Docs](https://img.shields.io/badge/docs-goldziher.github.io%2Fpolylint-blue?style=flat-square)](https://goldziher.github.io/polylint/)
+[![Docs](https://img.shields.io/badge/docs-polylint.github.io%2Fpolylint-blue?style=flat-square)](https://polylint.github.io/polylint/)
 
 [How it works](#how-it-works) · [Quick start](#quick-start) · [Languages](#languages) ·
-[Why polylint](#why-polylint) · [Install](#installation) · [Docs](https://goldziher.github.io/polylint/)
+[Why polylint](#why-polylint) · [Install](#installation) · [Docs](https://polylint.github.io/polylint/)
 
 </div>
 
@@ -61,7 +61,7 @@ affects. `--debug` prints per-file engine timing and cache hits.
 ## Quick start
 
 ```sh
-curl -fsSL https://raw.githubusercontent.com/Goldziher/polylint/main/install.sh | sh
+curl -fsSL https://raw.githubusercontent.com/polylint/polylint/main/install.sh | sh
 poly lint            # lint everything; the first run fetches the engines this repository needs
 poly fmt --fix       # format everything
 poly hooks install   # run both on every commit, without pre-commit or lefthook
@@ -144,8 +144,8 @@ built-in ast-grep rules.
 
 348 more tools from the embedded [mdsf](https://github.com/hougesen/mdsf) catalog can be enabled per tool, with
 file-level verdicts. Recipe downloads are not available on Windows; install the tool yourself there. Full reference:
-[Languages and engines](https://goldziher.github.io/polylint/reference/backends/) and
-[Toolchains, runtimes and recipes](https://goldziher.github.io/polylint/guides/toolchains/).
+[Languages and engines](https://polylint.github.io/polylint/reference/backends/) and
+[Toolchains, runtimes and recipes](https://polylint.github.io/polylint/guides/toolchains/).
 
 ---
 
@@ -188,16 +188,16 @@ mirror the CLI.
 ## Installation
 
 ```sh
-curl -fsSL https://raw.githubusercontent.com/Goldziher/polylint/main/install.sh | sh   # macOS, Linux
-brew install Goldziher/tap/poly
+curl -fsSL https://raw.githubusercontent.com/polylint/polylint/main/install.sh | sh   # macOS, Linux
+brew install polylint/tap/polylint
 pnpm add --global @polylint/polylint
 pip install polylint
-cargo binstall --git https://github.com/Goldziher/polylint poly-cli
+cargo binstall --git https://github.com/polylint/polylint poly-cli
 ```
 
 ```powershell
-irm https://raw.githubusercontent.com/Goldziher/polylint/main/install.ps1 | iex
-scoop bucket add goldziher https://github.com/Goldziher/scoop-bucket
+irm https://raw.githubusercontent.com/polylint/polylint/main/install.ps1 | iex
+scoop bucket add polylint https://github.com/polylint/scoop-bucket
 scoop install poly
 ```
 
@@ -228,13 +228,13 @@ poly --offline lint .              # forbid every download (also POLY_OFFLINE=1)
 ```
 
 `POLY_COMPONENT_MIRROR` points downloads at an internal mirror. See
-[Components and offline use](https://goldziher.github.io/polylint/guides/components/).
+[Components and offline use](https://polylint.github.io/polylint/guides/components/).
 
 ### GitHub Actions
 
 ```yaml
 - uses: actions/checkout@v4
-- uses: Goldziher/polylint@v0
+- uses: polylint/polylint@v0
   with:
     version: from-config # the release that `required_version` in poly.toml allows
     components: auto     # pre-install and cache the components this repository needs
@@ -283,7 +283,7 @@ commit = { stages = ["commit-msg"] }
 `poly hooks install` wires lint, format, file-safety and Conventional Commits checks into git from `[hooks]` in
 `poly.toml`. Hooks run against a snapshot of the staged index, so unstaged edits neither hide nor cause failures.
 `poly commit` lints and cleans commit messages. See
-[Git hooks](https://goldziher.github.io/polylint/guides/hooks/).
+[Git hooks](https://polylint.github.io/polylint/guides/hooks/).
 
 ---
 
@@ -294,14 +294,14 @@ commit = { stages = ["commit-msg"] }
 checked, skipped and errored files, so an agent can gate on what was actually verified.
 
 ```text
-/plugin marketplace add Goldziher/polylint
+/plugin marketplace add polylint/polylint
 /plugin install poly@poly
 ```
 
 Any other MCP client runs it as `{ "command": "poly", "args": ["mcp"] }`. Plugins ship for Claude, Codex, Cursor,
 Gemini, Kimi, OpenCode, Factory, Hermes, Pi, Agent Plugins and Copilot, and assume `poly` is already on `PATH`;
 see [plugin/README.md](plugin/README.md) and
-[Agents and MCP](https://goldziher.github.io/polylint/guides/agents-and-mcp/).
+[Agents and MCP](https://polylint.github.io/polylint/guides/agents-and-mcp/).
 
 ---
 
@@ -327,7 +327,7 @@ Two cross-cutting lint tiers are on by default for every language, and two more 
   13 are on by default; the other 13 ship `severity: off` and are one config line away. Your own rules under
   `[engines.astgrep] rule_dirs` sit above the pack — a rule with the same `id` replaces the built-in one.
 - **`typos`** (opt-in) — spell-checks identifiers, comments and strings: `[engines.typos] enabled = true`.
-- **`uncomment`** (opt-in) — comment removal.
+- **`uncomment`** (opt-in) — comment removal, built on [uncomment](https://github.com/polylint/uncomment).
 
 | Quality rule | Default |
 |---|---|
@@ -347,7 +347,7 @@ counts as lint coverage only for languages whose control flow it can model — P
 TypeScript, TSX, Java, Kotlin, C, C++, C# and Ruby. Everything these tiers report is **warning** severity, and
 warnings alone do not fail a run, so turning polylint on does not redden an unconfigured CI.
 
-[adrlint](https://github.com/Goldziher/adrlint) is an opt-in MADR engine for numbered ADR files (`NNNN-*.md`),
+[adrlint](https://github.com/polylint/adrlint) is an opt-in MADR engine for numbered ADR files (`NNNN-*.md`),
 enabled with `[engines.adrlint] enabled = true`; see
 [ADR 0037](adrs/0037-adrlint-madr-linting.md) and [ADR 0041](adrs/0041-adrlint-tree-wide-rules-as-project-check.md).
 
@@ -384,20 +384,20 @@ engine entirely, and everything else is split across cores.
 
 ## Documentation
 
-- [Quickstart](https://goldziher.github.io/polylint/start/quickstart/) — install, first run, first config.
-- [Adopting polylint in a polyglot repo](https://goldziher.github.io/polylint/guides/adopting/) — migration,
+- [Quickstart](https://polylint.github.io/polylint/start/quickstart/) — install, first run, first config.
+- [Adopting polylint in a polyglot repo](https://polylint.github.io/polylint/guides/adopting/) — migration,
   rollout, CI.
-- [Configuration](https://goldziher.github.io/polylint/guides/configuration/) — every key, rule selection, inline
+- [Configuration](https://polylint.github.io/polylint/guides/configuration/) — every key, rule selection, inline
   suppression, monorepo cascading, shared and remote config.
-- [Toolchains, runtimes and recipes](https://goldziher.github.io/polylint/guides/toolchains/) — host tools, recipe
+- [Toolchains, runtimes and recipes](https://polylint.github.io/polylint/guides/toolchains/) — host tools, recipe
   downloads, host runtimes, reproducibility.
-- [Components and offline use](https://goldziher.github.io/polylint/guides/components/) — bundled and core builds,
+- [Components and offline use](https://polylint.github.io/polylint/guides/components/) — bundled and core builds,
   `[components]`, mirrors, air-gapped hosts.
-- [Git hooks](https://goldziher.github.io/polylint/guides/hooks/) — `poly hooks install`, builtin hooks, staged
+- [Git hooks](https://polylint.github.io/polylint/guides/hooks/) — `poly hooks install`, builtin hooks, staged
   isolation, timeouts, concurrency, caching.
-- [Migrating to the v2 config schema](https://goldziher.github.io/polylint/guides/migrating-to-v2/) — the
+- [Migrating to the v2 config schema](https://polylint.github.io/polylint/guides/migrating-to-v2/) — the
   `poly.toml` v2 schema and the removed CLI flags.
-- [CLI reference](https://goldziher.github.io/polylint/reference/cli/) — every subcommand and flag, and the
+- [CLI reference](https://polylint.github.io/polylint/reference/cli/) — every subcommand and flag, and the
   exit-code contract.
 
 ---
@@ -442,6 +442,22 @@ mise run components:parity   # components-mode tests; fails, never skips, if the
 
 `dev-lock` makes poly read the lock named by `POLY_COMPONENT_DEV_LOCK`. It is for development only,
 and the release workflow fails a binary that was built with it.
+
+---
+
+## polylint organization
+
+polylint is part of [polylint](https://github.com/polylint), high-performance Rust linters and formatters built for
+agentic workflows. Sibling tools:
+
+| Tool | What it does |
+|---|---|
+| [skif](https://github.com/polylint/skif) | JS/TS dependency, manifest and dead-code linter for npm, pnpm, yarn and bun workspaces |
+| [adrlint](https://github.com/polylint/adrlint) | Linter for MADR architecture decision records |
+| [uncomment](https://github.com/polylint/uncomment) | Tree-sitter comment removal and linting |
+
+poly embeds all three as opt-in engines. Install any of them from the Homebrew tap (`brew tap polylint/tap`) or
+the Scoop bucket (`scoop bucket add polylint https://github.com/polylint/scoop-bucket`).
 
 ---
 

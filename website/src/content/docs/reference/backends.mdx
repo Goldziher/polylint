@@ -30,7 +30,7 @@ checksummed release (macOS and Linux), and `RT` one that needs a host runtime.
 | JSON / JSONC | oxc parse diagnostics + formatter | yes | yes | component `web` |
 | Python | ruff internals | yes | yes | component `python` |
 | Python (type checking) | opt-in project check, ty (`[engines.python-types] backend = "ty"`) or pyrefly (`backend = "pyrefly"`); imports resolve through the detected virtualenv's `site-packages`; `--only`/`--skip` accept `python-types` for either, and a backend whose component is disabled or missing is an error, not a silent skip (see [Python type checking](/poly/reference/configuration/#python-type-checking)) | opt-in | no | component `python` (ty) or `pyrefly` |
-| JS/TS workspaces (npm, pnpm, yarn, bun) | skif (opt-in dependency, manifest, version-policy and dead-code project check; `[engines.skif] enabled = true`) | opt-in | no | component `web` |
+| JS/TS workspaces (npm, pnpm, yarn, bun) | [skif](https://github.com/polylint/skif) (opt-in dependency, manifest, version-policy and dead-code project check; `[engines.skif] enabled = true`) | opt-in | no | component `web` |
 | TypeScript (type checking) | tsrs (experimental): `tsc --noEmit` as an opt-in project check, `[engines.tsrs] enabled = true`; reports `TS<code>` findings from the project's `tsconfig.json`; packages the project declares but the hermetic run cannot see are not reported (see [TypeScript type checking](/poly/reference/configuration/#typescript-type-checking)) | opt-in | no | component `tsrs` |
 | TOML | taplo (lint) + `oxc_formatter_toml` (format; taplo's formatter when a taplo layout key is set) | yes | yes | component `web` |
 | Markdown | rumdl (lint) + `oxc_formatter_markdown` (format; rumdl's fixer when a rumdl rule key is set) | yes | yes | component `web` |
@@ -140,7 +140,7 @@ unconfigured CI on its own.
 ### Architecture decision records
 
 Numbered ADR files (`NNNN-*.md`) can additionally be checked against the MADR template by the
-opt-in `adrlint` backend. It is separate from rumdl on purpose: rumdl judges the Markdown, adrlint
+opt-in [adrlint](https://github.com/polylint/adrlint) backend. It is separate from rumdl on purpose: rumdl judges the Markdown, adrlint
 judges the decision record's section structure, front-matter metadata, list style and document-local
 link anchors. Enable it with `[engines.adrlint] enabled = true`.
 

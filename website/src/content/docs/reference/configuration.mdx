@@ -16,14 +16,14 @@ together.
 poly publishes a [JSON Schema](https://json-schema.org) for `poly.toml` at:
 
 ```text
-https://goldziher.github.io/polylint/poly-v2.schema.json
+https://polylint.github.io/polylint/poly-v2.schema.json
 ```
 
 Point your editor at it for validation and autocomplete. The simplest way is the
 `schema` directive as the **first line** of `poly.toml`:
 
 ```toml title="poly.toml"
-#:schema https://goldziher.github.io/polylint/poly-v2.schema.json
+#:schema https://polylint.github.io/polylint/poly-v2.schema.json
 
 [defaults]
 line_length = 120
@@ -257,7 +257,7 @@ A run never ends up checking nothing when type checking was asked for:
 
 ### JavaScript and TypeScript workspaces
 
-`[engines.skif]` is opt-in dependency, manifest, version-policy and dead-code linting for npm, pnpm, yarn and bun
+`[engines.skif]` runs [skif](https://github.com/polylint/skif): opt-in dependency, manifest, version-policy and dead-code linting for npm, pnpm, yarn and bun
 workspaces, a project-check engine in the `web` component (preset aliases `skif` and `js-deps`). A project's own
 `skif.toml` is honored; the keys below override it.
 

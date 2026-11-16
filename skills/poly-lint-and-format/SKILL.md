@@ -4,13 +4,13 @@ name: poly-lint-and-format
 license: MIT
 metadata:
     author: Goldziher
-    repository: https://github.com/Goldziher/polylint
+    repository: https://github.com/polylint/polylint
 ---
 
 <!--
 AI-RULEZ :: GENERATED FILE — DO NOT EDIT
-Content-Hash: blake3:0ca460cfe0674575a1413228da299bda6663bb763d9be6bf5312de022302cb5d
-Source-Hash: blake3:aa1807e28d6926ffcc8cf34290727781a962b682d64f668dae998e26bb218e89
+Content-Hash: blake3:29a286ad6162c490533ebd086a76e34dda6432776e8a5f9f71d0c5e1a6438a29
+Source-Hash: blake3:3e280378c2b0495cf466c05e9a5c1ffe6ac2d0ea3466b3c4a8b8535b90cb0702
 Schema-Version: v1
 -->
 

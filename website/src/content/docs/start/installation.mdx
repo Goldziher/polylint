@@ -21,7 +21,7 @@ none of them compiles anything, and none needs a Rust, Node or Python toolchain 
 | Windows x86_64 | `x86_64-pc-windows-msvc` | core |
 
 Not supported: **Intel macOS** from the release after 0.34.0 (build from source; see
-[ADR 0046](https://github.com/Goldziher/polylint/blob/main/adrs/0046-drop-intel-macos.md)),
+[ADR 0046](https://github.com/polylint/polylint/blob/main/adrs/0046-drop-intel-macos.md)),
 Windows arm64 and Linux musl aarch64.
 
 - A **core** build (under 14 MiB) embeds the release's signed component lock. Its engines are
@@ -46,10 +46,10 @@ component. See [Components and offline use](/poly/guides/components/).
 
 <Tabs syncKey="installer">
     <TabItem label="Shell">
-        <Code code={`curl -fsSL https://raw.githubusercontent.com/Goldziher/polylint/main/install.sh | sh`} lang="sh" />
+        <Code code={`curl -fsSL https://raw.githubusercontent.com/polylint/polylint/main/install.sh | sh`} lang="sh" />
     </TabItem>
     <TabItem label="PowerShell">
-        <Code code={`irm https://raw.githubusercontent.com/Goldziher/polylint/main/install.ps1 | iex`} lang="powershell" />
+        <Code code={`irm https://raw.githubusercontent.com/polylint/polylint/main/install.ps1 | iex`} lang="powershell" />
     </TabItem>
 </Tabs>
 
@@ -57,13 +57,13 @@ Both detect the platform, download the matching release archive, and verify it a
 release's `sha256sums.txt`. Set `POLY_VERSION` to pin an exact release:
 
 ```sh
-POLY_VERSION=0.35.0 curl -fsSL https://raw.githubusercontent.com/Goldziher/polylint/main/install.sh | sh
+POLY_VERSION=0.35.0 curl -fsSL https://raw.githubusercontent.com/polylint/polylint/main/install.sh | sh
 ```
 
 ## GitHub Actions
 
 ```yaml title=".github/workflows/ci.yaml"
-- uses: Goldziher/polylint@v0
+- uses: polylint/polylint@v0
   with:
     version: v0.35.0 # omit for the latest release
 
@@ -76,12 +76,12 @@ platform. `version: from-config` installs the version that `required_version` in
 (`config-file` picks another file), and `components` (`auto`, `all`, `none` or a list such as
 `sql,php`) downloads engine components before the first run and caches them. Its full input/output
 reference lives in
-[`ACTION_USAGE.md`](https://github.com/Goldziher/polylint/blob/main/ACTION_USAGE.md).
+[`ACTION_USAGE.md`](https://github.com/polylint/polylint/blob/main/ACTION_USAGE.md).
 
 ## Homebrew
 
 ```sh
-brew install Goldziher/tap/poly
+brew install polylint/tap/polylint
 ```
 
 <Aside type="caution">
@@ -92,7 +92,7 @@ brew install Goldziher/tap/poly
 ## Scoop (Windows)
 
 ```powershell
-scoop bucket add goldziher https://github.com/Goldziher/scoop-bucket
+scoop bucket add polylint https://github.com/polylint/scoop-bucket
 scoop install poly
 ```
 
@@ -140,7 +140,7 @@ satisfies the requirement".
 ## cargo binstall
 
 ```sh
-cargo binstall --git https://github.com/Goldziher/polylint poly-cli
+cargo binstall --git https://github.com/polylint/polylint poly-cli
 ```
 
 This resolves the same GitHub release archives — it does not build from source.
@@ -157,11 +157,11 @@ poly ships its own Claude/Codex plugin, registering `poly mcp` as a stdio server
 2 slash commands (`/poly-check`, `/poly-fix`):
 
 ```text
-/plugin marketplace add Goldziher/polylint
+/plugin marketplace add polylint/polylint
 /plugin install poly@poly
 ```
 
-For Codex, `codex plugin marketplace add Goldziher/polylint` then `codex plugin add poly@poly`. OpenCode
+For Codex, `codex plugin marketplace add polylint/polylint` then `codex plugin add poly@poly`. OpenCode
 and Pi install `@polylint/opencode-poly` from npm (`opencode plugin add @polylint/opencode-poly`,
 `pi install npm:@polylint/opencode-poly`), and Hermes installs `poly-hermes-plugin` from PyPI.
 

@@ -2,15 +2,15 @@
   "name": "@polylint/polylint-linux-x64-musl",
   "version": "0.35.0",
   "description": "The Linux x64 (musl) poly binary for @polylint/polylint. Not useful on its own.",
-  "homepage": "https://github.com/Goldziher/polylint#readme",
+  "homepage": "https://github.com/polylint/polylint#readme",
   "bugs": {
-    "url": "https://github.com/Goldziher/polylint/issues"
+    "url": "https://github.com/polylint/polylint/issues"
   },
   "license": "MIT",
   "author": "Na'aman Hirschfeld <nhirschfeld@gmail.com>",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/Goldziher/polylint.git",
+    "url": "git+https://github.com/polylint/polylint.git",
     "directory": "npm-package/platforms/linux-x64-musl"
   },
   "os": [

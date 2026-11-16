@@ -26,7 +26,7 @@ _BIN_DIR = Path(__file__).resolve().parent / "bin"
 _BINARY_NAME = "poly.exe" if os.name == "nt" else "poly"
 
 #: Where to point a user whose platform has no wheel.
-_INSTALL_DOCS = "https://github.com/Goldziher/polylint#installation"
+_INSTALL_DOCS = "https://github.com/polylint/polylint#installation"
 
 
 def binary_path() -> Path | None:

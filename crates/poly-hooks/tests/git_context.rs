@@ -3,7 +3,7 @@
 //! The snapshot is a plain directory in the per-user cache, not a git checkout,
 //! so a hook that enumerates the index (`git ls-files` feeding a whole-tree
 //! secret scan) needs the run to hand it the repository's absolute `GIT_DIR`
-//! and the index the in-flight commit is building (Goldziher/poly#37). These
+//! and the index the in-flight commit is building (polylint/polylint#37). These
 //! tests pin that context down, and pin the two ways it must *not* reach back
 //! into the original repository: an opportunistic index refresh and a
 //! snapshot-local `git init`.

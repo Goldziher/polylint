@@ -1,0 +1,13 @@
+{
+  "formulas": [
+    {
+      "name": "polylint",
+      "template": "packaging/polylint.rb.tmpl",
+      "assets": {
+        "macos_arm_sha": "poly-${version}-aarch64-apple-darwin.tar.gz",
+        "linux_arm_sha": "poly-${version}-aarch64-unknown-linux-gnu.tar.gz",
+        "linux_intel_sha": "poly-${version}-x86_64-unknown-linux-gnu.tar.gz"
+      }
+    }
+  ]
+}

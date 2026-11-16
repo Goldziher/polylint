@@ -1,0 +1,18 @@
+{
+  "manifests": [
+    {
+      "name": "polylint",
+      "template": "packaging/polylint.json.tmpl",
+      "assets": {
+        "win_x64_sha": "poly-${version}-x86_64-pc-windows-msvc.zip"
+      }
+    },
+    {
+      "name": "poly",
+      "template": "packaging/polylint.json.tmpl",
+      "assets": {
+        "win_x64_sha": "poly-${version}-x86_64-pc-windows-msvc.zip"
+      }
+    }
+  ]
+}

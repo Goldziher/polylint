@@ -4,7 +4,7 @@
 //! Version-gated rules (`UP017` `datetime.UTC`, `UP042` `StrEnum`, …) and
 //! isort's standard-library list all follow the target, so leaving it at ruff's
 //! built-in default — 3.11 since the 0.17 line — tells a 3.10 project to make
-//! rewrites that break on 3.10 (Goldziher/poly#42).
+//! rewrites that break on 3.10 (polylint/polylint#42).
 //!
 //! The lookup follows ruff's own discovery, walking up from the file's
 //! directory:

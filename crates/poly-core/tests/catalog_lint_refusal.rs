@@ -178,7 +178,7 @@ fn an_accepted_lint_command_warns_about_nothing() {
     }
 }
 
-/// Goldziher/poly#36: an enabled linter that is not installed runs nothing, yet
+/// polylint/polylint#36: an enabled linter that is not installed runs nothing, yet
 /// the Python file still counts as checked through ruff — so without a warning,
 /// "pydocstyle is missing" and "pydocstyle passed" look identical.
 #[test]

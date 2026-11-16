@@ -1,0 +1,62 @@
+---
+title: Ecosystem
+description: >-
+  The polylint organization's tools — polylint and its sibling linters skif, adrlint and uncomment —
+  and how to install them.
+---
+
+import { LinkCard, CardGrid } from '@astrojs/starlight/components';
+
+polylint is part of the [polylint organization](https://github.com/polylint): high-performance Rust
+linters and formatters built for agentic workflows. Each tool is a standalone CLI with its own
+releases, and poly embeds the siblings as opt-in engines so one `poly.toml` can drive them.
+
+<CardGrid>
+  <LinkCard
+    title="polylint"
+    description="One linter and formatter for every language in a repository: the poly command."
+    href="https://github.com/polylint/polylint"
+  />
+  <LinkCard
+    title="skif"
+    description="JS/TS dependency, manifest, version-policy and dead-code linter for npm, pnpm, yarn and bun workspaces."
+    href="https://github.com/polylint/skif"
+  />
+  <LinkCard
+    title="adrlint"
+    description="Linter for MADR architecture decision records."
+    href="https://github.com/polylint/adrlint"
+  />
+  <LinkCard
+    title="uncomment"
+    description="Tree-sitter comment removal and linting across languages."
+    href="https://github.com/polylint/uncomment"
+  />
+</CardGrid>
+
+## Inside poly
+
+| Tool | poly engine | Enable with |
+| --- | --- | --- |
+| skif | `skif`, a project check in the `web` component | `[engines.skif] enabled = true` |
+| adrlint | `adrlint`, in the `web` component; `poly adr` maintains the log | `[engines.adrlint] enabled = true` |
+| uncomment | `uncomment`, the `uncomment` component | `[engines.uncomment] enabled = true` |
+
+See [Languages and engines](/polylint/reference/backends/) for what each engine covers. skif has its own
+documentation site at [polylint.github.io/skif](https://polylint.github.io/skif/).
+
+## Installing the standalone tools
+
+Every tool in the organization ships from the same Homebrew tap and Scoop bucket:
+
+```sh
+brew tap polylint/tap
+brew install polylint/tap/<tool>
+```
+
+```powershell
+scoop bucket add polylint https://github.com/polylint/scoop-bucket
+scoop install <tool>
+```
+
+The npm packages live under the `@polylint` scope. Each tool's README lists its other channels.
