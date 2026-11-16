@@ -27,6 +27,7 @@ use std::path::{Path, PathBuf};
 use std::sync::{LazyLock, Mutex, PoisonError};
 
 use crate::config::EngineConfig;
+use crate::options::OptionsExt;
 
 /// A Python version as `(major, minor)`, ruff's `PythonVersion` without the dependency.
 pub type PyVersion = (u8, u8);
@@ -181,10 +182,7 @@ pub fn parse_python_version(text: &str) -> Option<PyVersion> {
 
 /// The `target_version` set in `[lint.python.ruff]`, when it parses.
 pub fn configured_target(cfg: &EngineConfig) -> Option<PyVersion> {
-    cfg.options
-        .get("target_version")
-        .and_then(toml::Value::as_str)
-        .and_then(parse_python_version)
+    cfg.options.opt_str("target_version").and_then(parse_python_version)
 }
 
 /// The target `path` is linted for when poly's config sets none: what the project's own ruff

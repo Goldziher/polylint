@@ -26,6 +26,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::config::EngineConfig;
 use crate::engine::SourceFile;
+use crate::options::OptionsExt;
 
 pub mod astgrep_rules;
 pub mod editorconfig;
@@ -89,12 +90,8 @@ pub fn run_context(hook: HostHook, cfg: &EngineConfig) -> String {
             String::new()
         }
         HostHook::RuffContext => {
-            let src_roots: Vec<std::path::PathBuf> = cfg
-                .options
-                .get("src")
-                .and_then(toml::Value::as_array)
-                .map(|roots| roots.iter().filter_map(toml::Value::as_str).map(Into::into).collect())
-                .unwrap_or_default();
+            let src_roots: Vec<std::path::PathBuf> =
+                cfg.options.opt_string_list("src").into_iter().map(Into::into).collect();
             ruff_context::forget_package_roots();
             ruff_target::forget_targets();
             ruff_context::module_tree(&src_roots)

@@ -18,6 +18,7 @@ use poly_config::{OxfmtNative, OxfmtOverride, resolve_oxfmt_native};
 use crate::config::EngineConfig;
 use crate::engine::SourceFile;
 use crate::language::Language;
+use crate::options::OptionsExt;
 
 /// Key of the root config's path in an oxfmt-equivalent engine's table; set by poly.
 pub const RC_KEY: &str = "oxfmtrc";
@@ -113,7 +114,7 @@ fn scope_of(path: &Path) -> Option<(Arc<Scope>, PathBuf)> {
 /// one the table was built from, with every matching `overrides` entry laid over them.
 /// `cfg` itself when neither changes anything.
 pub fn path_config<'a>(cfg: &'a EngineConfig, src: &SourceFile, engine: &str) -> Cow<'a, EngineConfig> {
-    let Some(root_rc) = cfg.options.get(RC_KEY).and_then(toml::Value::as_str) else {
+    let Some(root_rc) = cfg.options.opt_str(RC_KEY) else {
         return Cow::Borrowed(cfg);
     };
     let Some((scope, path)) = scope_of(&src.path) else {
@@ -145,8 +146,7 @@ pub fn path_config<'a>(cfg: &'a EngineConfig, src: &SourceFile, engine: &str) ->
     }
     options.extend(layer);
     let indent_width = options
-        .get("indent_width")
-        .and_then(toml::Value::as_integer)
+        .opt_i64("indent_width")
         .and_then(|width| usize::try_from(width).ok())
         .filter(|&width| width > 0)
         .unwrap_or(cfg.indent_width);

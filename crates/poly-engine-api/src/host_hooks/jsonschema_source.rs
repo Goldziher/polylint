@@ -18,6 +18,7 @@ use std::sync::{Arc, Mutex, OnceLock};
 use std::time::SystemTime;
 
 use crate::config::EngineConfig;
+use crate::options::OptionsExt;
 
 const DEFAULT_CACHE_DIR: &str = ".poly/schemas";
 const CONFIG_FILE: &str = "poly.toml";
@@ -65,7 +66,7 @@ impl Scope {
         };
         let file = canonical(&absolute).unwrap_or(absolute);
         let root = project_root(&file);
-        let cache_dir = match cfg.options.get("cache_dir").and_then(toml::Value::as_str) {
+        let cache_dir = match cfg.options.opt_str("cache_dir") {
             Some(dir) if Path::new(dir).is_absolute() => PathBuf::from(dir),
             Some(dir) => root.join(dir),
             None => root.join(DEFAULT_CACHE_DIR),

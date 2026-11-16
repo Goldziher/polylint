@@ -161,7 +161,7 @@ fn parse_rules_sub_table(options: &toml::Table) -> BTreeMap<String, RuleOptions>
         .filter_map(|(code, val)| {
             let sub = val.as_table()?;
             let mut opts = RuleOptions::default();
-            if let Some(level_str) = sub.get("level").and_then(toml::Value::as_str) {
+            if let Some(level_str) = sub.opt_str("level") {
                 opts.level = parse_level(level_str);
                 if opts.level.is_none() {
                     tracing::warn!(
