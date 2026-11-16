@@ -1,8 +1,7 @@
-//! Microbenchmarks for the result-cache key path — flagged wave-3 as "a wash at
-//! corpus scale": content-hashing ~28k files costs about as much as the cheap
-//! lint work it saves. These benches quantify the per-file cache overhead so the
-//! follow-up can decide whether to mmap, skip hashing small files, or drop the
-//! lint cache entirely.
+//! Microbenchmarks for the result-cache key path, which a corpus-scale profile found
+//! to be "a wash": content-hashing ~28k files costs about as much as the cheap
+//! lint work it saves. These benches quantify the per-file cache overhead, to decide
+//! whether to mmap, skip hashing small files, or drop the lint cache entirely.
 //!
 //! Stages mirror what `runner::lint_content` does per file:
 //! - `single_file_digest`  — blake3 over the file bytes (the dominant cost).

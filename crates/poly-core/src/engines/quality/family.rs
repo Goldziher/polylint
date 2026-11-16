@@ -11,8 +11,7 @@
 //! - [`Family::Other`] — every language with no tier-1 lint backend, plus the
 //!   template/markup languages oxlint does not reach.
 //!
-//! # The table (traced to source at the pinned revs; see
-//! `~/.claude/plans/quality-tier-3a-reference.md` §1 for the full derivation)
+//! # The table (traced to source at the pinned revs)
 //!
 //! | Rule | Deferred for | Reason |
 //! |---|---|---|
