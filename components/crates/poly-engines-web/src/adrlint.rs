@@ -71,7 +71,7 @@ use poly_engine_api::rule_config::string_list;
 ///
 /// Bump the suffix whenever the diagnostic/edit mapping below changes, and the version whenever
 /// `adrlint` is upgraded — either alters output, and a stale cache entry would survive both.
-const VERSION: &str = "adrlint-0.5.0+poly4";
+const VERSION: &str = "adrlint-0.5.2+poly4";
 
 /// Why a Markdown file is routed past this backend.
 const NOT_AN_ADR: &str = "not a numbered ADR file";

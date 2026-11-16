@@ -14,9 +14,6 @@ description = "The web engine family for poly (oxc, taplo, markup_fmt, malva, ru
 name = "poly_engines_web"
 path = "src/lib.rs"
 
-[package.metadata.cargo-machete]
-ignored = ["rumdl"]
-
 [dependencies]
 adrlint.workspace = true
 anyhow.workspace = true
@@ -40,7 +37,7 @@ poly-config.workspace = true
 poly-engine-api.workspace = true
 poly-engines.workspace = true
 regex.workspace = true
-rumdl.workspace = true
+rumdl_lib.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 serde_yaml.workspace = true

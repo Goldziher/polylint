@@ -48,6 +48,8 @@ binary drives lint, format, hooks, and commit checks from one `poly.toml`.
 - **Component protocol v3 (ADR 0058); every engine component and sidecar must be rebuilt.** Requests and responses are
   encoded positionally instead of with a field name per struct field, and a diagnostic no longer repeats the engine
   id of the request. Components built for protocol 2 are rejected as incompatible.
+- **One oxc copy in the `web` component.** rumdl comes from `polylint-rumdl` 0.3.5, polylint's fork on Oxc 0.158, and
+  adrlint 0.5.2 builds on it, so the component no longer links a second, older oxc through rumdl. (#192)
 
 ### Performance
 
