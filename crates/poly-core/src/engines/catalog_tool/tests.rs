@@ -179,6 +179,29 @@ fn no_shipped_catalog_tool_wires_a_mutating_lint_command() {
     );
 }
 
+/// The engine and `FormatScope` skip an invalid `path_globs` entry with a warning rather than
+/// failing the run, so shipped data is held to the strict builder here instead.
+#[test]
+fn every_shipped_path_glob_compiles() {
+    let offenders: Vec<String> = Catalog::get()
+        .tools()
+        .iter()
+        .filter_map(|tool| {
+            poly_engine_api::glob_set::build_glob_set(&tool.path_globs)
+                .err()
+                .map(|error| format!("{}: {error}", tool.name))
+        })
+        .collect();
+    assert!(
+        offenders.is_empty(),
+        "catalog tools with invalid path_globs: {offenders:#?}"
+    );
+    assert!(
+        Catalog::get().tools().iter().any(|tool| !tool.path_globs.is_empty()),
+        "the check must see at least one tool with path_globs"
+    );
+}
+
 /// `pyupgrade` rewrites in place on every run and its catalog argv forces a
 /// zero exit (`--exit-zero-even-if-changed`), so no argv inspection can make it
 /// safe: it must be refused by name.

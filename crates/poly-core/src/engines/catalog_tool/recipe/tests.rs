@@ -725,6 +725,39 @@ fn new_from_rev_is_refused_by_a_tool_without_the_flag() {
 }
 
 #[test]
+fn an_invalid_exclude_glob_refuses_the_tool_and_names_the_pattern() {
+    let fx = Fixture::new();
+    let mut config = fx.config(fx.script("tool", SILENT));
+    let recipe: &'static Recipe = Box::leak(Box::new(Recipe::default()));
+    let tool: &'static Tool = Box::leak(Box::new(Tool {
+        name: "faketool".to_owned(),
+        binary: "faketool".to_owned(),
+        categories: vec!["linter".to_owned()],
+        languages: Vec::new(),
+        commands: BTreeMap::from([(
+            "lint".to_owned(),
+            Command {
+                arguments: vec!["$FILES".to_owned()],
+                stdin: false,
+                then: Vec::new(),
+                batch: None,
+            },
+        )]),
+        homepage: String::new(),
+        path_globs: Vec::new(),
+        recipe: None,
+    }));
+    config.exclude = Some(vec!["vendor/**".to_owned()].into());
+    assert!(RecipeTool::build(tool, recipe, &config, Role::Lint, None).is_ok());
+
+    config.exclude = Some(vec!["vendor/**".to_owned(), "[unclosed".to_owned()].into());
+    let error = RecipeTool::build(tool, recipe, &config, Role::Lint, None)
+        .err()
+        .expect("an exclude that cannot match must not let the tool run over the excluded files");
+    assert!(error.contains("[unclosed"), "{error}");
+}
+
+#[test]
 fn a_goos_matrix_runs_once_per_os_and_merges_the_findings() {
     let fx = Fixture::new();
     let files = go_module(&fx);

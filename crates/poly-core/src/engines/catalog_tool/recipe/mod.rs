@@ -134,11 +134,15 @@ impl Filter {
     }
 }
 
-fn glob_set(patterns: &[String]) -> Option<GlobSet> {
+/// `None` for no patterns. A malformed pattern is an error: an exclude that matched nothing
+/// would hand the tool the very files it was meant to keep away from.
+fn glob_set(patterns: &[String]) -> Result<Option<GlobSet>, String> {
     if patterns.is_empty() {
-        return None;
+        return Ok(None);
     }
-    Some(poly_engine_api::glob_set::build_glob_set_lossy(patterns))
+    poly_engine_api::glob_set::build_glob_set(patterns)
+        .map(Some)
+        .map_err(|error| format!("`files`/`exclude`: {error}"))
 }
 
 impl RecipeTool {
@@ -231,7 +235,7 @@ impl RecipeTool {
             passes,
             stdin,
             fix_passes,
-            filter: filter_for(tool, config),
+            filter: filter_for(tool, config)?,
             context_names,
             version,
             units,
@@ -356,7 +360,7 @@ fn splice_before_stdin_dash(arguments: &[String], extra: &[String]) -> Vec<Strin
     out
 }
 
-fn filter_for(tool: &Tool, config: &ToolConfig) -> Option<Filter> {
+fn filter_for(tool: &Tool, config: &ToolConfig) -> Result<Option<Filter>, String> {
     let mut include: Vec<String> = tool.path_globs.clone();
     if let Some(files) = &config.files {
         include = files.as_slice().to_vec();
@@ -367,10 +371,10 @@ fn filter_for(tool: &Tool, config: &ToolConfig) -> Option<Filter> {
         .map(|p| p.as_slice().to_vec())
         .unwrap_or_default();
     let filter = Filter {
-        include: glob_set(&include),
-        exclude: glob_set(&exclude),
+        include: glob_set(&include)?,
+        exclude: glob_set(&exclude)?,
     };
-    (filter.include.is_some() || filter.exclude.is_some()).then_some(filter)
+    Ok((filter.include.is_some() || filter.exclude.is_some()).then_some(filter))
 }
 
 #[cfg(test)]

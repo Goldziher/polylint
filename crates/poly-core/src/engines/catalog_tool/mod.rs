@@ -34,7 +34,7 @@ use std::process::Command;
 use std::sync::{Arc, Mutex, OnceLock};
 
 use anyhow::Context;
-use globset::{Glob, GlobSet, GlobSetBuilder};
+use globset::GlobSet;
 use poly_catalog::{PATH_PLACEHOLDER, Tool};
 use poly_config::ToolConfig;
 
@@ -441,17 +441,8 @@ impl CatalogToolEngine {
             );
         }
         let path_globs = tool.path_globs.clone();
-        let path_glob_set = if path_globs.is_empty() {
-            None
-        } else {
-            let mut builder = GlobSetBuilder::new();
-            for pattern in &path_globs {
-                if let Ok(glob) = Glob::new(pattern) {
-                    builder.add(glob);
-                }
-            }
-            builder.build().ok()
-        };
+        let path_glob_set =
+            (!path_globs.is_empty()).then(|| poly_engine_api::glob_set::build_glob_set_lossy(&path_globs));
         let version = format!(
             "{CATALOG_VERSION_PREFIX}{}:{}:mode={mode:?}:stdin={stdin}:args={arguments:?}:env={env:?}:root={root:?}:path_globs={path_globs:?}",
             tool.name,
