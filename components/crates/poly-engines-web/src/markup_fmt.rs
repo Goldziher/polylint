@@ -60,7 +60,7 @@ pub struct MarkupFmtEngine;
 /// any stale cached output.
 /// Bumped suffix to +opts-1 after exposing full LanguageOptions (options were
 /// previously ignored — existing caches must be invalidated).
-const VERSION: &str = "0.27.6+opts-2+tmpltarget-2+embedded-oxc-3+rev:74e5e66+syntax-skip-2+script-fmt-1";
+const VERSION: &str = "0.27.6+opts-2+tmpltarget-2+embedded-oxc-3+rev:74e5e66+syntax-skip-2+script-fmt-2";
 
 /// Reason reported when a general-purpose template does not render markup.
 const NON_MARKUP_TEMPLATE_SKIP: &str = "template does not render markup";
@@ -168,7 +168,11 @@ impl Engine for MarkupFmtEngine {
                 return Ok(Cow::Borrowed(code));
             }
             let script_ext = match src.language {
-                Language::Html => hints.ext,
+                Language::Html => match hints.ext {
+                    "mjs" | "cjs" => "js",
+                    "mts" | "cts" => "ts",
+                    ext => ext,
+                },
                 _ if is_script_block(&src.content, code) => match hints.ext {
                     "ts" | "mts" => "ts",
                     "tsx" => "tsx",
@@ -529,6 +533,14 @@ mod tests {
         );
         assert!(out.contains("color: red;"), "{out}");
         assert!(out.contains("const a = 1;"), "{out}");
+    }
+
+    #[test]
+    fn html_module_script_is_formatted_and_settles() {
+        let input = "<script type=\"module\">\n    import a from \"x\";\n    const   b = `\n  x\n`;\n    const c = {\n      d: 1 };\n</script>\n";
+        let once = formatted_text(Language::Html, "a.html", input);
+        assert!(once.contains("const b = `"), "{once}");
+        assert_eq!(formatted_text(Language::Html, "a.html", &once), once);
     }
 
     #[test]
