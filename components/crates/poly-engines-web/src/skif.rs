@@ -8,7 +8,7 @@
 //! # Inputs and the cache key
 //!
 //! The host computes the project-check cache key before the call, so every input has to be known up front. The
-//! engine therefore declares them ([`Engine::project_inputs`]) instead of discovering them while it runs: the
+//! engine therefore declares them ([`ProjectAnalysis::project_inputs`]) instead of discovering them while it runs: the
 //! host walks the declared tree and hands over every JavaScript, TypeScript, JSON, YAML and TOML file in it,
 //! plus the lock files as side files. The walk honors `.gitignore` and the pruned directories (`node_modules`,
 //! `dist`, ...) and nothing else: `[discovery] exclude`, `--exclude` and nested `poly.toml` scopes do not cut
@@ -45,8 +45,8 @@ use std::sync::Arc;
 
 use anyhow::{Context, bail};
 use poly_engine_api::engine::{
-    Capabilities, Diagnostic, Engine, OptionKeys, OptionTable, OptionType, ProjectDirs, ProjectInputs, ProjectRequest,
-    ProjectSideFile, Severity,
+    Capabilities, Diagnostic, Engine, OptionKeys, OptionTable, OptionType, ProjectAnalysis, ProjectDirs, ProjectInputs,
+    ProjectRequest, ProjectSideFile, Severity,
 };
 use poly_engine_api::language::Language;
 use poly_engine_api::options::OptionsExt;
@@ -183,6 +183,12 @@ impl Engine for SkifEngine {
         VERSION
     }
 
+    fn project_analysis(&self) -> Option<&dyn ProjectAnalysis> {
+        Some(self)
+    }
+}
+
+impl ProjectAnalysis for SkifEngine {
     /// Planned only once `enabled` is set, over the whole tree under `dir`, with the lock files as side files.
     fn project_inputs(&self) -> ProjectInputs {
         ProjectInputs {

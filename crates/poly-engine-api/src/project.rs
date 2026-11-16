@@ -1,4 +1,4 @@
-//! The inputs of [`Engine::project_check`](crate::engine::Engine::project_check): the file set,
+//! The inputs of [`ProjectAnalysis::project_check`](crate::engine::ProjectAnalysis::project_check): the file set,
 //! the config and the host-resolved environment.
 
 use std::path::PathBuf;
@@ -7,7 +7,7 @@ use std::sync::Arc;
 use crate::config::EngineConfig;
 use crate::language::Language;
 
-/// One file handed to [`Engine::project_check`](crate::engine::Engine::project_check).
+/// One file handed to [`ProjectAnalysis::project_check`](crate::engine::ProjectAnalysis::project_check).
 #[derive(Debug, Clone)]
 pub struct ProjectFile {
     /// Path to the file on disk, as discovered (the key the findings are reported under).
@@ -83,7 +83,7 @@ impl ProjectEnvironment {
     }
 }
 
-/// Everything [`Engine::project_check`](crate::engine::Engine::project_check) sees.
+/// Everything [`ProjectAnalysis::project_check`](crate::engine::ProjectAnalysis::project_check) sees.
 #[derive(Debug, Clone, Copy)]
 pub struct ProjectRequest<'a> {
     /// The project root: the directory of the config governing the files.

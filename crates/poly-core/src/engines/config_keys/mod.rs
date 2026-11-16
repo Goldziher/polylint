@@ -55,7 +55,7 @@ use std::path::Path;
 
 use crate::config::{EngineConfig, Kind};
 use crate::engine::{
-    Capabilities, Diagnostic, Engine, OptionKeys, OptionTable, OptionType, Severity, SourceFile, Span,
+    Capabilities, Diagnostic, Engine, OptionKeys, OptionTable, OptionType, PlanPolicy, Severity, SourceFile, Span,
 };
 use crate::engines::line_index::LineIndex;
 use crate::language::Language;
@@ -120,13 +120,6 @@ impl Engine for PolyConfigEngine {
         VERSION
     }
 
-    /// `false`: this backend checks poly's own config file, it does not lint
-    /// TOML. Claiming TOML lint coverage here would let a repo whose only TOML
-    /// finding is a config typo report itself as "TOML linted".
-    fn provides_language_lint(&self, _language: &Language, _cfg: &EngineConfig) -> bool {
-        false
-    }
-
     fn option_keys(&self, _table: OptionTable) -> OptionKeys {
         // The check itself takes no configuration; a key in
         // `[lint.toml.polyconfig]` reads nothing.
@@ -138,6 +131,19 @@ impl Engine for PolyConfigEngine {
             return Ok(Vec::new());
         }
         Ok(config_key_diagnostics(&src.content, self.name()))
+    }
+
+    fn plan_policy(&self) -> Option<&dyn PlanPolicy> {
+        Some(self)
+    }
+}
+
+impl PlanPolicy for PolyConfigEngine {
+    /// `false`: this backend checks poly's own config file, it does not lint
+    /// TOML. Claiming TOML lint coverage here would let a repo whose only TOML
+    /// finding is a config typo report itself as "TOML linted".
+    fn provides_language_lint(&self, _language: &Language, _cfg: &EngineConfig) -> bool {
+        false
     }
 }
 

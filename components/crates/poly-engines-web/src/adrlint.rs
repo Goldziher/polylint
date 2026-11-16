@@ -60,8 +60,8 @@ use ::adrlint::diagnostics::{self as adr_diagnostics, Diagnostic as AdrDiagnosti
 
 use poly_engine_api::config::EngineConfig;
 use poly_engine_api::engine::{
-    Capabilities, Diagnostic, Edit, Engine, OptionKeys, OptionTable, OptionType, ProjectDirs, ProjectInputs,
-    ProjectRequest, ProjectSideFile, Severity, SourceFile, Span,
+    Capabilities, Diagnostic, Edit, Engine, OptionKeys, OptionTable, OptionType, PlanPolicy, ProjectAnalysis,
+    ProjectDirs, ProjectInputs, ProjectRequest, ProjectSideFile, Severity, SourceFile, Span,
 };
 use poly_engine_api::language::Language;
 use poly_engine_api::options::OptionsExt;
@@ -140,18 +140,42 @@ impl Engine for AdrlintEngine {
         VERSION
     }
 
-    /// Off unless switched on, and then only for a numbered ADR.
-    ///
-    /// Claiming Markdown lint coverage while switched off would let a repository that also
-    /// disabled `rumdl` read as covered when nothing inspected its Markdown.
-    fn provides_language_lint(&self, language: &Language, cfg: &EngineConfig) -> bool {
-        *language == Language::Markdown && enabled(cfg)
-    }
-
     fn skip_reason(&self, src: &SourceFile) -> Option<Cow<'static, str>> {
         (!is_adr_file(&src.path)).then_some(Cow::Borrowed(NOT_AN_ADR))
     }
 
+    fn lint(&self, src: &SourceFile, cfg: &EngineConfig) -> anyhow::Result<Vec<Diagnostic>> {
+        if !enabled(cfg) || !is_adr_file(&src.path) {
+            return Ok(Vec::new());
+        }
+
+        let document = adr::parse(&src.content);
+        let root = project_root(&src.path);
+        let mut findings = ::adrlint::rules::check_document(&document, &src.path, &root);
+        adr_diagnostics::locate(&mut findings, &src.content);
+        ::adrlint::fix::mark_fixable(&mut findings, &document, &src.content);
+        adr_diagnostics::add_default_help(&mut findings);
+
+        let selection = Selection::from_options(cfg);
+        let fix_offsets = heading_fix_offsets(&src.content, &document);
+        Ok(findings
+            .into_iter()
+            .filter(|finding| !FILESYSTEM_LINK_CODES.contains(&finding.code))
+            .filter(|finding| selection.keeps(finding.code))
+            .map(|finding| map_diagnostic(finding, &fix_offsets))
+            .collect())
+    }
+
+    fn project_analysis(&self) -> Option<&dyn ProjectAnalysis> {
+        Some(self)
+    }
+
+    fn plan_policy(&self) -> Option<&dyn PlanPolicy> {
+        Some(self)
+    }
+}
+
+impl ProjectAnalysis for AdrlintEngine {
     /// The tree-wide rules are switched on by `enabled`, need `adrlint.lock`, and are about one
     /// ADR directory: the host hands over only the Markdown under it, plus a name-only listing of
     /// the other files there, which is all `MADR42` needs.
@@ -178,27 +202,15 @@ impl Engine for AdrlintEngine {
     fn project_check(&self, req: &ProjectRequest<'_>) -> anyhow::Result<Vec<(PathBuf, Vec<Diagnostic>)>> {
         project::check(req)
     }
+}
 
-    fn lint(&self, src: &SourceFile, cfg: &EngineConfig) -> anyhow::Result<Vec<Diagnostic>> {
-        if !enabled(cfg) || !is_adr_file(&src.path) {
-            return Ok(Vec::new());
-        }
-
-        let document = adr::parse(&src.content);
-        let root = project_root(&src.path);
-        let mut findings = ::adrlint::rules::check_document(&document, &src.path, &root);
-        adr_diagnostics::locate(&mut findings, &src.content);
-        ::adrlint::fix::mark_fixable(&mut findings, &document, &src.content);
-        adr_diagnostics::add_default_help(&mut findings);
-
-        let selection = Selection::from_options(cfg);
-        let fix_offsets = heading_fix_offsets(&src.content, &document);
-        Ok(findings
-            .into_iter()
-            .filter(|finding| !FILESYSTEM_LINK_CODES.contains(&finding.code))
-            .filter(|finding| selection.keeps(finding.code))
-            .map(|finding| map_diagnostic(finding, &fix_offsets))
-            .collect())
+impl PlanPolicy for AdrlintEngine {
+    /// Off unless switched on, and then only for a numbered ADR.
+    ///
+    /// Claiming Markdown lint coverage while switched off would let a repository that also
+    /// disabled `rumdl` read as covered when nothing inspected its Markdown.
+    fn provides_language_lint(&self, language: &Language, cfg: &EngineConfig) -> bool {
+        *language == Language::Markdown && enabled(cfg)
     }
 }
 

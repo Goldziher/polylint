@@ -18,7 +18,7 @@ use std::path::Path;
 
 use poly_engine_api::{
     config::{EngineConfig, GlobalDefaults},
-    engine::{Diagnostic, Engine, SourceFile},
+    engine::{Diagnostic, Engine, PlanPolicy, SourceFile},
     language::Language,
 };
 use poly_engines_astgrep::AstGrepEngine;

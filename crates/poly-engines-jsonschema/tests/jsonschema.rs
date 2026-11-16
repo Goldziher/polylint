@@ -5,7 +5,7 @@
 use std::path::Path;
 
 use poly_engine_api::config::{EngineConfig, GlobalDefaults};
-use poly_engine_api::engine::{Diagnostic, Engine, Severity, SourceFile};
+use poly_engine_api::engine::{Diagnostic, Engine, PlanPolicy, Severity, SourceFile};
 use poly_engine_api::language::Language;
 use poly_engines_jsonschema::JsonSchemaEngine;
 

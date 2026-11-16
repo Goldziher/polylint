@@ -27,8 +27,8 @@ use std::sync::Arc;
 
 use anyhow::Context;
 use poly_engine_api::engine::{
-    Capabilities, Diagnostic, Engine, OptionKeys, OptionTable, OptionType, ProjectFile, ProjectRequest, Severity, Span,
-    WireSelection,
+    Capabilities, Diagnostic, Engine, OptionKeys, OptionTable, OptionType, ProjectAnalysis, ProjectFile,
+    ProjectRequest, Severity, Span, WireSelection,
 };
 use poly_engine_api::language::Language;
 use pyrefly::state::load::FileContents;
@@ -102,6 +102,12 @@ impl Engine for PyreflyEngine {
         "pyrefly-1.4.1+proj1"
     }
 
+    fn project_analysis(&self) -> Option<&dyn ProjectAnalysis> {
+        Some(self)
+    }
+}
+
+impl ProjectAnalysis for PyreflyEngine {
     fn selection(&self) -> Option<WireSelection> {
         Some(WireSelection {
             table: TABLE.to_owned(),
@@ -112,7 +118,8 @@ impl Engine for PyreflyEngine {
     }
 
     fn project_check(&self, req: &ProjectRequest<'_>) -> anyhow::Result<Vec<(PathBuf, Vec<Diagnostic>)>> {
-        // The host plans this engine only for its own backend (`Engine::selection`); this is a guard for a direct call.
+        // The host plans this engine only for its own backend (`ProjectAnalysis::selection`); this is a
+        // guard for a direct call.
         if req.config.options.get("backend").and_then(toml::Value::as_str) != Some(BACKEND) {
             return Ok(Vec::new());
         }

@@ -8,7 +8,7 @@
 //!
 //! The answer is **not** lint coverage (ADR 0053, amending ADR 0027): size and
 //! complexity metrics say nothing about correctness, so
-//! [`Engine::provides_language_lint`](crate::engine::Engine::provides_language_lint)
+//! [`PlanPolicy::provides_language_lint`](crate::engine::PlanPolicy::provides_language_lint)
 //! is `false` for `quality` and a file only it models is skipped with
 //! `SkippedFile::quality_only_reason`. The
 //! runner uses [`models_language`] solely to choose that reason, so a reader

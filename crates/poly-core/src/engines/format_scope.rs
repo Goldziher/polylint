@@ -13,8 +13,8 @@ use std::borrow::Cow;
 
 use crate::config::EngineConfig;
 use crate::engine::{
-    BatchSupport, Capabilities, Diagnostic, Engine, FormatOutput, OptionKeys, OptionTable, ProjectInputs,
-    ProjectRequest, SourceFile, WireSelection,
+    BatchSupport, Batching, Capabilities, CatalogTakeover, Diagnostic, Engine, FormatOutput, OptionKeys, OptionTable,
+    PlanPolicy, ProjectAnalysis, ProjectInputs, ProjectRequest, SourceFile, WireSelection,
 };
 use crate::language::Language;
 
@@ -56,14 +56,6 @@ impl Engine for FormatScope {
         self.inner.version()
     }
 
-    fn provides_language_lint(&self, language: &Language, cfg: &EngineConfig) -> bool {
-        self.inner.provides_language_lint(language, cfg)
-    }
-
-    fn provides_language_format(&self, language: &Language, cfg: &EngineConfig) -> bool {
-        self.inner.provides_language_format(language, cfg)
-    }
-
     fn skip_reason(&self, src: &SourceFile) -> Option<Cow<'static, str>> {
         if self.claims(src) {
             return None;
@@ -82,6 +74,61 @@ impl Engine for FormatScope {
         self.inner.format(src, cfg)
     }
 
+    fn lint_cache_salt(&self, src: &SourceFile) -> Option<String> {
+        self.inner.lint_cache_salt(src)
+    }
+
+    fn format_config<'a>(&self, src: &SourceFile, cfg: &'a EngineConfig) -> std::borrow::Cow<'a, EngineConfig> {
+        self.inner.format_config(src, cfg)
+    }
+
+    fn format_input_salt(&self, path: &std::path::Path, cfg: &EngineConfig) -> Option<String> {
+        self.inner.format_input_salt(path, cfg)
+    }
+
+    fn file_context(&self, path: &std::path::Path, cfg: &EngineConfig) -> Option<String> {
+        self.inner.file_context(path, cfg)
+    }
+
+    fn overridden_hooks(&self) -> u32 {
+        self.inner.overridden_hooks()
+    }
+
+    fn run_context(&self, cfg: &EngineConfig) -> String {
+        self.inner.run_context(cfg)
+    }
+
+    fn host_hook(&self) -> crate::host_hooks::HostHook {
+        self.inner.host_hook()
+    }
+
+    fn lint_input_salt(&self, path: &std::path::Path, cfg: &EngineConfig) -> Option<String> {
+        self.inner.lint_input_salt(path, cfg)
+    }
+
+    fn lint_cache_version(&self, src: &SourceFile) -> Cow<'_, str> {
+        self.inner.lint_cache_version(src)
+    }
+
+    // Each facet is offered exactly when the wrapped engine has it, and answers by forwarding.
+    fn batching(&self) -> Option<&dyn Batching> {
+        self.inner.batching().map(|_| self as &dyn Batching)
+    }
+
+    fn project_analysis(&self) -> Option<&dyn ProjectAnalysis> {
+        self.inner.project_analysis().map(|_| self as &dyn ProjectAnalysis)
+    }
+
+    fn plan_policy(&self) -> Option<&dyn PlanPolicy> {
+        self.inner.plan_policy().map(|_| self as &dyn PlanPolicy)
+    }
+
+    fn catalog_takeover(&self) -> Option<&dyn CatalogTakeover> {
+        self.inner.catalog_takeover().map(|_| self as &dyn CatalogTakeover)
+    }
+}
+
+impl Batching for FormatScope {
     fn batch_support(&self, cfg: &EngineConfig) -> BatchSupport {
         self.inner.batch_support(cfg)
     }
@@ -115,54 +162,12 @@ impl Engine for FormatScope {
         self.inner.lint_batch(batch, cfg)
     }
 
-    fn lint_cache_salt(&self, src: &SourceFile) -> Option<String> {
-        self.inner.lint_cache_salt(src)
-    }
-
-    fn format_config<'a>(&self, src: &SourceFile, cfg: &'a EngineConfig) -> std::borrow::Cow<'a, EngineConfig> {
-        self.inner.format_config(src, cfg)
-    }
-
-    fn format_input_salt(&self, path: &std::path::Path, cfg: &EngineConfig) -> Option<String> {
-        self.inner.format_input_salt(path, cfg)
-    }
-
-    fn file_context(&self, path: &std::path::Path, cfg: &EngineConfig) -> Option<String> {
-        self.inner.file_context(path, cfg)
-    }
-
     fn batch_shard_floor(&self) -> usize {
         self.inner.batch_shard_floor()
     }
+}
 
-    fn self_manages_enabled(&self) -> bool {
-        self.inner.self_manages_enabled()
-    }
-
-    fn supersedes_generic_formatter(&self) -> bool {
-        self.inner.supersedes_generic_formatter()
-    }
-
-    fn overridden_hooks(&self) -> u32 {
-        self.inner.overridden_hooks()
-    }
-
-    fn run_context(&self, cfg: &EngineConfig) -> String {
-        self.inner.run_context(cfg)
-    }
-
-    fn host_hook(&self) -> crate::host_hooks::HostHook {
-        self.inner.host_hook()
-    }
-
-    fn lint_input_salt(&self, path: &std::path::Path, cfg: &EngineConfig) -> Option<String> {
-        self.inner.lint_input_salt(path, cfg)
-    }
-
-    fn lint_cache_version(&self, src: &SourceFile) -> Cow<'_, str> {
-        self.inner.lint_cache_version(src)
-    }
-
+impl ProjectAnalysis for FormatScope {
     fn project_check(&self, req: &ProjectRequest<'_>) -> anyhow::Result<Vec<(std::path::PathBuf, Vec<Diagnostic>)>> {
         self.inner.project_check(req)
     }
@@ -174,7 +179,27 @@ impl Engine for FormatScope {
     fn selection(&self) -> Option<WireSelection> {
         self.inner.selection()
     }
+}
 
+impl PlanPolicy for FormatScope {
+    fn provides_language_lint(&self, language: &Language, cfg: &EngineConfig) -> bool {
+        self.inner.provides_language_lint(language, cfg)
+    }
+
+    fn provides_language_format(&self, language: &Language, cfg: &EngineConfig) -> bool {
+        self.inner.provides_language_format(language, cfg)
+    }
+
+    fn self_manages_enabled(&self) -> bool {
+        self.inner.self_manages_enabled()
+    }
+
+    fn supersedes_generic_formatter(&self) -> bool {
+        self.inner.supersedes_generic_formatter()
+    }
+}
+
+impl CatalogTakeover for FormatScope {
     fn takes_over_tier_one(&self) -> bool {
         self.inner.takes_over_tier_one()
     }
@@ -226,6 +251,12 @@ mod tests {
             Ok(FormatOutput::Formatted(src.content.to_uppercase()))
         }
 
+        fn batching(&self) -> Option<&dyn Batching> {
+            Some(self)
+        }
+    }
+
+    impl Batching for Upper {
         fn format_batch(
             &self,
             batch: &[SourceFile],
@@ -333,14 +364,6 @@ mod tests {
             self.note("host_hook");
             crate::host_hooks::HostHook::None
         }
-        fn provides_language_lint(&self, _language: &Language, _cfg: &EngineConfig) -> bool {
-            self.note("provides_language_lint");
-            true
-        }
-        fn provides_language_format(&self, _language: &Language, _cfg: &EngineConfig) -> bool {
-            self.note("provides_language_format");
-            true
-        }
         fn skip_reason(&self, _src: &SourceFile) -> Option<Cow<'static, str>> {
             self.note("skip_reason");
             None
@@ -361,21 +384,37 @@ mod tests {
             self.note("lint");
             Ok(Vec::new())
         }
-        fn project_check(
-            &self,
-            _req: &ProjectRequest<'_>,
-        ) -> anyhow::Result<Vec<(std::path::PathBuf, Vec<Diagnostic>)>> {
-            self.note("project_check");
-            Ok(Vec::new())
-        }
-        fn project_inputs(&self) -> ProjectInputs {
-            self.note("project_inputs");
-            ProjectInputs::default()
-        }
         fn format(&self, _src: &SourceFile, _cfg: &EngineConfig) -> anyhow::Result<FormatOutput> {
             self.note("format");
             Ok(FormatOutput::Unchanged)
         }
+        fn lint_cache_salt(&self, _src: &SourceFile) -> Option<String> {
+            self.note("lint_cache_salt");
+            None
+        }
+        fn lint_cache_version(&self, _src: &SourceFile) -> Cow<'_, str> {
+            self.note("lint_cache_version");
+            Cow::Borrowed("recorder")
+        }
+        fn batching(&self) -> Option<&dyn Batching> {
+            self.note("batching");
+            Some(self)
+        }
+        fn project_analysis(&self) -> Option<&dyn ProjectAnalysis> {
+            self.note("project_analysis");
+            Some(self)
+        }
+        fn plan_policy(&self) -> Option<&dyn PlanPolicy> {
+            self.note("plan_policy");
+            Some(self)
+        }
+        fn catalog_takeover(&self) -> Option<&dyn CatalogTakeover> {
+            self.note("catalog_takeover");
+            Some(self)
+        }
+    }
+
+    impl Batching for Recorder {
         fn batch_support(&self, _cfg: &EngineConfig) -> BatchSupport {
             self.note("batch_support");
             BatchSupport::default()
@@ -396,22 +435,50 @@ mod tests {
             self.note("lint_batch");
             Ok(batch.iter().map(|_| Ok(Vec::new())).collect())
         }
-        fn lint_cache_salt(&self, _src: &SourceFile) -> Option<String> {
-            self.note("lint_cache_salt");
-            None
-        }
-        fn lint_cache_version(&self, _src: &SourceFile) -> Cow<'_, str> {
-            self.note("lint_cache_version");
-            Cow::Borrowed("recorder")
-        }
         fn batch_shard_floor(&self) -> usize {
             self.note("batch_shard_floor");
             2
+        }
+    }
+
+    impl ProjectAnalysis for Recorder {
+        fn project_check(
+            &self,
+            _req: &ProjectRequest<'_>,
+        ) -> anyhow::Result<Vec<(std::path::PathBuf, Vec<Diagnostic>)>> {
+            self.note("project_check");
+            Ok(Vec::new())
+        }
+        fn project_inputs(&self) -> ProjectInputs {
+            self.note("project_inputs");
+            ProjectInputs::default()
         }
         fn selection(&self) -> Option<WireSelection> {
             self.note("selection");
             None
         }
+    }
+
+    impl PlanPolicy for Recorder {
+        fn provides_language_lint(&self, _language: &Language, _cfg: &EngineConfig) -> bool {
+            self.note("provides_language_lint");
+            true
+        }
+        fn provides_language_format(&self, _language: &Language, _cfg: &EngineConfig) -> bool {
+            self.note("provides_language_format");
+            true
+        }
+        fn self_manages_enabled(&self) -> bool {
+            self.note("self_manages_enabled");
+            false
+        }
+        fn supersedes_generic_formatter(&self) -> bool {
+            self.note("supersedes_generic_formatter");
+            false
+        }
+    }
+
+    impl CatalogTakeover for Recorder {
         fn takes_over_tier_one(&self) -> bool {
             self.note("takes_over_tier_one");
             false
@@ -424,17 +491,9 @@ mod tests {
             self.note("supplements_tier_one");
             false
         }
-        fn self_manages_enabled(&self) -> bool {
-            self.note("self_manages_enabled");
-            false
-        }
-        fn supersedes_generic_formatter(&self) -> bool {
-            self.note("supersedes_generic_formatter");
-            false
-        }
     }
 
-    /// Calls the named trait method on `engine`; a name `ENGINE_METHODS` gains without an arm here
+    /// Calls the named trait or facet method on `engine`; a name `ENGINE_METHODS` gains without an arm here
     /// fails the test below, so a new method cannot be left unchecked.
     fn call(engine: &dyn Engine, method: &str) {
         let path = std::path::Path::new("a.toml");
@@ -541,6 +600,18 @@ mod tests {
             }
             "supersedes_generic_formatter" => {
                 let _ = engine.supersedes_generic_formatter();
+            }
+            "batching" => {
+                let _ = engine.batching();
+            }
+            "project_analysis" => {
+                let _ = engine.project_analysis();
+            }
+            "plan_policy" => {
+                let _ = engine.plan_policy();
+            }
+            "catalog_takeover" => {
+                let _ = engine.catalog_takeover();
             }
             other => panic!("Engine method `{other}` has no call in this test; add it here and to Recorder"),
         }

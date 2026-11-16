@@ -34,8 +34,8 @@ use std::path::PathBuf;
 use anyhow::{Context, anyhow, bail};
 use order::merge_by_index;
 use poly_engine_api::engine::{
-    Capabilities, Diagnostic, Engine, OptionKeys, OptionTable, OptionType, ProjectFile, ProjectInputs, ProjectRequest,
-    WireSelection,
+    Capabilities, Diagnostic, Engine, OptionKeys, OptionTable, OptionType, ProjectAnalysis, ProjectFile, ProjectInputs,
+    ProjectRequest, WireSelection,
 };
 use poly_engine_api::language::Language;
 use ruff_db::Db as SourceDb;
@@ -103,6 +103,12 @@ impl Engine for TyEngine {
         "ty-0.0.21+proj1"
     }
 
+    fn project_analysis(&self) -> Option<&dyn ProjectAnalysis> {
+        Some(self)
+    }
+}
+
+impl ProjectAnalysis for TyEngine {
     /// Planned only once `backend` is set, so a Python project that never mentions it pays nothing.
     fn project_inputs(&self) -> ProjectInputs {
         ProjectInputs {

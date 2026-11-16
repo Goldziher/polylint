@@ -108,7 +108,7 @@ fn the_engine_is_off_until_enabled() {
 
 #[test]
 fn the_engine_is_cross_cutting_lint_only_and_claims_no_language_coverage() {
-    let engine = SecretsEngine;
+    let engine: &dyn Engine = &SecretsEngine;
     assert_eq!(engine.name(), "secrets");
     assert!(engine.languages().is_empty());
     let capabilities = engine.capabilities();

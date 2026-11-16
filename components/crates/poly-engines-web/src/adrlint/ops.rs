@@ -2,7 +2,7 @@
 //!
 //! The same operations the `adrlint` CLI's `lock`, `unlock` and `new` commands perform, over the
 //! bundled adrlint library and the `[engines.adrlint]` settings. [`plan`] is a pure function of its
-//! input, like [`Engine::project_check`](poly_engine_api::engine::Engine::project_check): the host
+//! input, like [`ProjectAnalysis::project_check`](poly_engine_api::engine::ProjectAnalysis::project_check): the host
 //! hands over the files as content, with paths relative to the project root, and writes the answer's
 //! [`WireAdrPlan::writes`] itself. That is what lets the web component answer it as
 //! `Request::Adr` and a bundled build call it in-process with the same result.

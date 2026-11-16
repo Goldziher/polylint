@@ -10,8 +10,8 @@ use poly_component_protocol::{
 use poly_engine_api::component_wire::wire_diagnostic;
 use poly_engine_api::config::EngineConfig;
 use poly_engine_api::engine::{
-    BatchSupport, Capabilities, Diagnostic, Engine, FormatOutput, OptionKeys, OptionTable, OptionType, Severity,
-    SourceFile, Span,
+    BatchSupport, Batching, Capabilities, CatalogTakeover, Diagnostic, Engine, FormatOutput, OptionKeys, OptionTable,
+    OptionType, Severity, SourceFile, Span,
 };
 use poly_engine_api::language::Language;
 use poly_engines::Producer;
@@ -55,18 +55,6 @@ impl Engine for Fake {
     fn skip_reason(&self, src: &SourceFile) -> Option<Cow<'static, str>> {
         src.content.is_empty().then_some(Cow::Borrowed("empty"))
     }
-    fn batch_support(&self, _cfg: &EngineConfig) -> BatchSupport {
-        BatchSupport {
-            format: true,
-            lint: true,
-        }
-    }
-    fn takes_over_tier_one(&self) -> bool {
-        true
-    }
-    fn claimed_paths(&self) -> Vec<String> {
-        vec!["*.sqlx".into()]
-    }
     fn lint(&self, src: &SourceFile, cfg: &EngineConfig) -> anyhow::Result<Vec<Diagnostic>> {
         match self.0 {
             "fake-panic" => panic!("boom"),
@@ -101,6 +89,21 @@ impl Engine for Fake {
             _ => Ok(FormatOutput::Formatted(src.content.to_uppercase())),
         }
     }
+    fn batching(&self) -> Option<&dyn Batching> {
+        Some(self)
+    }
+    fn catalog_takeover(&self) -> Option<&dyn CatalogTakeover> {
+        Some(self)
+    }
+}
+
+impl Batching for Fake {
+    fn batch_support(&self, _cfg: &EngineConfig) -> BatchSupport {
+        BatchSupport {
+            format: true,
+            lint: true,
+        }
+    }
     fn lint_batch(
         &self,
         batch: &[SourceFile],
@@ -123,6 +126,15 @@ impl Engine for Fake {
         cfg: &EngineConfig,
     ) -> anyhow::Result<Vec<anyhow::Result<FormatOutput>>> {
         Ok(batch.iter().map(|src| self.format(src, cfg)).collect())
+    }
+}
+
+impl CatalogTakeover for Fake {
+    fn takes_over_tier_one(&self) -> bool {
+        true
+    }
+    fn claimed_paths(&self) -> Vec<String> {
+        vec!["*.sqlx".into()]
     }
 }
 

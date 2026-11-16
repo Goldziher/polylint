@@ -1,5 +1,5 @@
-//! Every `Engine` trait method must have a wire mapping, and every `Diagnostic` must survive a trip
-//! through `WireDiagnostic`, whether or not it is the requested engine's own finding.
+//! Every method of the `Engine` trait and its facets must have a wire mapping, and every `Diagnostic`
+//! must survive a trip through `WireDiagnostic`, whether or not it is the requested engine's own finding.
 
 use std::collections::BTreeSet;
 
@@ -8,20 +8,32 @@ use poly_core::engine::{Diagnostic, Edit, Severity, Span};
 use poly_engine_api::component_wire::{diagnostic_from_wire, wire_diagnostic};
 use proptest::prelude::*;
 
-/// Method names declared inside `pub trait Engine { ... }`, scanned from source text.
+/// Method names declared inside `pub trait Engine` and its facet traits, scanned from source text.
 fn engine_trait_methods() -> BTreeSet<String> {
-    let source =
-        std::fs::read_to_string(concat!(env!("CARGO_MANIFEST_DIR"), "/../poly-engine-api/src/engine.rs")).unwrap();
-    let mut lines = source.lines().skip_while(|l| !l.starts_with("pub trait Engine"));
-    assert!(lines.next().is_some(), "`pub trait Engine` not found in engine.rs");
+    let api = concat!(env!("CARGO_MANIFEST_DIR"), "/../poly-engine-api/src");
+    let traits: [(&str, &[&str]); 2] = [
+        ("engine.rs", &["Engine"]),
+        (
+            "engine/facets.rs",
+            &["Batching", "ProjectAnalysis", "PlanPolicy", "CatalogTakeover"],
+        ),
+    ];
     let mut methods = BTreeSet::new();
-    for line in lines {
-        if line == "}" {
-            break;
-        }
-        if let Some(rest) = line.strip_prefix("    fn ") {
-            let name: String = rest.chars().take_while(|c| c.is_alphanumeric() || *c == '_').collect();
-            methods.insert(name);
+    for (file, names) in traits {
+        let source = std::fs::read_to_string(format!("{api}/{file}")).unwrap();
+        for name in names {
+            let header = format!("pub trait {name}:");
+            let mut lines = source.lines().skip_while(|l| !l.starts_with(&header));
+            assert!(lines.next().is_some(), "`pub trait {name}` not found in {file}");
+            for line in lines {
+                if line == "}" {
+                    break;
+                }
+                if let Some(rest) = line.strip_prefix("    fn ") {
+                    let method: String = rest.chars().take_while(|c| c.is_alphanumeric() || *c == '_').collect();
+                    methods.insert(method);
+                }
+            }
         }
     }
     methods
@@ -36,11 +48,11 @@ fn every_engine_method_has_a_protocol_mapping() {
     let stale: Vec<_> = mapped.difference(&trait_methods).collect();
     assert!(
         unmapped.is_empty(),
-        "Engine methods with no entry in poly_component_protocol::ENGINE_METHODS: {unmapped:?}"
+        "Engine or facet methods with no entry in poly_component_protocol::ENGINE_METHODS: {unmapped:?}"
     );
     assert!(
         stale.is_empty(),
-        "ENGINE_METHODS entries that are not Engine methods: {stale:?}"
+        "ENGINE_METHODS entries that are not Engine or facet methods: {stale:?}"
     );
 }
 

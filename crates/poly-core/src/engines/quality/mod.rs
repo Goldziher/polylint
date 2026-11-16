@@ -47,7 +47,7 @@
 //! the run level: a language left with nothing but the line count and the
 //! marker scan is not a language this engine lints. Even a fully modelled
 //! language is not lint coverage (ADR 0053): metrics are not correctness, so
-//! [`Engine::provides_language_lint`] is always `false` here. See [`coverage`].
+//! [`PlanPolicy::provides_language_lint`] is always `false` here. See [`coverage`].
 
 pub mod complexity;
 pub mod coverage;
@@ -70,7 +70,7 @@ use tree_sitter::Parser;
 use tree_sitter_language_pack::detect_language;
 
 use crate::config::EngineConfig;
-use crate::engine::{Capabilities, Diagnostic, Engine, OptionKeys, OptionTable, SourceFile};
+use crate::engine::{Capabilities, Diagnostic, Engine, OptionKeys, OptionTable, PlanPolicy, SourceFile};
 use crate::engines::line_index::LineIndex;
 use crate::language::Language;
 use family::Rule;
@@ -136,15 +136,6 @@ impl Engine for QualityEngine {
         QUALITY_VERSION
     }
 
-    /// Never claims coverage: size and complexity metrics say nothing about
-    /// correctness (ADR 0053, amending ADR 0027), so a file only this engine
-    /// models must not count as linted. The findings are still reported;
-    /// [`coverage::models_language`] lets the runner name the situation in the
-    /// skip reason.
-    fn provides_language_lint(&self, _language: &Language, _cfg: &EngineConfig) -> bool {
-        false
-    }
-
     fn lint(&self, src: &SourceFile, cfg: &EngineConfig) -> anyhow::Result<Vec<Diagnostic>> {
         let settings = Settings::from_config(cfg);
         if !settings.enabled {
@@ -170,6 +161,21 @@ impl Engine for QualityEngine {
 
         Ok(diagnostics)
     }
+
+    fn plan_policy(&self) -> Option<&dyn PlanPolicy> {
+        Some(self)
+    }
+}
+
+impl PlanPolicy for QualityEngine {
+    /// Never claims coverage: size and complexity metrics say nothing about
+    /// correctness (ADR 0053, amending ADR 0027), so a file only this engine
+    /// models must not count as linted. The findings are still reported;
+    /// [`coverage::models_language`] lets the runner name the situation in the
+    /// skip reason.
+    fn provides_language_lint(&self, _language: &Language, _cfg: &EngineConfig) -> bool {
+        false
+    }
 }
 
 /// Resolve the language-pack grammar name for `src`, mirroring
@@ -178,7 +184,7 @@ impl Engine for QualityEngine {
 /// which has no separate grammar of its own — confirmed empirically), then
 /// fall back to [`coverage::grammar_for`], which maps a [`Language`] (the
 /// tier-1 variants and the [`Language::Other`] tail alike) to the same
-/// grammar name [`Engine::provides_language_lint`] answers for — so the
+/// grammar name [`PlanPolicy::provides_language_lint`] answers for — so the
 /// grammar a file is parsed with and the grammar coverage was claimed for
 /// can never disagree.
 fn grammar_name(src: &SourceFile) -> Option<String> {

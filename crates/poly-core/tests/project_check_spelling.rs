@@ -11,7 +11,7 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
-use poly_core::engine::{ProjectDirs, ProjectInputs, ProjectRequest, ProjectSideFile, Severity, Span};
+use poly_core::engine::{ProjectAnalysis, ProjectDirs, ProjectInputs, ProjectRequest, ProjectSideFile, Severity, Span};
 use poly_core::runner::with_extra_project_engines;
 use poly_core::{Capabilities, Config, Diagnostic, Engine, Language, LintRun, RunOptions, lint_run};
 
@@ -47,6 +47,12 @@ impl Engine for LogCheck {
         "1"
     }
 
+    fn project_analysis(&self) -> Option<&dyn ProjectAnalysis> {
+        Some(self)
+    }
+}
+
+impl ProjectAnalysis for LogCheck {
     fn project_inputs(&self) -> ProjectInputs {
         ProjectInputs {
             gate_key: None,

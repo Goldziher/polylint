@@ -568,7 +568,7 @@ fn budget_prefix(candidates: &[Candidate]) -> Option<usize> {
 
 /// Split `total` files into at most one shard per worker, as evenly as possible
 /// and never smaller than `floor` (at least [`MIN_BATCH`]). The floor is the
-/// engine's own ([`crate::engine::Engine::batch_shard_floor`]): a JVM tool pays
+/// engine's own ([`crate::engine::Batching::batch_shard_floor`]): a JVM tool pays
 /// seconds of start-up per shard, so a small group stays one invocation.
 fn shard_sizes(total: usize, floor: usize) -> Vec<usize> {
     let workers = rayon::current_num_threads().max(1);
@@ -672,7 +672,7 @@ mod tests {
         use super::super::{Candidate, PrefillEntry, prefill, run_shard};
         use crate::config::{EngineConfig, GlobalDefaults};
         use crate::discover::DiscoveredFile;
-        use crate::engine::{BatchSupport, Capabilities, Engine, FormatOutput, SourceFile};
+        use crate::engine::{BatchSupport, Batching, Capabilities, Engine, FormatOutput, SourceFile};
         use crate::filter::SeverityRemap;
         use crate::language::Language;
         use crate::runner::plan::{EnginePlan, RunPlan};
@@ -706,6 +706,12 @@ mod tests {
                 "test"
             }
 
+            fn batching(&self) -> Option<&dyn Batching> {
+                Some(self)
+            }
+        }
+
+        impl Batching for Appender {
             fn batch_support(&self, _cfg: &EngineConfig) -> BatchSupport {
                 BatchSupport {
                     format: true,

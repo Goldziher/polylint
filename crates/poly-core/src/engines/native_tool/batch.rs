@@ -525,7 +525,7 @@ fi
     #[test]
     fn only_tools_that_can_rewrite_named_files_declare_batch_capability() {
         use crate::config::{EngineConfig, GlobalDefaults};
-        use crate::engine::Engine;
+        use crate::engine::Batching;
         use crate::engines::native_tool::NativeToolEngine;
 
         // Opted in, so what varies below is capability alone.
@@ -575,7 +575,7 @@ fi
     #[test]
     fn batching_is_on_unless_the_config_opts_out() {
         use crate::config::{EngineConfig, GlobalDefaults};
-        use crate::engine::Engine;
+        use crate::engine::Batching;
         use crate::engines::native_tool::NativeToolEngine;
 
         let cfg = |value: Option<toml::Value>| {

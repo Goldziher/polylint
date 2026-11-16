@@ -27,7 +27,7 @@ use harper_core::{Dialect, DictWordMetadata, Document};
 
 use poly_engine_api::config::EngineConfig;
 use poly_engine_api::engine::{
-    Capabilities, Diagnostic, Engine, OptionKeys, OptionTable, OptionType, Severity, SourceFile, Span,
+    Capabilities, Diagnostic, Engine, OptionKeys, OptionTable, OptionType, PlanPolicy, Severity, SourceFile, Span,
 };
 use poly_engine_api::language::Language;
 use poly_engine_api::line_index::LineIndex;
@@ -110,12 +110,6 @@ impl Engine for HarperEngine {
         poly_engine_api::desc::hooks::PROVIDES_LANGUAGE
     }
 
-    /// Never claims a language: prose checks cover a file's text, not its code, so a green run
-    /// says nothing about the language's lint coverage.
-    fn provides_language_lint(&self, _language: &Language, _cfg: &EngineConfig) -> bool {
-        false
-    }
-
     fn lint(&self, src: &SourceFile, cfg: &EngineConfig) -> anyhow::Result<Vec<Diagnostic>> {
         if !enabled(cfg) || src.content.len() >= MAX_BYTES {
             return Ok(Vec::new());
@@ -150,6 +144,18 @@ impl Engine for HarperEngine {
                 .collect::<Vec<_>>()
         });
         Ok(diagnostics)
+    }
+
+    fn plan_policy(&self) -> Option<&dyn PlanPolicy> {
+        Some(self)
+    }
+}
+
+impl PlanPolicy for HarperEngine {
+    /// Never claims a language: prose checks cover a file's text, not its code, so a green run
+    /// says nothing about the language's lint coverage.
+    fn provides_language_lint(&self, _language: &Language, _cfg: &EngineConfig) -> bool {
+        false
     }
 }
 

@@ -9,7 +9,7 @@ use common::{FakeComponent, config, desc, describe_of, init, source};
 use poly_component_host::{ComponentEngine, ComponentSlot, SlotStatus, component_version};
 use poly_component_protocol::hooks;
 use poly_engine_api::declined::Declined;
-use poly_engine_api::engine::{BatchSupport, Engine, FormatOutput};
+use poly_engine_api::engine::{BatchSupport, Batching, Engine, FormatOutput, PlanPolicy};
 
 fn engine_with(hooks: u32, host_hook: &str) -> (ComponentEngine, Arc<FakeComponent>) {
     let wire = desc(hooks, host_hook);

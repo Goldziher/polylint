@@ -127,7 +127,8 @@ use tracing::warn;
 
 use crate::config::EngineConfig;
 use crate::engine::{
-    BatchSupport, Capabilities, Diagnostic, Engine, FormatOutput, OptionKeys, OptionTable, OptionType, SourceFile,
+    BatchSupport, Batching, Capabilities, Diagnostic, Engine, FormatOutput, OptionKeys, OptionTable, OptionType,
+    PlanPolicy, SourceFile,
 };
 use crate::engines::treesitter::TreeSitterEngine;
 use crate::language::Language;
@@ -307,15 +308,6 @@ impl Engine for NativeToolEngine {
         }
     }
 
-    /// Reads `enabled` itself and falls back to the tier-2 reindenter when it
-    /// is `false` (see [`Engine::format`](crate::engine::Engine::format) below),
-    /// so the runner must leave it in the plan. Go, Rust, Zig, Java, Kotlin, R,
-    /// Swift, Dart and Gleam have no separately registered tree-sitter entry —
-    /// dropping this engine would leave them with no formatter at all.
-    fn self_manages_enabled(&self) -> bool {
-        true
-    }
-
     /// Capability declaration:
     ///
     /// - Go/Rust/Zig/… format engines: `format` only. These wrap format-only
@@ -356,18 +348,6 @@ impl Engine for NativeToolEngine {
         }
     }
 
-    /// A native tool only lints its language when it is both switched on and
-    /// installed. `shellcheck` is opt-in and its [`Engine::lint`] returns no
-    /// diagnostics when either is false, so claiming coverage from the
-    /// capability alone would report an unexamined shell script as linted —
-    /// precisely the silent under-checking this hook exists to prevent.
-    fn provides_language_lint(&self, _language: &Language, cfg: &EngineConfig) -> bool {
-        match self.role {
-            NativeRole::Shellcheck => self.shellcheck(cfg).is_some(),
-            _ => self.capabilities().lint && self.is_enabled(cfg) && self.probed_version().is_some(),
-        }
-    }
-
     /// A downloaded `shellcheck` is keyed by its own version and build, not by the host's
     /// (absent) one, so results never cross between binaries.
     fn run_context(&self, cfg: &EngineConfig) -> String {
@@ -375,10 +355,6 @@ impl Engine for NativeToolEngine {
             Some(selected) if !selected.salt.is_empty() => selected.salt,
             _ => crate::host_hooks::run_context(self.host_hook(), cfg),
         }
-    }
-
-    fn provides_language_format(&self, _language: &Language, cfg: &EngineConfig) -> bool {
-        self.capabilities().format && self.is_enabled(cfg) && self.probed_version().is_some()
     }
 
     /// `enabled` is uniform across every wrapped toolchain binary — a native
@@ -536,6 +512,16 @@ impl Engine for NativeToolEngine {
         }
     }
 
+    fn batching(&self) -> Option<&dyn Batching> {
+        Some(self)
+    }
+
+    fn plan_policy(&self) -> Option<&dyn PlanPolicy> {
+        Some(self)
+    }
+}
+
+impl Batching for NativeToolEngine {
     /// Whether this backend batches: the tool must be able to rewrite named
     /// files (or, for `shellcheck`, to lint several in one run) *and* the config
     /// must not have opted out with `batch = false`. See [`batch::wants_batch`]
@@ -543,8 +529,8 @@ impl Engine for NativeToolEngine {
     ///
     /// This answers from the static spec alone. Whether the tool is *enabled*
     /// and *present* is settled inside
-    /// [`format_batch`](crate::engine::Engine::format_batch) and
-    /// [`lint_batch`](crate::engine::Engine::lint_batch), which fail the batch so
+    /// [`format_batch`](crate::engine::Batching::format_batch) and
+    /// [`lint_batch`](crate::engine::Batching::lint_batch), which fail the batch so
     /// the caller falls back to the per-file path — the same path that owns the
     /// tier-2 delegation.
     fn batch_support(&self, cfg: &EngineConfig) -> BatchSupport {
@@ -601,6 +587,33 @@ impl Engine for NativeToolEngine {
             .zip(batch)
             .map(|(result, src)| result.map(|formatted| self.role.finish(formatted, src)))
             .collect())
+    }
+}
+
+impl PlanPolicy for NativeToolEngine {
+    /// Reads `enabled` itself and falls back to the tier-2 reindenter when it
+    /// is `false` (see [`Engine::format`](crate::engine::Engine::format) below),
+    /// so the runner must leave it in the plan. Go, Rust, Zig, Java, Kotlin, R,
+    /// Swift, Dart and Gleam have no separately registered tree-sitter entry —
+    /// dropping this engine would leave them with no formatter at all.
+    fn self_manages_enabled(&self) -> bool {
+        true
+    }
+
+    /// A native tool only lints its language when it is both switched on and
+    /// installed. `shellcheck` is opt-in and its [`Engine::lint`] returns no
+    /// diagnostics when either is false, so claiming coverage from the
+    /// capability alone would report an unexamined shell script as linted —
+    /// precisely the silent under-checking this hook exists to prevent.
+    fn provides_language_lint(&self, _language: &Language, cfg: &EngineConfig) -> bool {
+        match self.role {
+            NativeRole::Shellcheck => self.shellcheck(cfg).is_some(),
+            _ => self.capabilities().lint && self.is_enabled(cfg) && self.probed_version().is_some(),
+        }
+    }
+
+    fn provides_language_format(&self, _language: &Language, cfg: &EngineConfig) -> bool {
+        self.capabilities().format && self.is_enabled(cfg) && self.probed_version().is_some()
     }
 }
 

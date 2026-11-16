@@ -325,13 +325,13 @@ mod lint_batching {
 
     use super::*;
     use crate::config::{EngineConfig, GlobalDefaults};
-    use crate::engine::{BatchSupport, Capabilities, Engine, Severity};
+    use crate::engine::{BatchSupport, Batching, Capabilities, Engine, Severity};
     use crate::filter::SeverityRemap;
 
-    /// Answers `batched` through [`Engine::lint_batch`] and `per-file` through
+    /// Answers `batched` through [`Batching::lint_batch`] and `per-file` through
     /// [`Engine::lint`], so which path produced a diagnostic is visible in it.
     /// A member whose content contains `REFUSED` is declined by the batch.
-    struct Batching {
+    struct BatchingStub {
         batches: Arc<AtomicUsize>,
     }
 
@@ -349,7 +349,7 @@ mod lint_batching {
         }
     }
 
-    impl Engine for Batching {
+    impl Engine for BatchingStub {
         fn name(&self) -> &'static str {
             "batching"
         }
@@ -371,15 +371,21 @@ mod lint_batching {
             "test"
         }
 
+        fn lint(&self, _src: &SourceFile, _cfg: &EngineConfig) -> anyhow::Result<Vec<Diagnostic>> {
+            Ok(vec![finding("per-file")])
+        }
+
+        fn batching(&self) -> Option<&dyn Batching> {
+            Some(self)
+        }
+    }
+
+    impl Batching for BatchingStub {
         fn batch_support(&self, _cfg: &EngineConfig) -> BatchSupport {
             BatchSupport {
                 format: false,
                 lint: true,
             }
-        }
-
-        fn lint(&self, _src: &SourceFile, _cfg: &EngineConfig) -> anyhow::Result<Vec<Diagnostic>> {
-            Ok(vec![finding("per-file")])
         }
 
         fn lint_batch(
@@ -403,7 +409,7 @@ mod lint_batching {
 
     fn plans(batches: &Arc<AtomicUsize>) -> Vec<EnginePlan> {
         vec![EnginePlan {
-            engine: Box::new(Batching {
+            engine: Box::new(BatchingStub {
                 batches: Arc::clone(batches),
             }),
             config: EngineConfig {

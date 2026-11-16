@@ -265,6 +265,6 @@ fn the_provider_serves_r_with_air_then_jarl_and_no_other_language() {
     let names: Vec<_> = engines_for(&Language::R).iter().map(|engine| engine.name()).collect();
     assert_eq!(names, ["air", "jarl"]);
     assert!(engines_for(&Language::Python).is_empty());
-    let engine = JarlEngine;
+    let engine: &dyn Engine = &JarlEngine;
     assert!(engine.provides_language_lint(&Language::R, &config("")));
 }

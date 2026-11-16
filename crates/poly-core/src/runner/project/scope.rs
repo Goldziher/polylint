@@ -1,5 +1,5 @@
 //! What a run was asked to look at, for an engine whose project check reads a directory tree of its
-//! own (see [`Engine::project_inputs`](crate::engine::Engine::project_inputs)).
+//! own (see [`ProjectAnalysis::project_inputs`](crate::engine::ProjectAnalysis::project_inputs)).
 //!
 //! Such an engine judges the whole tree whatever paths the run named, because a verdict over one
 //! file of a log is not the verdict over the log. The run's paths then decide only which of its

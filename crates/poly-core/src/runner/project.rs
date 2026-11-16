@@ -8,9 +8,10 @@
 //! suppression and `[per-file-ignores]` filters as per-file diagnostics, so a report cannot tell
 //! the two apart.
 //!
-//! An engine that declares directories in [`Engine::project_inputs`](crate::engine::Engine::project_inputs)
-//! is not handed the run's file set but the tree under those directories, so its verdict does not
-//! depend on which paths the run named; only the findings it reports do.
+//! An engine that declares directories in
+//! [`ProjectAnalysis::project_inputs`](crate::engine::ProjectAnalysis::project_inputs) is not handed
+//! the run's file set but the tree under those directories, so its verdict does not depend on which
+//! paths the run named; only the findings it reports do.
 //!
 //! Results are cached under [`Namespace::Lint`] with the engine id `project:<engine>`, keyed on
 //! the engine version, a fingerprint of its resolved config, the host environment, and the sorted

@@ -14,8 +14,8 @@ use poly_engine_api::component_wire::{OffsetOutOfRange, diagnostic_from_wire};
 use poly_engine_api::config::EngineConfig;
 use poly_engine_api::declined::Declined;
 use poly_engine_api::engine::{
-    BatchSupport, Capabilities, Diagnostic, Engine, FormatOutput, OptionKeys, OptionTable, OptionType, ProjectDirs,
-    ProjectInputs, ProjectRequest, ProjectSideFile, SourceFile,
+    BatchSupport, Batching, Capabilities, CatalogTakeover, Diagnostic, Engine, FormatOutput, OptionKeys, OptionTable,
+    OptionType, PlanPolicy, ProjectAnalysis, ProjectDirs, ProjectInputs, ProjectRequest, ProjectSideFile, SourceFile,
 };
 use poly_engine_api::host_hooks::HostHook;
 use poly_engine_api::language::Language;
@@ -420,26 +420,6 @@ impl Engine for ComponentEngine {
         self.host_hook
     }
 
-    fn provides_language_lint(&self, language: &Language, cfg: &EngineConfig) -> bool {
-        if self.unavailable.is_some() {
-            return false;
-        }
-        if !self.hook(hooks::PROVIDES_LANGUAGE) {
-            return !self.languages.is_empty();
-        }
-        self.provides_language(language, cfg, WireKind::Lint)
-    }
-
-    fn provides_language_format(&self, language: &Language, cfg: &EngineConfig) -> bool {
-        if self.unavailable.is_some() {
-            return false;
-        }
-        if !self.hook(hooks::PROVIDES_LANGUAGE) {
-            return self.capabilities.format;
-        }
-        self.provides_language(language, cfg, WireKind::Format)
-    }
-
     fn skip_reason(&self, src: &SourceFile) -> Option<Cow<'static, str>> {
         if let Some(reason) = &self.unavailable {
             return self.unavailable_skips.then(|| Cow::Owned(reason.clone()));
@@ -489,50 +469,47 @@ impl Engine for ComponentEngine {
         }
     }
 
-    fn project_check(&self, req: &ProjectRequest<'_>) -> anyhow::Result<Vec<(PathBuf, Vec<Diagnostic>)>> {
-        if self.unavailable_noop {
-            return Ok(Vec::new());
+    fn lint_cache_salt(&self, src: &SourceFile) -> Option<String> {
+        if self.unavailable.is_some() || !self.hook(hooks::LINT_CACHE_SALT) {
+            return None;
         }
-        let connection = self.connect()?;
-        let relative = |path: &Path| path.strip_prefix(req.root).unwrap_or(path).to_path_buf();
-        let mut body = Vec::new();
-        let mut files = Vec::with_capacity(req.files.len());
-        let mut originals: HashMap<String, PathBuf> = HashMap::with_capacity(req.files.len());
-        for file in req.files {
-            let rel = path_string(&relative(&file.path)).replace(std::path::MAIN_SEPARATOR, "/");
-            files.push(WireFileSlice {
-                path: rel.clone(),
-                language: file.language.id().to_owned(),
-                offset: body.len() as u64,
-                len: file.content.len() as u64,
-            });
-            body.extend_from_slice(file.content.as_bytes());
-            originals.insert(rel, file.path.clone());
-        }
-        let request = Request::ProjectCheck {
-            engine: self.name.to_owned(),
-            root: path_string(req.root),
-            files,
-            config: 0,
-            environment: req.environment.to_wire_pairs(),
-            threads: req.threads.map(|n| u32::try_from(n).unwrap_or(u32::MAX)),
+        let call = || -> anyhow::Result<Option<String>> {
+            let request = Request::LintCacheSalt {
+                engine: self.name.to_owned(),
+                file: wire_file(src),
+            };
+            match self
+                .connect()?
+                .call_plain(self.name, &request, src.content.as_bytes())?
+            {
+                Payload::OptString(salt) => Ok(salt),
+                _ => Err(self.unexpected("LintCacheSalt")),
+            }
         };
-        let payload = connection.call(self.name, req.config, request, &body)?;
-        let Payload::Project(per_file) = payload else {
-            return Err(self.unexpected("ProjectCheck"));
-        };
-        per_file
-            .into_iter()
-            .map(|entry| {
-                let path = originals
-                    .get(&entry.path)
-                    .cloned()
-                    .unwrap_or_else(|| req.root.join(&entry.path));
-                Ok((path, diagnostics(entry.diagnostics, self.name)?))
-            })
-            .collect()
+        call().unwrap_or_else(|error| {
+            tracing::warn!(engine = self.name, "lint_cache_salt unavailable: {error:#}");
+            None
+        })
     }
 
+    fn batching(&self) -> Option<&dyn Batching> {
+        Some(self)
+    }
+
+    fn project_analysis(&self) -> Option<&dyn ProjectAnalysis> {
+        Some(self)
+    }
+
+    fn plan_policy(&self) -> Option<&dyn PlanPolicy> {
+        Some(self)
+    }
+
+    fn catalog_takeover(&self) -> Option<&dyn CatalogTakeover> {
+        Some(self)
+    }
+}
+
+impl Batching for ComponentEngine {
     fn batch_support(&self, cfg: &EngineConfig) -> BatchSupport {
         if self.unavailable.is_some() || !self.hook(hooks::BATCH_SUPPORT) {
             return BatchSupport::default();
@@ -610,41 +587,96 @@ impl Engine for ComponentEngine {
             .collect())
     }
 
-    fn lint_cache_salt(&self, src: &SourceFile) -> Option<String> {
-        if self.unavailable.is_some() || !self.hook(hooks::LINT_CACHE_SALT) {
-            return None;
+    fn batch_shard_floor(&self) -> usize {
+        self.batch_shard_floor
+    }
+}
+
+impl ProjectAnalysis for ComponentEngine {
+    fn project_check(&self, req: &ProjectRequest<'_>) -> anyhow::Result<Vec<(PathBuf, Vec<Diagnostic>)>> {
+        if self.unavailable_noop {
+            return Ok(Vec::new());
         }
-        let call = || -> anyhow::Result<Option<String>> {
-            let request = Request::LintCacheSalt {
-                engine: self.name.to_owned(),
-                file: wire_file(src),
-            };
-            match self
-                .connect()?
-                .call_plain(self.name, &request, src.content.as_bytes())?
-            {
-                Payload::OptString(salt) => Ok(salt),
-                _ => Err(self.unexpected("LintCacheSalt")),
-            }
+        let connection = self.connect()?;
+        let relative = |path: &Path| path.strip_prefix(req.root).unwrap_or(path).to_path_buf();
+        let mut body = Vec::new();
+        let mut files = Vec::with_capacity(req.files.len());
+        let mut originals: HashMap<String, PathBuf> = HashMap::with_capacity(req.files.len());
+        for file in req.files {
+            let rel = path_string(&relative(&file.path)).replace(std::path::MAIN_SEPARATOR, "/");
+            files.push(WireFileSlice {
+                path: rel.clone(),
+                language: file.language.id().to_owned(),
+                offset: body.len() as u64,
+                len: file.content.len() as u64,
+            });
+            body.extend_from_slice(file.content.as_bytes());
+            originals.insert(rel, file.path.clone());
+        }
+        let request = Request::ProjectCheck {
+            engine: self.name.to_owned(),
+            root: path_string(req.root),
+            files,
+            config: 0,
+            environment: req.environment.to_wire_pairs(),
+            threads: req.threads.map(|n| u32::try_from(n).unwrap_or(u32::MAX)),
         };
-        call().unwrap_or_else(|error| {
-            tracing::warn!(engine = self.name, "lint_cache_salt unavailable: {error:#}");
-            None
-        })
+        let payload = connection.call(self.name, req.config, request, &body)?;
+        let Payload::Project(per_file) = payload else {
+            return Err(self.unexpected("ProjectCheck"));
+        };
+        per_file
+            .into_iter()
+            .map(|entry| {
+                let path = originals
+                    .get(&entry.path)
+                    .cloned()
+                    .unwrap_or_else(|| req.root.join(&entry.path));
+                Ok((path, diagnostics(entry.diagnostics, self.name)?))
+            })
+            .collect()
     }
 
     fn selection(&self) -> Option<WireSelection> {
         self.selection.clone()
     }
 
-    fn batch_shard_floor(&self) -> usize {
-        self.batch_shard_floor
-    }
-
     fn project_inputs(&self) -> ProjectInputs {
         self.project_inputs.clone()
     }
+}
 
+impl PlanPolicy for ComponentEngine {
+    fn provides_language_lint(&self, language: &Language, cfg: &EngineConfig) -> bool {
+        if self.unavailable.is_some() {
+            return false;
+        }
+        if !self.hook(hooks::PROVIDES_LANGUAGE) {
+            return !self.languages.is_empty();
+        }
+        self.provides_language(language, cfg, WireKind::Lint)
+    }
+
+    fn provides_language_format(&self, language: &Language, cfg: &EngineConfig) -> bool {
+        if self.unavailable.is_some() {
+            return false;
+        }
+        if !self.hook(hooks::PROVIDES_LANGUAGE) {
+            return self.capabilities.format;
+        }
+        self.provides_language(language, cfg, WireKind::Format)
+    }
+
+    fn self_manages_enabled(&self) -> bool {
+        self.self_manages_enabled
+    }
+
+    fn supersedes_generic_formatter(&self) -> bool {
+        self.supersedes_generic_formatter
+    }
+}
+
+impl CatalogTakeover for ComponentEngine {
     fn takes_over_tier_one(&self) -> bool {
         self.takes_over_tier_one
     }
@@ -655,14 +687,6 @@ impl Engine for ComponentEngine {
 
     fn supplements_tier_one(&self) -> bool {
         self.supplements_tier_one
-    }
-
-    fn self_manages_enabled(&self) -> bool {
-        self.self_manages_enabled
-    }
-
-    fn supersedes_generic_formatter(&self) -> bool {
-        self.supersedes_generic_formatter
     }
 }
 

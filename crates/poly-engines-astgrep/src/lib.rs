@@ -76,7 +76,8 @@ use serde::Serialize;
 
 use poly_engine_api::config::EngineConfig;
 use poly_engine_api::engine::{
-    Capabilities, Diagnostic, Engine, FormatOutput, OptionKeys, OptionTable, OptionType, Severity, SourceFile,
+    Capabilities, Diagnostic, Engine, FormatOutput, OptionKeys, OptionTable, OptionType, PlanPolicy, Severity,
+    SourceFile,
 };
 use poly_engine_api::host_hooks::HostHook;
 use poly_engine_api::language::Language;
@@ -198,20 +199,6 @@ impl Engine for AstGrepEngine {
         HostHook::GoModLint
     }
 
-    /// Cross-cutting by registration, but rules are written *per language* —
-    /// from the built-in pack, user dirs, or both — so a repo whose only
-    /// Kotlin rules are ast-grep rules genuinely has Kotlin lint coverage.
-    /// Answered by calling [`resolve_rules`], the exact same lookup
-    /// [`Engine::lint`] uses to decide what to scan, rather than the weaker
-    /// "some rule source is configured", which would claim coverage of every
-    /// language in the repo merely because the (default-on) built-in pack
-    /// exists, even for a language the pack has no rules for. The rule maps
-    /// backing both sources are cached (user rules by content hash, the pack
-    /// forever), so this shares the load the per-file pass is about to do.
-    fn provides_language_lint(&self, language: &Language, cfg: &EngineConfig) -> bool {
-        resolved_for(grammar_for_language_id(language.id()), cfg).is_ok_and(|r| r.scan.is_some() || r.go_arch.is_some())
-    }
-
     fn lint(&self, src: &SourceFile, cfg: &EngineConfig) -> anyhow::Result<Vec<Diagnostic>> {
         let lang_name = grammar_for_language_id(src.language.id());
         let resolved = resolved_for(lang_name, cfg)?;
@@ -267,6 +254,26 @@ impl Engine for AstGrepEngine {
 
     fn format(&self, _src: &SourceFile, _cfg: &EngineConfig) -> anyhow::Result<FormatOutput> {
         Ok(FormatOutput::Unchanged)
+    }
+
+    fn plan_policy(&self) -> Option<&dyn PlanPolicy> {
+        Some(self)
+    }
+}
+
+impl PlanPolicy for AstGrepEngine {
+    /// Cross-cutting by registration, but rules are written *per language* —
+    /// from the built-in pack, user dirs, or both — so a repo whose only
+    /// Kotlin rules are ast-grep rules genuinely has Kotlin lint coverage.
+    /// Answered by calling [`resolve_rules`], the exact same lookup
+    /// [`Engine::lint`] uses to decide what to scan, rather than the weaker
+    /// "some rule source is configured", which would claim coverage of every
+    /// language in the repo merely because the (default-on) built-in pack
+    /// exists, even for a language the pack has no rules for. The rule maps
+    /// backing both sources are cached (user rules by content hash, the pack
+    /// forever), so this shares the load the per-file pass is about to do.
+    fn provides_language_lint(&self, language: &Language, cfg: &EngineConfig) -> bool {
+        resolved_for(grammar_for_language_id(language.id()), cfg).is_ok_and(|r| r.scan.is_some() || r.go_arch.is_some())
     }
 }
 
@@ -385,7 +392,7 @@ pub(crate) fn builtin_pack_enabled(cfg: &EngineConfig) -> bool {
 /// Resolve the active rule set for one language: built-in pack rules (when
 /// enabled) with any user rule of the same `id` substituted in, filtered down
 /// to the ids `[lint.astgrep]` `select` / `extend_select` / `ignore` leaves
-/// active. Shared by [`Engine::lint`] and [`Engine::provides_language_lint`]
+/// active. Shared by [`Engine::lint`] and [`PlanPolicy::provides_language_lint`]
 /// so "does this language have lint coverage" answers exactly the rules
 /// `lint` is about to run.
 fn resolve_rules<'a>(

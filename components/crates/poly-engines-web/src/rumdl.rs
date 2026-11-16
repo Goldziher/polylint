@@ -42,8 +42,8 @@ use rumdl_lib::{
 use super::markdown_fmt;
 use poly_engine_api::config::EngineConfig;
 use poly_engine_api::engine::{
-    Capabilities, Diagnostic, Edit, Engine, FormatOutput, OptionKeys, OptionTable, OptionType, ProjectInputs,
-    ProjectRequest, Severity, SourceFile, Span,
+    Capabilities, Diagnostic, Edit, Engine, FormatOutput, OptionKeys, OptionTable, OptionType, ProjectAnalysis,
+    ProjectInputs, ProjectRequest, Severity, SourceFile, Span,
 };
 use poly_engine_api::language::Language;
 use poly_engine_api::options::OptionsExt;
@@ -164,15 +164,6 @@ impl Engine for RumdlEngine {
         contains_go_template_markdown(&src.content).then_some(Cow::Borrowed(GO_TEMPLATE_SKIP))
     }
 
-    /// Cross-file link fragments, off unless `cross_file_links = true`; see [`links`].
-    fn project_inputs(&self) -> ProjectInputs {
-        links::project_inputs()
-    }
-
-    fn project_check(&self, req: &ProjectRequest<'_>) -> anyhow::Result<Vec<(PathBuf, Vec<Diagnostic>)>> {
-        links::check(req)
-    }
-
     fn lint(&self, src: &SourceFile, cfg: &EngineConfig) -> anyhow::Result<Vec<Diagnostic>> {
         if contains_go_template_markdown(&src.content) {
             return Ok(Vec::new());
@@ -225,6 +216,21 @@ impl Engine for RumdlEngine {
         } else {
             Ok(FormatOutput::Formatted(content))
         }
+    }
+
+    fn project_analysis(&self) -> Option<&dyn ProjectAnalysis> {
+        Some(self)
+    }
+}
+
+impl ProjectAnalysis for RumdlEngine {
+    /// Cross-file link fragments, off unless `cross_file_links = true`; see [`links`].
+    fn project_inputs(&self) -> ProjectInputs {
+        links::project_inputs()
+    }
+
+    fn project_check(&self, req: &ProjectRequest<'_>) -> anyhow::Result<Vec<(PathBuf, Vec<Diagnostic>)>> {
+        links::check(req)
     }
 }
 

@@ -1,5 +1,5 @@
-//! How every `Engine` trait method crosses the wire. `poly-core`'s
-//! `tests/component_protocol_coverage.rs` fails when the trait and this table disagree.
+//! How every method of the `Engine` trait and its facets crosses the wire. `poly-core`'s
+//! `tests/component_protocol_coverage.rs` fails when the traits and this table disagree.
 
 /// How an `Engine` method is served to a component host.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -12,7 +12,8 @@ pub enum Coverage {
     HostSide(&'static str),
 }
 
-/// Every method of `poly_core::engine::Engine` and how it is served.
+/// Every method of `poly_core::engine::Engine` and of its facets (`Batching`, `ProjectAnalysis`,
+/// `PlanPolicy`, `CatalogTakeover`), and how it is served.
 pub const ENGINE_METHODS: &[(&str, Coverage)] = &[
     ("name", Coverage::Index("WireEngineDesc.name")),
     ("languages", Coverage::Index("WireEngineDesc.languages")),
@@ -63,5 +64,21 @@ pub const ENGINE_METHODS: &[(&str, Coverage)] = &[
     (
         "supersedes_generic_formatter",
         Coverage::Index("WireEngineDesc.supersedes_generic_formatter"),
+    ),
+    (
+        "batching",
+        Coverage::HostSide("facet accessor; a component engine exposes every facet and serves its methods"),
+    ),
+    (
+        "project_analysis",
+        Coverage::HostSide("facet accessor; a component engine exposes every facet and serves its methods"),
+    ),
+    (
+        "plan_policy",
+        Coverage::HostSide("facet accessor; a component engine exposes every facet and serves its methods"),
+    ),
+    (
+        "catalog_takeover",
+        Coverage::HostSide("facet accessor; a component engine exposes every facet and serves its methods"),
     ),
 ];

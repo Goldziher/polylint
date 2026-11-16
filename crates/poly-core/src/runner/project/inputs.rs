@@ -1,6 +1,7 @@
-//! What a project-check engine declared in [`Engine::project_inputs`](crate::engine::Engine::project_inputs),
-//! resolved against one project: the files it serves under its declared directories, its side
-//! files, and the listing of the files it does not serve.
+//! What a project-check engine declared in
+//! [`ProjectAnalysis::project_inputs`](crate::engine::ProjectAnalysis::project_inputs), resolved
+//! against one project: the files it serves under its declared directories, its side files, and the
+//! listing of the files it does not serve.
 //!
 //! The engine states the option keys; this module reads the option values, so no engine name
 //! appears here. Everything is handed over as content (a listing entry has none), because a

@@ -9,7 +9,7 @@ use std::path::{Path, PathBuf};
 
 use adrlint::{adr, lock};
 use poly_engine_api::config::{EngineConfig, GlobalDefaults};
-use poly_engine_api::engine::{Engine, ProjectEnvironment, ProjectFile, ProjectRequest};
+use poly_engine_api::engine::{ProjectAnalysis, ProjectEnvironment, ProjectFile, ProjectRequest};
 use poly_engine_api::language::Language;
 use poly_engine_api::project::LISTING_LANGUAGE;
 use poly_engines_web::adrlint::AdrlintEngine;

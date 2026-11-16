@@ -88,7 +88,7 @@ pub fn call_engine_component_with_body(
     slot.connection()?.call_plain(engine, request, body)
 }
 
-/// What `engine` declared in `Engine::project_inputs`, as the component index records it: the option
+/// What `engine` declared in `ProjectAnalysis::project_inputs`, as the component index records it: the option
 /// keys naming its directories and side files, and their defaults. `None` when no component hosts
 /// `engine`. Read from the index in every build, so a host that never loads the engine still resolves
 /// the same directories a run's project check does. `injection` replaces the embedded index (tests).

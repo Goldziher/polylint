@@ -333,7 +333,7 @@ impl Connection {
         }
     }
 
-    /// `Engine::batch_support` of `engine` under `cfg`, asked once per engine and config for the life
+    /// `Batching::batch_support` of `engine` under `cfg`, asked once per engine and config for the life
     /// of the connection.
     ///
     /// The answer depends on the config alone, and the runner asks it for every file it considers

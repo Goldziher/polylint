@@ -5,7 +5,9 @@
 use std::path::{Path, PathBuf};
 
 use poly_engine_api::config::{EngineConfig, GlobalDefaults};
-use poly_engine_api::engine::{Diagnostic, Engine, ProjectEnvironment, ProjectFile, ProjectRequest, Severity};
+use poly_engine_api::engine::{
+    Diagnostic, Engine, ProjectAnalysis, ProjectEnvironment, ProjectFile, ProjectRequest, Severity,
+};
 use poly_engine_api::language::Language;
 use poly_engines_tsrs::TsrsEngine;
 

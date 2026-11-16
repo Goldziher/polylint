@@ -124,9 +124,9 @@ pub(super) struct EnginePlan {
     /// cannot remap another engine's identically-named code.
     pub(super) severity_remap: SeverityRemap,
     /// Whether this engine carries lint rules for the planned language
-    /// ([`Engine::provides_language_lint`]), resolved once here because the
-    /// answer can cost a `PATH` probe or a rule-pack load — neither of which
-    /// belongs in the per-file loop that asks it.
+    /// ([`PlanPolicy::provides_language_lint`](crate::engine::PlanPolicy::provides_language_lint)),
+    /// resolved once here because the answer can cost a `PATH` probe or a rule-pack load — neither
+    /// of which belongs in the per-file loop that asks it.
     pub(super) provides_language_lint: bool,
     /// The project formatter config's `ignorePatterns` (`.oxfmtrc.json[c]`) when this plan
     /// formats a language that config owns. A file it names is passed over by this engine

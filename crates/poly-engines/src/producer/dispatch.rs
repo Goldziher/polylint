@@ -41,7 +41,7 @@ fn format_or_decline(engine: &dyn Engine, src: &SourceFile, cfg: &EngineConfig) 
     engine.format(src, cfg).map(format_output)
 }
 
-/// `Engine::format_batch` over the members the engine does not decline, merged back in member order
+/// `Batching::format_batch` over the members the engine does not decline, merged back in member order
 /// with the declines.
 fn format_batch_or_decline(
     engine: &dyn Engine,

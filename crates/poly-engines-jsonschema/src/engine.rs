@@ -16,7 +16,7 @@ use std::collections::BTreeMap;
 
 use poly_engine_api::config::EngineConfig;
 use poly_engine_api::engine::{
-    Capabilities, Diagnostic, Engine, OptionKeys, OptionTable, OptionType, Severity, SourceFile, Span,
+    Capabilities, Diagnostic, Engine, OptionKeys, OptionTable, OptionType, PlanPolicy, Severity, SourceFile, Span,
 };
 use poly_engine_api::host_hooks::HostHook;
 use poly_engine_api::host_hooks::jsonschema_source::{
@@ -105,13 +105,6 @@ impl Engine for JsonSchemaEngine {
         poly_engine_api::desc::hooks::PROVIDES_LANGUAGE
     }
 
-    /// Never claims a language: the engine checks only the files that name a schema, so it
-    /// establishes no lint coverage of JSON, YAML or TOML as a whole. The same lookup `lint` runs
-    /// answers per file; per language the honest answer is no.
-    fn provides_language_lint(&self, _language: &Language, _cfg: &EngineConfig) -> bool {
-        false
-    }
-
     fn lint(&self, src: &SourceFile, cfg: &EngineConfig) -> anyhow::Result<Vec<Diagnostic>> {
         if !enabled(cfg) || !LANGUAGES.contains(&src.language) {
             return Ok(Vec::new());
@@ -190,6 +183,19 @@ impl Engine for JsonSchemaEngine {
                 }
             })),
         }
+    }
+
+    fn plan_policy(&self) -> Option<&dyn PlanPolicy> {
+        Some(self)
+    }
+}
+
+impl PlanPolicy for JsonSchemaEngine {
+    /// Never claims a language: the engine checks only the files that name a schema, so it
+    /// establishes no lint coverage of JSON, YAML or TOML as a whole. The same lookup `lint` runs
+    /// answers per file; per language the honest answer is no.
+    fn provides_language_lint(&self, _language: &Language, _cfg: &EngineConfig) -> bool {
+        false
     }
 }
 

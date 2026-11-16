@@ -10,7 +10,7 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
-use poly_core::engine::{ProjectRequest, Severity, Span};
+use poly_core::engine::{ProjectAnalysis, ProjectRequest, Severity, Span};
 use poly_core::runner::{SuppressionReason, with_extra_project_engines};
 use poly_core::{Capabilities, Config, Diagnostic, Edit, Engine, Language, LintRun, RunOptions, lint_run};
 
@@ -44,6 +44,12 @@ impl Engine for Synthetic {
         "1"
     }
 
+    fn project_analysis(&self) -> Option<&dyn ProjectAnalysis> {
+        Some(self)
+    }
+}
+
+impl ProjectAnalysis for Synthetic {
     fn project_check(&self, req: &ProjectRequest<'_>) -> anyhow::Result<Vec<(PathBuf, Vec<Diagnostic>)>> {
         self.calls.fetch_add(1, Ordering::SeqCst);
         let mut reported = Vec::new();
@@ -472,6 +478,12 @@ mod tree {
             "1"
         }
 
+        fn project_analysis(&self) -> Option<&dyn ProjectAnalysis> {
+            Some(self)
+        }
+    }
+
+    impl ProjectAnalysis for Tree {
         fn project_inputs(&self) -> ProjectInputs {
             ProjectInputs {
                 gate_key: None,
@@ -825,6 +837,12 @@ mod fix_passes {
         fn version(&self) -> &str {
             "1"
         }
+        fn project_analysis(&self) -> Option<&dyn ProjectAnalysis> {
+            Some(self)
+        }
+    }
+
+    impl ProjectAnalysis for Marker {
         fn project_check(&self, req: &ProjectRequest<'_>) -> anyhow::Result<Vec<(PathBuf, Vec<Diagnostic>)>> {
             let mut reported = Vec::new();
             for file in req.files {
@@ -869,6 +887,12 @@ mod fix_passes {
         fn version(&self) -> &str {
             "1"
         }
+        fn project_analysis(&self) -> Option<&dyn ProjectAnalysis> {
+            Some(self)
+        }
+    }
+
+    impl ProjectAnalysis for Lines {
         fn project_check(&self, req: &ProjectRequest<'_>) -> anyhow::Result<Vec<(PathBuf, Vec<Diagnostic>)>> {
             let mut reported = Vec::new();
             for file in req.files {
@@ -1054,6 +1078,12 @@ mod fix_passes {
         fn version(&self) -> &str {
             "1"
         }
+        fn project_analysis(&self) -> Option<&dyn ProjectAnalysis> {
+            Some(self)
+        }
+    }
+
+    impl ProjectAnalysis for Watcher {
         fn project_check(&self, req: &ProjectRequest<'_>) -> anyhow::Result<Vec<(PathBuf, Vec<Diagnostic>)>> {
             if self.calls.fetch_add(1, Ordering::SeqCst) == 0 && self.fail_first {
                 anyhow::bail!("{} could not run", self.name);
@@ -1289,6 +1319,12 @@ mod whole_tree {
         fn version(&self) -> &str {
             "1"
         }
+        fn project_analysis(&self) -> Option<&dyn ProjectAnalysis> {
+            Some(self)
+        }
+    }
+
+    impl ProjectAnalysis for Graph {
         fn project_inputs(&self) -> ProjectInputs {
             ProjectInputs {
                 gate_key: None,

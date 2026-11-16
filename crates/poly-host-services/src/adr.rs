@@ -101,7 +101,7 @@ impl AdrLog {
     /// Reads the log's settings for the project at `root` from `config`.
     ///
     /// The option keys and their defaults (`dir = "docs/adr"`, `paths`, `recursive`,
-    /// `lock = "adrlint.lock"`) are the ones the engine declares in `Engine::project_inputs`, read from
+    /// `lock = "adrlint.lock"`) are the ones the engine declares in `ProjectAnalysis::project_inputs`, read from
     /// the component index, so `poly adr` resolves exactly the directories `poly lint` judges.
     ///
     /// # Errors

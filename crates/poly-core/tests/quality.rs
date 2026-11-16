@@ -24,7 +24,7 @@
 use poly_core::{
     Language,
     config::{EngineConfig, GlobalDefaults},
-    engine::{Engine, FormatOutput, SourceFile},
+    engine::{Engine, FormatOutput, PlanPolicy, SourceFile},
     engines::quality::QualityEngine,
 };
 

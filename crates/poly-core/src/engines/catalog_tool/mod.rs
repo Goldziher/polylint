@@ -14,7 +14,7 @@
 //! The engine is **capability-probed**: when the tool's binary is absent from
 //! `PATH` it is a no-op ([`FormatOutput::Unchanged`]), so a missing tool
 //! degrades gracefully rather than erroring — with a one-time warning, and no
-//! lint coverage claimed ([`Engine::provides_language_lint`]), so an enabled but
+//! lint coverage claimed ([`PlanPolicy::provides_language_lint`]), so an enabled but
 //! absent tool never reads as a clean check. It is registered only for tools a
 //! user has explicitly enabled, and routed by `crate::registry` (hence
 //! [`Engine::languages`] returns an empty slice).
@@ -41,7 +41,8 @@ use poly_engine_api::options::OptionsExt;
 
 use crate::config::EngineConfig;
 use crate::engine::{
-    BatchSupport, Capabilities, Diagnostic, Engine, FormatOutput, OptionKeys, OptionTable, Severity, SourceFile,
+    BatchSupport, Batching, Capabilities, CatalogTakeover, Diagnostic, Engine, FormatOutput, OptionKeys, OptionTable,
+    PlanPolicy, Severity, SourceFile,
 };
 use crate::language::Language;
 
@@ -535,17 +536,6 @@ impl Engine for CatalogToolEngine {
         String::new()
     }
 
-    fn supersedes_generic_formatter(&self) -> bool {
-        if self.tool.recipe.is_some() {
-            // Even when the tool is missing: the generic reindenter's opinions are
-            // not the tool's, and falling back to them would rewrite files the
-            // user handed to a specific formatter. A missing tool is reported
-            // (the warning, and `skip_reason`), not papered over.
-            return !self.is_lint();
-        }
-        !self.is_lint() && probe_binary(&self.tool.binary).is_some()
-    }
-
     fn skip_reason(&self, src: &SourceFile) -> Option<Cow<'static, str>> {
         if self.is_lint() {
             return None;
@@ -555,19 +545,6 @@ impl Engine for CatalogToolEngine {
         }
         let recipe = self.recipe.as_ref()?;
         recipe.unfetched_reason(&src.path).map(Cow::Owned)
-    }
-
-    /// A catalog engine is built for the specific language it was matched to, so
-    /// its empty [`Engine::languages`] does not mean "cross-cutting" here — a
-    /// linter enabled for Kotlin *is* Kotlin lint coverage. It only counts when
-    /// the binary is actually on `PATH`: an absent one is silently skipped at
-    /// lint time, and coverage claimed on a tool that never ran is the failure
-    /// this answer exists to report.
-    fn provides_language_lint(&self, _language: &Language, _cfg: &EngineConfig) -> bool {
-        if self.tool.recipe.is_some() {
-            return self.is_lint() && self.recipe.is_some();
-        }
-        self.is_lint() && probe_binary(&self.tool.binary).is_some()
     }
 
     fn format(&self, src: &SourceFile, _cfg: &EngineConfig) -> anyhow::Result<FormatOutput> {
@@ -624,6 +601,28 @@ impl Engine for CatalogToolEngine {
         Ok(self.diagnostics_for(outcome))
     }
 
+    fn lint_cache_salt(&self, src: &SourceFile) -> Option<String> {
+        self.recipe.as_ref().and_then(|recipe| recipe.cache_salt(&src.path))
+    }
+
+    fn file_context(&self, path: &Path, _cfg: &EngineConfig) -> Option<String> {
+        self.recipe.as_ref().and_then(|recipe| recipe.cache_salt(path))
+    }
+
+    fn batching(&self) -> Option<&dyn Batching> {
+        Some(self)
+    }
+
+    fn plan_policy(&self) -> Option<&dyn PlanPolicy> {
+        Some(self)
+    }
+
+    fn catalog_takeover(&self) -> Option<&dyn CatalogTakeover> {
+        Some(self)
+    }
+}
+
+impl Batching for CatalogToolEngine {
     fn batch_support(&self, cfg: &EngineConfig) -> BatchSupport {
         let Some(recipe) = &self.recipe else {
             return BatchSupport::default();
@@ -661,6 +660,38 @@ impl Engine for CatalogToolEngine {
         Ok(scatter(batch.len(), &positions, &mut linted, || Ok(Vec::new())))
     }
 
+    fn batch_shard_floor(&self) -> usize {
+        self.recipe.as_ref().map_or(2, RecipeTool::shard_floor)
+    }
+}
+
+impl PlanPolicy for CatalogToolEngine {
+    fn supersedes_generic_formatter(&self) -> bool {
+        if self.tool.recipe.is_some() {
+            // Even when the tool is missing: the generic reindenter's opinions are
+            // not the tool's, and falling back to them would rewrite files the
+            // user handed to a specific formatter. A missing tool is reported
+            // (the warning, and `skip_reason`), not papered over.
+            return !self.is_lint();
+        }
+        !self.is_lint() && probe_binary(&self.tool.binary).is_some()
+    }
+
+    /// A catalog engine is built for the specific language it was matched to, so
+    /// its empty [`Engine::languages`] does not mean "cross-cutting" here — a
+    /// linter enabled for Kotlin *is* Kotlin lint coverage. It only counts when
+    /// the binary is actually on `PATH`: an absent one is silently skipped at
+    /// lint time, and coverage claimed on a tool that never ran is the failure
+    /// this answer exists to report.
+    fn provides_language_lint(&self, _language: &Language, _cfg: &EngineConfig) -> bool {
+        if self.tool.recipe.is_some() {
+            return self.is_lint() && self.recipe.is_some();
+        }
+        self.is_lint() && probe_binary(&self.tool.binary).is_some()
+    }
+}
+
+impl CatalogTakeover for CatalogToolEngine {
     fn takes_over_tier_one(&self) -> bool {
         !self.is_lint() && self.tool.path_globs.is_empty() && self.recipe.is_some()
     }
@@ -671,18 +702,6 @@ impl Engine for CatalogToolEngine {
 
     fn supplements_tier_one(&self) -> bool {
         !self.is_lint() && !self.tool.path_globs.is_empty() && self.tool.recipe.is_some()
-    }
-
-    fn lint_cache_salt(&self, src: &SourceFile) -> Option<String> {
-        self.recipe.as_ref().and_then(|recipe| recipe.cache_salt(&src.path))
-    }
-
-    fn file_context(&self, path: &Path, _cfg: &EngineConfig) -> Option<String> {
-        self.recipe.as_ref().and_then(|recipe| recipe.cache_salt(path))
-    }
-
-    fn batch_shard_floor(&self) -> usize {
-        self.recipe.as_ref().map_or(2, RecipeTool::shard_floor)
     }
 }
 

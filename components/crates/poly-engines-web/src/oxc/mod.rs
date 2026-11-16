@@ -28,7 +28,7 @@ mod sort_imports;
 
 use poly_engine_api::config::EngineConfig;
 use poly_engine_api::engine::{
-    Capabilities, Diagnostic, FormatOutput, OptionKeys, OptionTable, OptionType, SourceFile,
+    Batching, Capabilities, Diagnostic, Engine, FormatOutput, OptionKeys, OptionTable, OptionType, SourceFile,
 };
 use poly_engine_api::language::Language;
 
@@ -221,6 +221,19 @@ impl poly_engine_api::engine::Engine for OxcEngine {
         }
     }
 
+    fn format(&self, src: &SourceFile, cfg: &EngineConfig) -> anyhow::Result<FormatOutput> {
+        match src.language {
+            Language::Json | Language::Jsonc => format_json(src, cfg),
+            _ => format_js(src, cfg),
+        }
+    }
+
+    fn batching(&self) -> Option<&dyn Batching> {
+        Some(self)
+    }
+}
+
+impl Batching for OxcEngine {
     fn batch_support(&self, cfg: &EngineConfig) -> poly_engine_api::engine::BatchSupport {
         poly_engine_api::engine::BatchSupport {
             format: false,
@@ -238,13 +251,6 @@ impl poly_engine_api::engine::Engine for OxcEngine {
 
     fn batch_shard_floor(&self) -> usize {
         256
-    }
-
-    fn format(&self, src: &SourceFile, cfg: &EngineConfig) -> anyhow::Result<FormatOutput> {
-        match src.language {
-            Language::Json | Language::Jsonc => format_json(src, cfg),
-            _ => format_js(src, cfg),
-        }
     }
 }
 

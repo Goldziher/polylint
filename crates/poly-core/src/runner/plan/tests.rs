@@ -4,6 +4,7 @@
 //! module cap; a path named `tests.rs` is exempt from it.
 
 use super::*;
+use crate::engine::PlanPolicy;
 use crate::engines::catalog_tool::CATALOG_VERSION_PREFIX;
 
 /// The selection every test that is not about `--only` wants: none.
@@ -36,6 +37,12 @@ impl Engine for StubEngine {
         "0"
     }
 
+    fn plan_policy(&self) -> Option<&dyn PlanPolicy> {
+        Some(self)
+    }
+}
+
+impl PlanPolicy for StubEngine {
     fn supersedes_generic_formatter(&self) -> bool {
         self.0
     }

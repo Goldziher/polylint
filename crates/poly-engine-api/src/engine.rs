@@ -11,6 +11,10 @@ use serde::{Deserialize, Serialize};
 use crate::config::EngineConfig;
 use crate::language::Language;
 
+mod facets;
+
+pub use facets::{Batching, CatalogTakeover, PlanPolicy, ProjectAnalysis};
+
 /// Which config table an [`OptionKeys`] declaration describes.
 ///
 /// A backend that both lints and formats reads a *different* key set from each
@@ -445,7 +449,7 @@ pub struct Capabilities {
     pub format: bool,
     /// The backend can produce autofixes for its diagnostics.
     pub fix: bool,
-    /// The backend implements [`Engine::project_check`]: analysis that needs the whole project
+    /// The backend implements [`ProjectAnalysis::project_check`]: analysis that needs the whole project
     /// (tree-wide ADR numbering, Python type checking) rather than one file at a time.
     pub project: bool,
 }
@@ -466,9 +470,9 @@ pub struct Capabilities {
 /// resolving). See ADR 0033 §6.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub struct BatchSupport {
-    /// The backend implements [`Engine::format_batch`].
+    /// The backend implements [`Batching::format_batch`].
     pub format: bool,
-    /// The backend implements [`Engine::lint_batch`].
+    /// The backend implements [`Batching::lint_batch`].
     pub lint: bool,
 }
 
@@ -557,6 +561,24 @@ pub enum FormatOutput {
 /// A linter/formatter backend. Backends are pure functions of
 /// `(source, config)` so results can be content-hash cached.
 ///
+/// # Shape
+///
+/// `Engine` is the per-file contract the runner calls for every file: identity and declarations
+/// (`name` … `overridden_hooks`), the cache inputs (`host_hook`, `run_context`, `file_context`, the
+/// salts, `format_config`), `skip_reason`, and the work itself (`lint`, `format`). Everything the
+/// runner consults outside the per-file loop is an optional **facet** a backend implements only
+/// when it has that concern, reached through an accessor that defaults to `None`:
+///
+/// - [`Batching`] ([`Engine::batching`]): one call over many files.
+/// - [`ProjectAnalysis`] ([`Engine::project_analysis`]): whole-project analysis.
+/// - [`PlanPolicy`] ([`Engine::plan_policy`]): coverage claims and planner policy.
+/// - [`CatalogTakeover`] ([`Engine::catalog_takeover`]): a catalog backend displacing or joining
+///   the tier-one formatter.
+///
+/// Callers holding a `dyn Engine` ask the facet's questions through the inherent methods on
+/// `dyn Engine` (`engine.batch_support(cfg)`, `engine.project_check(req)`, …), which answer the
+/// facet's default when the backend has none, so the defaults live in one place (ADR 0072).
+///
 /// # Stability
 ///
 /// This trait is an **internal extension point**, not part of the stable public
@@ -617,9 +639,9 @@ pub trait Engine: Send + Sync {
     /// default instead of loading the component to ask. Declaring too many bits only costs a
     /// load; declaring too few makes the host return a default where the engine would have
     /// answered otherwise, so an engine that overrides one of [`Engine::run_context`],
-    /// [`Engine::file_context`], [`Engine::provides_language_lint`] /
-    /// [`Engine::provides_language_format`], [`Engine::skip_reason`], [`Engine::lint_input_salt`],
-    /// [`Engine::format_input_salt`], [`Engine::lint_cache_salt`] or [`Engine::batch_support`]
+    /// [`Engine::file_context`], [`PlanPolicy::provides_language_lint`] /
+    /// [`PlanPolicy::provides_language_format`], [`Engine::skip_reason`], [`Engine::lint_input_salt`],
+    /// [`Engine::format_input_salt`], [`Engine::lint_cache_salt`] or [`Batching::batch_support`]
     /// must set its bit. Methods answered by [`Engine::host_hook`] count as not overridden.
     /// Defaults to every bit, the safe answer for an engine that does not say.
     /// `tests/component_hooks.rs` in `poly-core` fails an engine that overrides an undeclared hook.
@@ -660,48 +682,6 @@ pub trait Engine: Send + Sync {
     /// `HostHook::None` (the default) means the file, its path and `cfg` are the whole input.
     fn host_hook(&self) -> crate::host_hooks::HostHook {
         crate::host_hooks::HostHook::None
-    }
-
-    /// Whether this backend carries lint rules **for the language of the files
-    /// routed to it**, under `cfg`.
-    ///
-    /// Consulted only on a lint plan, and only to answer one question: did
-    /// anything in this run actually know how to lint this file? A `.kt` file
-    /// routes to the cross-cutting backends (spell-check, ast-grep, comment
-    /// removal) and to nothing that knows Kotlin, yet it was counted in
-    /// `N file(s) linted` exactly like a `.py` file ruff had examined. A
-    /// consumer with Kotlin, Swift and Zig in the tree read a green
-    /// `poly lint .` as full coverage of languages poly has no rules for —
-    /// which is the one thing this project promises never to do.
-    ///
-    /// The default answers from [`Engine::languages`]: a backend registered for
-    /// specific languages lints those languages, and one that declares none is
-    /// cross-cutting (it applies to any file, so it never establishes coverage
-    /// of a *language*). Backends whose answer depends on the host or the
-    /// config — a native tool that must be installed, a rule engine that needs
-    /// rules — override this; a `true` here is a claim the run relies on, so it
-    /// must not be made speculatively.
-    ///
-    /// `language` is the language being planned, since a cross-cutting backend
-    /// can still hold rules for one specific language.
-    fn provides_language_lint(&self, _language: &Language, _cfg: &EngineConfig) -> bool {
-        !self.languages().is_empty()
-    }
-
-    /// Whether this backend would actually **format** `language` under `cfg`.
-    ///
-    /// The format-side counterpart of [`Engine::provides_language_lint`], and it
-    /// exists for the same reason: an opt-in native tool that is switched off or
-    /// missing from `PATH` formats nothing, and a planner that counts it as a
-    /// working formatter withdraws the catalog tier on its behalf — leaving the
-    /// language with no formatter at all while the config reads as though one
-    /// were configured.
-    ///
-    /// Defaults to the declared capability. Backends whose answer depends on the
-    /// host or the config override it; as with the lint side, a `true` here is a
-    /// claim the run relies on and must not be made speculatively.
-    fn provides_language_format(&self, _language: &Language, _cfg: &EngineConfig) -> bool {
-        self.capabilities().format
     }
 
     /// Why this backend declines to process `src`, if it does.
@@ -753,82 +733,9 @@ pub trait Engine: Send + Sync {
         Ok(Vec::new())
     }
 
-    /// Whole-project analysis, run once per project after the per-file tier. Only called when
-    /// [`Capabilities::project`] is set. Returns findings grouped by the file they belong to;
-    /// a file need not be among `req.files`. Defaults to no findings.
-    ///
-    /// Must be a pure function of the request: it may read nothing but `req` (the host already
-    /// loaded file contents and resolved the toolchain in `req.environment`), and must never spawn
-    /// a process, so the result can be cached on the request's inputs.
-    fn project_check(&self, _req: &ProjectRequest<'_>) -> anyhow::Result<Vec<(PathBuf, Vec<Diagnostic>)>> {
-        Ok(Vec::new())
-    }
-
-    /// What [`Engine::project_check`] needs from the host besides the files it serves: a gating
-    /// option, side files and the directories it is about. Defaults to nothing.
-    fn project_inputs(&self) -> ProjectInputs {
-        ProjectInputs::default()
-    }
-
     /// Format a file. Defaults to [`FormatOutput::Unchanged`].
     fn format(&self, _src: &SourceFile, _cfg: &EngineConfig) -> anyhow::Result<FormatOutput> {
         Ok(FormatOutput::Unchanged)
-    }
-
-    /// Which operations this backend can perform over a whole batch at once,
-    /// given the config governing this file.
-    ///
-    /// Defaults to none, so every backend that does not opt in keeps the
-    /// per-file path untouched.
-    ///
-    /// `cfg` is passed because batching is both a capability *and* a policy:
-    /// whether a tool can rewrite named files is static, but whether doing so
-    /// is faster than spawning per file depends on the environment, so it is
-    /// opt-in. A backend answering `true` here is claiming both.
-    fn batch_support(&self, _cfg: &EngineConfig) -> BatchSupport {
-        BatchSupport::default()
-    }
-
-    /// Format every member of `batch` in one call.
-    ///
-    /// # Contract
-    ///
-    /// The returned vector **must** have the same length as `batch`, and
-    /// element `i` **must** describe `batch[i]`. A caller is entitled to treat a
-    /// length mismatch as a failure of the batch mechanism rather than as a
-    /// short answer, because the alternative — trusting a ragged vector — is
-    /// what would attribute one file's formatting to another.
-    ///
-    /// The outer `Err` means *the batch as a whole failed* (the spawn failed,
-    /// the output was unusable). It is never an error for the files involved:
-    /// the caller re-runs them through the per-file path, so a batch failure
-    /// costs time and not correctness. An inner `Err` is a genuine per-file
-    /// failure and is attributed to that one file.
-    ///
-    /// Implementations receive **content**, never a list of paths to go and
-    /// read. `SourceFile::path` travels for naming and config discovery only;
-    /// the bytes handed over are authoritative, and may not correspond to
-    /// what is currently on disk at that path.
-    fn format_batch(
-        &self,
-        _batch: &[SourceFile],
-        _cfg: &EngineConfig,
-    ) -> anyhow::Result<Vec<anyhow::Result<FormatOutput>>> {
-        anyhow::bail!("this backend does not implement batch formatting")
-    }
-
-    /// Lint every member of `batch` in one call.
-    ///
-    /// The contract is [`Engine::format_batch`]'s: one answer per input in
-    /// order, an outer `Err` for a batch that cannot be trusted, and an inner
-    /// `Err` for a member to be linted on its own. The answer for a member must
-    /// be exactly what [`Engine::lint`] would have returned for it.
-    fn lint_batch(
-        &self,
-        _batch: &[SourceFile],
-        _cfg: &EngineConfig,
-    ) -> anyhow::Result<Vec<anyhow::Result<Vec<Diagnostic>>>> {
-        anyhow::bail!("this backend does not implement batch linting")
     }
 
     /// Bytes, beyond the file's own, that decide this backend's lint answer for
@@ -855,69 +762,31 @@ pub trait Engine: Send + Sync {
         }
     }
 
-    /// Fewest files worth a separate [`Engine::lint_batch`] / [`Engine::format_batch`]
-    /// call when the runner shards a group across the thread pool.
-    ///
-    /// The runner splits a group into up to one shard per core. That is right
-    /// for a tool with a small start-up and wrong for a JVM tool, where each
-    /// extra shard buys another second of start-up and nothing else; such a
-    /// backend raises the floor so a small group stays one invocation.
-    fn batch_shard_floor(&self) -> usize {
-        2
-    }
-
-    /// How a config table picks this engine among alternatives sharing it (ty and pyrefly share
-    /// `[engines.python-types]`, told apart by its `backend`). `None` for an engine nothing chooses between.
-    fn selection(&self) -> Option<WireSelection> {
+    /// This engine's [`Batching`] facet: one call over a whole batch of files. `None` (the default)
+    /// keeps every file on the per-file path, and every batching question gets [`Batching`]'s
+    /// default answer.
+    fn batching(&self) -> Option<&dyn Batching> {
         None
     }
 
-    /// Whether this catalog backend, enabled by name and covering the whole
-    /// language, replaces the language's tier-one formatter.
-    fn takes_over_tier_one(&self) -> bool {
-        false
+    /// This engine's [`ProjectAnalysis`] facet: whole-project analysis behind
+    /// [`Capabilities::project`]. `None` (the default) answers [`ProjectAnalysis`]'s defaults: no
+    /// findings, no inputs, no selection.
+    fn project_analysis(&self) -> Option<&dyn ProjectAnalysis> {
+        None
     }
 
-    /// Glob patterns of the files this backend formats in place of the language's
-    /// tier-one formatter (see [`Engine::supplements_tier_one`]).
-    fn claimed_paths(&self) -> Vec<String> {
-        Vec::new()
+    /// This engine's [`PlanPolicy`] facet: how the run planner counts, enables and orders it.
+    /// `None` (the default) answers [`PlanPolicy`]'s defaults, derived from
+    /// [`Engine::languages`] and [`Engine::capabilities`].
+    fn plan_policy(&self) -> Option<&dyn PlanPolicy> {
+        None
     }
 
-    /// Whether this catalog backend, confined to named files, may run in
-    /// addition to the language's tier-one formatter.
-    fn supplements_tier_one(&self) -> bool {
-        false
-    }
-
-    /// Whether this backend reads [`ENABLED_OPTION_KEY`] itself and degrades
-    /// gracefully when it is `false`, rather than expecting the runner to drop
-    /// it from the plan.
-    ///
-    /// The runner honours `enabled = false` by removing an engine before the
-    /// file loop, which is right for a backend whose absence simply means one
-    /// less check. It is wrong for a backend that *is* its language's only
-    /// registry slot and hands the work to the tier-2 reindenter when switched
-    /// off: removing it there leaves the language with no formatter at all, so
-    /// one config key silently drops every file of that language from the run.
-    ///
-    /// A backend answering `true` takes on the whole contract — it must read the
-    /// key in every method that acts, and must do something defensible with a
-    /// `false`.
-    fn self_manages_enabled(&self) -> bool {
-        false
-    }
-
-    /// Whether this backend is the authoritative formatter for its language and
-    /// should displace poly's generic tree-sitter reindenter.
-    ///
-    /// Formatters chain, so a configured external formatter running *alongside*
-    /// the generic reindenter makes the two fight over indentation and prevents
-    /// the format loop from converging. Only backends that are both configured
-    /// and actually runnable should answer `true` — otherwise a missing binary
-    /// would leave the language with no formatter at all.
-    fn supersedes_generic_formatter(&self) -> bool {
-        false
+    /// This engine's [`CatalogTakeover`] facet: how a catalog backend displaces or joins the
+    /// language's tier-one formatter. `None` (the default) for every engine outside the catalog tier.
+    fn catalog_takeover(&self) -> Option<&dyn CatalogTakeover> {
+        None
     }
 }
 

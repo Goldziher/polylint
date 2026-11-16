@@ -13,7 +13,7 @@ use std::path::{Path, PathBuf};
 
 use poly_engine_api::config::{EngineConfig, GlobalDefaults};
 use poly_engine_api::engine::{
-    Diagnostic, Engine, ProjectEnvironment, ProjectFile, ProjectRequest, PythonEnvironment, Severity,
+    Diagnostic, Engine, ProjectAnalysis, ProjectEnvironment, ProjectFile, ProjectRequest, PythonEnvironment, Severity,
 };
 use poly_engine_api::language::Language;
 use poly_engines_pyrefly::PyreflyEngine;

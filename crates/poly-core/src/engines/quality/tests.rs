@@ -8,7 +8,7 @@ use std::sync::Arc;
 
 use super::QualityEngine;
 use crate::config::{EngineConfig, GlobalDefaults};
-use crate::engine::{Engine, SourceFile};
+use crate::engine::{Engine, PlanPolicy, SourceFile};
 use crate::filter::Suppressions;
 use crate::language::Language;
 

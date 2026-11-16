@@ -3,7 +3,7 @@
 //!
 //! These rules judge a whole ADR log, so they run as a project check over the Markdown files the
 //! host discovered, not per file. The component reads nothing: `adrlint.lock` arrives as one more
-//! [`ProjectFile`] (the host loads it, as `Engine::project_inputs` declares), which is also
+//! [`ProjectFile`] (the host loads it, as `ProjectAnalysis::project_inputs` declares), which is also
 //! what makes the result cacheable, since the project-check cache key folds in the digest of every
 //! file handed over, the lock and each sibling ADR included.
 //!
@@ -13,7 +13,7 @@
 //! `lock` names the manifest (default `adrlint.lock`). A glob in `paths` is not supported.
 //!
 //! The directories are the host's business, not this module's: the engine declares the option keys
-//! in `Engine::project_inputs` and the host hands over exactly the Markdown under them, the lock,
+//! in `ProjectAnalysis::project_inputs` and the host hands over exactly the Markdown under them, the lock,
 //! and a name-only listing of the other files there (language `Other("listing")`, empty content),
 //! which is what lets `MADR42` fire. So every file in the request except the lock is a member of
 //! the log.
@@ -32,10 +32,10 @@ use poly_engine_api::project::LISTING_LANGUAGE;
 
 use super::{Selection, enabled, map_diagnostic};
 
-/// The default ADR directory, adrlint's own. Declared to the host in `Engine::project_inputs`.
+/// The default ADR directory, adrlint's own. Declared to the host in `ProjectAnalysis::project_inputs`.
 pub(super) const DEFAULT_DIR: &str = "docs/adr";
 
-/// The default lock manifest. Declared to the host in `Engine::project_inputs`, which loads it.
+/// The default lock manifest. Declared to the host in `ProjectAnalysis::project_inputs`, which loads it.
 pub(super) const DEFAULT_LOCK: &str = "adrlint.lock";
 
 /// Runs the tree-wide and lock rules over the ADR log in `req.files`.

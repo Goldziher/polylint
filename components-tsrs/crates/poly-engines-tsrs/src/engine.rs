@@ -4,7 +4,8 @@ use std::path::PathBuf;
 
 use anyhow::Context;
 use poly_engine_api::engine::{
-    Capabilities, Diagnostic, Engine, OptionKeys, OptionTable, ProjectDirs, ProjectInputs, ProjectRequest,
+    Capabilities, Diagnostic, Engine, OptionKeys, OptionTable, ProjectAnalysis, ProjectDirs, ProjectInputs,
+    ProjectRequest,
 };
 use poly_engine_api::language::Language;
 
@@ -81,6 +82,12 @@ impl Engine for TsrsEngine {
         VERSION
     }
 
+    fn project_analysis(&self) -> Option<&dyn ProjectAnalysis> {
+        Some(self)
+    }
+}
+
+impl ProjectAnalysis for TsrsEngine {
     /// Planned only once `enabled` is set, over the whole tree under `dir`: a program's verdict is about every file
     /// it can reach, so neither `[discovery] exclude` nor nested `poly.toml` scopes cut it.
     fn project_inputs(&self) -> ProjectInputs {

@@ -107,7 +107,8 @@ fn sources() -> Vec<SourceFile> {
 /// Hooks `engine` overrides without declaring them, with the sample count checked.
 fn undeclared_overrides(engine: &dyn Engine) -> (Vec<String>, usize) {
     let declared = engine.overridden_hooks();
-    let twin = Defaults(engine);
+    let defaults = Defaults(engine);
+    let twin: &dyn Engine = &defaults;
     let files = sources();
     let configs: Vec<EngineConfig> = OPTIONS.iter().map(|o| config(o)).collect();
     let mut found = Vec::new();

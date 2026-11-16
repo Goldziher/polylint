@@ -1,5 +1,6 @@
 use super::*;
 use crate::config::Config;
+use crate::engine::ProjectAnalysis;
 use poly_component_host::ComponentEngine;
 use poly_component_protocol::{WireCapabilities, WireEngineDesc};
 
@@ -362,6 +363,12 @@ impl Engine for Gated {
     fn version(&self) -> &str {
         "1"
     }
+    fn project_analysis(&self) -> Option<&dyn ProjectAnalysis> {
+        Some(self)
+    }
+}
+
+impl ProjectAnalysis for Gated {
     fn project_inputs(&self) -> crate::engine::ProjectInputs {
         crate::engine::ProjectInputs {
             gate_key: Some("armed".to_owned()),

@@ -113,7 +113,7 @@ pub fn engine_desc(engine: &dyn Engine) -> WireEngineDesc {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::engine::{Capabilities, Engine};
+    use crate::engine::{Capabilities, Engine, ProjectAnalysis};
     use crate::language::Language;
 
     struct Probe;
@@ -170,6 +170,12 @@ mod tests {
         fn version(&self) -> &str {
             "1"
         }
+        fn project_analysis(&self) -> Option<&dyn ProjectAnalysis> {
+            Some(self)
+        }
+    }
+
+    impl ProjectAnalysis for Chosen {
         fn selection(&self) -> Option<crate::engine::WireSelection> {
             Some(crate::engine::WireSelection {
                 table: "shared".to_owned(),
