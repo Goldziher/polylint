@@ -53,6 +53,17 @@ ignore = [
   # Maintenance notices, not vulnerabilities.
   "RUSTSEC-2024-0370",
   "RUSTSEC-2024-0375",
+  # harper-core 3.2.0 (the opt-in `prose` component) requires `zip` ^8.6, and the fixes are only in 9.x. The four zip
+  # advisories cover `ZipArchive::extract` writing an archive to disk; harper reads zip only in memory, to load
+  # weirpack rule bundles (`ZipArchive::new` over a byte cursor), and poly never calls that API. Revisit when harper
+  # moves to zip 9.
+  "RUSTSEC-2026-0367",
+  "RUSTSEC-2026-0368",
+  "RUSTSEC-2026-0369",
+  "RUSTSEC-2026-0429",
+  # `bincode` is unmaintained (RUSTSEC-2025-0141), reached through harper's `burn` model runtime; a maintenance notice
+  # with no successor release, not a vulnerability.
+  "RUSTSEC-2025-0141",
 ]
 
 [sources]
