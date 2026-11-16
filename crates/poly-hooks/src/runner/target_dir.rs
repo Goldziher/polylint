@@ -85,16 +85,22 @@ mod tests {
     fn process_env_target_dir_wins_over_everything() {
         let tmp = tempfile::tempdir().unwrap();
         write_config(tmp.path(), "[build]\ntarget-dir = \"from-config\"\n");
-        let env = env_of(&[("CARGO_TARGET_DIR", "/shared/t"), ("CARGO_BUILD_TARGET_DIR", "/other")]);
-        assert_eq!(resolve_target_dir(tmp.path(), &env), PathBuf::from("/shared/t"));
+        let shared = tmp.path().join("shared/t");
+        let other = tmp.path().join("other");
+        let env = env_of(&[
+            ("CARGO_TARGET_DIR", shared.to_str().unwrap()),
+            ("CARGO_BUILD_TARGET_DIR", other.to_str().unwrap()),
+        ]);
+        assert_eq!(resolve_target_dir(tmp.path(), &env), shared);
     }
 
     #[test]
     fn build_target_dir_env_is_honoured() {
         let tmp = tempfile::tempdir().unwrap();
         write_config(tmp.path(), "[build]\ntarget-dir = \"from-config\"\n");
-        let env = env_of(&[("CARGO_BUILD_TARGET_DIR", "/build/t")]);
-        assert_eq!(resolve_target_dir(tmp.path(), &env), PathBuf::from("/build/t"));
+        let build = tmp.path().join("build/t");
+        let env = env_of(&[("CARGO_BUILD_TARGET_DIR", build.to_str().unwrap())]);
+        assert_eq!(resolve_target_dir(tmp.path(), &env), build);
     }
 
     #[test]
@@ -129,10 +135,15 @@ mod tests {
         let tmp = tempfile::tempdir().unwrap();
         let home = tmp.path().join("cargo-home");
         std::fs::create_dir_all(&home).unwrap();
-        std::fs::write(home.join("config.toml"), "[build]\ntarget-dir = \"/home/t\"\n").unwrap();
+        let shared = tmp.path().join("home-target");
+        std::fs::write(
+            home.join("config.toml"),
+            format!("[build]\ntarget-dir = {:?}\n", shared.to_str().unwrap()),
+        )
+        .unwrap();
         let repo = tmp.path().join("repo");
         std::fs::create_dir_all(&repo).unwrap();
         let env = env_of(&[("CARGO_HOME", home.to_str().unwrap())]);
-        assert_eq!(resolve_target_dir(&repo, &env), PathBuf::from("/home/t"));
+        assert_eq!(resolve_target_dir(&repo, &env), shared);
     }
 }
