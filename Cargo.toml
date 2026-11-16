@@ -53,8 +53,8 @@ documentation = "https://github.com/polylint/polylint"
 
 [workspace.dependencies]
 aho-corasick = "1.1.5"
-alef-component-abi = "=0.129.4"
-alef-component-runtime = "=0.129.4"
+alef-component-abi = "=0.130.0"
+alef-component-runtime = "=0.130.0"
 # alejandra — Nix formatter (UNLICENSE, pure Rust via rnix); chosen over
 alejandra = "3.1"
 annotate-snippets = "0.12.18"
