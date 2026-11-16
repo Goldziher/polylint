@@ -27,9 +27,10 @@ on:
 # rust-version and rust-toolchain.toml: every `RUST_TOOLCHAIN:` env, the `toolchain:` inputs of
 # dtolnay/rust-toolchain, and the `rust:<minor>-alpine` image tag (and its digest) of the musl leg.
 
-# Component signing (ADR 0060): build-components builds without any secret; sign_components, on a
-# fresh runner in the `release` environment, checks the payloads against the build job's digest
-# manifest and signs each archive with the Ed25519 private key in the environment secret
+# Component signing (ADR 0060): build-components builds and packages without any secret;
+# sign_components, on a fresh runner in the `release` environment that builds nothing, checks the
+# unsigned archives against the build job's digest manifest and signs each with `alef component sign`
+# and the Ed25519 private key in the environment secret
 # POLY_COMPONENT_SIGNING_KEY (PKCS#8 PEM, or base64 of the PKCS#8 DER or a raw 32-byte seed). Its
 # public half is `poly-release-2` in alef.toml ([crates.component_distribution.public_keys]); the
 # rotation procedure is in the ADR and docs/release-runbook.md. A missing secret fails the release.
@@ -467,7 +468,7 @@ jobs:
 
   # Builds every component with no secret and a read-only token: build scripts and proc macros of the
   # whole dependency tree run here, so nothing this job can reach may sign or publish (ADR 0060). The
-  # built payloads leave as one tar plus a digest manifest for sign_components.
+  # unsigned archives leave as one tar plus a digest manifest for sign_components.
   build-components:
     name: Build components / ${{ matrix.triple }}
     needs: [meta, create_release]
@@ -486,7 +487,7 @@ jobs:
     strategy:
       fail-fast: false
       # musl is absent on purpose: that binary is fully bundled and downloads no component.
-      # sign_components repeats this matrix: keep the two in step.
+      # sign_components repeats these triples: keep the two in step.
       matrix:
         include:
           # glibc is the floor the components' symbols are linked against, so the gnu builds run in
@@ -558,9 +559,8 @@ jobs:
             echo "GOROOT_ON_HOST=$(go env GOROOT)"
           } >> "$GITHUB_ENV"
 
-      # rustup installs into CARGO_HOME/RUSTUP_HOME under the workspace. sign_components repeats this
-      # container's image, mounts and environment, so its package step recomputes the fingerprint the
-      # plan recorded.
+      # rustup installs into CARGO_HOME/RUSTUP_HOME under the workspace. package runs in the same
+      # container as build, so it recomputes the fingerprint the plan recorded.
       - name: Plan and build components (manylinux_2_28 container)
         if: ${{ matrix.image }}
         shell: bash
@@ -586,6 +586,7 @@ jobs:
               export PATH="$CARGO_HOME/bin:/opt/go/bin:$(dirname "$MISE_IN_CONTAINER"):$(dirname "$JQ_IN_CONTAINER"):$PATH"
               mise run components:release plan "$TARGET"
               mise run components:release build "$TARGET"
+              mise run components:release package "$TARGET"
               chown -R "$HOST_UID:$HOST_GID" target
             '
 
@@ -598,6 +599,11 @@ jobs:
         if: ${{ !matrix.image }}
         shell: bash
         run: mise run components:release build "${{ matrix.triple }}"
+
+      - name: Package components (unsigned)
+        if: ${{ !matrix.image }}
+        shell: bash
+        run: mise run components:release package "${{ matrix.triple }}"
 
       # Reads the same Cargo.lock and go.sum the build used, for the target triple; it builds nothing.
       - name: Write the SBOM of every component built here
@@ -617,18 +623,18 @@ jobs:
           # Empty when the plan reuses every component for this triple.
           if-no-files-found: ignore
 
-      - name: Stage the unsigned payloads and record their digests
+      - name: Stage the unsigned archives and record their digests
         shell: bash
         run: mise run components:release stage "${{ matrix.triple }}"
 
-      - name: Save the unsigned payloads for signing
+      - name: Save the unsigned archives for signing
         uses: actions/upload-artifact@v7
         with:
           name: component-unsigned-${{ matrix.triple }}
           path: target/components-release/${{ matrix.triple }}/unstaged/
           if-no-files-found: error
 
-      # A separate artifact, so the signing job compares the payload tar with a manifest it downloads
+      # A separate artifact, so the signing job compares the archive tar with a manifest it downloads
       # on its own rather than with a file inside the same upload.
       - name: Save the digest manifest
         uses: actions/upload-artifact@v7
@@ -644,67 +650,44 @@ jobs:
           path: target/components-release/${{ matrix.triple }}/plan/plan.json
           if-no-files-found: error
 
-  # Signs the components on a fresh runner that ran no build: it checks the build job's payloads
-  # against the digest manifest, then `alef component package` re-fingerprints the checked-out tree
-  # (cargo metadata, rustc -vV and go version, none of which runs dependency code), signs and
-  # verifies. The key lives in the `release` environment, so a job outside it cannot read it, and
-  # this job holds no write token. The runner OS and image match build-components because alef's
-  # fingerprint includes the native toolchain of the target's OS family.
+  # Signs the components on a fresh runner that builds nothing: it checks the build job's unsigned
+  # archives against the digest manifest, then `alef component sign` validates each archive against its
+  # record and the plan, signs it with the key and refuses a key that is not alef.toml's poly-release-2
+  # (alef ADR-0026). sign loads no alef.toml and runs no cargo, rustc or go, so no dependency code runs
+  # where the key is; `alef component verify` then parses only the checked-out contracts. The key lives
+  # in the `release` environment, so a job outside it cannot read it, and this job holds no write
+  # token. The signature does not depend on the host, so every triple signs on ubuntu-latest.
   sign_components:
     name: Sign components / ${{ matrix.triple }}
     needs: [meta, build-components]
     if: >-
       !inputs.plugins-only && (needs.meta.outputs.release_assets_exist != 'true')
-    runs-on: ${{ matrix.os }}
+    runs-on: ubuntu-latest
     environment: release
     permissions:
       contents: read
-    env:
-      BUILD_IMAGE: ${{ matrix.image }}
-      RUST_TOOLCHAIN: "1.100.0"
     strategy:
       fail-fast: false
       matrix:
-        include:
-          - triple: x86_64-unknown-linux-gnu
-            os: ubuntu-latest
-            image: quay.io/pypa/manylinux_2_28_x86_64:2026.11.01-2@sha256:7e41b1c7fd64dfc69703a1124b43c404382973ee06ec5d764b85c34d2221fded
-          - triple: aarch64-unknown-linux-gnu
-            os: ubuntu-24.04-arm
-            image: quay.io/pypa/manylinux_2_28_aarch64:2026.11.01-2@sha256:54b271d9562a3686298880df05367909e949ed317e7b1b79b59c696d75f78676
-          - triple: aarch64-apple-darwin
-            os: macos-26
-          - triple: x86_64-pc-windows-msvc
-            os: windows-latest
+        triple:
+          - x86_64-unknown-linux-gnu
+          - aarch64-unknown-linux-gnu
+          - aarch64-apple-darwin
+          - x86_64-pc-windows-msvc
     steps:
       - name: Checkout
         uses: actions/checkout@v7
         with:
-          fetch-depth: 0
           persist-credentials: false
           ref: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.tag || '' }}
 
-      - name: Shorten paths for the biome checkout (adrs/0003-dependency-policy.md)
-        if: runner.os == 'Windows'
-        shell: bash
-        run: |
-          git config --global core.longpaths true
-          echo 'CARGO_HOME=D:\c' >> "$GITHUB_ENV"
-
-      - name: Setup Rust
-        if: ${{ !matrix.image }}
-        uses: dtolnay/rust-toolchain@v1
-        with:
-          toolchain: ${{ env.RUST_TOOLCHAIN }}
-          targets: ${{ matrix.triple }}
-
-      # alef's sha256 is pinned in mise.lock (native legs) or in release.sh (fetch-alef, gnu legs).
-      - name: Setup mise (alef, go)
+      # alef's sha256 is pinned in mise.lock.
+      - name: Setup mise (alef)
         uses: xberg-io/actions/setup-mise@v1
         with:
-          tools: github:xberg-io/alef go
+          tools: github:xberg-io/alef
 
-      - name: Download the unsigned payloads
+      - name: Download the unsigned archives
         uses: actions/download-artifact@v8
         with:
           name: component-unsigned-${{ matrix.triple }}
@@ -716,88 +699,15 @@ jobs:
           name: component-digests-${{ matrix.triple }}
           path: target/components-release/${{ matrix.triple }}
 
-      - name: Check the payloads against the digests and put them in place
+      - name: Check the archives against the digests and put them in place
         shell: bash
         run: mise run components:release unstage "${{ matrix.triple }}"
 
-      - name: Fetch alef and mise for the manylinux_2_28 container
-        if: ${{ matrix.image }}
-        shell: bash
-        run: |
-          set -euo pipefail
-          alef="$(mise run components:release fetch-alef)"
-          mise_bin="$(mise run components:release fetch-mise)"
-          jq_bin="$(mise run components:release fetch-jq)"
-          rustup_init="$(mise run components:release fetch-rustup-init)"
-          {
-            echo "ALEF_IN_CONTAINER=/work/${alef#"$PWD"/}"
-            echo "MISE_IN_CONTAINER=/work/${mise_bin#"$PWD"/}"
-            echo "JQ_IN_CONTAINER=/work/${jq_bin#"$PWD"/}"
-            echo "RUSTUP_INIT_IN_CONTAINER=/work/${rustup_init#"$PWD"/}"
-            echo "GOROOT_ON_HOST=$(go env GOROOT)"
-          } >> "$GITHUB_ENV"
-
-      # The toolchain is installed in its own container run, before the key file exists.
-      - name: Install the toolchain (manylinux_2_28 container)
-        if: ${{ matrix.image }}
-        shell: bash
-        run: |
-          set -euo pipefail
-          docker run --rm -v "$PWD":/work -w /work \
-            -e TARGET="${{ matrix.triple }}" -e RUST_TOOLCHAIN -e RUSTUP_INIT_IN_CONTAINER \
-            -e CARGO_HOME=/work/target/components-release/toolchain/cargo \
-            -e RUSTUP_HOME=/work/target/components-release/toolchain/rustup \
-            -e HOST_UID="$(id -u)" -e HOST_GID="$(id -g)" \
-            "${{ matrix.image }}" bash -euo pipefail -c '
-              "$RUSTUP_INIT_IN_CONTAINER" -y --no-modify-path --profile minimal --default-toolchain "$RUST_TOOLCHAIN" --target "$TARGET"
-              chown -R "$HOST_UID:$HOST_GID" target
-            '
-
-      # The key is a read-only 0600 file, exported for the one package command only.
-      - name: Write the signing key file
-        if: ${{ matrix.image }}
+      - name: Sign components
         shell: bash
         env:
           POLY_COMPONENT_SIGNING_KEY: ${{ secrets.POLY_COMPONENT_SIGNING_KEY }}
-        run: |
-          set -euo pipefail
-          umask 077
-          printf '%s' "$POLY_COMPONENT_SIGNING_KEY" > "$RUNNER_TEMP/poly-key"
-
-      - name: Sign and package components (manylinux_2_28 container)
-        if: ${{ matrix.image }}
-        shell: bash
-        run: |
-          set -euo pipefail
-          docker run --rm -v "$PWD":/work -v "$GOROOT_ON_HOST":/opt/go:ro -v "$RUNNER_TEMP/poly-key":/run/poly-key:ro -w /work \
-            -e TARGET="${{ matrix.triple }}" -e RUST_TOOLCHAIN -e BUILD_IMAGE -e ALEF="$ALEF_IN_CONTAINER" \
-            -e MISE_IN_CONTAINER -e JQ_IN_CONTAINER -e MISE_TASK_RUN_AUTO_INSTALL=false -e MISE_AUTO_INSTALL=false -e MISE_YES=1 \
-            -e MISE_TRUSTED_CONFIG_PATHS=/work \
-            -e CARGO_HOME=/work/target/components-release/toolchain/cargo \
-            -e RUSTUP_HOME=/work/target/components-release/toolchain/rustup \
-            -e GOTOOLCHAIN=local -e GOFLAGS=-modcacherw \
-            -e GOPATH=/work/target/components-release/toolchain/gopath \
-            -e GOCACHE=/work/target/components-release/toolchain/gocache \
-            -e VECTORSCAN_BUILD_FROM_SOURCE=1 \
-            -e HOST_UID="$(id -u)" -e HOST_GID="$(id -g)" \
-            "${{ matrix.image }}" bash -euo pipefail -c '
-              git config --global --add safe.directory /work
-              export PATH="$CARGO_HOME/bin:/opt/go/bin:$(dirname "$MISE_IN_CONTAINER"):$(dirname "$JQ_IN_CONTAINER"):$PATH"
-              POLY_COMPONENT_SIGNING_KEY="$(cat /run/poly-key)" mise run components:release package "$TARGET"
-              chown -R "$HOST_UID:$HOST_GID" target
-            '
-
-      - name: Remove the signing key file
-        if: ${{ always() && matrix.image }}
-        shell: bash
-        run: rm -f "$RUNNER_TEMP/poly-key"
-
-      - name: Sign and package components
-        if: ${{ !matrix.image }}
-        shell: bash
-        env:
-          POLY_COMPONENT_SIGNING_KEY: ${{ secrets.POLY_COMPONENT_SIGNING_KEY }}
-        run: mise run components:release package "${{ matrix.triple }}"
+        run: mise run components:release sign "${{ matrix.triple }}"
 
       - name: Save the signed components for the lock and checksums
         uses: actions/upload-artifact@v7

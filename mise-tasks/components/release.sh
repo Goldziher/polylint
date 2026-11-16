@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 #MISE description="Release build of the downloadable components on alef's content-addressed plan (previous-lock, plan, build, package, lock)"
-#USAGE arg "<step>" help="Release step" { choices "previous-lock" "public-keys" "fetch-alef" "fetch-mise" "fetch-jq" "fetch-rustup-init" "plan" "build" "stage" "unstage" "package" "lock"; }
-#USAGE arg "[args]..." help="plan, build, stage, unstage and package take <triple>; lock takes <plans> <records> <out>"
+#USAGE arg "<step>" help="Release step" { choices "previous-lock" "public-keys" "fetch-alef" "fetch-mise" "fetch-jq" "fetch-rustup-init" "plan" "build" "package" "stage" "unstage" "sign" "lock"; }
+#USAGE arg "[args]..." help="plan, build, package, stage, unstage and sign take <triple>; lock takes <plans> <records> <out>"
 # Release build of the downloadable components, on alef's content-addressed plan:
 #
 #   mise run components:release previous-lock                  fetch the lock the newest earlier release shipped and
@@ -16,27 +16,29 @@
 #   mise run components:release plan    <triple>               fingerprint each component's inputs; mark each
 #                                                              build or reuse against that lock
 #   mise run components:release build   <triple>               compile the rows marked build (thin LTO, stripped)
-#   mise run components:release stage   <triple>               tar the built payloads and the plan for the signing
-#                                                              job, and write their digest manifest
+#   mise run components:release package <triple>               package them as unsigned archives and records
+#   mise run components:release stage   <triple>               tar the unsigned archives and the plan for the
+#                                                              signing job, and write their digest manifest
 #   mise run components:release unstage <triple>               check a staged tar and plan against the digest
-#                                                              manifest and put the payloads back where package reads them
-#   mise run components:release package <triple>               sign and package them, verify
+#                                                              manifest and put the archives back where sign reads them
+#   mise run components:release sign    <triple>               sign them with `alef component sign`, verify
 #   mise run components:release lock    <plans> <records> <out>  merge every triple's plan, then write the lock,
 #                                                              carrying the reuse rows over verbatim
 #
 # publish.yaml runs plan, build and package inside a manylinux_2_28 container on linux gnu, through the
 # musl mise that fetch-mise verified (MISE_TASK_RUN_AUTO_INSTALL=false: the container installs no tools).
-# plan, build and stage run in the build job, which never sees the signing key; unstage and package run in
-# a separate signing job on a fresh runner (ADR 0060). Everything lands under target/components-release/:
-# previous-lock.json (`{}` when there is none), tools/, plan.json (merged, by `lock`) and, per triple,
-# build/ (shared cargo target dir), plan/plan.json, unstaged/ and digests.sha256 (stage), and dist/
-# (archives and *.record.json to upload).
+# plan, build, package and stage run in the build job, which never sees the signing key; unstage and sign
+# run in a separate signing job on a fresh runner that builds nothing (ADR 0060): `alef component sign`
+# loads no alef.toml and runs no cargo, rustc or go (alef ADR-0026). Everything lands under
+# target/components-release/: previous-lock.json (`{}` when there is none), tools/, plan.json (merged, by
+# `lock`) and, per triple, build/ (shared cargo target dir), plan/plan.json, unsigned/ (package),
+# unstaged/ and digests.sha256 (stage), and dist/ (signed archives and *.record.json to upload).
 #
 # Environment:
 #   GH_TOKEN, GITHUB_REPOSITORY     read the previous release (previous-lock)
 #   RELEASE_TAG                     tag being released (previous-lock skips it)
 #   REBUILD_COMPONENTS              "true" ignores the previous lock, so every component is rebuilt
-#   POLY_COMPONENT_SIGNING_KEY      Ed25519 private key, PKCS#8 PEM or base64 (package); never defaulted
+#   POLY_COMPONENT_SIGNING_KEY      Ed25519 private key, PKCS#8 PEM or base64 (sign); never defaulted
 #   RUST_TOOLCHAIN                  exact rust version (e.g. 1.99.1) `rustc` must report (plan, build, package)
 #   VECTORSCAN_BUILD_FROM_SOURCE    "1" builds vectorscan from source (cmake and Boost); folded into the input hash
 #   BUILD_IMAGE                     container image the steps run in, folded into the input hash; when set, ALEF
@@ -74,13 +76,13 @@ export CARGO_PROFILE_RELEASE_LTO=thin
 # unset variable is left out of the fingerprint, so the other targets keep their hashes.
 EXTRA=(--extra "key-id=${KEY_ID}" --extra "image=${BUILD_IMAGE:-host}" --env VECTORSCAN_BUILD_FROM_SOURCE)
 
-STEP="${1:?usage: mise run components:release previous-lock|public-keys|fetch-alef|fetch-mise|fetch-jq|fetch-rustup-init|plan|build|stage|unstage|package|lock ...}"
+STEP="${1:?usage: mise run components:release previous-lock|public-keys|fetch-alef|fetch-mise|fetch-jq|fetch-rustup-init|plan|build|package|stage|unstage|sign|lock ...}"
 
 COMPONENTS_OUT="${ROOT_DIR}/target/components-release"
 PREVIOUS_LOCK="${COMPONENTS_OUT}/previous-lock.json"
 
 usage() {
-  echo "usage: mise run components:release previous-lock | public-keys | fetch-alef | fetch-mise | fetch-jq | fetch-rustup-init | plan|build|stage|unstage|package <triple> | lock <plans> <records> <out>" >&2
+  echo "usage: mise run components:release previous-lock | public-keys | fetch-alef | fetch-mise | fetch-jq | fetch-rustup-init | plan|build|package|stage|unstage|sign <triple> | lock <plans> <records> <out>" >&2
   exit 1
 }
 
@@ -462,11 +464,21 @@ OUT="${COMPONENTS_OUT}/${TARGET}"
 BUILD="${OUT}/build"
 DIST="${OUT}/dist"
 PLAN="${OUT}/plan/plan.json"
-# Where `component build --target-dir` leaves each payload, beside the <payload>.input-hash that
-# `package --plan` requires.
-PAYLOADS="${BUILD}/${TARGET}/release"
+# Where `package --unsigned` writes the unsigned archives and records, which `sign` reads.
+UNSIGNED="${OUT}/unsigned"
 STAGED="${OUT}/unstaged"
 DIGESTS="${OUT}/digests.sha256"
+
+# Fail unless <dir> holds exactly <expected> component archives and as many records.
+count_archives() {
+  local records archives
+  records="$(find "$1" -maxdepth 1 -name '*.record.json' | grep -c . || true)"
+  archives="$(find "$1" -maxdepth 1 -name 'poly-component-*.tar.gz' | grep -c . || true)"
+  [[ "${records}" == "$2" && "${archives}" == "$2" ]] || {
+    echo "components-release: ${TARGET} plans $2 build(s), $1 holds ${archives} archive(s) and ${records} record(s)" >&2
+    exit 1
+  }
+}
 
 case "${STEP}" in
 plan)
@@ -505,50 +517,46 @@ build)
   fi
   ;;
 
-stage)
+package)
+  check_rustc
   [[ -f "${PLAN}" ]] || {
     echo "components-release: no plan at ${PLAN}; run the plan step first" >&2
     exit 1
   }
   expected="$(build_rows "${PLAN}")"
-  names=()
+  rm -rf "${UNSIGNED}"
+  mkdir -p "${UNSIGNED}"
   if [[ "${expected}" -gt 0 ]]; then
-    while IFS= read -r sidecar; do
-      payload="${sidecar%.input-hash}"
-      [[ -f "${payload}" ]] || {
-        echo "components-release: ${sidecar} has no payload beside it" >&2
-        exit 1
-      }
-      names+=("$(basename "${payload}")" "$(basename "${sidecar}")")
-    done < <(find "${PAYLOADS}" -maxdepth 1 -name '*.input-hash' | sort)
+    alef component package --plan "${PLAN}" --target-dir "${BUILD}" --output "${UNSIGNED}" --unsigned "${EXTRA[@]}"
   fi
-  [[ "$((${#names[@]} / 2))" == "${expected}" ]] || {
-    echo "components-release: ${TARGET} plans ${expected} build(s), found $((${#names[@]} / 2)) built payload(s)" >&2
+  count_archives "${UNSIGNED}" "${expected}"
+  ;;
+
+stage)
+  [[ -f "${PLAN}" && -d "${UNSIGNED}" ]] || {
+    echo "components-release: stage needs ${PLAN} and ${UNSIGNED}; run the plan, build and package steps first" >&2
     exit 1
   }
+  count_archives "${UNSIGNED}" "$(build_rows "${PLAN}")"
   rm -rf "${STAGED}"
   mkdir -p "${STAGED}"
-  # One tar, so the executables keep their mode through the artifact store.
-  if [[ "${expected}" -gt 0 ]]; then
-    tar -cf "${STAGED}/payloads.tar" -C "${PAYLOADS}" "${names[@]}"
-  else
-    tar -cf "${STAGED}/payloads.tar" -T /dev/null
-  fi
+  # One tar, so the signing job gets exactly the files this job packaged.
+  tar -cf "${STAGED}/archives.tar" -C "${UNSIGNED}" .
   cp "${PLAN}" "${STAGED}/plan.json"
   {
-    printf '%s  %s\n' "$(sha256_of "${STAGED}/payloads.tar")" payloads.tar
+    printf '%s  %s\n' "$(sha256_of "${STAGED}/archives.tar")" archives.tar
     printf '%s  %s\n' "$(sha256_of "${STAGED}/plan.json")" plan.json
   } >"${DIGESTS}"
   cat "${DIGESTS}"
   ;;
 
 unstage)
-  [[ -f "${DIGESTS}" && -f "${STAGED}/payloads.tar" && -f "${STAGED}/plan.json" ]] || {
-    echo "components-release: unstage needs ${DIGESTS}, ${STAGED}/payloads.tar and ${STAGED}/plan.json" >&2
+  [[ -f "${DIGESTS}" && -f "${STAGED}/archives.tar" && -f "${STAGED}/plan.json" ]] || {
+    echo "components-release: unstage needs ${DIGESTS}, ${STAGED}/archives.tar and ${STAGED}/plan.json" >&2
     exit 1
   }
-  [[ "$(awk '{ print $2 }' "${DIGESTS}" | sort | tr '\n' ' ')" == "payloads.tar plan.json " ]] || {
-    echo "components-release: ${DIGESTS} must list exactly payloads.tar and plan.json" >&2
+  [[ "$(awk '{ print $2 }' "${DIGESTS}" | sort | tr '\n' ' ')" == "archives.tar plan.json " ]] || {
+    echo "components-release: ${DIGESTS} must list exactly archives.tar and plan.json" >&2
     exit 1
   }
   while read -r digest name; do
@@ -558,37 +566,35 @@ unstage)
       exit 1
     }
   done <"${DIGESTS}"
-  mkdir -p "${PAYLOADS}" "$(dirname "${PLAN}")"
+  rm -rf "${UNSIGNED}"
+  mkdir -p "${UNSIGNED}" "$(dirname "${PLAN}")"
   cp "${STAGED}/plan.json" "${PLAN}"
-  tar -xf "${STAGED}/payloads.tar" -C "${PAYLOADS}"
-  sidecars="$(find "${PAYLOADS}" -maxdepth 1 -name '*.input-hash' | grep -c . || true)"
-  [[ "${sidecars}" == "$(build_rows "${PLAN}")" ]] || {
-    echo "components-release: ${TARGET} plans $(build_rows "${PLAN}") build(s), the staged tar holds ${sidecars}" >&2
-    exit 1
-  }
-  echo "unstaged ${sidecars} payload(s) for ${TARGET}, digests verified"
+  tar -xf "${STAGED}/archives.tar" -C "${UNSIGNED}"
+  count_archives "${UNSIGNED}" "$(build_rows "${PLAN}")"
+  echo "unstaged the archives for ${TARGET}, digests verified"
   ;;
 
-package)
-  check_rustc
-  [[ -f "${PLAN}" ]] || {
-    echo "components-release: no plan at ${PLAN}; run the plan step first" >&2
+sign)
+  [[ -f "${PLAN}" && -d "${UNSIGNED}" ]] || {
+    echo "components-release: sign needs ${PLAN} and ${UNSIGNED}; run the unstage step first" >&2
     exit 1
   }
   expected="$(build_rows "${PLAN}")"
+  rm -rf "${DIST}"
   mkdir -p "${DIST}"
   if [[ "${expected}" -gt 0 ]]; then
-    : "${POLY_COMPONENT_SIGNING_KEY:?package needs POLY_COMPONENT_SIGNING_KEY (Ed25519 private key)}"
-    alef component package --plan "${PLAN}" --target-dir "${BUILD}" --output "${DIST}" \
-      --signing-key-env POLY_COMPONENT_SIGNING_KEY --key-id "${KEY_ID}" "${EXTRA[@]}"
+    : "${POLY_COMPONENT_SIGNING_KEY:?sign needs POLY_COMPONENT_SIGNING_KEY (Ed25519 private key)}"
+    public_key="$(public_keys | jq -er --arg id "${KEY_ID}" '.[$id]')" || {
+      echo "components-release: alef.toml configures no public key for ${KEY_ID}" >&2
+      exit 1
+    }
+    # --public-key refuses a private key that is not the configured key's other half; --plan refuses
+    # an archive with no matching build row.
+    alef component sign --input "${UNSIGNED}" --output "${DIST}" --plan "${PLAN}" \
+      --key-env POLY_COMPONENT_SIGNING_KEY --key-id "${KEY_ID}" --public-key "${public_key}"
     alef component verify --input "${DIST}"
   fi
-  records="$(find "${DIST}" -maxdepth 1 -name '*.record.json' | grep -c . || true)"
-  archives="$(find "${DIST}" -maxdepth 1 -name 'poly-component-*.tar.gz' | grep -c . || true)"
-  [[ "${records}" == "${expected}" && "${archives}" == "${expected}" ]] || {
-    echo "components-release: ${TARGET} plans ${expected} build(s), found ${archives} archive(s) and ${records} record(s)" >&2
-    exit 1
-  }
+  count_archives "${DIST}" "${expected}"
   ls -l "${DIST}"
   ;;
 
