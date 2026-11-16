@@ -16,6 +16,7 @@ path = "src/lib.rs"
 
 [dependencies]
 anyhow.workspace = true
+poly-component-protocol.workspace = true
 poly-engine-api.workspace = true
 poly-engines.workspace = true
 pyrefly.workspace = true
@@ -30,7 +31,6 @@ tracing.workspace = true
 insta.workspace = true
 poly-component-host.workspace = true
 poly-component-index.workspace = true
-poly-component-protocol.workspace = true
 serde_json.workspace = true
 tempfile.workspace = true
 

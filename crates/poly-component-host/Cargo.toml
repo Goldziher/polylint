@@ -24,7 +24,6 @@ anyhow.workspace = true
 poly-component-protocol.workspace = true
 poly-config.workspace = true
 poly-engine-api.workspace = true
-poly-engines.workspace = true
 serde_json.workspace = true
 tracing.workspace = true
 

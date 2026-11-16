@@ -9,9 +9,10 @@ use std::sync::Arc;
 use alef_component_runtime::ComponentManager;
 use poly_component_host::{ComponentHost, ComponentTransport, HostOptions, TransportConnector};
 use poly_component_index::ComponentIndex;
+use poly_component_protocol::PolyComponent;
 use poly_core::components::ComponentInjection;
 use poly_core::{Config, RunOptions};
-use poly_engines::{MiscComponent, PolyComponent};
+use poly_engines::MiscComponent;
 
 const TARGET: &str = "test-target";
 

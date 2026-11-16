@@ -6,6 +6,9 @@
 [[crates]]
 name = "poly-engines"
 sources = ["crates/poly-engines/src/lib.rs"]
+# The contract traits live in poly-component-protocol; the workspace root lets alef follow the facade's
+# `pub use poly_component_protocol::{...}` re-export to extract them.
+workspace_root = "."
 version_from = "Cargo.toml"
 # The facade also exports Producer and engine-facing types the contract never uses; only the
 # PolyComponent trait is extracted into a component contract.
@@ -13,14 +16,14 @@ suppress_validation_codes = ["lossy_sanitized_surface", "backend_stub_path"]
 
 [[crates.component_contracts]]
 name = "poly"
-trait_path = "poly_engines::PolyComponent"
+trait_path = "poly_component_protocol::PolyComponent"
 interface_version = 1
 
 # The frontend contract: a component that hosts no engines and serves a client over the process's
 # stdio, doing its work through the host-service table (alef 0.118 `AlefHostApiV1::service_call`).
 [[crates.component_contracts]]
 name = "poly_frontend"
-trait_path = "poly_engines::PolyFrontend"
+trait_path = "poly_component_protocol::PolyFrontend"
 interface_version = 1
 
 [[crates.components]]

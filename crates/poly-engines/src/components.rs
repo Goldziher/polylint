@@ -10,7 +10,9 @@ macro_rules! family_component {
     ($feature:literal, $module:ident, $name:ident, $doc:literal, $engines:expr $(, rules = $rules:expr)?) => {
         #[cfg(feature = $feature)]
         mod $module {
-            use crate::{ComponentCallError, PolyComponent, Producer};
+            use poly_component_protocol::{ComponentCallError, PolyComponent};
+
+            use crate::Producer;
 
             #[doc = $doc]
             pub struct $name(Producer);
@@ -121,7 +123,7 @@ mod mcp {
     use poly_frontend_api::ServiceCaller;
     use poly_frontend_api::wire::FrontendArgs;
 
-    use crate::{ComponentCallError, PolyFrontend};
+    use poly_component_protocol::{ComponentCallError, PolyFrontend};
 
     /// Reaches the host's services through the component ABI's service table.
     struct HostCaller(HostApi);

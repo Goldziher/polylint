@@ -79,9 +79,10 @@ mod injected {
 
     use alef_component_runtime::ComponentManager;
     use poly_component_host::{ComponentHost, ComponentTransport, HostOptions, TransportConnector};
+    use poly_component_protocol::PolyComponent;
     use poly_config::v2::{ComponentInstallPolicy, ComponentsConfig};
     use poly_core::components::ComponentInjection;
-    use poly_engines::{AstgrepComponent, PolyComponent};
+    use poly_engines::AstgrepComponent;
 
     use super::*;
 

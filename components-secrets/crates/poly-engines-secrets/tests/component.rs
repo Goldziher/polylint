@@ -8,11 +8,10 @@
 use std::sync::Arc;
 
 use poly_component_host::{ComponentHost, HostOptions, SlotStatus};
-use poly_component_protocol::decode_describe;
+use poly_component_protocol::{PolyComponent, decode_describe};
 use poly_engine_api::config::{EngineConfig, GlobalDefaults};
 use poly_engine_api::engine::{Engine, SourceFile};
 use poly_engine_api::language::Language;
-use poly_engines::PolyComponent;
 use poly_engines_secrets::{SecretsComponent, SecretsEngine};
 
 const DEV_LOCK_ENV: &str = "POLY_COMPONENT_DEV_LOCK";

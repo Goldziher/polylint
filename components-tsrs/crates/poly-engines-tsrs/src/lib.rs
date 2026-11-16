@@ -48,9 +48,10 @@ mod vfs;
 
 pub use engine::{ENGINE_NAME, TsrsEngine};
 
+use poly_component_protocol::{ComponentCallError, PolyComponent};
 use poly_engine_api::engine::Engine;
 use poly_engine_api::language::Language;
-use poly_engines::{ComponentCallError, PolyComponent, Producer};
+use poly_engines::Producer;
 
 /// The tsrs family's engines for `language`; empty for a language the check reads nothing of.
 ///

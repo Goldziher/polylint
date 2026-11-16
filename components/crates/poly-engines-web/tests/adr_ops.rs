@@ -2,12 +2,11 @@
 //! for `poly adr` (ADR 0061) plans the same change as the linked planner.
 
 use poly_component_protocol::{
-    PROTOCOL_VERSION, Payload, Request, WireAdrOp, WireAdrPlan, WireErrorKind, WireFileSlice, WireLogLevel,
-    decode_response, encode_request,
+    PROTOCOL_VERSION, Payload, PolyComponent, Request, WireAdrOp, WireAdrPlan, WireErrorKind, WireFileSlice,
+    WireLogLevel, decode_response, encode_request,
 };
 use poly_engine_api::component_wire::engine_config_to_wire;
 use poly_engine_api::config::{EngineConfig, GlobalDefaults};
-use poly_engines::PolyComponent;
 use poly_engines_web::WebComponent;
 
 const RECORD: &str =

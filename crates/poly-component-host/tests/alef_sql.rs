@@ -9,12 +9,12 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use poly_component_host::{ComponentHost, HostOptions, SlotStatus};
-use poly_component_protocol::decode_describe;
+use poly_component_protocol::{PolyComponent, decode_describe};
 use poly_engine_api::config::{EngineConfig, GlobalDefaults};
 use poly_engine_api::engine::{Diagnostic, Engine, SourceFile};
 use poly_engine_api::language::Language;
+use poly_engines::SqlComponent;
 use poly_engines::sql::SqruffEngine;
-use poly_engines::{PolyComponent, SqlComponent};
 use rayon::prelude::*;
 
 const DEV_LOCK_ENV: &str = "POLY_COMPONENT_DEV_LOCK";

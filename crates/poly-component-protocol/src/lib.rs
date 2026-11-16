@@ -9,10 +9,15 @@
 //! A sidecar component (an executable, not a dylib) carries the same two calls over alef's framed
 //! stdio transport; [`sidecar`] defines how (and the schema's `ProtocolSchema` documents it).
 //!
+//! The Rust side of that contract is [`PolyComponent`] (and [`PolyFrontend`] for a frontend
+//! component), failing with [`ComponentCallError`]; `alef` generates both the producer exports and
+//! the host proxy from these traits.
+//!
 //! This crate deliberately has no dependency on `poly-core`; conversions from engine types live
 //! with those types.
 
 mod codec;
+mod contract;
 pub mod coverage;
 pub mod sidecar;
 mod value;
@@ -21,6 +26,7 @@ mod wire;
 pub use codec::{
     ProtocolError, decode_describe, decode_request, decode_response, encode_describe, encode_request, encode_response,
 };
+pub use contract::{ComponentCallError, PolyComponent, PolyFrontend};
 pub use coverage::{Coverage, ENGINE_METHODS};
 pub use value::{WireValue, WireValueError, to_toml};
 pub use wire::*;

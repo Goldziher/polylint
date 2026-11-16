@@ -5,11 +5,10 @@ use std::path::PathBuf;
 use std::sync::Arc;
 
 use poly_component_host::{ComponentEngine, ComponentSlot, ComponentTransport, InitParams};
-use poly_component_protocol::decode_describe;
+use poly_component_protocol::{PolyComponent, decode_describe};
 use poly_engine_api::config::{EngineConfig, GlobalDefaults};
 use poly_engine_api::engine::{Capabilities, Diagnostic, Engine, Severity, SourceFile};
 use poly_engine_api::language::Language;
-use poly_engines::PolyComponent;
 use poly_engines::producer::Producer;
 
 struct Probe;

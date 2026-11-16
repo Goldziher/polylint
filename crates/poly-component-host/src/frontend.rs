@@ -1,7 +1,7 @@
 //! Running a frontend component: one that hosts no engines and serves the process's stdio.
 
 use anyhow::Context;
-use poly_engines::PolyFrontend;
+use poly_component_protocol::PolyFrontend;
 use serde_json::Value;
 
 use crate::components_gen::{POLY_FRONTEND_ENTRY_SYMBOL, PolyFrontendProxy};

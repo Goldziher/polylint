@@ -16,6 +16,7 @@ path = "src/lib.rs"
 
 [dependencies]
 anyhow.workspace = true
+poly-component-protocol.workspace = true
 poly-engine-api.workspace = true
 poly-engines.workspace = true
 serde_json.workspace = true
@@ -31,7 +32,6 @@ tsrs_vfs.workspace = true
 [dev-dependencies]
 poly-component-host.workspace = true
 poly-component-index.workspace = true
-poly-component-protocol.workspace = true
 serde_json.workspace = true
 tempfile.workspace = true
 

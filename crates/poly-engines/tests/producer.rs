@@ -3,9 +3,9 @@
 use std::borrow::Cow;
 
 use poly_component_protocol::{
-    ConfigId, PROTOCOL_VERSION, Payload, Request, Response, WireDiagnostic, WireErrorKind, WireFile, WireFileSlice,
-    WireFormatItem, WireFormatOutput, WireKind, WireLintItem, WireLogLevel, decode_describe, decode_response,
-    encode_request, hooks,
+    ConfigId, PROTOCOL_VERSION, Payload, PolyComponent, Request, Response, WireDiagnostic, WireErrorKind, WireFile,
+    WireFileSlice, WireFormatItem, WireFormatOutput, WireKind, WireLintItem, WireLogLevel, decode_describe,
+    decode_response, encode_request, hooks,
 };
 use poly_engine_api::component_wire::wire_diagnostic;
 use poly_engine_api::config::EngineConfig;
@@ -14,8 +14,8 @@ use poly_engine_api::engine::{
     SourceFile, Span,
 };
 use poly_engine_api::language::Language;
+use poly_engines::Producer;
 use poly_engines::producer::{engine_config_from_wire, engine_config_to_wire};
-use poly_engines::{PolyComponent, Producer};
 
 static SQL: [Language; 1] = [Language::Sql];
 

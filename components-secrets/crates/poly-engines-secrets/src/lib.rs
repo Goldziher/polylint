@@ -4,7 +4,8 @@ mod engine;
 
 pub use engine::{ENGINE_NAME, SecretsEngine};
 
-use poly_engines::{ComponentCallError, PolyComponent, Producer};
+use poly_component_protocol::{ComponentCallError, PolyComponent};
+use poly_engines::Producer;
 
 /// The `secrets` component: the kingfisher scanner behind the component protocol.
 pub struct SecretsComponent(Producer);

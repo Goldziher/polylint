@@ -6,7 +6,8 @@ mod settings;
 
 pub use check::{ENGINE_NAME, PyreflyEngine};
 
-use poly_engines::{ComponentCallError, PolyComponent, Producer};
+use poly_component_protocol::{ComponentCallError, PolyComponent};
+use poly_engines::Producer;
 
 /// The `pyrefly` component: the pyrefly project check behind the component protocol.
 pub struct PyreflyComponent(Producer);

@@ -4,9 +4,10 @@ pub mod rubyfmt;
 
 pub use rubyfmt::RubyfmtEngine;
 
+use poly_component_protocol::{ComponentCallError, PolyComponent};
 use poly_engine_api::engine::Engine;
 use poly_engine_api::language::Language;
-use poly_engines::{ComponentCallError, PolyComponent, Producer};
+use poly_engines::Producer;
 
 /// The Ruby family's engines for `language`: rubyfmt for Ruby, none for any other language.
 ///

@@ -3,8 +3,7 @@
 //! The host refuses a component whose `describe()` differs from the index it was resolved with, so
 //! a mismatch here is a component that installs and then fails every file it is asked about.
 
-use poly_component_protocol::decode_describe;
-use poly_engines::PolyComponent;
+use poly_component_protocol::{PolyComponent, decode_describe};
 
 fn assert_matches_index(name: &str, component: &dyn PolyComponent) {
     let described = decode_describe(&component.describe().expect("describe")).expect("decode describe");

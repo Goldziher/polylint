@@ -4,8 +4,8 @@ use std::collections::HashSet;
 use std::sync::Arc;
 
 use alef_component_runtime::{ComponentManager, LoadedComponent};
+use poly_component_protocol::PolyComponent;
 use poly_component_protocol::sidecar::{CONTRACT, METHOD_CALL, METHOD_DESCRIBE, pack_call};
-use poly_engines::PolyComponent;
 
 use crate::components_gen::{POLY_ENTRY_SYMBOL, PolyProxy};
 

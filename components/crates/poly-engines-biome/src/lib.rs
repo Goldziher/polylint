@@ -7,9 +7,10 @@ pub mod graphql;
 pub use css::BiomeCssEngine;
 pub use graphql::BiomeGraphqlEngine;
 
+use poly_component_protocol::{ComponentCallError, PolyComponent};
 use poly_engine_api::engine::Engine;
 use poly_engine_api::language::Language;
-use poly_engines::{ComponentCallError, PolyComponent, Producer};
+use poly_engines::Producer;
 
 /// The engines this family registers for `language`; empty when the family does not handle it.
 ///

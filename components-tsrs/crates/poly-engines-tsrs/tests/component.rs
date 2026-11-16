@@ -5,11 +5,10 @@
 //! reports that it skipped and passes.
 
 use poly_component_host::{ComponentHost, HostOptions, SlotStatus};
-use poly_component_protocol::decode_describe;
+use poly_component_protocol::{PolyComponent, decode_describe};
 use poly_engine_api::config::{EngineConfig, GlobalDefaults};
 use poly_engine_api::engine::{Engine, ProjectEnvironment, ProjectFile, ProjectRequest};
 use poly_engine_api::language::Language;
-use poly_engines::PolyComponent;
 use poly_engines_tsrs::{TsrsComponent, TsrsEngine};
 
 const DEV_LOCK_ENV: &str = "POLY_COMPONENT_DEV_LOCK";

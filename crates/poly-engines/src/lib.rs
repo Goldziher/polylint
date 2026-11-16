@@ -1,14 +1,19 @@
 //! Facade over poly's engine family crates.
 //!
 //! Each family is behind a feature of the same name and re-exported under it
-//! (`poly_engines::sql`, `poly_engines::python`, ...). The facade also owns the
-//! [`PolyComponent`] contract a component implements to be driven by the host.
+//! (`poly_engines::sql`, `poly_engines::python`, ...), together with the ready-made component
+//! types and the [`Producer`] that adapts engines to the [`PolyComponent`] contract.
 
-mod component;
+// The contract lives in `poly-component-protocol`. The re-export stays because `alef` extracts the
+// contract traits through this crate's `lib.rs` and the producer crates it generates name them by
+// this path. It precedes `mod producer`: alef 0.130 reads a sibling crate once per run, so when
+// `producer`'s `poly_engine_api` re-export reaches `poly-component-protocol` first, a later
+// re-export from it here extracts nothing and `alef generate` cannot find the contract.
+pub use poly_component_protocol::{ComponentCallError, PolyComponent, PolyFrontend};
+
 mod components;
 pub mod producer;
 
-pub use component::{ComponentCallError, PolyComponent, PolyFrontend};
 #[cfg(feature = "astgrep")]
 pub use components::AstgrepComponent;
 #[cfg(feature = "jsonschema")]

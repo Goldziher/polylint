@@ -17,15 +17,13 @@ use std::collections::HashMap;
 use std::sync::{Arc, OnceLock, PoisonError, RwLock};
 
 use poly_component_protocol::{
-    ConfigId, Response, WireAdrOp, WireAdrPlan, WireError, WireErrorKind, WireLogLevel, WireRulesReport,
-    decode_request, encode_describe, encode_response,
+    ComponentCallError, ConfigId, PolyComponent, Response, WireAdrOp, WireAdrPlan, WireError, WireErrorKind,
+    WireLogLevel, WireRulesReport, decode_request, encode_describe, encode_response,
 };
 use poly_engine_api::config::EngineConfig;
 use poly_engine_api::engine::{Engine, ProjectFile};
 
 pub use poly_engine_api::component_wire::{engine_config_from_wire, engine_config_to_wire};
-
-use crate::{ComponentCallError, PolyComponent};
 
 /// What the host passed in `Request::Init`.
 ///

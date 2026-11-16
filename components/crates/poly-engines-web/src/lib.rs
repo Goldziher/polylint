@@ -28,9 +28,10 @@ pub use crate::skif::SkifEngine;
 pub use crate::taplo::TaploEngine;
 pub use crate::yaml::YamlEngine;
 
+use poly_component_protocol::{ComponentCallError, PolyComponent};
 use poly_engine_api::engine::Engine;
 use poly_engine_api::language::Language;
-use poly_engines::{ComponentCallError, PolyComponent, Producer};
+use poly_engines::Producer;
 
 /// The web family's engines for `language`, in registration order; empty for any other language.
 ///
