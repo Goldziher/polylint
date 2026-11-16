@@ -34,6 +34,7 @@ type componentManifest struct {
 // compares with the verified manifest.
 type stdioDescriptor struct {
 	ProtocolVersion uint32             `json:"protocol_version"`
+	MaxInFlight     uint32             `json:"max_in_flight"`
 	ABIMajor        uint32             `json:"abi_major"`
 	ABIMinor        uint32             `json:"abi_minor"`
 	ComponentID     string             `json:"component_id"`
@@ -67,9 +68,11 @@ func readManifest(path string) (componentManifest, error) {
 	return manifest, nil
 }
 
-func (m componentManifest) descriptor() stdioDescriptor {
+// descriptor selects stdio protocol 2 with up to maxInFlight concurrent calls.
+func (m componentManifest) descriptor(maxInFlight uint32) stdioDescriptor {
 	return stdioDescriptor{
-		ProtocolVersion: 1,
+		ProtocolVersion: binaryProtocol,
+		MaxInFlight:     maxInFlight,
 		ABIMajor:        1,
 		ABIMinor:        0,
 		ComponentID:     m.Identity.Component,

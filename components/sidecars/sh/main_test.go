@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 )
 
 func testManifest() componentManifest {
@@ -21,72 +22,211 @@ func testManifest() componentManifest {
 	return m
 }
 
-func frames(t *testing.T, requests ...string) io.Reader {
+// registerCall registers config with a two-space indent.
+func registerCall(t *testing.T, id uint64, config uint32) []byte {
 	t.Helper()
-	var buf bytes.Buffer
-	for _, r := range requests {
-		if err := writeFrame(&buf, []byte(r)); err != nil {
-			t.Fatal(err)
-		}
-	}
-	return &buf
+	return polyCall(t, id, map[string]any{"RegisterConfig": []any{
+		config, wireTab("indent_width", wireInt(2), "options", wireTab()),
+	}}, "")
 }
 
-func TestRunAnswersEachFrameOnceThenStopsAtEOF(t *testing.T) {
+// formatCall formats src as run.sh under config.
+func formatCall(t *testing.T, id uint64, config uint32, src string) []byte {
+	t.Helper()
+	return polyCall(t, id, formatRequestFor(config, "run.sh", len(src)), src)
+}
+
+// sampleSource is a file the formatter changes; tag makes it distinguishable.
+func sampleSource(tag string) string { return "echo   " + tag + "\n" }
+
+func TestHandshakeSelectsProtocol2(t *testing.T) {
 	var out bytes.Buffer
-	in := frames(t,
-		`{"op":"describe"}`,
-		`{"op":"call","contract":"poly","method":"nope","payload":[]}`,
-	)
-	err := run(in, &out, testManifest())
-	if !errors.Is(err, io.EOF) {
+	if err := run(bytes.NewReader(describeRequest(t)), &out, testManifest(), "1,2"); !errors.Is(err, io.EOF) {
 		t.Fatalf("err = %v, want EOF at the end of input", err)
 	}
-	first, err := readFrame(&out)
-	if err != nil {
-		t.Fatal(err)
+	status, payload := readHandshake(t, &out)
+	if status != statusOK {
+		t.Fatalf("describe = status %d %q", status, payload)
 	}
 	var desc stdioDescriptor
-	var envelope reply
-	if err := json.Unmarshal(first, &envelope); err != nil || envelope.Status != statusOK {
-		t.Fatalf("describe reply: %s %v", first, err)
-	}
-	if err := json.Unmarshal(envelope.Payload, &desc); err != nil {
+	if err := json.Unmarshal(payload, &desc); err != nil {
 		t.Fatal(err)
 	}
-	want := testManifest().descriptor()
+	want := testManifest().descriptor(maxInFlight())
+	if desc.ProtocolVersion != binaryProtocol || desc.MaxInFlight < 1 || desc.MaxInFlight != want.MaxInFlight {
+		t.Errorf("protocol %d, max_in_flight %d, want protocol 2 and %d", desc.ProtocolVersion, desc.MaxInFlight, want.MaxInFlight)
+	}
 	if desc.ComponentID != want.ComponentID || desc.ComponentVer != "1.2.3" || desc.FeatureSetHash != "ab" ||
 		len(desc.Provides) != 1 || desc.Provides[0] != want.Provides[0] {
 		t.Errorf("descriptor = %+v", desc)
 	}
-	second, err := readFrame(&out)
-	if err != nil {
-		t.Fatal(err)
+	if out.Len() != 0 {
+		t.Fatalf("%d bytes written after the describe reply", out.Len())
 	}
-	if err := json.Unmarshal(second, &envelope); err != nil || envelope.Status != statusFailed {
-		t.Fatalf("a bad method must be a status error: %s %v", second, err)
+}
+
+// Without protocol 2 the host would send protocol-1 calls this sidecar does not
+// read, so it fails the handshake instead of declaring protocol 1.
+func TestHandshakeRefusesAHostWithoutProtocol2(t *testing.T) {
+	for _, protocols := range []string{"", "1", "1,3"} {
+		t.Run(protocols, func(t *testing.T) {
+			var out bytes.Buffer
+			err := run(bytes.NewReader(describeRequest(t)), &out, testManifest(), protocols)
+			if err == nil || errors.Is(err, io.EOF) {
+				t.Fatalf("err = %v, want a refusal", err)
+			}
+			status, payload := readHandshake(t, &out)
+			if status != statusFailed || !strings.Contains(string(payload), "protocol 2") {
+				t.Fatalf("describe = status %d %q, want a failure naming protocol 2", status, payload)
+			}
+		})
 	}
-	if _, err := readFrame(&out); !errors.Is(err, io.EOF) {
-		t.Fatalf("a third reply was written: %v", err)
+}
+
+func TestOffersBinary(t *testing.T) {
+	for protocols, want := range map[string]bool{"1,2": true, "2": true, " 1 , 2 ": true, "": false, "1": false, "12": false} {
+		if got := offersBinary(protocols); got != want {
+			t.Errorf("offersBinary(%q) = %v, want %v", protocols, got, want)
+		}
 	}
 }
 
 func TestRunRejectsBrokenInput(t *testing.T) {
+	frame := func(body string) []byte {
+		var buf bytes.Buffer
+		if err := writeFrame(&buf, []byte(body)); err != nil {
+			t.Fatal(err)
+		}
+		return buf.Bytes()
+	}
+	afterDescribe := func(call []byte) []byte { return append(describeRequest(t), call...) }
+	badMagic := encodeCall(1, contractPoly, methodDescr, nil)
+	badMagic[0] = 0xA1
 	tests := []struct {
 		name string
-		in   io.Reader
+		in   []byte
 	}{
-		{"not json", frames(t, `nope`)},
-		{"unknown op", frames(t, `{"op":"other"}`)},
-		{"zero-length frame", bytes.NewReader(binary.LittleEndian.AppendUint32(nil, 0))},
+		{"not json", frame(`nope`)},
+		{"a call before describe", frame(`{"op":"call","contract":"poly","method":"describe","payload":[]}`)},
+		{"zero-length frame", binary.LittleEndian.AppendUint32(nil, 0)},
+		{"a bad call frame", afterDescribe(badMagic)},
+		{"a truncated call frame", afterDescribe(encodeCall(1, contractPoly, methodDescr, []byte("abc"))[:prefixLen+3])},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			err := run(tt.in, io.Discard, testManifest())
+			err := run(bytes.NewReader(tt.in), io.Discard, testManifest(), "1,2")
 			if err == nil || errors.Is(err, io.EOF) {
 				t.Fatalf("err = %v, want a protocol error", err)
 			}
 		})
+	}
+}
+
+func TestCallsAreAnsweredByID(t *testing.T) {
+	s := startSession(t, newServer("1.2.3"))
+	if got := s.call(7, encodeCall(7, contractPoly, "nope", nil)); got.status != statusFailed {
+		t.Fatalf("a bad method must be a status error: %d %q", got.status, got.payload)
+	}
+	if got := s.call(9, encodeCall(9, contractPoly, methodDescr, nil)); got.status != statusOK {
+		t.Fatalf("describe method: %d %q", got.status, got.payload)
+	}
+	if err := s.finish(); !errors.Is(err, io.EOF) {
+		t.Fatalf("err = %v, want EOF", err)
+	}
+}
+
+// A call that is still running must not hold up a later one: the first
+// formatter blocks until the test has read the second call's answer.
+func TestCallsRunConcurrently(t *testing.T) {
+	srv := newServer("1.2.3")
+	release := make(chan struct{})
+	srv.format = func(path string, src []byte, opts formatOptions) (string, bool, error) {
+		if strings.Contains(string(src), "first") {
+			select {
+			case <-release:
+			case <-time.After(5 * time.Second):
+				return "", false, errors.New("never released: calls are serialized")
+			}
+		}
+		return formatSource(path, src, opts)
+	}
+	s := startSession(t, srv)
+	if got := s.call(1, registerCall(t, 1, 1)); got.status != statusOK {
+		t.Fatalf("RegisterConfig: %d %q", got.status, got.payload)
+	}
+	first, second := formatCall(t, 2, 1, sampleSource("first")), formatCall(t, 3, 1, sampleSource("second"))
+	// Sent from a goroutine, as the host's writer thread does, so a sidecar that
+	// serializes calls fails this test instead of deadlocking it.
+	go func() {
+		_, _ = s.in.Write(first)
+		_, _ = s.in.Write(second)
+	}()
+	if got := s.next(); got.id != 3 || got.status != statusOK {
+		t.Fatalf("the first answer is for call %d (%q), want call 3 while call 2 still runs", got.id, got.payload)
+	}
+	close(release)
+	if got := s.next(); got.id != 2 || got.status != statusOK {
+		t.Fatalf("the second answer is for call %d (%q), want call 2", got.id, got.payload)
+	}
+	if err := s.finish(); !errors.Is(err, io.EOF) {
+		t.Fatalf("err = %v", err)
+	}
+}
+
+// A reply over the frame limit would make the host drop the connection; it must
+// be a per-call error and the next request must still be served.
+func TestRunAnswersAnOversizeReplyWithAnErrorAndKeepsServing(t *testing.T) {
+	srv := newServer("1.2.3")
+	huge := strings.Repeat("e", maxPayloadLen+1024)
+	srv.format = func(path string, src []byte, opts formatOptions) (string, bool, error) {
+		if strings.Contains(string(src), "huge") {
+			return huge, true, nil
+		}
+		return formatSource(path, src, opts)
+	}
+	s := startSession(t, srv)
+	if got := s.call(1, registerCall(t, 1, 1)); got.status != statusOK {
+		t.Fatalf("RegisterConfig status = %d", got.status)
+	}
+	big := s.call(2, formatCall(t, 2, 1, sampleSource("huge")))
+	if big.status != statusFailed || !strings.Contains(string(big.payload), "frame limit") {
+		t.Fatalf("oversize reply = status %d %q, want a frame-limit error", big.status, big.payload)
+	}
+	if got := s.call(3, formatCall(t, 3, 1, sampleSource("small"))); got.status != statusOK {
+		t.Fatalf("the call after the oversize one: status %d %q", got.status, got.payload)
+	}
+	if err := s.finish(); !errors.Is(err, io.EOF) {
+		t.Fatalf("err = %v, want EOF after serving every frame", err)
+	}
+}
+
+// Payload bytes travel raw, so a file well past protocol 1's 4 MiB ceiling fits
+// one frame, and the real formatter must take it.
+func TestRunFormatsALargeFile(t *testing.T) {
+	src := "# " + strings.Repeat("e", 12*1024*1024) + "\n"
+	s := startSession(t, newServer("1.2.3"))
+	s.call(1, registerCall(t, 1, 1))
+	if got := s.call(2, formatCall(t, 2, 1, src)); got.status != statusOK {
+		t.Fatalf("status %d %q", got.status, got.payload)
+	}
+	if err := s.finish(); !errors.Is(err, io.EOF) {
+		t.Fatalf("err = %v", err)
+	}
+}
+
+func TestHandleCallRecoversFromAPanic(t *testing.T) {
+	srv := newServer("1.2.3")
+	srv.format = func(string, []byte, formatOptions) (string, bool, error) { panic("printer exploded") }
+	s := startSession(t, srv)
+	s.call(1, registerCall(t, 1, 1))
+	for id := uint64(2); id <= 3; id++ {
+		got := s.call(id, formatCall(t, id, 1, sampleSource("a")))
+		if got.status != statusFailed || !strings.Contains(string(got.payload), "printer exploded") {
+			t.Fatalf("panicking call = status %d %q, want a failed reply naming the panic", got.status, got.payload)
+		}
+	}
+	if err := s.finish(); !errors.Is(err, io.EOF) {
+		t.Fatalf("err = %v, want EOF: a panic must not end the process", err)
 	}
 }
 
@@ -106,105 +246,5 @@ func TestReadManifest(t *testing.T) {
 	}
 	if m.Identity.Version != "0.9.0" || m.Provides[0].ContractHash != "aa" {
 		t.Errorf("manifest = %+v", m)
-	}
-}
-
-// callFrame is a `call` envelope carrying a Format request for run.sh.
-func callFrame(t *testing.T, id uint32, src string) string {
-	t.Helper()
-	header := mustPack(t, formatRequestFor(id, "run.sh", len(src)))
-	payload := binary.LittleEndian.AppendUint32(nil, uint32(len(header))) //nolint:gosec // a test header is small
-	payload = append(payload, header...)
-	payload = append(payload, src...)
-	body, err := json.Marshal(envelope{Op: "call", Contract: "poly", Method: "call", Payload: payload})
-	if err != nil {
-		t.Fatal(err)
-	}
-	return string(body)
-}
-
-func registerFrame(t *testing.T, id uint32) string {
-	t.Helper()
-	header := mustPack(t, map[string]any{"RegisterConfig": []any{
-		id, wireTab("indent_width", wireInt(2), "options", wireTab()),
-	}})
-	payload := binary.LittleEndian.AppendUint32(nil, uint32(len(header))) //nolint:gosec // a test header is small
-	body, err := json.Marshal(envelope{Op: "call", Contract: "poly", Method: "call", Payload: append(payload, header...)})
-	if err != nil {
-		t.Fatal(err)
-	}
-	return string(body)
-}
-
-func nextReply(t *testing.T, out io.Reader) reply {
-	t.Helper()
-	raw, err := readFrame(out)
-	if err != nil {
-		t.Fatalf("no reply: %v", err)
-	}
-	var r reply
-	if err := json.Unmarshal(raw, &r); err != nil {
-		t.Fatal(err)
-	}
-	return r
-}
-
-// A reply over the frame limit would make the host drop the connection; it must
-// be a per-call error and the next request must still be served.
-func TestRunAnswersAnOversizeReplyWithAnErrorAndKeepsServing(t *testing.T) {
-	srv := newServer("1.2.3")
-	huge := strings.Repeat("e", maxFrame/4+1024) // four bytes per byte as a JSON number array
-	srv.format = func(path string, src []byte, opts formatOptions) (string, bool, error) {
-		if strings.Contains(string(src), "echo   a") {
-			return huge, true, nil
-		}
-		return formatSource(path, src, opts)
-	}
-	in := frames(t, registerFrame(t, 1), callFrame(t, 1, "echo   a\n"), callFrame(t, 1, "echo b\n"))
-	var out bytes.Buffer
-	if err := serve(in, &out, testManifest(), srv); !errors.Is(err, io.EOF) {
-		t.Fatalf("err = %v, want EOF after serving every frame", err)
-	}
-	if r := nextReply(t, &out); r.Status != statusOK {
-		t.Fatalf("RegisterConfig status = %d", r.Status)
-	}
-	big := nextReply(t, &out)
-	if big.Status != statusFailed || !strings.Contains(string(big.Payload), "frame limit") {
-		t.Fatalf("oversize reply = status %d %q, want a frame-limit error", big.Status, big.Payload)
-	}
-	if r := nextReply(t, &out); r.Status != statusOK {
-		t.Fatalf("the call after the oversize one: status %d %q", r.Status, r.Payload)
-	}
-}
-
-// Four megabytes is about the largest file whose request fits one frame, and the
-// real formatter must take it.
-func TestRunFormatsALargeFile(t *testing.T) {
-	src := "# " + strings.Repeat("e", 3_900_000) + "\n"
-	in := frames(t, registerFrame(t, 1), callFrame(t, 1, src))
-	var out bytes.Buffer
-	if err := run(in, &out, testManifest()); !errors.Is(err, io.EOF) {
-		t.Fatalf("err = %v", err)
-	}
-	nextReply(t, &out)
-	if r := nextReply(t, &out); r.Status != statusOK {
-		t.Fatalf("status %d %q", r.Status, r.Payload)
-	}
-}
-
-func TestHandleCallRecoversFromAPanic(t *testing.T) {
-	srv := newServer("1.2.3")
-	srv.format = func(string, []byte, formatOptions) (string, bool, error) { panic("printer exploded") }
-	in := frames(t, registerFrame(t, 1), callFrame(t, 1, "echo a\n"), callFrame(t, 1, "echo b\n"))
-	var out bytes.Buffer
-	if err := serve(in, &out, testManifest(), srv); !errors.Is(err, io.EOF) {
-		t.Fatalf("err = %v, want EOF: a panic must not end the process", err)
-	}
-	nextReply(t, &out)
-	for range 2 {
-		r := nextReply(t, &out)
-		if r.Status != statusFailed || !strings.Contains(string(r.Payload), "printer exploded") {
-			t.Fatalf("panicking call = status %d %q, want a failed reply naming the panic", r.Status, r.Payload)
-		}
 	}
 }

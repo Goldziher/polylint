@@ -27,7 +27,7 @@ func (s *server) lookup(engine string, config uint32) (engineConfig, *wireError)
 	if engine != engineName {
 		return engineConfig{}, newWireError(errKindUnknownEng, "engine %q is not hosted here", engine)
 	}
-	cfg, ok := s.configs[config]
+	cfg, ok := s.config(config)
 	if !ok {
 		return engineConfig{}, newWireError(errKindUnknownCfg, "config %d is not registered", config)
 	}
@@ -52,8 +52,6 @@ func (s *server) handleFormatBatch(fields msgpack.RawMessage, body []byte) (any,
 			return nil, nil, newWireError(errKindProtocol, "%s: slice %d+%d is outside the %d-byte body", file.Path, file.Offset, file.Len, size)
 		}
 	}
-	// The one process-wide goimports setting, written here so that no worker writes it.
-	setLocalPrefix(cfg.localPrefixes)
 	results := s.formatMembers(cfg, req.Files, body)
 	items := make([]any, len(results))
 	var logs []wireLog
@@ -71,8 +69,7 @@ type batchResult struct {
 }
 
 // formatMembers formats the members on a pool of goroutines sized to the CPUs
-// and returns the results in member order. The host serializes calls to this
-// process, so this is the only parallelism a sidecar has.
+// and returns the results in member order.
 func (s *server) formatMembers(cfg engineConfig, files []wireFileSlice, body []byte) []batchResult {
 	results := make([]batchResult, len(files))
 	var next atomic.Int64

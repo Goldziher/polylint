@@ -1,9 +1,8 @@
 package main
 
 import (
-	"bytes"
+	"bufio"
 	"encoding/json"
-	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -14,7 +13,8 @@ import (
 
 // TestBuiltExecutableDescribesAndFormats drives the cross-compiled executable
 // named by POLY_SH_BINARY over its real stdin and stdout, the way the host
-// does. CI builds it natively on macOS and Windows runners with
+// does: the describe handshake, then protocol-2 calls, each answered before
+// the next is sent. CI builds it natively on macOS and Windows runners with
 // mise-tasks/sidecar/build.sh, so a binary that does not start on a platform
 // fails there. Without the variable the test is skipped.
 func TestBuiltExecutableDescribesAndFormats(t *testing.T) {
@@ -39,41 +39,54 @@ func TestBuiltExecutableDescribesAndFormats(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	requests := frames(t, `{"op":"describe"}`, registerFrame(t, 1), callFrame(t, 1, "if true; then\necho   hi\nfi\n"))
-	input, err := io.ReadAll(requests)
+	cmd := exec.Command(exe) //nolint:gosec // the executable under test
+	cmd.Env = append(os.Environ(), stdioProtocolsEnv+"=1,2")
+	cmd.Stderr = os.Stderr
+	stdin, err := cmd.StdinPipe()
 	if err != nil {
 		t.Fatal(err)
 	}
-	cmd := exec.Command(exe) //nolint:gosec // the executable under test
-	cmd.Stdin = bytes.NewReader(input)
-	var stdout bytes.Buffer
-	cmd.Stdout = &stdout
-	cmd.Stderr = os.Stderr
+	stdoutPipe, err := cmd.StdoutPipe()
+	if err != nil {
+		t.Fatal(err)
+	}
 	if err := cmd.Start(); err != nil {
 		t.Fatalf("start %s: %v", exe, err)
 	}
-	done := make(chan error, 1)
-	go func() { done <- cmd.Wait() }()
-	select {
-	case err := <-done:
-		if err != nil {
-			t.Fatalf("the executable exited with %v", err)
+	timer := time.AfterFunc(30*time.Second, func() { _ = cmd.Process.Kill() })
+	defer timer.Stop()
+	stdout := bufio.NewReader(stdoutPipe)
+	send := func(frame []byte) {
+		t.Helper()
+		if _, err := stdin.Write(frame); err != nil {
+			t.Fatalf("write to the executable: %v", err)
 		}
-	case <-time.After(30 * time.Second):
-		_ = cmd.Process.Kill()
-		t.Fatal("the executable did not exit after stdin closed")
+	}
+	answerTo := func(id uint64) answer {
+		t.Helper()
+		got, err := readAnswer(stdout)
+		if err != nil || got.id != id {
+			t.Fatalf("answer = %+v, %v, want one for call %d", got, err, id)
+		}
+		return got
 	}
 
-	described := nextReply(t, &stdout)
+	send(describeRequest(t))
+	status, payload := readHandshake(t, stdout)
 	var desc stdioDescriptor
-	if described.Status != statusOK || json.Unmarshal(described.Payload, &desc) != nil || desc.ComponentID != "sh" {
-		t.Fatalf("describe = status %d %q", described.Status, described.Payload)
+	if status != statusOK || json.Unmarshal(payload, &desc) != nil || desc.ComponentID != "sh" || desc.ProtocolVersion != binaryProtocol {
+		t.Fatalf("describe = status %d %q", status, payload)
 	}
-	if registered := nextReply(t, &stdout); registered.Status != statusOK {
-		t.Fatalf("RegisterConfig = status %d %q", registered.Status, registered.Payload)
+	send(registerCall(t, 1, 1))
+	if registered := answerTo(1); registered.status != statusOK {
+		t.Fatalf("RegisterConfig = status %d %q", registered.status, registered.payload)
 	}
-	formatted := nextReply(t, &stdout)
-	if formatted.Status != statusOK || !strings.Contains(string(formatted.Payload), "echo hi") {
-		t.Fatalf("Format = status %d %q, want the reindented script", formatted.Status, formatted.Payload)
+	send(formatCall(t, 2, 1, "if true; then\necho   hi\nfi\n"))
+	if formatted := answerTo(2); formatted.status != statusOK || !strings.Contains(string(formatted.payload), "echo hi") {
+		t.Fatalf("Format = status %d %q, want the reindented script", formatted.status, formatted.payload)
+	}
+	_ = stdin.Close()
+	if err := cmd.Wait(); err != nil {
+		t.Fatalf("the executable exited with %v after stdin closed", err)
 	}
 }

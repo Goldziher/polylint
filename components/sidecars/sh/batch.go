@@ -27,7 +27,7 @@ func (s *server) lookup(engine string, config uint32) (engineConfig, *wireError)
 	if engine != engineName {
 		return engineConfig{}, newWireError(errKindUnknownEng, "engine %q is not hosted here", engine)
 	}
-	cfg, ok := s.configs[config]
+	cfg, ok := s.config(config)
 	if !ok {
 		return engineConfig{}, newWireError(errKindUnknownCfg, "config %d is not registered", config)
 	}
@@ -69,8 +69,7 @@ type batchResult struct {
 }
 
 // formatMembers formats the members on a pool of goroutines sized to the CPUs
-// and returns the results in member order. The host serializes calls to this
-// process, so this is the only parallelism a sidecar has.
+// and returns the results in member order.
 func (s *server) formatMembers(cfg engineConfig, files []wireFileSlice, body []byte) []batchResult {
 	results := make([]batchResult, len(files))
 	var next atomic.Int64

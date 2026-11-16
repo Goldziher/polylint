@@ -3,7 +3,6 @@ package main
 import (
 	"bytes"
 	"encoding/binary"
-	"encoding/json"
 	"fmt"
 	"strings"
 	"testing"
@@ -313,39 +312,21 @@ func TestHandleCall(t *testing.T) {
 	srv := newServer("1.0.0")
 	tests := []struct {
 		name       string
-		req        envelope
-		wantStatus int
+		contract   string
+		method     string
+		payload    []byte
+		wantStatus int32
 	}{
-		{"describe method", envelope{Op: "call", Contract: "poly", Method: "describe"}, statusOK},
-		{"wrong contract", envelope{Op: "call", Contract: "other", Method: "describe"}, statusFailed},
-		{"unknown method", envelope{Op: "call", Contract: "poly", Method: "nope"}, statusFailed},
-		{"truncated call payload", envelope{Op: "call", Contract: "poly", Method: "call", Payload: []byte{1}}, statusFailed},
+		{"describe method", "poly", "describe", nil, statusOK},
+		{"wrong contract", "other", "describe", nil, statusFailed},
+		{"unknown method", "poly", "nope", nil, statusFailed},
+		{"truncated call payload", "poly", "call", []byte{1}, statusFailed},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if got := handleCall(srv, tt.req); got.Status != tt.wantStatus {
+			if got := handleCall(srv, tt.contract, tt.method, tt.payload); got.Status != tt.wantStatus {
 				t.Errorf("status = %d, want %d (%s)", got.Status, tt.wantStatus, got.Payload)
 			}
 		})
-	}
-}
-
-func TestEnvelopeBytesAreJSONNumberArrays(t *testing.T) {
-	out, err := json.Marshal(reply{Status: 0, Payload: []byte{0, 255, 7}})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if string(out) != `{"status":0,"payload":[0,255,7]}` {
-		t.Fatalf("got %s", out)
-	}
-	var req envelope
-	if err := json.Unmarshal([]byte(`{"op":"call","contract":"poly","method":"call","payload":[1,2]}`), &req); err != nil {
-		t.Fatal(err)
-	}
-	if !bytes.Equal(req.Payload, []byte{1, 2}) {
-		t.Fatalf("payload = %v", req.Payload)
-	}
-	if err := json.Unmarshal([]byte(`{"payload":[300]}`), &req); err == nil {
-		t.Fatal("want an error for a value over 255")
 	}
 }

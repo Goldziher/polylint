@@ -2,18 +2,21 @@ package main
 
 import (
 	"fmt"
+	"sync"
 	"unicode/utf8"
 
 	"github.com/vmihailenco/msgpack/v5"
 )
 
-// server answers poly's component protocol. It is used from one goroutine:
-// the host serializes every call to a sidecar.
+// server answers poly's component protocol. Calls arrive concurrently (stdio
+// protocol 2 pipelines them), so the session state is guarded by mu.
 type server struct {
 	componentVersion string
-	initialized      bool
-	configs          map[uint32]engineConfig
 	format           formatFunc
+
+	mu          sync.RWMutex
+	initialized bool
+	configs     map[uint32]engineConfig
 }
 
 // formatFunc is formatSource's shape; tests substitute it.
@@ -21,6 +24,14 @@ type formatFunc func(path string, src []byte, opts formatOptions) (formatted str
 
 func newServer(componentVersion string) *server {
 	return &server{componentVersion: componentVersion, configs: make(map[uint32]engineConfig), format: formatSource}
+}
+
+// config is the config registered under id.
+func (s *server) config(id uint32) (engineConfig, bool) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	cfg, ok := s.configs[id]
+	return cfg, ok
 }
 
 // describe answers the `describe` method.
@@ -74,7 +85,9 @@ func (s *server) handleInit(fields msgpack.RawMessage) (any, *wireError) {
 	if init.Protocol != protocolVersion {
 		return nil, newWireError(errKindProtocol, "host speaks protocol %d, this component speaks %d", init.Protocol, protocolVersion)
 	}
+	s.mu.Lock()
 	s.initialized = true
+	s.mu.Unlock()
 	return map[string]any{"Init": []any{uint32(protocolVersion), s.componentVersion}}, nil
 }
 
@@ -87,7 +100,9 @@ func (s *server) handleRegisterConfig(fields msgpack.RawMessage) (any, *wireErro
 	if err != nil {
 		return nil, newWireError(errKindProtocol, "%v", err)
 	}
+	s.mu.Lock()
 	s.configs[reg.ID] = cfg
+	s.mu.Unlock()
 	return "Ok", nil
 }
 
@@ -99,7 +114,7 @@ func (s *server) handleFormat(fields msgpack.RawMessage, body []byte) (any, []wi
 	if req.Engine != engineName {
 		return nil, nil, newWireError(errKindUnknownEng, "engine %q is not hosted here", req.Engine)
 	}
-	cfg, ok := s.configs[req.Config]
+	cfg, ok := s.config(req.Config)
 	if !ok {
 		return nil, nil, newWireError(errKindUnknownCfg, "config %d is not registered", req.Config)
 	}

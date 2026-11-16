@@ -1,6 +1,7 @@
 // Command go is poly's Go formatter component: gofumpt and goimports grouping behind
-// alef's framed stdio transport. It runs as one long-lived child of poly,
-// reads framed JSON requests on stdin, answers on stdout and logs to stderr.
+// alef's stdio transport. It runs as one long-lived child of poly: after the
+// describe handshake it reads binary call frames (stdio protocol 2) on stdin,
+// serves them concurrently, answers on stdout and logs to stderr.
 package main
 
 import (
@@ -12,6 +13,7 @@ import (
 	"io"
 	"os"
 	"runtime/debug"
+	"sync"
 )
 
 const (
@@ -27,7 +29,7 @@ const (
 func main() {
 	manifest, err := loadManifest()
 	if err == nil {
-		err = run(os.Stdin, os.Stdout, manifest)
+		err = run(os.Stdin, os.Stdout, manifest, os.Getenv(stdioProtocolsEnv))
 	}
 	if err != nil && !errors.Is(err, io.EOF) {
 		fmt.Fprintf(os.Stderr, "poly-go: %v\n", err)
@@ -35,69 +37,87 @@ func main() {
 	}
 }
 
-// run serves frames until the host closes stdin.
-func run(in io.Reader, out io.Writer, manifest componentManifest) error {
-	return serve(in, out, manifest, newServer(manifest.Identity.Version))
+// run serves the connection until the host closes stdin. protocols is the
+// host's ALEF_STDIO_PROTOCOLS.
+func run(in io.Reader, out io.Writer, manifest componentManifest, protocols string) error {
+	return serve(in, out, manifest, newServer(manifest.Identity.Version), protocols)
 }
 
 // serve is run over a given server, which tests use to inject a formatter.
-func serve(in io.Reader, out io.Writer, manifest componentManifest, srv *server) error {
+func serve(in io.Reader, out io.Writer, manifest componentManifest, srv *server, protocols string) error {
 	reader := bufio.NewReader(in)
+	if err := handshake(reader, out, manifest, protocols); err != nil {
+		return err
+	}
+	return serveCalls(reader, out, srv)
+}
+
+// handshake answers the protocol-1 describe frame every connection starts
+// with, selecting protocol 2. This sidecar speaks nothing else afterwards, so a
+// host that does not offer protocol 2 gets a failed describe.
+func handshake(in io.Reader, out io.Writer, manifest componentManifest, protocols string) error {
+	frame, err := readFrame(in)
+	if err != nil {
+		return err
+	}
+	var req envelope
+	if err := json.Unmarshal(frame, &req); err != nil {
+		return fmt.Errorf("decode describe request: %w", err)
+	}
+	if req.Op != "describe" {
+		return fmt.Errorf("the first request is op %q, want describe", req.Op)
+	}
+	if !offersBinary(protocols) {
+		answer := failed("this sidecar needs stdio protocol %d; the host offers %q", binaryProtocol, protocols)
+		if err := writeFrame(out, answer.appendJSON(nil)); err != nil {
+			return err
+		}
+		return fmt.Errorf("the host does not offer stdio protocol %d (%s=%q)", binaryProtocol, stdioProtocolsEnv, protocols)
+	}
+	body, err := json.Marshal(manifest.descriptor(maxInFlight()))
+	if err != nil {
+		return fmt.Errorf("encode descriptor: %w", err)
+	}
+	return writeFrame(out, reply{Status: statusOK, Payload: body}.appendJSON(nil))
+}
+
+// serveCalls answers call frames until the end of input, each on a goroutine
+// of its own: the host keeps at most maxInFlight of them unanswered. It
+// returns once every started call has been answered.
+func serveCalls(in io.Reader, out io.Writer, srv *server) error {
+	resp := &responder{w: out}
+	var wg sync.WaitGroup
 	for {
-		frame, err := readFrame(reader)
+		frame, err := readCall(in)
 		if err != nil {
+			wg.Wait()
+			if failure := resp.failure(); failure != nil {
+				return failure
+			}
 			return err
 		}
-		var req envelope
-		if err := json.Unmarshal(frame, &req); err != nil {
-			return fmt.Errorf("decode request: %w", err)
-		}
-		answer, err := handle(srv, manifest, req)
-		if err != nil {
-			return err
-		}
-		body := answer.appendJSON(nil)
-		if len(body) > maxFrame {
-			// The host would reject the frame and stop this process; a per-call error keeps it serving.
-			body = failed("reply of %d bytes exceeds the %d-byte frame limit", len(body), maxFrame).appendJSON(nil)
-		}
-		if err := writeFrame(out, body); err != nil {
-			return err
-		}
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			resp.respond(frame.id, handleCall(srv, frame.contract, frame.method, frame.payload))
+		}()
 	}
 }
 
-// handle answers one envelope. Only an undecodable envelope is fatal; an
-// unknown method or a failed call is a non-zero status.
-func handle(srv *server, manifest componentManifest, req envelope) (reply, error) {
-	switch req.Op {
-	case "describe":
-		body, err := json.Marshal(manifest.descriptor())
-		if err != nil {
-			return reply{}, fmt.Errorf("encode descriptor: %w", err)
-		}
-		return reply{Status: statusOK, Payload: body}, nil
-	case "call":
-		return handleCall(srv, req), nil
-	default:
-		return reply{}, fmt.Errorf("unknown op %q", req.Op)
-	}
-}
-
-// handleCall answers one `call` op. A panic in the parser or printer becomes a
+// handleCall answers one call. A panic in the parser or printer becomes a
 // failed reply, so one bad file does not stop the process and fail every
 // later file.
-func handleCall(srv *server, req envelope) (answer reply) {
+func handleCall(srv *server, contract, method string, payload []byte) (answer reply) {
 	defer func() {
 		if r := recover(); r != nil {
 			fmt.Fprintf(os.Stderr, "poly-go: panic: %v\n%s", r, debug.Stack())
 			answer = failed("internal error: %v", r)
 		}
 	}()
-	if req.Contract != contractPoly {
-		return failed("contract %q is not provided", req.Contract)
+	if contract != contractPoly {
+		return failed("contract %q is not provided", contract)
 	}
-	switch req.Method {
+	switch method {
 	case methodDescr:
 		out, err := srv.describe()
 		if err != nil {
@@ -105,7 +125,7 @@ func handleCall(srv *server, req envelope) (answer reply) {
 		}
 		return reply{Status: statusOK, Payload: out}
 	case methodCall:
-		header, body, err := unpackCall(req.Payload)
+		header, body, err := unpackCall(payload)
 		if err != nil {
 			return failed("%v", err)
 		}
@@ -115,7 +135,7 @@ func handleCall(srv *server, req envelope) (answer reply) {
 		}
 		return reply{Status: statusOK, Payload: out}
 	default:
-		return failed("method %q is not served", req.Method)
+		return failed("method %q is not served", method)
 	}
 }
 

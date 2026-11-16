@@ -1,8 +1,11 @@
 package main
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
+	"sync"
 	"testing"
 )
 
@@ -100,6 +103,37 @@ func TestGroupImports(t *testing.T) {
 				t.Errorf("imports\n got: %q\nwant prefix: %q", got, tt.want)
 			}
 		})
+	}
+}
+
+// Calls under configs with different `-local` prefixes run concurrently, and
+// each must group by its own prefix although goimports keeps it in a package
+// variable.
+func TestConcurrentLocalPrefixesDoNotLeak(t *testing.T) {
+	src := readTestdata(t, "grouping.go")
+	local := "package grouping\n\nimport (\n\t\"fmt\"\n\t\"os\"\n\n\t\"github.com/a/b\"\n\n\t\"example.com/mod/inner\"\n)\n"
+	plain := "package grouping\n\nimport (\n\t\"fmt\"\n\t\"os\"\n\n\t\"example.com/mod/inner\"\n\t\"github.com/a/b\"\n)\n"
+	var wg sync.WaitGroup
+	errs := make(chan string, 64)
+	for i := range 64 {
+		prefix, want := "", plain
+		if i%2 == 0 {
+			prefix, want = testModule, local
+		}
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			opts := formatOptions{gofumpt: true, groupImports: true, localPrefixes: prefix, langVersion: testLang}
+			got, _, err := formatSource("grouping.go", src, opts)
+			if err != nil || !strings.HasPrefix(got, want) {
+				errs <- fmt.Sprintf("local %q: %v\n%s", prefix, err, got)
+			}
+		}()
+	}
+	wg.Wait()
+	close(errs)
+	for e := range errs {
+		t.Error(e)
 	}
 }
 

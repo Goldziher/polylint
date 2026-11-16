@@ -28,16 +28,24 @@ type formatOptions struct {
 	localPrefixes string
 }
 
-var localPrefixMu sync.Mutex
+// localPrefixMu guards goimports' `-local`, which the library keeps in a
+// package variable: readers hold it while imports.Process runs, and changing
+// the prefix waits for them, so concurrent calls under different configs never
+// see each other's prefix.
+var localPrefixMu sync.RWMutex
 
-// setLocalPrefix sets goimports' `-local`, which the library keeps in a package
-// variable. It writes only on a change, so concurrent formatters that share a
-// config (a batch) only ever read it.
-func setLocalPrefix(prefix string) {
-	localPrefixMu.Lock()
-	defer localPrefixMu.Unlock()
-	if imports.LocalPrefix != prefix {
+// withLocalPrefix runs process with goimports' `-local` set to prefix.
+func withLocalPrefix(prefix string, process func() error) error {
+	for {
+		localPrefixMu.RLock()
+		if imports.LocalPrefix == prefix {
+			defer localPrefixMu.RUnlock()
+			return process()
+		}
+		localPrefixMu.RUnlock()
+		localPrefixMu.Lock()
 		imports.LocalPrefix = prefix
+		localPrefixMu.Unlock()
 	}
 }
 
@@ -84,9 +92,11 @@ func formatSource(path string, src []byte, opts formatOptions) (formatted string
 		return "", false, fmt.Errorf("format %s: %w", path, err)
 	}
 	if opts.groupImports {
-		setLocalPrefix(opts.localPrefixes)
-		if out, err = imports.Process(path, out, &imports.Options{
-			Comments: true, TabIndent: true, TabWidth: 8, FormatOnly: true,
+		if err := withLocalPrefix(opts.localPrefixes, func() error {
+			out, err = imports.Process(path, out, &imports.Options{
+				Comments: true, TabIndent: true, TabWidth: 8, FormatOnly: true,
+			})
+			return err
 		}); err != nil {
 			return "", false, fmt.Errorf("goimports %s: %w", path, err)
 		}
