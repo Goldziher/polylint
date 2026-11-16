@@ -2,7 +2,9 @@
 //!
 //! A sidecar component is an executable the host keeps alive and talks to through
 //! `LoadedComponent::invoke_bytes(method, payload)`, which carries one opaque byte payload per call
-//! and one back. The protocol's own two calls map onto it:
+//! and one back. poly's sidecars select alef's stdio protocol 2 in the describe handshake, so the
+//! payload travels as raw bytes in a binary frame and concurrent calls are pipelined. The
+//! protocol's own two calls map onto it:
 //!
 //! - `describe()` is `invoke_bytes("describe", [])`; the answer is the encoded
 //!   [`Describe`](crate::Describe).
@@ -27,13 +29,12 @@ pub const CONTRACT: &str = "poly";
 
 /// The largest file a sidecar is asked to process, in bytes.
 ///
-/// alef's stdio envelope carries a payload as a JSON array of numbers (up to four characters per
-/// byte, `255,`) and bounds a frame at 16 MiB, in both directions. A file of `n` bytes therefore
-/// costs up to `4n` bytes in the request and, when formatting grows it, in the reply: past about
-/// 4 MiB the exchange cannot fit one frame. This leaves room for the request header and for
-/// output somewhat larger than the input. The host declines larger files with a counted skip
-/// instead of sending them.
-pub const MAX_FILE_BYTES: usize = 3 * 1024 * 1024;
+/// poly's sidecars speak alef's stdio protocol 2, whose binary frames carry a payload as raw bytes
+/// of at most 16 MiB, in both directions. A file of `n` bytes costs `n` bytes plus the request
+/// header in the request and, when formatting grows it, about as much in the reply. 12 MiB leaves
+/// a third of the frame for output larger than the input, the request header and the response's
+/// logs (ADR 0063). The host declines larger files with a counted skip instead of sending them.
+pub const MAX_FILE_BYTES: usize = 12 * 1024 * 1024;
 
 /// A `call` payload that cannot be split into a header and a body.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, thiserror::Error)]

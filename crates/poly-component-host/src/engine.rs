@@ -24,11 +24,10 @@ use crate::slot::{ComponentSlot, Connection, wire_error_to_anyhow};
 
 /// The most file content one `FormatBatch` request to a sidecar carries.
 ///
-/// alef's stdio envelope writes each byte as up to four characters and bounds a frame at 16 MiB in
-/// both directions, so a request or its reply of more than about 4 MiB of content cannot be
-/// framed. 2 MiB leaves room for output that grows and for the request header; a file over it is
-/// a request of its own.
-const SIDECAR_BATCH_BYTES: usize = 2 * 1024 * 1024;
+/// A stdio protocol-2 frame carries at most 16 MiB of raw payload in each direction, and the reply
+/// holds every member's output. 8 MiB lets the output of a batch double before it no longer fits
+/// (ADR 0063); a file over it is a request of its own.
+const SIDECAR_BATCH_BYTES: usize = 8 * 1024 * 1024;
 
 /// Split members of the given content lengths into consecutive ranges of at most `budget` bytes.
 /// A member over `budget` is a range of its own, and no range is empty.

@@ -55,6 +55,9 @@ binary drives lint, format, hooks, and commit checks from one `poly.toml`.
   component no longer receives every file twice (a `SkipReason` request, then `Format`), and a component is not loaded
   just to ask. `BatchSupport` is asked once per engine and config instead of once per file. The `uncomment`, `ini`,
   `python-types` and `pyrefly` engines no longer ask any per-file hook. (#190)
+- **Shell and Go formatting no longer queue on one process.** The `sh` and `go` sidecars speak alef 0.130's stdio
+  protocol 2: payloads travel as raw bytes and concurrent calls are pipelined over the one sidecar, up to one per CPU.
+  The per-file limit for a sidecar engine rises from 3 MiB to 12 MiB. (ADR 0063, #189)
 - **Secret scanning on Linux.** The `secrets` component now ships for x86_64 and aarch64 Linux (glibc 2.28 and newer):
   the release compiles vectorscan from source in its manylinux_2_28 image instead of using the prebuilt archive, which
   needs glibc 2.32. (#112)

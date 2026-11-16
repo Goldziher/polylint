@@ -78,7 +78,9 @@ impl TransportConnector for AlefConnector {
     }
 }
 
-/// The byte-level seam over a sidecar executable: alef's framed stdio, one child, calls serialized.
+/// The byte-level seam over a sidecar executable: alef's framed stdio, one child. poly's sidecars
+/// select stdio protocol 2, so alef pipelines concurrent calls over that child up to the
+/// `max_in_flight` it declares.
 ///
 /// A timeout, a crashed child or a malformed frame invalidates the connection inside alef (the
 /// child is killed and reaped), so every later call fails with `sidecar_stopped`; this transport
