@@ -16,7 +16,7 @@
             "fix": true,
             "project": true
           },
-          "version": "adrlint-0.5.0+poly3",
+          "version": "adrlint-0.5.0+poly4",
           "option_keys": [
             {
               "table": "Lint",
