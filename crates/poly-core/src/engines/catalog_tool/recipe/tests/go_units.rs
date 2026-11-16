@@ -209,3 +209,37 @@ fn a_serial_tool_never_runs_two_invocations_at_once_across_calls() {
     assert_eq!(fx.invocations(), 2, "{log}");
     assert!(!log.contains("OVERLAP"), "{log}");
 }
+
+/// The argv a module run passes, with the project's golangci config set to `config` (none for
+/// `None`).
+fn argv_with_project_config(config: Option<&str>) -> String {
+    let fx = Fixture::new();
+    std::fs::create_dir(fx.dir.path().join(".git")).expect(".git");
+    if let Some(text) = config {
+        std::fs::write(fx.dir.path().join(".golangci.yml"), text).expect("config");
+    }
+    let files = go_module(&fx);
+    let mut tool_config = fx.config(fx.script("golangci", GO_REPORTER));
+    tool_config.root = Some(fx.dir.path().to_string_lossy().into_owned());
+    let recipe = serde_json::json!({
+        "output": "golangci_json",
+        "group": {"marker": ["go.mod"]},
+        "target": "dir",
+        "config_files": [".golangci.yml"],
+        "config_defaults": [{"arg": "--timeout=0", "key": "run.timeout"}]
+    });
+    let tool = fx.tool("run $DIR", recipe, Role::Lint, &tool_config);
+    tool.lint_files(&refs(&files));
+    std::fs::read_to_string(&fx.log).expect("log")
+}
+
+#[test]
+fn the_projects_run_timeout_wins_over_polys_default() {
+    let unset = argv_with_project_config(None);
+    assert!(unset.contains(" run --timeout=0 ."), "{unset}");
+    let other_keys = argv_with_project_config(Some("run:\n  tests: false\n"));
+    assert!(other_keys.contains(" run --timeout=0 ."), "{other_keys}");
+    let set = argv_with_project_config(Some("run:\n  timeout: 5m\n"));
+    assert!(set.contains(" run ."), "{set}");
+    assert!(!set.contains("--timeout"), "{set}");
+}

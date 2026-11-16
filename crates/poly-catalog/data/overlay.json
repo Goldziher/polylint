@@ -602,7 +602,6 @@
         "arguments": [
           "run",
           "--allow-parallel-runners",
-          "--timeout=0",
           "--output.json.path=stdout",
           "--output.text.path=",
           "$DIR"
@@ -614,7 +613,6 @@
           "run",
           "--fix",
           "--allow-parallel-runners",
-          "--timeout=0",
           "--output.json.path=stdout",
           "--output.text.path=",
           "$DIR"
@@ -640,6 +638,12 @@
       "config_flags": [
         "-c",
         "--config"
+      ],
+      "config_defaults": [
+        {
+          "arg": "--timeout=0",
+          "key": "run.timeout"
+        }
       ],
       "config_files": [
         ".golangci.yml",

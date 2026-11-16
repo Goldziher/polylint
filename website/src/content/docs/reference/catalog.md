@@ -94,11 +94,12 @@ How they differ from the breadth tier above:
   once, on the first file of the unit.
 - **golangci-lint.** One module runs at a time in a poly process, since one run already uses every
   core and can hold gigabytes. poly passes `--allow-parallel-runners`, so it never fails on the
-  per-user lock another golangci-lint holds (an editor, another repository), and `--timeout=0`, so a
-  project's `run.timeout` sized for warm CI caches does not kill a cold run; `POLY_TOOL_TIMEOUT_SECS`
-  (30 minutes by default) bounds it instead, and `lint_extra_args = ["--timeout=5m"]` restores a
-  limit of your own. A timeout or a refused lock fails the module's files once, without retrying
-  on fewer packages.
+  per-user lock another golangci-lint holds (an editor, another repository). A `run.timeout` in the
+  project's `.golangci.{yml,yaml,toml,json}` (or the file `-c` names) is kept; without one poly
+  passes `--timeout=0`, so `POLY_TOOL_TIMEOUT_SECS` (30 minutes by default) bounds a cold run
+  instead of golangci-lint's own default, and `lint_extra_args = ["--timeout=5m"]` sets a limit in
+  `poly.toml` (ADR 0066). A timeout or a refused lock fails the module's files once, without
+  retrying on fewer packages.
 - **Reports.** Findings carry file, line, column, rule and URL, and are cached per file. A tool that
   judges a file in context (`buf`, `golangci-lint`) is cached against a digest of that context, so
   editing a neighbouring file invalidates the verdict.

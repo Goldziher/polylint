@@ -19,12 +19,14 @@
 //! [`lint`] (grouping, running, attributing), [`format`] (scratch copies and
 //! in-place passes), [`output`] (report parsers), [`launch`], [`resolve`] and [`install`]
 //! (finding the program, resolving which release of it to download and the digest it must have, and
-//! downloading it over [`net`]), [`salt`] (cache inputs), [`mirror`],
+//! downloading it over [`net`]), [`salt`] (cache inputs), [`config_key`] (arguments a project's
+//! config can override), [`mirror`],
 //! [`paths`], [`gofix`] (golangci-lint's fixes on a scratch copy of the module),
 //! [`unit`] (per-chart values, skipped charts, the prepare step) and [`exec`].
 
 mod archive;
 mod argv;
+mod config_key;
 mod exec;
 mod fetched;
 mod format;
@@ -186,8 +188,10 @@ impl RecipeTool {
         }
         let extra = salt::absolutize_config_args(&wanted, flags, &cwd);
         let main = config.args.as_deref();
+        let defaulted = config_key::with_defaults(recipe, role, &cwd, &extra, main.unwrap_or(&command.arguments));
 
-        let (mut passes, stdin) = passes_for(command, main, &extra, role);
+        // An `args` override owns the whole argv, so the recipe's defaults stay out of it.
+        let (mut passes, stdin) = passes_for(command, main, if main.is_some() { &extra } else { &defaulted }, role);
         for pass in &command.then {
             let tokens = pass.batch_arguments().map(<[String]>::to_vec).unwrap_or_default();
             passes.push(Template::new(&salt::absolutize_config_args(&tokens, flags, &cwd), &[]));
@@ -197,7 +201,7 @@ impl RecipeTool {
             .as_deref()
             .and_then(|name| tool.command(name))
             .filter(|_| role == Role::Lint)
-            .map(|fix| fix_templates(fix, &extra, flags, &cwd))
+            .map(|fix| fix_templates(fix, &defaulted, flags, &cwd))
             .unwrap_or_default();
 
         let units = UnitOptions::new(tool, recipe, config, &cwd)?;

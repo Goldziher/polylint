@@ -5,7 +5,7 @@
 
 use serde::Deserialize;
 
-use crate::{Catalog, Findings, Group, Output, PATH_PLACEHOLDER, Recipe, Target};
+use crate::{Catalog, ConfigDefault, Findings, Group, Output, PATH_PLACEHOLDER, Recipe, Target};
 
 /// One `(input, output)` command fixture from the vendored `data/golden.json`.
 #[derive(Debug, Deserialize)]
@@ -274,9 +274,9 @@ fn golangci_lint_is_a_per_module_recipe_with_new_from_rev_and_config_discovery()
 }
 
 /// Without `--allow-parallel-runners` golangci-lint takes a per-user lock and exits 3 when
-/// any other golangci-lint on the machine holds it (another repository, an editor). Without
-/// `--timeout=0` a project's `run.timeout`, sized for warm CI caches, kills a cold run; poly
-/// bounds the run itself (`POLY_TOOL_TIMEOUT_SECS`).
+/// any other golangci-lint on the machine holds it (another repository, an editor). A project
+/// that sets `run.timeout` keeps it; one that does not gets `--timeout=0`, so poly's own deadline
+/// (`POLY_TOOL_TIMEOUT_SECS`) bounds the run instead of golangci-lint's default (ADR 0066).
 #[test]
 fn golangci_lint_runs_beside_other_instances_and_under_polys_deadline() {
     let tool = Catalog::get().tool("golangci-lint").expect("golangci-lint");
@@ -284,13 +284,24 @@ fn golangci_lint_runs_beside_other_instances_and_under_polys_deadline() {
         let command = tool.command(name).expect(name);
         let at = |flag: &str| command.arguments.iter().position(|a| a == flag);
         let target = at("$DIR").expect("$DIR");
-        for flag in ["--allow-parallel-runners", "--timeout=0"] {
-            assert!(
-                at(flag).is_some_and(|i| i < target),
-                "{name} must pass {flag} before the packages"
-            );
-        }
+        assert!(
+            at("--allow-parallel-runners").is_some_and(|i| i < target),
+            "{name} must pass --allow-parallel-runners before the packages"
+        );
+        assert!(
+            at("--timeout=0").is_none(),
+            "{name} must leave the timeout to the project's config"
+        );
     }
+    let recipe = tool.recipe.as_ref().expect("recipe");
+    assert_eq!(
+        recipe.config_defaults,
+        [ConfigDefault {
+            arg: "--timeout=0".to_owned(),
+            key: "run.timeout".to_owned(),
+        }],
+        "a project's run.timeout wins; without one poly's own deadline bounds the run"
+    );
 }
 
 #[test]

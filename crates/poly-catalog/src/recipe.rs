@@ -192,6 +192,10 @@ pub struct Recipe {
     /// Argv flags whose following value names a config file (`-c`, `-p`); the
     /// named files are fingerprinted into the cache key.
     pub config_flags: Vec<String>,
+    /// Arguments poly adds to the lint and fix commands only while the project's
+    /// config leaves a setting unset (golangci-lint's `--timeout=0` unless the
+    /// config sets `run.timeout`), so a project's own value wins.
+    pub config_defaults: Vec<ConfigDefault>,
     /// Name of the command that applies the tool's own fixes in place.
     pub fix: Option<String>,
     /// Name of the command run once per project root before linting
@@ -237,6 +241,17 @@ pub struct Recipe {
     pub link_dirs: Vec<String>,
     /// Project dependencies that must be fetched before the tool can run.
     pub fetched: Option<Fetched>,
+}
+
+/// An argument poly passes only when the project's config does not set `key`.
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ConfigDefault {
+    /// The argument (`--timeout=0`), placed ahead of the user's extra arguments
+    /// so a flag of their own still wins.
+    pub arg: String,
+    /// Dotted path of the config setting that withholds `arg` (`run.timeout`).
+    pub key: String,
 }
 
 /// A dependency directory a tool cannot run without. A project missing it is an environment
