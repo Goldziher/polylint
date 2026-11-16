@@ -45,28 +45,35 @@ the same vocabulary and the same trust model rather than invent a second one.
   merges on top). `extends` resolution therefore happens once per config, before the
   directory cascade sees it — a nested `poly.toml` inherits its own `extends` bases, not
   its ancestor's.
+
 - **Deep-merge, not concatenation — except `exclude`.** Merging reuses the existing raw-table
   merge (ADR 0006/0018): scalars and arrays replace, tables merge key-by-key. `extends` lets a
   config inherit *any* section — it is not restricted to a subset of the schema. The one
   exception is the `exclude` key; see "Merge semantics for arrays".
+
 - **Transitive chains, bounded and cycle-checked.** A base may itself declare `extends`
   (org → team → repo). Chains are resolved depth-first in listed order; a cycle is a hard
   error, and resolution is capped at depth 32 to keep pathological chains from hanging a
   run.
+
 - **Relative paths in an inherited section stay anchored to the consumer.** A base's
   `[rules] dirs` (or any other path-bearing key) resolves relative to the directory of the
   config that ultimately declares `extends` — not the base's own directory. A shared
   baseline sets policy; it does not reach into the consumer's filesystem layout.
+
 - **`extends` is forbidden in `poly.local.toml`.** The machine-local override layer must
   never itself pull in a remote base — that would let an uncommitted, unreviewed file
   change what code runs on a machine. `poly.local.toml` stays what ADR 0006 defined it as:
   a local override *on top of* an already-resolved config.
+
 - **`--config <path>` still applies that file's `extends`.** The explicit-config escape
   hatch (ADR 0006/0018) picks one file; that file's own `extends` chain still resolves
   normally.
+
 - **`[workspace] root = true` bounds only the ADR-0018 directory cascade**, not `extends`.
   The two mechanisms are independent: one walks a repo's own directory tree, the other
   crosses repository boundaries entirely.
+
 - **Reproducibility mirrors the `[[hooks.sources]]` model.** A `git` base pinned to a full
   40- or 64-hex OID self-pins — nothing to lock, fetched once, cached, offline after. A
   symbolic ref (branch or tag) requires a lock: a new `poly config update` subcommand
@@ -74,15 +81,18 @@ the same vocabulary and the same trust model rather than invent a second one.
   `poly-hooks.lock`) to the repo root. Loading a symbolic-ref base with no lock entry is a
   hard error directing the user to run `poly config update` first — normal `poly lint`/`poly
   fmt` runs never resolve a floating ref themselves.
+
 - **New CLI surface:** `poly config update` (resolve symbolic refs, write/refresh
   `poly-config.lock`) and `poly config resolve` / `poly config show` (print the fully
   merged, effective config — the same purpose `ruff check --show-settings` or `eslint
   --print-config` serve, needed here because a config can now be built from several files
   across two or more repositories).
+
 - **`poly-config` stays network-free.** As with `[[hooks.sources]]`, the crate that parses
   and merges config never performs I/O beyond the local filesystem; the CLI injects a
   resolver that fetches and caches remote git bases (reusing the sanctioned git-subprocess
   path from ADR 0012/0013) and hands `poly-config` only already-materialized local paths.
+
 - **Security: extending a remote config is a trust decision, not a convenience toggle.**
   A base can declare `[hooks]`/`[tools]` that run arbitrary commands, so pulling one in
   means trusting that repository to execute code on your machine — the same trust boundary

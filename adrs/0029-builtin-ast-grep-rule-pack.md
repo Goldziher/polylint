@@ -87,6 +87,7 @@ Negative / risks:
   which is the only way its end-to-end tests can now reach the state they describe. It is kept
   rather than removed because the condition it guards is a property of the coverage tables, and
   those change.
+
 - **A pack rule cannot express a path exclusion.** An ast-grep rule matches AST nodes, not paths,
   and poly's general mechanism for this — `[per-file-ignores]` (ADR 0017) — is user-config only,
   with no channel for a default shipped by an engine. Three rules measured badly enough on the
@@ -101,6 +102,7 @@ Negative / risks:
   *minority* of its exposure is unaddressable noise.** A rule that path exclusion cannot get under
   control ships `off` instead of growing the table — which is what happened to
   `undocumented-unsafe-block`.
+
 - Every rule the pack adds is warnings a user did not ask for. `poly lint` exits non-zero only on
   error severity, so no CI turns red — but a first run that prints thousands of warnings is its
   own kind of failure, and the volume of a default-on rule is part of whether it ships on. The
@@ -108,6 +110,7 @@ Negative / risks:
   observed false-positive rate under 10%, require no single repository to account for more than
   half the findings, and require that the rule demonstrably fires — a rule silent because its
   pattern is wrong is indistinguishable from a clean corpus.
+
 - The pack grows the binary and the compile-time constant table. Twenty-six rules is negligible;
   a pack an order of magnitude larger would need the rules moved out of `include_str!`.
 

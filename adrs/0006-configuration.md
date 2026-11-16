@@ -34,13 +34,16 @@ detection should be forgiving.
   > accepted (reversing the original back-compat decision below). The rename to `poly` is
   > complete, so a stale `polylint.toml` is silently ignored; adopters rename it to
   > `poly.toml`.
+
 - **`poly.local.toml` deep-merges over the primary config** when it sits in the same
   directory. Scalars and arrays replace; tables merge recursively.
+
 - **One config drives the entire `poly` umbrella** (ADR 0011): lint, format, git-hooks,
   commit-message linting. Schema sections: `[defaults]`, `[discovery]`, `[lint]`, `[fmt]`,
   `[commit]`, `[hooks]`, `[cache]`, `[tools]`, `[per-file-ignores]`. Per-engine config
   slices (`[fmt.python.ruff]`, `[lint.js.oxc]`, …) and per-tool config (`[hooks.rust.clippy]`,
   etc.) each `Engine` or hook-runner receives as its `EngineConfig` or tool-specific settings.
+
 - `--config <path>` overrides discovery for all poly subcommands (lint, fmt, hooks,
   commit).
 

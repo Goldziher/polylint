@@ -27,16 +27,20 @@ linter/formatter stack.
   > `polylint` / `polyfmt` entrypoints were removed (they were only ever hook IDs, never
   > shipped binaries); the work is done via `poly lint` and `poly fmt` subcommands
   > (alongside `hooks`, `commit`, `rules`, `cache`, `mcp`, `migrate`).
+
 - **One config (`poly.toml`) drives all four workloads** (see ADR 0006). Sections:
   `[lint]`, `[fmt]`, `[hooks]`, `[commit]`, and `[cache]`. Users write one config file
   and all four tools respect it.
+
 - **Consume `gitfluff` as an internal library.** Commit-message linting becomes `poly
   commit` (subcommand driven by `[commit]` config); users install one binary instead of
   two.
+
 - **Replace the prek bridge with a native hook runner (`poly hooks`).** No more
   `.pre-commit-config.yaml` → temp YAML → external `prek` subprocess. The new `poly
   hooks` engine (the `poly-hooks` crate) is in-process, rayon-driven, and driven by
   `[hooks]` config. See ADR 0012.
+
 - ~~**Keep backward compatibility:** `polylint` and `polyfmt` remain standalone entry
   points with their original semantics. `poly` is the umbrella and the recommended future
   path.~~ **Reversed (2026-07, v0.9.0):** the standalone entrypoints were dropped; `poly` is

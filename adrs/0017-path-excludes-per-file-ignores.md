@@ -81,6 +81,7 @@ suppression APIs (ruff's `noqa`, oxc's `// eslint-disable`, sqruff's `-- noqa`).
   - An MCP `exclude` parameter (e.g. from the poly GitHub Action or editor integration).
   These are merged once before discovery (via `filter::merged_excludes()`) and passed to
   `discover()` as the exclusion set. No file matching an exclude glob is discovered.
+
 - **`[per-file-ignores]`: cross-engine rule suppression.** A TOP-LEVEL table in `poly.toml`
   (not nested under `[lint]`, to avoid collision with the `[lint.<lang>.<tool>]` slicing) that
   maps gitignore-style path globs to arrays of rule codes. Example:
@@ -94,16 +95,19 @@ suppression APIs (ruff's `noqa`, oxc's `// eslint-disable`, sqruff's `-- noqa`).
   Matching semantics: a file matches a glob if the glob pattern matches its relative path
   (forward-slash normalized, rooted at the run base). Matching is evaluated once per file,
   not per diagnostic.
+
 - **Rule matching is exact or prefix-based:** A rule code matches a suppression rule when
   it is an exact match (`F401` suppresses `F401`) or a prefix match where the next character
   is non-alphabetic (ruff-style rule families). Thus `F` suppresses `F401` but not `FOO`,
   and `too-many` suppresses `too-many-methods` but not `too-many-args` if the latter were
   a separate code. This prevents short codes from silently swallowing unrelated codes from
   other engines.
+
 - **Suppression timing: before the fix loop.** Per-file-ignore filtering is applied as a
   post-lint filter (after engines report diagnostics) but BEFORE the `--fix` rewrite loop.
   This ensures `--fix` never silently rewrites a file for a rule the user has configured to
   ignore — keeping the user's intent explicit and debuggable.
+
 - **Engine-agnostic filtering:** The normalized `Diagnostic.code` is matched; the filter
   does not care which engine produced the diagnostic. A `[per-file-ignores]` entry suppresses
   matching codes across all backends uniformly.

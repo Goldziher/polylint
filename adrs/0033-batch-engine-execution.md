@@ -515,10 +515,12 @@ while system time rises 1.85 s -> 2.30 s (the mirror's syscalls).
   poly's fixed-point loop runs a second pass and reaches `shfmt`'s own fixed
   point — pre-existing behaviour, and a direct demonstration that pass 2
   correctly falls through to the per-file path.
+
 - **The mechanism does what it claims.** Instrumented spawn counting over the
   same corpus: **684 -> 413** invocations, exactly the 285 pass-one spawns
   replaced by 14 shard spawns. The shards are genuinely concurrent (14 starts
   within 148 ms).
+
 - **It is a large win where startup dominates.** 60 files, `xargs -P14`
   per-file against the same files in shards. Read these as indicative only: the
   `xargs` per-file arm re-reads each file, whereas poly's real per-file path

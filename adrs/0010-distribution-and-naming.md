@@ -26,18 +26,22 @@ adding to it.
   > 0011); there are no `polylint` / `polyfmt` binaries. The engine library was renamed
   > `poly-core` (lib name `poly_core`), and every workspace crate now carries the `poly-`
   > prefix.
+
 - **Names reserved on crates.io at v0.0.1** (done 2026-06-26) so the identity is locked
   before real releases, though we do not publish to crates.io (binaries are distributed as
   prebuilt artifacts, ADR 0003).
+
 - A Cargo **workspace** with `crates/poly-core`, `crates/poly-cli`, `crates/poly-config`,
   `crates/poly-cache`, `crates/poly-catalog`, `crates/poly-hooks`, `crates/poly-mcp` (plus
   `gitfluff` and `conformance`) — every member on the `poly-` prefix.
+
 - ~~**Ship a `.pre-commit-hooks.yaml`** defining exactly two hooks (`polylint` and
   `polyfmt`) so a consuming repo can **replace its entire hook list with two entries**
   pointed at this repo.~~ **Superseded (2026-06-29) by ADR 0011/0012:** poly ships a
   self-contained `poly hooks` runner driven by `poly.toml [hooks]`, so the
   `.pre-commit-hooks.yaml` artifact was dropped — a consuming repo wires poly directly
   instead of routing through pre-commit/prek.
+
 - **Distribution channels.** Prebuilt release binaries (`poly-<version>-<triple>`) attached
   to GitHub releases, plus the `curl … | sh` installer, the PowerShell installer, the GitHub
   Action (`Goldziher/poly@v0`), and Homebrew (`brew install Goldziher/tap/poly`). Not

@@ -54,6 +54,8 @@ binary drives lint, format, hooks, and commit checks from one `poly.toml`.
   id of the request. Components built for protocol 2 are rejected as incompatible.
 - **One oxc copy in the `web` component.** rumdl comes from `polylint-rumdl` 0.3.5, polylint's fork on Oxc 0.158, and
   adrlint 0.5.2 builds on it, so the component no longer links a second, older oxc through rumdl. (#192)
+- **Markdown lists with mixed item spacing format as loose lists.** The rumdl update carries upstream's MD076 fix: when
+  any items of a list are separated by a blank line, `poly fmt` separates all of them, so such lists reformat once.
 
 ### Performance
 
