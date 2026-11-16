@@ -2,9 +2,9 @@
 # Refresh it with `ai-rulez lock`; `ai-rulez generate --locked` fails when it is stale.
 
 version = 1
-ai_rulez_version = '5.13.2'
+ai_rulez_version = '5.13.3'
 scope = 'all'
-tree = 'sha256:6a9d43b38ab2087042af31d5a016de720ebeb5af85c3cd3404a70a673e2f3c19'
+tree = 'sha256:5ac978e90a17678ca0710c8a4c288c05df1a65a5a497b670275fd45664ffbd67'
 
 [[item]]
 kind = 'command'
@@ -22,28 +22,28 @@ digest = 'sha256:a39409654bea6351cea8ffe9fc58245557bcc2dcfd47e2cbe4e7600b3910c78
 kind = 'skill'
 id = 'poly-lint-and-format'
 path = 'skills/poly-lint-and-format'
-digest = 'sha256:78fa1c0450072a09b4596db9f7f6a8cce6e63bf417a066b4eb6c9224d883af3a'
+digest = 'sha256:83f0ef6a6cc45762f40188e8b1b4e065b7ed91070a496af7a9bfaeac06d6c105'
 
 [[item]]
 kind = 'skill'
 id = 'poly-mcp'
 path = 'skills/poly-mcp'
-digest = 'sha256:08ee7a859bb2c01d0eaacc0e9775a776deaba56c67c45330254e24a6f660ba1b'
+digest = 'sha256:32bd120ea6c553bf8bf217eeda1c154d9c98af250113f79721c448016b68fbd8'
 
 [[item]]
 kind = 'skill'
 id = 'poly-orchestrator'
 path = 'skills/poly-orchestrator'
-digest = 'sha256:074da99096189158961e4c14f69cdc929c421affdf35fa83083b4dbd24da0fa1'
+digest = 'sha256:73b7b1dd82886f55402e08861a97a952a39f275b781d63ce800422425747dc15'
 
 [[item]]
 kind = 'skill'
 id = 'poly-overview'
 path = 'skills/poly-overview'
-digest = 'sha256:b877271d789b18e362734912913dbd193834d0902f58c1f8a7c8e4e2a71272f3'
+digest = 'sha256:1feefe49005f89171b2444b998963db51df9a6a1d8504482f1f4f6962117fbcb'
 
 [[item]]
 kind = 'skill'
 id = 'poly-tiers-and-scope'
 path = 'skills/poly-tiers-and-scope'
-digest = 'sha256:7609e16da21caef7279851bc710beb8a014ffcc82a91ccb47bc380580355cf0e'
+digest = 'sha256:5dbb40d47552b614725e408dc4f75ee007f292d0391601b6820fe1da7c6c3276'
