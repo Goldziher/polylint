@@ -46,3 +46,11 @@ fn is_working_dir(dir: &Path) -> bool {
         _ => false,
     }
 }
+
+/// Whether this process runs with the global flags a child of the runner gets:
+/// none. `--offline` and `--trust` act process-wide here but never reach the
+/// child's command line; `POLY_OFFLINE` and `POLY_TRUST` reach both.
+fn flags_match_child() -> bool {
+    let flags = crate::global();
+    !flags.offline && !flags.trust
+}

@@ -93,12 +93,8 @@ pub(super) fn run(call: &Call<'_>) -> Option<Result<Outcome>> {
 /// Whether nothing this process was started with would make it behave
 /// differently from a child started by the runner.
 fn environment_matches_child() -> bool {
-    let flags = crate::global();
-    // The child is given none of the parent's global flags; `POLY_OFFLINE` and
-    // `POLY_TRUST` it inherits, and they apply here too.
-    !flags.offline
-        && !flags.trust
-        && flags.config.is_none()
+    super::flags_match_child()
+        && crate::global().config.is_none()
         && FORCED_COLOR_ENV.iter().all(|name| std::env::var_os(name).is_none())
 }
 

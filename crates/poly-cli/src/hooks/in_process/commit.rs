@@ -27,9 +27,12 @@ const UNVERIFIED: i32 = 2;
 
 /// Run a `commit` call as `poly commit <args> <files>` would from `call.dir`.
 ///
-/// Declines `--stdin`: the child's stdin is the runner's, which this does not
-/// reproduce.
+/// Declines `--stdin`, since the child's stdin is the runner's, which this does
+/// not reproduce, and global flags the child would not have been given.
 pub(super) fn run(call: &Call<'_>) -> Option<Result<Outcome>> {
+    if !super::flags_match_child() {
+        return None;
+    }
     let mut args = match CommitCommand::try_parse_from(super::argv("commit", call)) {
         Ok(command) => command.args,
         Err(error) => {
