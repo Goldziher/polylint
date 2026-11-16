@@ -181,11 +181,56 @@ pub fn ensure_mirror(mirror: &Path, url: &str) -> anyhow::Result<()> {
 /// that refuses a request for an object it did not advertise (protocol v0
 /// without `uploadpack.allowAnySHA1InWant`) falls back to fetching every branch
 /// and tag; if that fails too, the error carries both failures.
+///
+/// "Present" means the commit *and its tree* are readable: a mirror damaged by an
+/// interrupted fetch can hold the commit object without the tree, which makes the
+/// later checkout fail with `unable to read tree`. Such a mirror is repaired by
+/// fetching the revision again and, failing that, by deleting and re-cloning it;
+/// the final error names the cache directory to remove by hand.
 pub fn ensure_commit(mirror: &Path, url: &str, revision: &str) -> anyhow::Result<()> {
     super::protocol::check_url(url)?;
-    if git_object_exists(mirror, revision)? {
+    if git_commit_is_complete(mirror, revision) {
         return Ok(());
     }
+    let fetched = fetch_commit(mirror, url, revision);
+    let Err(fetch_error) = fetched else {
+        return Ok(());
+    };
+    poly_config::network::require_online(&format!("rebuild source mirror {}", mirror.display()))?;
+    let reset = remove_mirror(mirror)
+        .and_then(|()| ensure_mirror(mirror, url))
+        .and_then(|()| fetch_commit(mirror, url, revision));
+    reset.with_context(|| {
+        let cache = mirror.parent().unwrap_or(mirror);
+        format!(
+            "source mirror {} cannot provide {revision} ({fetch_error:#}); remove {} and retry",
+            mirror.display(),
+            cache.display()
+        )
+    })
+}
+
+/// Delete a mirror, restoring write permission first so read-only objects cannot block it.
+fn remove_mirror(mirror: &Path) -> anyhow::Result<()> {
+    if !mirror.exists() {
+        return Ok(());
+    }
+    super::checkout::make_writable(mirror)?;
+    std::fs::remove_dir_all(mirror).with_context(|| format!("removing damaged source mirror {}", mirror.display()))
+}
+
+/// Whether `revision` and its tree are both readable in `repository`.
+fn git_commit_is_complete(repository: &Path, revision: &str) -> bool {
+    git_command()
+        .arg("-C")
+        .arg(repository)
+        .args(["cat-file", "-e", &format!("{revision}^{{tree}}")])
+        .status()
+        .is_ok_and(|status| status.success())
+}
+
+/// Fetch `revision` into `mirror` and verify the commit and its tree arrived.
+fn fetch_commit(mirror: &Path, url: &str, revision: &str) -> anyhow::Result<()> {
     poly_config::network::require_online(&format!("fetch locked source commit {revision} from {url}"))?;
     let pinned = format!("+{revision}:refs/heads/poly-pinned/{revision}");
     let shallow = run_remote_git(
@@ -194,7 +239,7 @@ pub fn ensure_commit(mirror: &Path, url: &str, revision: &str) -> anyhow::Result
         &["fetch", "--quiet", "--no-tags", "--depth", "1", "origin", &pinned],
     );
     let shallow = match shallow {
-        Ok(()) if git_object_exists(mirror, revision)? => return Ok(()),
+        Ok(()) if git_commit_is_complete(mirror, revision) => return Ok(()),
         Ok(()) => format!("shallow fetch of {revision} did not deliver it"),
         Err(error) => format!("shallow fetch of {revision} failed: {error:#}"),
     };
@@ -211,7 +256,7 @@ pub fn ensure_commit(mirror: &Path, url: &str, revision: &str) -> anyhow::Result
         ],
     )
     .with_context(|| format!("fetching locked source commit {revision} from {url} ({shallow})"))?;
-    if !git_object_exists(mirror, revision)? {
+    if !git_commit_is_complete(mirror, revision) {
         bail!("locked source commit {revision} is unavailable from {url} ({shallow})");
     }
     Ok(())

@@ -7,6 +7,10 @@ binary drives lint, format, hooks, and commit checks from one `poly.toml`.
 
 ## [Unreleased]
 
+### Fixed
+
+- **Hook sources recover from a damaged cached mirror.** A mirror holding a locked commit without its tree is refetched, then re-cloned, instead of failing with `unable to read tree`; the final error names the cache directory to remove.
+
 ### Added
 
 - **`poly adr lock`, `poly adr unlock <file> --reason <text>` and `poly adr new <title>`.** Maintain `adrlint.lock`

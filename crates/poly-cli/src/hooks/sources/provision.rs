@@ -208,8 +208,10 @@ fn provision_source(
 fn materialize_source_checkout(mirror: &Path, checkout: &Path, revision: &str, source_id: &str) -> anyhow::Result<()> {
     materialize_checkout(mirror, checkout, revision).with_context(|| {
         format!(
-            "provisioning hook source {source_id:?} at revision {revision} into {}",
-            checkout.display()
+            "provisioning hook source {source_id:?} at revision {revision} into {}; \
+             if the cache is damaged, remove {} and retry",
+            checkout.display(),
+            mirror.parent().unwrap_or(mirror).display()
         )
     })
 }
@@ -221,7 +223,7 @@ mod tests {
     use super::super::manifest::PRODUCER_MANIFEST_NAME;
     use super::super::test_support::{preferences, write_catalog, write_consumer};
     use super::*;
-    use crate::remote::{git_output, run_command, run_git};
+    use crate::remote::{git_object_exists, git_output, run_command, run_git};
 
     fn git_source(repository: &Path) -> HookSource {
         HookSource {
@@ -565,6 +567,87 @@ run = "printf"
             "true"
         );
         assert_eq!(git_output(&mirror, &["rev-list", "--count", "--all"]).unwrap(), "1");
+    }
+
+    /// Copy `revision`'s commit object (and nothing else) from `producer` into an
+    /// empty mirror, reproducing a mirror that has the commit but not its tree.
+    fn plant_commit_without_tree(mirror: &Path, producer: &Path, revision: &str) {
+        use std::io::Write;
+        use std::process::Stdio;
+
+        let commit = git_output(producer, &["cat-file", "commit", revision]).unwrap();
+        let mut child = Command::new("git")
+            .arg("-C")
+            .arg(mirror)
+            .args(["hash-object", "-w", "-t", "commit", "--literally", "--stdin"])
+            .stdin(Stdio::piped())
+            .stdout(Stdio::null())
+            .spawn()
+            .unwrap();
+        child
+            .stdin
+            .take()
+            .unwrap()
+            .write_all(format!("{commit}\n").as_bytes())
+            .unwrap();
+        assert!(child.wait().unwrap().success());
+        assert!(git_object_exists(mirror, revision).unwrap());
+    }
+
+    #[test]
+    fn provisioning_recovers_a_mirror_missing_the_locked_tree() {
+        let producer = create_git_source();
+        let cache = tempfile::tempdir().unwrap();
+        let source = git_source(producer.path());
+        let revision = git_output(producer.path(), &["rev-parse", "HEAD"]).unwrap();
+        let source_cache = cache
+            .path()
+            .join(poly_cache::hook_source_key(source.git.as_deref().unwrap()));
+        let mirror = source_cache.join("mirror.git");
+        std::fs::create_dir_all(&source_cache).unwrap();
+        ensure_mirror(&mirror, source.git.as_deref().unwrap()).unwrap();
+        plant_commit_without_tree(&mirror, producer.path(), &revision);
+
+        let lock = vec![LockedHookSource {
+            id: source.id.clone(),
+            source: source.git.clone().unwrap(),
+            revision: revision.clone(),
+            path: format!("cache://hook-sources/x/{revision}"),
+        }];
+        let (_, checkout) = provision_source(Path::new("."), cache.path(), &source, Some(lock.as_slice())).unwrap();
+
+        assert_eq!(git_output(&checkout, &["rev-parse", "HEAD"]).unwrap(), revision);
+        assert!(checkout.join(PRODUCER_MANIFEST_NAME).is_file());
+    }
+
+    #[test]
+    fn unrecoverable_mirror_error_names_the_cache_path() {
+        let producer = create_git_source();
+        let cache = tempfile::tempdir().unwrap();
+        let source = git_source(producer.path());
+        let revision = git_output(producer.path(), &["rev-parse", "HEAD"]).unwrap();
+        let source_cache = cache
+            .path()
+            .join(poly_cache::hook_source_key(source.git.as_deref().unwrap()));
+        let mirror = source_cache.join("mirror.git");
+        std::fs::create_dir_all(&source_cache).unwrap();
+        ensure_mirror(&mirror, source.git.as_deref().unwrap()).unwrap();
+        plant_commit_without_tree(&mirror, producer.path(), &revision);
+        let lock = vec![LockedHookSource {
+            id: source.id.clone(),
+            source: source.git.clone().unwrap(),
+            revision,
+            path: "cache://x".to_string(),
+        }];
+        drop(producer);
+
+        let error = format!(
+            "{:#}",
+            provision_source(Path::new("."), cache.path(), &source, Some(lock.as_slice())).unwrap_err()
+        );
+
+        assert!(error.contains(&source_cache.display().to_string()), "{error}");
+        assert!(error.contains("remove"), "{error}");
     }
 
     #[test]
