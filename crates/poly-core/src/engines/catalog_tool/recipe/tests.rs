@@ -19,6 +19,7 @@ use crate::language::Language;
 mod fetched;
 mod gau;
 mod go_fix;
+mod go_units;
 
 /// A buf-flavoured linter: `lint --path f ...` prints one JSON object per file
 /// whose content contains BAD, exits 2 with no report if a file contains CRASH,

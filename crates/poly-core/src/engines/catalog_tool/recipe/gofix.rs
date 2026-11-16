@@ -164,7 +164,10 @@ impl RecipeTool {
             for pass in passes {
                 for chunk in pass.chunks(&dirs) {
                     let argv = pass.render(&dirs[chunk]);
-                    let captured = exec::run(&self.launcher, &argv, &module_dir, &env, self.unset_env)?;
+                    let captured = {
+                        let _turn = self.serial_turn();
+                        exec::run(&self.launcher, &argv, &module_dir, &env, self.unset_env)?
+                    };
                     if !captured.exited_ok(&self.recipe.ok_exits) {
                         return Err(anyhow!("{} failed: {}", self.tool.name, captured.explanation()));
                     }

@@ -214,8 +214,9 @@ pub struct Recipe {
     /// in front (`helm lint` prints `chart/templates/a.yaml`); the name is
     /// dropped when matching the path to a file.
     pub root_named_paths: bool,
-    /// Never run two invocations of this tool at once (a tool holding a global
-    /// lock, or writing a shared cache).
+    /// Never run two invocations of this tool at once in one poly process (a
+    /// tool that already uses every core and gigabytes of memory per run, or
+    /// that writes a shared cache unsafely).
     pub serial: bool,
     /// Fewest files worth a separate invocation. JVM tools pay a start-up that
     /// dwarfs the per-file work, so splitting a small run across cores loses.
@@ -223,6 +224,11 @@ pub struct Recipe {
     /// Exit codes, besides 0, that mean the tool ran to completion (it found
     /// problems, or it changed a file) rather than failed.
     pub ok_exits: Vec<i32>,
+    /// Exit codes that fail the invocation as a whole rather than over one of its
+    /// items (golangci-lint: 3 for a refused lock, 4 for its own timeout). Such a
+    /// failure is reported for every file of the invocation and not retried on
+    /// halves of it, which would only repeat it.
+    pub unsplittable_exits: Vec<i32>,
     /// Absence handling and pinned downloads.
     pub install: Option<Install>,
     /// Directories of the project root a scratch copy links to instead of copying: the tool

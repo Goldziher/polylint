@@ -258,11 +258,39 @@ fn golangci_lint_is_a_per_module_recipe_with_new_from_rev_and_config_discovery()
     assert_eq!(recipe.output, Output::GolangciJson);
     assert_eq!(recipe.group, Group::Marker(vec!["go.mod".to_owned()]));
     assert_eq!(recipe.target, Target::Dir);
-    assert!(recipe.serial, "golangci-lint holds a global cache lock");
+    assert!(
+        recipe.serial,
+        "one golangci-lint run already uses every core and gigabytes of memory"
+    );
     assert_eq!(recipe.ok_exits, [1]);
+    assert_eq!(
+        recipe.unsplittable_exits,
+        [3, 4],
+        "a lock refusal or a timeout is no package's fault"
+    );
     assert_eq!(recipe.new_from_rev_flag.as_deref(), Some("--new-from-rev"));
     assert!(recipe.config_files.iter().any(|f| f == ".golangci.yml"));
     assert!(recipe.config_flags.iter().any(|f| f == "-c"));
+}
+
+/// Without `--allow-parallel-runners` golangci-lint takes a per-user lock and exits 3 when
+/// any other golangci-lint on the machine holds it (another repository, an editor). Without
+/// `--timeout=0` a project's `run.timeout`, sized for warm CI caches, kills a cold run; poly
+/// bounds the run itself (`POLY_TOOL_TIMEOUT_SECS`).
+#[test]
+fn golangci_lint_runs_beside_other_instances_and_under_polys_deadline() {
+    let tool = Catalog::get().tool("golangci-lint").expect("golangci-lint");
+    for name in ["lint", "fix"] {
+        let command = tool.command(name).expect(name);
+        let at = |flag: &str| command.arguments.iter().position(|a| a == flag);
+        let target = at("$DIR").expect("$DIR");
+        for flag in ["--allow-parallel-runners", "--timeout=0"] {
+            assert!(
+                at(flag).is_some_and(|i| i < target),
+                "{name} must pass {flag} before the packages"
+            );
+        }
+    }
 }
 
 #[test]

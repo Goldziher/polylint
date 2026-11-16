@@ -91,6 +91,7 @@ impl<K: Hash + Eq, V: Clone> Memo<K, V> {
 /// Empty every recipe memo; called when a run is planned.
 pub(in crate::engines::catalog_tool) fn forget_run_memos() {
     super::lint::INVOCATIONS.clear();
+    super::lint::UNIT_FAILURES.clear();
     super::unit::PREPARED.clear();
     super::paths::ROOTS.clear();
     super::salt::DIGESTS.clear();

@@ -71,6 +71,13 @@ binary drives lint, format, hooks, and commit checks from one `poly.toml`.
 
 ### Fixed
 
+- **golangci-lint no longer fails beside another golangci-lint, or times out a cold module and reruns it.** poly
+  passes `--allow-parallel-runners`, so a run no longer exits 3 (`parallel golangci-lint is running`) on every Go file
+  while an editor or another repository holds golangci-lint's per-user lock, and `--timeout=0`, so a project's
+  `run.timeout` no longer kills a cold-cache run; `POLY_TOOL_TIMEOUT_SECS` bounds it instead. A whole-run failure (a
+  recipe's new `unsplittable_exits`, a signal, poly's deadline, a missing program) fails the invocation's files once
+  instead of being retried on halves of its packages or once per package by the per-file loop, and findings printed
+  before such an exit are not taken as a verdict. A `serial` tool now runs one invocation at a time across the whole process, not only within one batch.
 - **Dockerfiles, `.env` and INI files format the same in every build.** The bundled build left them with no formatter,
   while the core build normalised them through the generic tier; both now use the generic tier.
 - **Log lines no longer land on the progress spinner.** `tracing` output and still-running notices erase the spinner frame

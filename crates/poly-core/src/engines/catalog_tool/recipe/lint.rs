@@ -4,7 +4,7 @@
 use std::collections::{BTreeMap, HashMap};
 use std::ops::Range;
 use std::path::{Component, Path, PathBuf};
-use std::sync::{Arc, OnceLock};
+use std::sync::{Arc, Mutex, MutexGuard, OnceLock, PoisonError};
 use std::time::Instant;
 
 use anyhow::anyhow;
@@ -22,6 +22,11 @@ use crate::engine::{Diagnostic, Edit, SourceFile, Span};
 type InvocationCell = Arc<OnceLock<Outcome>>;
 
 pub(super) static INVOCATIONS: Memo<String, InvocationCell> = Memo::with_settled(invocation_settled);
+
+/// The whole-invocation failure of a tool on a unit root, so any later
+/// invocation there (the per-file loop's single directories after a failed
+/// prefill) answers with it instead of spawning the tool again.
+pub(super) static UNIT_FAILURES: Memo<String, Failure> = Memo::new();
 
 fn invocation_settled(cell: &InvocationCell) -> bool {
     cell.get().is_some()
@@ -69,7 +74,48 @@ struct Tally {
 }
 
 /// What one task (a chunk of a group) came to.
-type Outcome = Result<Arc<Vec<Finding>>, String>;
+type Outcome = Result<Arc<Vec<Finding>>, Failure>;
+
+/// Why an invocation gave no verdict.
+#[derive(Clone)]
+pub(super) struct Failure {
+    reason: String,
+    /// Whether the same tool run on fewer items can succeed. A signal, a missing
+    /// program, poly's deadline or one of the recipe's `unsplittable_exits`
+    /// fails the invocation whatever it was pointed at.
+    splittable: bool,
+}
+
+impl Failure {
+    fn splittable(reason: String) -> Self {
+        Failure {
+            reason,
+            splittable: true,
+        }
+    }
+
+    fn whole(reason: String) -> Self {
+        Failure {
+            reason,
+            splittable: false,
+        }
+    }
+}
+
+/// The lock that keeps a `serial` tool's invocations from overlapping anywhere
+/// in the process: the prefill, the per-file loop and the fix pass each reach
+/// the tool on their own, so a per-call loop cannot enforce it. One lock per
+/// catalog tool name, leaked, so the set is bounded by the catalog.
+fn serial_lock(tool: &str) -> &'static Mutex<()> {
+    static LOCKS: OnceLock<Mutex<HashMap<String, &'static Mutex<()>>>> = OnceLock::new();
+    let mut locks = LOCKS
+        .get_or_init(Default::default)
+        .lock()
+        .unwrap_or_else(PoisonError::into_inner);
+    locks
+        .entry(tool.to_owned())
+        .or_insert_with(|| Box::leak(Box::new(Mutex::new(()))))
+}
 
 struct Task {
     group: usize,
@@ -201,9 +247,9 @@ impl RecipeTool {
                 let covered = self.covered(template, unit, members, &items, &range);
                 match outcome {
                     Ok(batch) => self.attribute(&batch, unit, &covered, members, &lookup, &mut findings),
-                    Err(reason) => {
+                    Err(failure) => {
                         for index in covered {
-                            failures[index] = Some(reason.clone());
+                            failures[index] = Some(failure.reason.clone());
                         }
                     }
                 }
@@ -373,7 +419,10 @@ impl RecipeTool {
     /// Run `range` of the group's items; when the tool fails on it, halve until
     /// the failure is pinned on single items. A tool that refuses two single
     /// items before accepting anything is being invoked wrongly, so the rest is
-    /// abandoned instead of halved into a spawn per file.
+    /// abandoned instead of halved into a spawn per file. A failure of the
+    /// invocation as a whole is never halved: halves would only repeat it, and
+    /// a timed-out cold run that is retried on halves passes off a warmed cache
+    /// as a verdict while costing the timeout on top.
     fn run_range(
         &self,
         template: &Template,
@@ -397,7 +446,7 @@ impl RecipeTool {
         out: &mut Vec<(Range<usize>, Outcome)>,
     ) {
         if let Some(reason) = &tally.abandoned {
-            out.push((range, Err(reason.clone())));
+            out.push((range, Err(Failure::whole(reason.clone()))));
             return;
         }
         let outcome = self.invoke(template, unit, &items[range.clone()]);
@@ -406,12 +455,16 @@ impl RecipeTool {
                 tally.accepted += 1;
                 out.push((range, outcome));
             }
-            Err(reason) if range.len() < 2 || template.items() == Items::Nothing => {
+            Err(failure) if !failure.splittable => {
+                tally.abandoned = Some(failure.reason.clone());
+                out.push((range, Err(failure)));
+            }
+            Err(failure) if range.len() < 2 || template.items() == Items::Nothing => {
                 tally.refused += 1;
                 if tally.accepted == 0 && tally.refused >= 2 {
-                    tally.abandoned = Some(reason.clone());
+                    tally.abandoned = Some(failure.reason.clone());
                 }
-                out.push((range, Err(reason)));
+                out.push((range, Err(failure)));
             }
             Err(_) => {
                 let middle = range.start + range.len() / 2;
@@ -433,15 +486,34 @@ impl RecipeTool {
             argv.join("\u{1f}"),
             self.version
         );
+        let unit_key = format!(
+            "{}\u{1e}{}\u{1e}{}",
+            self.launcher.identity,
+            unit.root.display(),
+            self.version
+        );
+        if let Some(failure) = UNIT_FAILURES.get(&unit_key) {
+            return Err(failure);
+        }
         let cell = INVOCATIONS.get_or_insert_with(key, Default::default);
-        cell.get_or_init(|| {
-            progress::unit_started(&self.tool.name, template.items(), items.len(), &unit.dir);
-            let started = Instant::now();
-            let outcome = self.execute(&argv, &unit.root);
-            progress::unit_finished(&self.tool.name, &unit.dir, started.elapsed());
-            outcome
-        })
-        .clone()
+        let outcome = cell
+            .get_or_init(|| {
+                progress::unit_started(&self.tool.name, template.items(), items.len(), &unit.dir);
+                let started = Instant::now();
+                let outcome = self.execute(&argv, &unit.root);
+                progress::unit_finished(&self.tool.name, &unit.dir, started.elapsed());
+                outcome
+            })
+            .clone();
+        // Only a marker group's root is its unit; a `dir` or ungrouped tool shares one
+        // root across every directory, which one directory's failure must not answer for.
+        if let Err(failure) = &outcome
+            && !failure.splittable
+            && matches!(self.recipe.group, Group::Marker(_))
+        {
+            UNIT_FAILURES.insert(unit_key, failure.clone());
+        }
+        outcome
     }
 
     /// Run once, or once per configured `GOOS` with the findings merged.
@@ -453,9 +525,10 @@ impl RecipeTool {
         for goos in &self.goos {
             let mut env = self.env.clone();
             env.insert("GOOS".to_owned(), goos.clone());
-            let found = self
-                .execute_with(argv, root, &env)
-                .map_err(|reason| format!("GOOS={goos}: {reason}"))?;
+            let found = self.execute_with(argv, root, &env).map_err(|failure| Failure {
+                reason: format!("GOOS={goos}: {}", failure.reason),
+                ..failure
+            })?;
             for finding in found.iter() {
                 if !merged.contains(finding) {
                     merged.push(finding.clone());
@@ -466,22 +539,41 @@ impl RecipeTool {
     }
 
     fn execute_with(&self, argv: &[String], root: &Path, env: &BTreeMap<String, String>) -> Outcome {
-        let captured =
-            exec::run(&self.launcher, argv, root, env, self.unset_env).map_err(|error| format!("{error:#}"))?;
-        // No exit code means a signal ended the tool: whatever it printed before is a
-        // partial report, not a verdict.
-        if captured.code.is_none() {
-            return Err(captured.explanation());
+        let captured = {
+            let _turn = self.serial_turn();
+            // A program that cannot start, or outlives poly's deadline, fails the same
+            // way on any subset of the items.
+            exec::run(&self.launcher, argv, root, env, self.unset_env)
+                .map_err(|error| Failure::whole(format!("{error:#}")))?
+        };
+        // No exit code means a signal ended the tool, and an unsplittable exit (a
+        // timeout) can follow a partial report: either way what it printed is not a
+        // verdict.
+        if captured
+            .code
+            .is_none_or(|code| self.recipe.unsplittable_exits.contains(&code))
+        {
+            return Err(Failure::whole(captured.explanation()));
         }
         match output::parse(self.recipe.output, &captured.stdout, &captured.stderr) {
             // A failing exit that reported nothing is a tool that did not run to
             // completion, not a clean file.
             Ok(findings) if findings.is_empty() && !captured.exited_ok(&self.recipe.ok_exits) => {
-                Err(captured.explanation())
+                Err(Failure::splittable(captured.explanation()))
             }
             Ok(findings) => Ok(Arc::new(findings)),
-            Err(error) => Err(format!("{error:#} ({})", captured.explanation())),
+            Err(error) => Err(Failure::splittable(format!("{error:#} ({})", captured.explanation()))),
         }
+    }
+
+    /// The turn of a `serial` tool, held while one invocation runs; `None` for a
+    /// tool whose invocations may overlap.
+    pub(super) fn serial_turn(&self) -> Option<MutexGuard<'static, ()>> {
+        self.recipe.serial.then(|| {
+            serial_lock(&self.tool.name)
+                .lock()
+                .unwrap_or_else(PoisonError::into_inner)
+        })
     }
 
     /// Hand each finding of one invocation to its file.
