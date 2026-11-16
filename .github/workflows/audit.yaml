@@ -28,6 +28,9 @@ jobs:
           - workspace: components-pyrefly
             manifest: components-pyrefly/Cargo.toml
             config: components-pyrefly/deny.toml
+          - workspace: components-r
+            manifest: components-r/Cargo.toml
+            config: components-r/deny.toml
           - workspace: components-secrets
             manifest: components-secrets/Cargo.toml
             config: components-secrets/deny.toml

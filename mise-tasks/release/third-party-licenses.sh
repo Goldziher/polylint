@@ -35,6 +35,7 @@ manifests=(
   Cargo.toml
   components/Cargo.toml
   components-pyrefly/Cargo.toml
+  components-r/Cargo.toml
   components-secrets/Cargo.toml
   components-tsrs/Cargo.toml
 )

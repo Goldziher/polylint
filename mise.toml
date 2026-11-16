@@ -45,6 +45,7 @@ run = [
   "cargo fetch --manifest-path components-pyrefly/Cargo.toml",
   "cargo fetch --manifest-path components-secrets/Cargo.toml",
   "cargo fetch --manifest-path components-tsrs/Cargo.toml",
+  "cargo fetch --manifest-path components-r/Cargo.toml",
   "{{vars.poly}} hooks install",
 ]
 
@@ -56,6 +57,7 @@ run = [
   "cargo build --manifest-path components-pyrefly/Cargo.toml --workspace",
   "cargo build --manifest-path components-secrets/Cargo.toml --workspace",
   "cargo build --manifest-path components-tsrs/Cargo.toml --workspace",
+  "cargo build --manifest-path components-r/Cargo.toml --workspace",
 ]
 
 [tasks.test]
@@ -66,6 +68,7 @@ run = [
   "cargo test --manifest-path components-pyrefly/Cargo.toml --workspace --no-fail-fast",
   "cargo test --manifest-path components-secrets/Cargo.toml --workspace --no-fail-fast",
   "cargo test --manifest-path components-tsrs/Cargo.toml --workspace --no-fail-fast",
+  "cargo test --manifest-path components-r/Cargo.toml --workspace --no-fail-fast",
 ]
 
 [tasks."test:hooks"]
@@ -81,6 +84,7 @@ run = [
   "cargo clippy --manifest-path components-pyrefly/Cargo.toml --workspace --all-targets -- -D warnings",
   "cargo clippy --manifest-path components-secrets/Cargo.toml --workspace --all-targets -- -D warnings",
   "cargo clippy --manifest-path components-tsrs/Cargo.toml --workspace --all-targets -- -D warnings",
+  "cargo clippy --manifest-path components-r/Cargo.toml --workspace --all-targets -- -D warnings",
   "{{vars.poly}} lint .",
 ]
 
@@ -93,6 +97,7 @@ run = [
   "cargo fmt --manifest-path components-pyrefly/Cargo.toml --all",
   "cargo fmt --manifest-path components-secrets/Cargo.toml --all",
   "cargo fmt --manifest-path components-tsrs/Cargo.toml --all",
+  "cargo fmt --manifest-path components-r/Cargo.toml --all",
   "{{vars.poly}} fmt --fix .",
 ]
 
@@ -105,6 +110,7 @@ run = [
   "cargo fmt --manifest-path components-pyrefly/Cargo.toml --all --check",
   "cargo fmt --manifest-path components-secrets/Cargo.toml --all --check",
   "cargo fmt --manifest-path components-tsrs/Cargo.toml --all --check",
+  "cargo fmt --manifest-path components-r/Cargo.toml --all --check",
   "{{vars.poly}} fmt .",
 ]
 

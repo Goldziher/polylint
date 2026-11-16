@@ -33,6 +33,8 @@ class ReleaseBumpTests(unittest.TestCase):
         shutil.copy2(source / "components-pyrefly/Cargo.toml", self.root / "components-pyrefly/Cargo.toml")
         (self.root / "components-secrets").mkdir()
         shutil.copy2(source / "components-secrets/Cargo.toml", self.root / "components-secrets/Cargo.toml")
+        (self.root / "components-r").mkdir()
+        shutil.copy2(source / "components-r/Cargo.toml", self.root / "components-r/Cargo.toml")
         (self.root / "components-tsrs").mkdir()
         shutil.copy2(source / "components-tsrs/Cargo.toml", self.root / "components-tsrs/Cargo.toml")
 
@@ -61,7 +63,7 @@ class ReleaseBumpTests(unittest.TestCase):
         self.assertEqual(len(author["plugin"]["runtimes"]), 11)
         package = json.loads((self.root / "plugin/package.json").read_text())
         self.assertEqual(package["version"], "0.29.1")
-        for workspace in ["components", "components-pyrefly", "components-secrets", "components-tsrs"]:
+        for workspace in ["components", "components-pyrefly", "components-r", "components-secrets", "components-tsrs"]:
             manifest = tomllib.loads((self.root / workspace / "Cargo.toml").read_text())
             self.assertEqual(manifest["workspace"]["package"]["version"], "0.29.1", workspace)
         self.assertEqual(len(package["pi"]["skills"]), 5)

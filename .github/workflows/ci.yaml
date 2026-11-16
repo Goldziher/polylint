@@ -46,6 +46,7 @@ jobs:
       # components/ is excluded from the root workspace, so `--all` above never reaches it.
       - run: cargo fmt --manifest-path components/Cargo.toml --all --check
       - run: cargo fmt --manifest-path components-pyrefly/Cargo.toml --all --check
+      - run: cargo fmt --manifest-path components-r/Cargo.toml --all --check
       - run: cargo fmt --manifest-path components-secrets/Cargo.toml --all --check
       - run: cargo fmt --manifest-path components-tsrs/Cargo.toml --all --check
 
@@ -75,6 +76,7 @@ jobs:
             .
             components
             components-pyrefly
+            components-r
             components-secrets
             components-tsrs
       - run: cargo clippy --workspace --exclude conformance --all-targets -- -D warnings
@@ -89,6 +91,11 @@ jobs:
         env:
           MISE_TASK_RUN_AUTO_INSTALL: "false"
         run: mise run hooks:components-check clippy pyrefly
+      - name: clippy (r workspace)
+        shell: bash
+        env:
+          MISE_TASK_RUN_AUTO_INSTALL: "false"
+        run: mise run hooks:components-check clippy r
       - name: clippy (secrets workspace)
         shell: bash
         env:
@@ -110,6 +117,11 @@ jobs:
         env:
           MISE_TASK_RUN_AUTO_INSTALL: "false"
         run: mise run hooks:components-check rustdoc pyrefly
+      - name: rustdoc lint (r workspace)
+        if: runner.os == 'Linux'
+        env:
+          MISE_TASK_RUN_AUTO_INSTALL: "false"
+        run: mise run hooks:components-check rustdoc r
       - name: rustdoc lint (secrets workspace)
         if: runner.os == 'Linux'
         env:
@@ -444,6 +456,56 @@ jobs:
         working-directory: components/sidecars/go
         run: go test -count=1 -v -run TestBuiltExecutableDescribesAndFormats ./...
 
+  # air and jarl, the R formatter and linter, are pure Rust with a lockfile of their own (ADR 0066), so a native build on
+  # each platform the component ships for is the whole check: the engine tests format and lint real R fixtures (the
+  # exact output and findings), and the component cdylib must build.
+  r:
+    name: r / ${{ matrix.triple }}
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 60
+    env:
+      CARGO_PROFILE_DEV_DEBUG: "0"
+      CARGO_PROFILE_TEST_DEBUG: "0"
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - triple: x86_64-unknown-linux-gnu
+            os: ubuntu-latest
+          - triple: aarch64-unknown-linux-gnu
+            os: ubuntu-24.04-arm
+          - triple: aarch64-apple-darwin
+            os: macos-26
+          - triple: x86_64-pc-windows-msvc
+            os: windows-latest
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v7
+      - name: Shorten paths for the biome checkout (adrs/0003-dependency-policy.md)
+        if: runner.os == 'Windows'
+        run: |
+          git config --global core.longpaths true
+          echo 'CARGO_HOME=D:\c' >> "$GITHUB_ENV"
+      - uses: dtolnay/rust-toolchain@v1
+        with:
+          toolchain: stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: components-r
+      - name: Engine tests (air and jarl fixtures, options, version audit)
+        run: |
+          set -euo pipefail
+          cargo test --locked --manifest-path components-r/Cargo.toml -p poly-engines-r --no-fail-fast 2>&1 | tee r-test.log
+          # A green run that collected nothing proves nothing: the fixtures must have run.
+          if grep -q "test result: FAILED" r-test.log; then echo "::error::an r test binary failed"; exit 1; fi
+          passed="$(grep -Eo "test result: ok\. [0-9]+ passed" r-test.log | awk '{ n += $4 } END { print n + 0 }')"
+          echo "r tests passed: $passed"
+          test "$passed" -gt 0
+      - name: Build the component cdylib
+        run: cargo build --locked --release --manifest-path components-r/Cargo.toml -p poly-engines-r-component
+
   # tsrs, the Rust port of the TypeScript 7 compiler, is pure Rust with its own lockfile (ADR 0051), so a native build
   # on each platform the component ships for is the whole check: the engine tests type-check real fixture projects
   # (the exact error codes and lines), and the component test loads the built cdylib through the host.
@@ -751,6 +813,12 @@ jobs:
           command: check
           manifest-path: components-pyrefly/Cargo.toml
           arguments: --all-features --config components-pyrefly/deny.toml
+      - name: cargo-deny (r workspace)
+        uses: EmbarkStudios/cargo-deny-action@v2
+        with:
+          command: check
+          manifest-path: components-r/Cargo.toml
+          arguments: --all-features --config components-r/deny.toml
       - name: cargo-deny (secrets workspace)
         uses: EmbarkStudios/cargo-deny-action@v2
         with:

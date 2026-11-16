@@ -150,6 +150,7 @@ class GitDependencyTests(unittest.TestCase):
             ROOT / "Cargo.toml",
             ROOT / "components" / "Cargo.toml",
             ROOT / "components-pyrefly" / "Cargo.toml",
+            ROOT / "components-r" / "Cargo.toml",
         ):
             if not manifest.is_file():
                 continue

@@ -125,6 +125,25 @@ files = "components-pyrefly/**/*.rs"
 workspace = true
 serial = "cargo"
 
+# The same gates for components-r/, the R workspace (air and jarl pin a biome revision of their own).
+[hooks.pre-commit.commands.r-clippy]
+run = "mise run hooks:components-check clippy r"
+files = "components-r/**"
+workspace = true
+serial = "cargo"
+
+[hooks.pre-commit.commands.r-deny]
+run = "mise run hooks:components-check deny r"
+files = "components-r/**"
+workspace = true
+serial = "cargo"
+
+[hooks.pre-commit.commands.r-rustdoc]
+run = "mise run hooks:components-check rustdoc r"
+files = "components-r/**/*.rs"
+workspace = true
+serial = "cargo"
+
 # The same gates for components-secrets/, the secret-scanning workspace (kingfisher's native vectorscan build stays
 # out of every other lockfile).
 [hooks.pre-commit.commands.secrets-clippy]
@@ -177,6 +196,8 @@ files = [
   "components/Cargo.lock",
   "components-pyrefly/**/Cargo.toml",
   "components-pyrefly/Cargo.lock",
+  "components-r/**/Cargo.toml",
+  "components-r/Cargo.lock",
   "components-secrets/**/Cargo.toml",
   "components-secrets/Cargo.lock",
   "components-tsrs/**/Cargo.toml",

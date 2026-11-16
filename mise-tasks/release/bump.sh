@@ -16,6 +16,7 @@
 #   components-pyrefly/Cargo.toml         the same for the pyrefly workspace and its lock.
 #   components-secrets/Cargo.toml         the same for the secret-scanning workspace and its lock.
 #   components-tsrs/Cargo.toml            the same for the TypeScript type-checking workspace and its lock.
+#   components-r/Cargo.toml               the same for the R (air and jarl) workspace and its lock.
 #                                         alef.toml reads the component version from Cargo.toml (version_from)
 
 set -euo pipefail
@@ -64,6 +65,14 @@ if ! grep -qxF "version = \"$VERSION\"" components-secrets/Cargo.toml; then
   exit 1
 fi
 
+echo "→ components-r/Cargo.toml [workspace.package] → $VERSION"
+sed -i.bak -E "s/^version = \"[^\"]+\"$/version = \"$VERSION\"/" components-r/Cargo.toml
+rm components-r/Cargo.toml.bak
+if ! grep -qxF "version = \"$VERSION\"" components-r/Cargo.toml; then
+  echo "error: components-r/Cargo.toml [workspace.package] version bump did not apply" >&2
+  exit 1
+fi
+
 echo "→ components-tsrs/Cargo.toml [workspace.package] → $VERSION"
 sed -i.bak -E "s/^version = \"[^\"]+\"$/version = \"$VERSION\"/" components-tsrs/Cargo.toml
 rm components-tsrs/Cargo.toml.bak
@@ -79,11 +88,12 @@ fi
 if [[ "${SKIP_CARGO_UPDATE:-0}" != "1" ]]; then
   echo "→ alef component crates → $VERSION"
   "${ALEF:-alef}" generate --skip-compile >/dev/null
-  echo "→ Cargo.lock, components/Cargo.lock, components-pyrefly/Cargo.lock, components-secrets/Cargo.lock and components-tsrs/Cargo.lock"
+  echo "→ Cargo.lock, components/Cargo.lock, components-pyrefly/Cargo.lock, components-r/Cargo.lock, components-secrets/Cargo.lock and components-tsrs/Cargo.lock"
   cargo update --workspace --quiet
   cargo update --workspace --manifest-path components/Cargo.toml --quiet
   cargo update --workspace --manifest-path components-pyrefly/Cargo.toml --quiet
   cargo update --workspace --manifest-path components-secrets/Cargo.toml --quiet
+  cargo update --workspace --manifest-path components-r/Cargo.toml --quiet
   cargo update --workspace --manifest-path components-tsrs/Cargo.toml --quiet
 fi
 

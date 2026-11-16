@@ -44,6 +44,12 @@ BLOCKED: dict[str, str | None] = {
     "pyrefly_config": None,
     "pyrefly_python": None,
     "pyrefly_util": None,
+    # posit-dev/air and etiennebacher/jarl: air's crates are `publish = false` and jarl's are unpublished; the crates.io
+    # `workspace` (air's air.toml reader, renamed `air_workspace` here) is an unrelated crate.
+    "air_r_formatter": None,
+    "air_r_parser": None,
+    "air_workspace": None,
+    "jarl-core": None,
 }
 
 _VERSION = re.compile(r"^(\d+)\.(\d+)\.(\d+)(?:-([0-9A-Za-z.-]+))?(?:\+.*)?$")
