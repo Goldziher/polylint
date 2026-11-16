@@ -291,7 +291,7 @@ fn actionlint_report_locates_the_label_and_the_expression() {
 
 /// Captured from actionlint 1.7.12 on a workflow with an ARC runner label
 /// (`runs-on: runner-medium`), an unquoted `$FOO`, a mistyped context property
-/// and `actions/checkout@v1` (Goldziher/poly#43).
+/// and `actions/checkout@v1` (polylint/polylint#43).
 const ACTIONLINT_KINDS: &str = include_str!("fixtures/actionlint_kinds.json");
 
 #[test]

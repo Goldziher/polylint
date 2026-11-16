@@ -74,7 +74,7 @@ fn pure_linter_does_not_masquerade_as_formatter() {
 
 /// mdsf files these report-only checkers under `formatter`, so their default
 /// command ran through the format path, where a non-zero exit reads as
-/// "unchanged" and every finding vanished (Goldziher/poly#36). The overlay
+/// "unchanged" and every finding vanished (polylint/polylint#36). The overlay
 /// reclassifies them; their catalog argv has no write flag, so they only report.
 #[test]
 fn report_only_checkers_resolve_as_linters_not_formatters() {

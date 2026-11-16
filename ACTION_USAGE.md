@@ -26,20 +26,20 @@ repository's [`install.sh`](install.sh), so there is one source of truth for ins
 
 ```yaml
 # Latest release, cached (default):
-- uses: Goldziher/polylint@v0
+- uses: polylint/polylint@v0
 
 # Pin a version:
-- uses: Goldziher/polylint@v0
+- uses: polylint/polylint@v0
   with:
     version: v0.5.0
 
 # Disable caching:
-- uses: Goldziher/polylint@v0
+- uses: polylint/polylint@v0
   with:
     cache: false
 
 # Require a verified build provenance attestation:
-- uses: Goldziher/polylint@v0
+- uses: polylint/polylint@v0
   with:
     verify-attestation: true
 ```
@@ -54,7 +54,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: Goldziher/polylint@v0
+      - uses: polylint/polylint@v0
       - run: poly lint .
       - run: poly fmt .
 ```
@@ -71,11 +71,11 @@ Two independent things can be pinned, and both matter for reproducibility:
 
 - **`version:`** — which `poly` release gets installed. Pin this to an exact version
   (`v0.21.0`, not `latest`) so lint/format output can't drift between runs.
-- **The action reference itself** (`Goldziher/polylint@v0`) — which cut of *this action's* code
+- **The action reference itself** (`polylint/polylint@v0`) — which cut of *this action's* code
   runs. `@v0` is a moving major-version tag (`update_major_tag` in `publish.yaml` re-points it
   at every non-prerelease release), so it tracks the newest `v0.x.y` action logic, not a fixed
   commit. For supply-chain-grade pinning of the action itself, reference a full commit SHA
-  instead of `@v0` (`uses: Goldziher/polylint@<40-char-sha>`) — standard GitHub Actions pinning
+  instead of `@v0` (`uses: polylint/polylint@<40-char-sha>`) — standard GitHub Actions pinning
   practice, independent of the `version:` input above.
 
 ## Caching & version invalidation

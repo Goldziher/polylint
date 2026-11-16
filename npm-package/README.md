@@ -1,6 +1,6 @@
 # @polylint/polylint
 
-[polylint](https://github.com/Goldziher/polylint) is one linter and formatter for every
+[polylint](https://github.com/polylint/polylint) is one linter and formatter for every
 language in your repository, driven by one `poly.toml`. It runs ruff, oxc, biome, mago,
 sqruff and more as signed engine components, uses host tools such as `rustfmt` and `gofmt`
 when they are installed, and formats the long tail with tree-sitter.
@@ -56,12 +56,19 @@ the signed lock embedded in the binary, and caches it. Later runs use the cache.
 - `poly components sync .` installs ahead of time; `poly components import <archive>`
   seeds a host with no network; `--offline` forbids every download.
 
-See [Components and offline use](https://goldziher.github.io/polylint/guides/components/).
+See [Components and offline use](https://polylint.github.io/polylint/guides/components/).
+
+## polylint organization
+
+polylint is part of [polylint](https://github.com/polylint), high-performance Rust linters and formatters built for
+agentic workflows. Sibling tools: [skif](https://github.com/polylint/skif) (JS/TS dependency linter),
+[adrlint](https://github.com/polylint/adrlint) (MADR decision records) and
+[uncomment](https://github.com/polylint/uncomment) (comment removal and linting).
 
 ## Links
 
-- [Documentation](https://goldziher.github.io/polylint/)
-- [Changelog](https://github.com/Goldziher/polylint/blob/main/CHANGELOG.md)
-- [Issues](https://github.com/Goldziher/polylint/issues)
+- [Documentation](https://polylint.github.io/polylint/)
+- [Changelog](https://github.com/polylint/polylint/blob/main/CHANGELOG.md)
+- [Issues](https://github.com/polylint/polylint/issues)
 
 MIT licensed.

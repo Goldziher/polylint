@@ -1,0 +1,29 @@
+{
+  "version": "${version}",
+  "description": "One linter and formatter for every language in a repository, driven by one poly.toml.",
+  "homepage": "https://github.com/polylint/polylint",
+  "license": "MIT",
+  "architecture": {
+    "64bit": {
+      "url": "https://github.com/polylint/polylint/releases/download/${tag}/poly-${version}-x86_64-pc-windows-msvc.zip",
+      "hash": "${win_x64_sha}"
+    }
+  },
+  "bin": [
+    ["poly.exe", "poly"],
+    ["poly.exe", "polylint"]
+  ],
+  "checkver": {
+    "github": "https://github.com/polylint/polylint"
+  },
+  "autoupdate": {
+    "architecture": {
+      "64bit": {
+        "url": "https://github.com/polylint/polylint/releases/download/v$$version/poly-$$version-x86_64-pc-windows-msvc.zip"
+      }
+    },
+    "hash": {
+      "url": "https://github.com/polylint/polylint/releases/download/v$$version/sha256sums.txt"
+    }
+  }
+}

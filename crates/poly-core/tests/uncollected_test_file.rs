@@ -1,4 +1,4 @@
-//! `uncollected-test-file` through the full lint pipeline (Goldziher/poly#39).
+//! `uncollected-test-file` through the full lint pipeline (polylint/polylint#39).
 //!
 //! A tree of test-shaped names across Python, Go, Ruby, TypeScript and shell,
 //! linted twice: once with no configuration (the runner defaults, on for

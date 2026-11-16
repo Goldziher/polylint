@@ -135,7 +135,7 @@ crates. Nothing is vendored. The crates carry data that needs credit:
 
 ## skif-js-types — tsrs file system and program owner (adapted)
 
-- Project: <https://github.com/Goldziher/skif> (`crates/skif-js-types`)
+- Project: <https://github.com/polylint/skif> (`crates/skif-js-types`)
 - License: MIT
 - Copyright (c) 2026 Na'aman Hirschfeld
 

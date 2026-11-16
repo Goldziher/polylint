@@ -2,7 +2,7 @@
 
 The importable package exists only to carry the binary and its console-script
 shims; the tool itself is the `poly` executable, documented at
-https://github.com/Goldziher/polylint.
+https://github.com/polylint/polylint.
 """
 
 __version__ = "0.35.0"

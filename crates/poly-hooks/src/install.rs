@@ -152,7 +152,7 @@ if [ -z "${POLY_HOOK_MISE:-}" ]; then
         fi
         for config in mise.toml .mise.toml mise.local.toml .mise.local.toml .config/mise.toml \
             .config/mise/config.toml mise/config.toml; do
-            if grep -qsE 'poly"?[[:space:]]*=' "$config"; then
+            if grep -qsE 'poly(lint)?"?[[:space:]]*=' "$config"; then
                 printf 'poly: %s pins poly but `%s which poly` failed here; using poly from PATH. ' "$config" "$mise" >&2
                 printf 'Run `mise trust` and `mise install`, or set POLY_HOOK_MISE=1 to skip mise.\n' >&2
                 break

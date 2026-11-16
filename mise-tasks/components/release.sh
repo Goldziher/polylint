@@ -59,6 +59,9 @@ cd "${ROOT_DIR}"
 
 KEY_ID="poly-release-2"
 LOCK_ASSET="poly-components.lock.json"
+# The repository that signed the attestations of v0.35.0 and earlier, before the move to the polylint
+# organization.
+LEGACY_RELEASE_REPOSITORY="Goldziher/polylint"
 # Stripped at link time. A dylib must never be stripped after linking: that removes the exported
 # symbols the host looks up.
 export RUSTFLAGS="-C strip=symbols"
@@ -320,12 +323,21 @@ verify_previous_lock() {
     exit 1
   fi
   if [[ "${attested}" -gt 0 ]]; then
-    gh attestation verify "${lock}" --repo "${GITHUB_REPOSITORY}" \
-      --signer-workflow "${GITHUB_REPOSITORY}/.github/workflows/publish.yaml" >/dev/null || {
+    # Releases published before the move to the polylint organization (v0.35.0 and earlier) were
+    # signed as Goldziher/polylint, and a certificate keeps the identity it was issued under.
+    local signer verified=""
+    for signer in "${GITHUB_REPOSITORY}" "${LEGACY_RELEASE_REPOSITORY}"; do
+      if gh attestation verify "${lock}" --repo "${signer}" \
+        --signer-workflow "${signer}/.github/workflows/publish.yaml" >/dev/null 2>&1; then
+        verified="${signer}"
+        break
+      fi
+    done
+    [[ -n "${verified}" ]] || {
       echo "components-release: ${tag}'s ${LOCK_ASSET} has an attestation that does not verify" >&2
       exit 1
     }
-    echo "previous lock: attestation verified"
+    echo "previous lock: attestation verified (${verified})"
   else
     echo "::warning::${tag}'s ${LOCK_ASSET} has no build-provenance attestation (released before attestations); checked against its sha256sums.txt only"
   fi

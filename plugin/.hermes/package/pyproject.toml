@@ -20,8 +20,8 @@ text = "# poly Hermes plugin\n\npolylint: one linter and formatter for every lan
 poly = 'poly_hermes_plugin'
 
 [project.urls]
-Homepage = 'https://github.com/Goldziher/polylint'
-Repository = 'https://github.com/Goldziher/polylint'
+Homepage = 'https://github.com/polylint/polylint'
+Repository = 'https://github.com/polylint/polylint'
 
 [tool]
 [tool.hatch]

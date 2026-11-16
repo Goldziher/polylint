@@ -153,7 +153,7 @@ fn unselected_directories_are_real_trees_so_a_non_following_walk_sees_them() {
     assert!(is_hardlinked(snap.path(), repo.path(), "other/c.py"));
 }
 
-/// THE AR101 REGRESSION (Goldziher/poly#45). A tool that walks the snapshot
+/// THE AR101 REGRESSION (polylint/polylint#45). A tool that walks the snapshot
 /// without following directory symlinks — `ai-rulez validate` resolving rule
 /// globs is the one that reported it — must reach every tracked file, including
 /// those under a directory the sparse selection did not write. A directory
@@ -186,7 +186,7 @@ fn a_walk_that_does_not_follow_directory_symlinks_sees_every_tracked_file() {
 /// The snapshot must look like a git work tree to a **library-based** repository
 /// reader: ai-rulez resolves rule globs against tracked files, and with no
 /// `.git` falls back to a hidden-skipping walk, which reported a glob over
-/// `.agents/` as `AR101` even though the file is in the snapshot (Goldziher/poly#45).
+/// `.agents/` as `AR101` even though the file is in the snapshot (polylint/polylint#45).
 #[test]
 fn the_snapshot_carries_a_git_pointer_to_the_original_repository() {
     let repo = repo();

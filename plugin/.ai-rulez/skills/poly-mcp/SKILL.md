@@ -10,7 +10,7 @@ x-ai-rulez:
     license: MIT
     metadata:
       author: Goldziher
-      repository: https://github.com/Goldziher/polylint
+      repository: https://github.com/polylint/polylint
 ---
 
 # poly MCP

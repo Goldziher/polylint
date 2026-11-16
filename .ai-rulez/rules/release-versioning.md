@@ -13,9 +13,9 @@ x-ai-rulez:
 poly ships **a single binary — `poly`** (driven by one config), distributed the way ruff /
 oxlint / biome are: **prebuilt, platform-specific binaries attached to a GitHub release, plus an
 installer**. The channels are the `curl | sh` / PowerShell installer (`install.sh` /
-`install.ps1`), the GitHub Action (`Goldziher/polylint@v0`, `action.yml` — which shells out to the
-same `install.sh`), Homebrew (`brew install Goldziher/tap/poly`), Scoop
-(`Goldziher/scoop-bucket`, `scoop install poly`), **npm (`@polylint/polylint`)** and **PyPI
+`install.ps1`), the GitHub Action (`polylint/polylint@v0`, `action.yml` — which shells out to the
+same `install.sh`), Homebrew (`brew install polylint/tap/polylint`), Scoop
+(`polylint/scoop-bucket`, `scoop install poly`), **npm (`@polylint/polylint`)** and **PyPI
 (`polylint`)**. The release artifacts are named `poly-<version>-<triple>.tar.gz` (`.zip` on
 Windows), five targets, plus a `sha256sums.txt`; every other channel serves those same archives.
 We do **NOT publish to crates.io** — our crates depend on pinned git dependencies (**oxc, biome,
@@ -52,22 +52,24 @@ lock-step surface, not a separately tracked version. So do the wrapper packages:
   linux gnu aarch64, macOS aarch64, windows-msvc x86_64; Intel macOS is not shipped, ADR 0046), verifies all five are present,
   then uploads `sha256sums.txt` and un-drafts the release. The installers and the GitHub Action
   fetch the archive matching the host.
-- **Homebrew installs the prebuilt archives, like every other channel.**
-  `mise run release:homebrew-formula` emits a **binary** formula — `version` plus
-  `on_macos`/`on_linux` blocks naming the three archives Homebrew can use
-  (macOS arm64, Linux arm64 and x86_64; the `on_macos` block adds `depends_on arch: :arm64`), then `bin.install "poly"` and the `polylint` symlink. The
-  hashes are read from the release's own `sha256sums.txt` and never recomputed, for the same
-  reason the Scoop manifest does it. There is no `depends_on "rust"` and no `bottle do` block;
-  the tap's `auto-bottle.yml` skips any formula declaring neither `system "cargo"` nor
-  `depends_on "rust"`, so this needs nothing on the tap side.
+- **Homebrew installs the prebuilt archives, like every other channel.** The formula is rendered
+  from `packaging/polylint.rb.tmpl` by `xberg-io/actions/publish-homebrew-source-formulas`
+  (config `packaging/homebrew.json`) — `version` plus a class-level macOS arm64 `url` with
+  `on_macos { depends_on arch: :arm64 }` and `on_linux` arm64 / x86_64 archives, then
+  `bin.install "poly"` and the `polylint` symlink — and pushed to the shared
+  `polylint/homebrew-tap` as `polylint-release-helper[bot]` with a token minted from the
+  organization's GitHub App (org secrets `BOT_APP_ID` / `BOT_APP_PRIVATE_KEY`; no PAT). The action
+  hashes the archives it downloads; the workflow then checks every rendered hash against the
+  release's own `sha256sums.txt` before pushing, so the formula can never disagree with the
+  published checksums. `homebrew_bottles` then bottles the formula on macOS arm64 (`arm64_tahoe`)
+  and Linux x86_64 / arm64, uploads the bottles to the release, and `publish_homebrew_bottles`
+  merges the `bottle do` block. There is no `depends_on "rust"`: the formula never compiles.
 
   This replaced a source-build formula, and the reasons are worth keeping: a source build meant a
   full cargo compile of ruff + oxc + biome + mago + tree-sitter for every user the tap's bottler
   did not cover, and its runner matrix had no Intel macOS, so those users compiled on every
-  install (Intel macOS is no longer shipped at all, ADR 0046). Even where bottles did land they arrived ~25 minutes after the formula, leaving a
-  window in which `brew install` built from source anyway. Download and extract measures **2.2 s**
-  against that. Six of the ten formulae in `Goldziher/homebrew-tap` already worked this way, so
-  poly was the outlier, not the pattern.
+  install (Intel macOS is no longer shipped at all, ADR 0046). Download and extract measures
+  **2.2 s** against that.
 - **The wrapper packages ship the release's own binaries, never a rebuild.** pnpm publishes five
   per-platform packages (`os`/`cpu`/`libc`-gated, pulled in through `optionalDependencies` —
   no `postinstall` download) and PyPI publishes per-platform wheels carrying the binary as
@@ -84,13 +86,13 @@ lock-step surface, not a separately tracked version. So do the wrapper packages:
   `publish_scoop` are `continue-on-error: true`, run after `finalize_release`, and have nothing
   depending on them — a not-yet-configured registry shows as a red job on a green run and
   cannot put the GitHub release back into draft. `publish_homebrew` is the deliberate exception
-  and still fails hard on a missing token.
-- **Scoop mirrors the Homebrew shape.** `mise run release:scoop-manifest` rewrites only
-  `version`, the 64-bit `url` and the 64-bit `hash` in `Goldziher/scoop-bucket`'s
-  `bucket/poly.json`, taking the hash from the release's `sha256sums.txt` rather than
-  recomputing it, and asserts that `bin` / `checkver` / `autoupdate` came through untouched —
-  losing `bin` is silent, since `scoop install` still succeeds and produces no command. Only
-  `x86_64-pc-windows-msvc` exists; do not invent an `arm64` block.
+  and still fails hard when the tap cannot be updated.
+- **Scoop mirrors the Homebrew shape.** `xberg-io/actions/publish-scoop-manifests` renders
+  `bucket/polylint.json` and an identical `bucket/poly.json` (so `scoop install poly` keeps working)
+  from `packaging/polylint.json.tmpl` into `polylint/scoop-bucket`, through the same GitHub App.
+  The workflow checks the rendered hash against `sha256sums.txt` and fails the job if a manifest
+  lost its two-entry `bin` array — losing `bin` is silent, since `scoop install` still succeeds
+  and produces no command. Only `x86_64-pc-windows-msvc` exists; do not invent an `arm64` block.
 - We do not publish to crates.io; the prebuilt binary is the only thing any channel ships.
 - Commit `Cargo.lock` and pin git-dependency `rev`s (all crates from one monorepo share a `rev`)
   so a tagged build is reproducible.

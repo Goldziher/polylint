@@ -10,7 +10,7 @@ them. The Linux x64 musl build (archive, `@polylint/polylint-linux-x64-musl`, th
 `musllinux_1_2_x86_64` wheel) is **bundled**: every engine is linked in and nothing is
 downloaded. For proxied or air-gapped hosts, `POLY_COMPONENT_MIRROR` redirects component
 downloads and `poly components import <archive>` installs from a file; see
-[Components and offline use](https://goldziher.github.io/polylint/guides/components/).
+[Components and offline use](https://polylint.github.io/polylint/guides/components/).
 
 > See the README's [Installation](../README.md#installation) section for the quickstart
 > version of this. This file is the deeper reference — per-platform package names, wheel
@@ -68,24 +68,24 @@ not find a version that satisfies the requirement".
 ## Homebrew
 
 ```sh
-brew install Goldziher/tap/poly
+brew install polylint/tap/polylint
 ```
 
 ## Scoop (Windows)
 
 ```powershell
-scoop bucket add goldziher https://github.com/Goldziher/scoop-bucket
+scoop bucket add polylint https://github.com/polylint/scoop-bucket
 scoop install poly
 ```
 
 ## Installer scripts
 
 ```sh
-curl -fsSL https://raw.githubusercontent.com/Goldziher/polylint/main/install.sh | sh
+curl -fsSL https://raw.githubusercontent.com/polylint/polylint/main/install.sh | sh
 ```
 
 ```powershell
-irm https://raw.githubusercontent.com/Goldziher/polylint/main/install.ps1 | iex
+irm https://raw.githubusercontent.com/polylint/polylint/main/install.ps1 | iex
 ```
 
 ## Agent plugins
@@ -123,7 +123,7 @@ PyPI API token anywhere in the workflow.
 **npm** — six packages (`@polylint/polylint` plus the five platform packages) each need
 a trusted publisher pointing at:
 
-- Repository: `Goldziher/polylint`
+- Organization or user: `polylint`, repository: `polylint`
 - Workflow: `publish.yaml`
 - Environment: _(leave blank)_
 
@@ -141,20 +141,24 @@ umbrella on `latest` whose pinned binaries do not exist installs cleanly and the
 
 **PyPI** — one project, `polylint`, with a trusted publisher pointing at:
 
-- Owner: `Goldziher`, repository: `poly`
+- Owner: `polylint`, repository: `polylint`
 - Workflow: `publish.yaml`
 - Environment: `pypi` (the workflow declares `environment: pypi`; PyPI's environment field
   may be left blank, but if it is set it must be exactly `pypi`)
 
-**Scoop** — the bucket is `Goldziher/scoop-bucket` (branch `main`) and the manifest is
-`bucket/poly.json`. The push reuses the existing `HOMEBREW_TOKEN` secret, whose access
-covers that repository as well as the tap; there is no separate Scoop credential.
+**Homebrew and Scoop** — the tap is `polylint/homebrew-tap` and the bucket `polylint/scoop-bucket`, both shared by
+every polylint tool and pushed through the organization's GitHub App (org secrets `BOT_APP_ID` /
+`BOT_APP_PRIVATE_KEY`); there is no personal access token. The formula and manifests are rendered from templates in
+[`packaging/`](../packaging/) by `xberg-io/actions/publish-homebrew-source-formulas` and
+`xberg-io/actions/publish-scoop-manifests`, which substitute the version and the hash of each release archive. The
+workflow then checks every rendered hash against the release's own `sha256sums.txt` before pushing.
 
-`mise run release:scoop-manifest` rewrites only `version`, the 64-bit `url`, and the
-64-bit `hash` (read out of the release's own `sha256sums.txt`), and asserts that `bin`,
-`checkver`, `autoupdate`, `description`, `license` and `homepage` came through untouched.
-The `bin` array is what creates both the `poly` and `polylint` shims, so losing it would
-be silent — `scoop install` would still succeed and produce no command.
+The formula is `Formula/polylint.rb`, with `Aliases/poly` and a `formula_renames.json` entry keeping
+`brew install polylint/tap/poly` working. After it lands, `homebrew_bottles` builds a bottle on macOS arm64 and Linux
+x86_64 and arm64, uploads each to the release, and `publish_homebrew_bottles` merges the `bottle do` block into the
+formula. Scoop gets `bucket/polylint.json` and an identical `bucket/poly.json`, so `scoop install poly` keeps working.
+The manifests' `bin` array is what creates both the `poly` and `polylint` shims, so the workflow fails the job if a
+rendered manifest loses it — `scoop install` would still succeed and produce no command.
 
 ### Version lock-step
 
@@ -182,14 +186,14 @@ the tagged manifest version, ai-rulez provenance, and the packed five Pi skills,
 two Pi prompts, and OpenCode adapter before publishing with provenance. It skips a version
 already on the registry, so a re-run is a no-op.
 
-Its npm trusted publisher is configured: GitHub Actions, repository `Goldziher/polylint`, workflow
-`publish.yaml`, no environment. The package's bootstrap publish is done, and since 0.31.0 CI
+Its npm trusted publisher is configured: GitHub Actions, owner `polylint`, repository `polylint`,
+workflow `publish.yaml`, no environment. The package's bootstrap publish is done, and since 0.31.0 CI
 publishes every release itself. The private root `package.json` aliases this bundle for
 Git-based Pi installs, which need no npm publication. The plugin package does not contain the
 `poly` binary.
 
 The generated Hermes wheel is `poly-hermes-plugin`, published by `publish_plugin_hermes`
-through a PyPI trusted publisher naming owner `Goldziher`, repository `poly`, workflow
+through a PyPI trusted publisher naming owner `polylint`, repository `polylint`, workflow
 `publish.yaml`, environment `pypi`.
 
 Unlike the binary wrappers, the plugin jobs are not `continue-on-error`: the pipeline validates

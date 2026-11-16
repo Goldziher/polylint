@@ -3,7 +3,7 @@ import { defineConfig } from "astro/config";
 import starlight from "@astrojs/starlight";
 import starlightLlmsTxt from "starlight-llms-txt";
 
-const SITE = "https://goldziher.github.io";
+const SITE = "https://polylint.github.io";
 const BASE = "/polylint";
 
 export default defineConfig({
@@ -21,9 +21,12 @@ export default defineConfig({
       },
       favicon: "/favicon.svg",
       customCss: ["./src/styles/custom.css"],
-      social: [{ icon: "github", label: "GitHub", href: "https://github.com/Goldziher/polylint" }],
+      social: [
+        { icon: "github", label: "GitHub", href: "https://github.com/polylint/polylint" },
+        { icon: "github", label: "The polylint organization", href: "https://github.com/polylint" },
+      ],
       editLink: {
-        baseUrl: "https://github.com/Goldziher/polylint/edit/main/website/",
+        baseUrl: "https://github.com/polylint/polylint/edit/main/website/",
       },
       head: [
         {
@@ -75,6 +78,7 @@ export default defineConfig({
             { label: "Why polylint", slug: "start/why-polylint" },
             { label: "Installation", slug: "start/installation" },
             { label: "Quickstart", slug: "start/quickstart" },
+            { label: "Ecosystem", slug: "start/ecosystem" },
           ],
         },
         {

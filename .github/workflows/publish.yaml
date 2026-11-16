@@ -33,8 +33,9 @@ on:
 # POLY_COMPONENT_SIGNING_KEY (PKCS#8 PEM, or base64 of the PKCS#8 DER or a raw 32-byte seed). Its
 # public half is `poly-release-2` in alef.toml ([crates.component_distribution.public_keys]); the
 # rotation procedure is in the ADR and docs/release-runbook.md. A missing secret fails the release.
-# HOMEBREW_TOKEN and RELEASE_TAG_TOKEN stay repository secrets; the jobs using them run in the
-# `release` environment, which still sees repository secrets.
+# The Homebrew tap, the Scoop bucket and the major-tag move authenticate with tokens minted from the
+# polylint organization's GitHub App (org secrets BOT_APP_ID / BOT_APP_PRIVATE_KEY); no personal
+# access token is involved.
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -1691,16 +1692,22 @@ jobs:
           gh release edit "$tag" --draft=false --repo "$GITHUB_REPOSITORY"
           echo "✓ Promoted $tag to a published release"
 
+  # Homebrew and Scoop follow the polylint organization's pattern: the formula and manifests are
+  # rendered from templates in packaging/ with xberg-io/actions, and pushed to the shared
+  # polylint/homebrew-tap and polylint/scoop-bucket with a token minted from the organization's
+  # GitHub App (org secrets BOT_APP_ID / BOT_APP_PRIVATE_KEY), committed as polylint-release-helper[bot].
   publish_homebrew:
     name: Update Homebrew formula
     needs: [meta, finalize_release]
     if: >-
       !inputs.plugins-only && (needs.finalize_release.result == 'success' && !contains(needs.meta.outputs.version, '-rc') && !contains(needs.meta.outputs.version, '-beta') && !contains(needs.meta.outputs.version, '-alpha'))
     runs-on: ubuntu-latest
-    # HOMEBREW_TOKEN is a `release` environment secret.
-    environment: release
+    # Fails hard: a tap that did not update keeps serving the previous release indefinitely, and the
+    # failure has to be visible in the run that caused it.
     permissions:
       contents: read
+    outputs:
+      newest: ${{ steps.newest.outputs.newest }}
     steps:
       - name: Checkout
         uses: actions/checkout@v7
@@ -1708,59 +1715,78 @@ jobs:
           fetch-depth: 0
           ref: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.tag || '' }}
 
-      - name: Setup mise
-        uses: xberg-io/actions/setup-mise@v1
-
-      - name: Update tap formula
-        env:
-          MISE_TASK_RUN_AUTO_INSTALL: "false"
-          GH_TOKEN: ${{ secrets.HOMEBREW_TOKEN }}
-          HOMEBREW_TOKEN: ${{ secrets.HOMEBREW_TOKEN }}
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: Check this is the newest release
+        id: newest
         run: |
           set -euo pipefail
-          # Fail rather than skip. This step used to exit 0 on a missing token,
-          # so an unset secret would have left `brew install` serving the
-          # previous release indefinitely while the run still reported success.
-          # A distribution channel that did not update is a failed release, not
-          # a warning — and the failure has to be visible in the run that caused
-          # it, not discovered later by a user installing a stale build.
-          if [ -z "${HOMEBREW_TOKEN:-}" ]; then
-            echo "::error::HOMEBREW_TOKEN is not set, so the Homebrew tap cannot be updated." >&2
-            echo "Set the secret, or re-run this job once it is configured; the tap will" >&2
-            echo "otherwise keep serving the previous release indefinitely." >&2
-            exit 1
-          fi
-          version="${{ needs.meta.outputs.version }}"
           tag="${{ needs.meta.outputs.tag }}"
           # Only the newest release may move a "latest" pointer: a dispatch re-run of an older tag
           # must not roll it back.
           newest="$(git ls-remote --tags origin 'v*' | awk '{ sub("refs/tags/", "", $2); print $2 }' |
             grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' | sort -V | tail -n1)"
-          if [ "$tag" != "$newest" ]; then
+          if [ "$tag" = "$newest" ]; then
+            echo "newest=true" >> "$GITHUB_OUTPUT"
+          else
             echo "::notice::$tag is not the newest release tag ($newest); leaving the Homebrew formula unchanged"
-            exit 0
+            echo "newest=false" >> "$GITHUB_OUTPUT"
           fi
 
-          # Prebuilt-binary formula: it points at the same release archives every
-          # other channel serves, with the hashes read from the release's own
-          # sha256sums.txt rather than recomputed. Homebrew used to compile poly
-          # from source here, which meant a full cargo build of ruff + oxc +
-          # biome + mago + tree-sitter for anyone the tap's bottler did not
-          # cover — and its runner matrix has no Intel macOS, so those users
-          # compiled on every install. The tap's auto-bottle.yml skips formulae
-          # that declare no source build, so this needs nothing on the tap side.
-          GH_TOKEN="$GITHUB_TOKEN" gh release download "$tag" --repo "$GITHUB_REPOSITORY" \
-            --pattern 'sha256sums.txt' --dir sums --clobber
-          mise run release:homebrew-formula "$version" sums/sha256sums.txt "$GITHUB_REPOSITORY" > polylint.rb
+      - uses: actions/create-github-app-token@v3
+        if: steps.newest.outputs.newest == 'true'
+        id: tap-token
+        with:
+          app-id: ${{ secrets.BOT_APP_ID }}
+          private-key: ${{ secrets.BOT_APP_PRIVATE_KEY }}
+          owner: polylint
+          repositories: homebrew-tap
 
-          git clone --depth 1 "https://x-access-token:${HOMEBREW_TOKEN}@github.com/Goldziher/homebrew-tap.git" tap
-          cd tap
-          # The formula is polylint after the repository rename. The old poly
-          # formula goes away and `brew install Goldziher/tap/poly` keeps working
-          # through an alias; formula_renames.json carries machines that already
-          # have the poly formula installed over to polylint on `brew upgrade`.
-          cp ../polylint.rb Formula/polylint.rb
+      - uses: actions/checkout@v7
+        if: steps.newest.outputs.newest == 'true'
+        with:
+          repository: polylint/homebrew-tap
+          token: ${{ steps.tap-token.outputs.token }}
+          path: homebrew-tap
+          persist-credentials: true
+
+      # A prebuilt-binary formula: it points at the same release archives every other channel
+      # serves (macOS arm64, Linux arm64 and x86_64), never a source build.
+      - uses: xberg-io/actions/publish-homebrew-source-formulas@v1
+        if: steps.newest.outputs.newest == 'true'
+        with:
+          tap-dir: ${{ github.workspace }}/homebrew-tap
+          config-file: packaging/homebrew.json
+          tag: ${{ needs.meta.outputs.tag }}
+          version: ${{ needs.meta.outputs.version }}
+          github-repo: ${{ github.repository }}
+          token: ${{ github.token }}
+
+      - name: Check the rendered hashes against sha256sums.txt
+        if: steps.newest.outputs.newest == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          # The render step hashes the archives it downloads. Cross-check every hash against the
+          # release's own sha256sums.txt, the file every other channel verifies against, so the
+          # formula can never come to disagree with the published checksums.
+          gh release download "${{ needs.meta.outputs.tag }}" --repo "$GITHUB_REPOSITORY" \
+            --pattern sha256sums.txt --dir sums --clobber
+          awk '{ print $1 }' sums/sha256sums.txt | sort -u > sums/listed.txt
+          grep -oE 'sha256 "[0-9a-f]{64}"' homebrew-tap/Formula/polylint.rb | grep -oE '[0-9a-f]{64}' | sort -u > sums/rendered.txt
+          [ -s sums/rendered.txt ] || { echo "::error::no hashes found in the rendered formula" >&2; exit 1; }
+          if unlisted="$(comm -23 sums/rendered.txt sums/listed.txt)" && [ -n "$unlisted" ]; then
+            echo "::error::rendered hashes not in sha256sums.txt: $unlisted" >&2
+            exit 1
+          fi
+
+      - name: Commit and push to the tap
+        if: steps.newest.outputs.newest == 'true'
+        working-directory: homebrew-tap
+        run: |
+          set -euo pipefail
+          # The formula is polylint; `brew install polylint/tap/poly` keeps working through the
+          # Aliases/poly symlink, and formula_renames.json carries machines that installed the old
+          # poly formula over to polylint on `brew upgrade`.
           git rm --quiet --ignore-unmatch Formula/poly.rb
           mkdir -p Aliases
           ln -sfn ../Formula/polylint.rb Aliases/poly
@@ -1770,15 +1796,152 @@ jobs:
             printf '{"poly": "polylint"}\n' | jq -S . > formula_renames.json.new
           fi
           mv formula_renames.json.new formula_renames.json
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git config user.name "polylint-release-helper[bot]"
+          git config user.email "357288453+polylint-release-helper[bot]@users.noreply.github.com"
           git add Formula/polylint.rb Aliases/poly formula_renames.json
           if git diff --cached --quiet; then
             echo "Formula already up to date."
-          else
-            git commit -m "polylint ${version}"
-            git push
+            exit 0
           fi
+          git commit -m "polylint ${{ needs.meta.outputs.version }}"
+          # Every polylint tool's release pushes to this one shared tap, so a concurrent release can
+          # land between the checkout and the push and reject it as non-fast-forward. Each repository
+          # touches only its own files, so rebasing onto the new tip and retrying is safe. ~keep
+          for attempt in 1 2 3 4 5; do
+            if git push origin HEAD; then
+              exit 0
+            fi
+            echo "push rejected (attempt $attempt); rebasing onto the current tap tip"
+            git fetch origin main
+            if ! git rebase origin/main; then
+              git rebase --abort || true
+              echo "::error::tap rebase hit a real conflict; refusing to force the push"
+              exit 1
+            fi
+            sleep $((attempt * 3))
+          done
+          echo "::error::could not push to the tap after 5 attempts"
+          exit 1
+
+  homebrew_bottles:
+    name: Build Homebrew bottle (${{ matrix.bottle_tag }})
+    needs: [meta, publish_homebrew]
+    if: >-
+      !inputs.plugins-only && needs.publish_homebrew.result == 'success'
+      && needs.publish_homebrew.outputs.newest == 'true'
+    runs-on: ${{ matrix.os }}
+    permissions:
+      # Uploads the bottle tarball to this release.
+      contents: write
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { os: macos-26, bottle_tag: arm64_tahoe, install_brew: false }
+          - { os: ubuntu-latest, bottle_tag: x86_64_linux, install_brew: true }
+          - { os: ubuntu-24.04-arm, bottle_tag: arm64_linux, install_brew: true }
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.tag || '' }}
+
+      - name: Install Homebrew (Linux)
+        if: matrix.install_brew
+        uses: xberg-io/actions/install-homebrew-linux@v1
+
+      - name: Build bottles
+        uses: xberg-io/actions/homebrew-build-bottles@v1
+        with:
+          tag: ${{ needs.meta.outputs.tag }}
+          version: ${{ needs.meta.outputs.version }}
+          tap: polylint/tap
+          formulas: |
+            polylint
+          out-dir: ${{ github.workspace }}/bottle-json
+          github-repo: ${{ github.repository }}
+          token: ${{ github.token }}
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: homebrew-bottle-json-${{ matrix.bottle_tag }}
+          path: ${{ github.workspace }}/bottle-json/*.json
+          if-no-files-found: error
+          retention-days: 14
+
+  publish_homebrew_bottles:
+    name: Merge Homebrew bottle DSL
+    needs: [meta, publish_homebrew, homebrew_bottles]
+    # Runs even when a bottle leg failed: that leg already turns the run red, and the merge then
+    # fails loudly on the missing bottle JSON rather than silently publishing a partial block.
+    if: >-
+      !cancelled() && !inputs.plugins-only && needs.publish_homebrew.result == 'success'
+      && needs.publish_homebrew.outputs.newest == 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/create-github-app-token@v3
+        id: tap-token
+        with:
+          app-id: ${{ secrets.BOT_APP_ID }}
+          private-key: ${{ secrets.BOT_APP_PRIVATE_KEY }}
+          owner: polylint
+          repositories: homebrew-tap
+
+      - uses: actions/checkout@v7
+        with:
+          repository: polylint/homebrew-tap
+          token: ${{ steps.tap-token.outputs.token }}
+          path: homebrew-tap
+          persist-credentials: true
+
+      - uses: actions/download-artifact@v8
+        with:
+          path: ${{ github.workspace }}/bottle-json
+          pattern: homebrew-bottle-json-*
+          merge-multiple: true
+
+      - uses: xberg-io/actions/homebrew-merge-bottles@v1
+        with:
+          tag: ${{ needs.meta.outputs.tag }}
+          version: ${{ needs.meta.outputs.version }}
+          tap-dir: ${{ github.workspace }}/homebrew-tap
+          json-dir: ${{ github.workspace }}/bottle-json
+          formulas: |
+            polylint
+          github-repo: ${{ github.repository }}
+
+      - name: Commit and push bottle DSL
+        working-directory: homebrew-tap
+        run: |
+          set -euo pipefail
+          git config user.name "polylint-release-helper[bot]"
+          git config user.email "357288453+polylint-release-helper[bot]@users.noreply.github.com"
+          if git diff --quiet Formula/; then
+            echo "No bottle DSL changes; skipping commit."
+            exit 0
+          fi
+          git add Formula/polylint.rb
+          git commit -m "polylint ${{ needs.meta.outputs.version }}: add bottle DSL"
+          # Every polylint tool's release pushes to this one shared tap, so a concurrent release can
+          # land between the checkout and the push and reject it as non-fast-forward. Each repository
+          # touches only its own files, so rebasing onto the new tip and retrying is safe. ~keep
+          for attempt in 1 2 3 4 5; do
+            if git push origin HEAD; then
+              exit 0
+            fi
+            echo "push rejected (attempt $attempt); rebasing onto the current tap tip"
+            git fetch origin main
+            if ! git rebase origin/main; then
+              git rebase --abort || true
+              echo "::error::tap rebase hit a real conflict; refusing to force the push"
+              exit 1
+            fi
+            sleep $((attempt * 3))
+          done
+          echo "::error::could not push to the tap after 5 attempts"
+          exit 1
 
   publish_scoop:
     name: Update Scoop bucket
@@ -1786,18 +1949,12 @@ jobs:
     if: >-
       !inputs.plugins-only && (needs.finalize_release.result == 'success' && !contains(needs.meta.outputs.version, '-rc') && !contains(needs.meta.outputs.version, '-beta') && !contains(needs.meta.outputs.version, '-alpha'))
     runs-on: ubuntu-latest
-    # Non-blocking: the bucket lives in another repository and its push needs a
-    # PAT this workflow does not control. A missing or under-scoped token is a
-    # channel that did not update — worth a red job — but it must not fail the
-    # release run, which by this point has already published the GitHub release
-    # every other channel is served from. Nothing depends on this job, so its
-    # failure cannot re-draft the release.
+    # Non-blocking: a bucket that did not update is worth a red job, but it must not fail the
+    # release run, which by this point has already published the GitHub release every other
+    # channel is served from. Nothing depends on this job, so its failure cannot re-draft the
+    # release.
     continue-on-error: true
-    # HOMEBREW_TOKEN is a `release` environment secret.
-    environment: release
     permissions:
-      # Reads the release's sha256sums.txt; the bucket push uses a PAT, not this
-      # token, so the job never needs write access to this repository.
       contents: read
     steps:
       - name: Checkout
@@ -1806,62 +1963,104 @@ jobs:
           fetch-depth: 0
           ref: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.tag || '' }}
 
-      - name: Setup mise
-        uses: xberg-io/actions/setup-mise@v1
-
-      - name: Update the bucket manifest
-        env:
-          MISE_TASK_RUN_AUTO_INSTALL: "false"
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          # The same PAT the Homebrew tap step uses; its access covers
-          # Goldziher/scoop-bucket as well, so there is one credential and one
-          # pattern in this workflow rather than two.
-          HOMEBREW_TOKEN: ${{ secrets.HOMEBREW_TOKEN }}
+      - name: Check this is the newest release
+        id: newest
         run: |
           set -euo pipefail
-          version="${{ needs.meta.outputs.version }}"
           tag="${{ needs.meta.outputs.tag }}"
           # Only the newest release may move a "latest" pointer: a dispatch re-run of an older tag
           # must not roll it back.
           newest="$(git ls-remote --tags origin 'v*' | awk '{ sub("refs/tags/", "", $2); print $2 }' |
             grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' | sort -V | tail -n1)"
-          if [ "$tag" != "$newest" ]; then
+          if [ "$tag" = "$newest" ]; then
+            echo "newest=true" >> "$GITHUB_OUTPUT"
+          else
             echo "::notice::$tag is not the newest release tag ($newest); leaving the Scoop bucket unchanged"
-            exit 0
+            echo "newest=false" >> "$GITHUB_OUTPUT"
           fi
 
-          if [ -z "${HOMEBREW_TOKEN:-}" ]; then
-            echo "::error::HOMEBREW_TOKEN is not set, so Goldziher/scoop-bucket cannot be updated." >&2
-            echo "The bucket will otherwise keep serving the previous release indefinitely." >&2
+      - uses: actions/create-github-app-token@v3
+        if: steps.newest.outputs.newest == 'true'
+        id: bucket-token
+        with:
+          app-id: ${{ secrets.BOT_APP_ID }}
+          private-key: ${{ secrets.BOT_APP_PRIVATE_KEY }}
+          owner: polylint
+          repositories: scoop-bucket
+
+      - uses: actions/checkout@v7
+        if: steps.newest.outputs.newest == 'true'
+        with:
+          repository: polylint/scoop-bucket
+          token: ${{ steps.bucket-token.outputs.token }}
+          path: scoop-bucket
+          persist-credentials: true
+
+      # polylint.json is the canonical manifest; poly.json is rendered from the same template so
+      # `scoop install poly` and existing installs keep updating. Both carry the poly + polylint
+      # shim pair in `bin`. Only x86_64-pc-windows-msvc is built, so there is no arm64 block.
+      - uses: xberg-io/actions/publish-scoop-manifests@v1
+        if: steps.newest.outputs.newest == 'true'
+        with:
+          bucket-dir: ${{ github.workspace }}/scoop-bucket
+          config-file: packaging/scoop.json
+          tag: ${{ needs.meta.outputs.tag }}
+          version: ${{ needs.meta.outputs.version }}
+          github-repo: ${{ github.repository }}
+          token: ${{ github.token }}
+
+      - name: Check the rendered hashes against sha256sums.txt
+        if: steps.newest.outputs.newest == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          # The render step hashes the archives it downloads. Cross-check every hash against the
+          # release's own sha256sums.txt, the file every other channel verifies against, so the
+          # manifests can never come to disagree with the published checksums.
+          gh release download "${{ needs.meta.outputs.tag }}" --repo "$GITHUB_REPOSITORY" \
+            --pattern sha256sums.txt --dir sums --clobber
+          awk '{ print $1 }' sums/sha256sums.txt | sort -u > sums/listed.txt
+          jq -r '.architecture[].hash' scoop-bucket/bucket/polylint.json scoop-bucket/bucket/poly.json | sort -u > sums/rendered.txt
+          jq -e '.bin | length == 2' scoop-bucket/bucket/polylint.json scoop-bucket/bucket/poly.json >/dev/null ||
+            { echo "::error::a rendered manifest lost its poly + polylint bin pair" >&2; exit 1; }
+          [ -s sums/rendered.txt ] || { echo "::error::no hashes found in the rendered manifests" >&2; exit 1; }
+          if unlisted="$(comm -23 sums/rendered.txt sums/listed.txt)" && [ -n "$unlisted" ]; then
+            echo "::error::rendered hashes not in sha256sums.txt: $unlisted" >&2
             exit 1
           fi
 
-          # The hash comes from the release's own sha256sums.txt. Recomputing it
-          # from a locally downloaded copy would normally agree, but it is the one
-          # place the bucket and the published archive could come to disagree.
-          gh release download "$tag" --repo "$GITHUB_REPOSITORY" --pattern 'sha256sums.txt' --dir sums --clobber
-
-          git clone --depth 1 "https://x-access-token:${HOMEBREW_TOKEN}@github.com/Goldziher/scoop-bucket.git" bucket
-          # polylint.json is the canonical manifest; poly.json is kept (same
-          # archive) so `scoop install poly` and existing installs keep updating.
-          # The first release after the rename seeds polylint.json from poly.json.
-          base=bucket/bucket/polylint.json
-          [ -f "$base" ] || base=bucket/bucket/poly.json
-          mise run release:scoop-manifest "$version" sums/sha256sums.txt "$base" "$GITHUB_REPOSITORY" > polylint.json
-          mise run release:scoop-manifest "$version" sums/sha256sums.txt bucket/bucket/poly.json "$GITHUB_REPOSITORY" > poly.json
-          cp polylint.json bucket/bucket/polylint.json
-          cp poly.json bucket/bucket/poly.json
-
-          cd bucket
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
+      - name: Commit and push to the bucket
+        if: steps.newest.outputs.newest == 'true'
+        working-directory: scoop-bucket
+        run: |
+          set -euo pipefail
+          git config user.name "polylint-release-helper[bot]"
+          git config user.email "357288453+polylint-release-helper[bot]@users.noreply.github.com"
           git add bucket/polylint.json bucket/poly.json
           if git diff --cached --quiet; then
-            echo "Manifest already up to date."
-          else
-            git commit -m "polylint ${version}"
-            git push
+            echo "Manifests already up to date."
+            exit 0
           fi
+          git commit -m "polylint ${{ needs.meta.outputs.version }}"
+          # Every polylint tool's release pushes to this one shared bucket, so a concurrent release can
+          # land between the checkout and the push and reject it as non-fast-forward. Each repository
+          # touches only its own files, so rebasing onto the new tip and retrying is safe. ~keep
+          for attempt in 1 2 3 4 5; do
+            if git push origin HEAD; then
+              exit 0
+            fi
+            echo "push rejected (attempt $attempt); rebasing onto the current bucket tip"
+            git fetch origin main
+            if ! git rebase origin/main; then
+              git rebase --abort || true
+              echo "::error::bucket rebase hit a real conflict; refusing to force the push"
+              exit 1
+            fi
+            sleep $((attempt * 3))
+          done
+          echo "::error::could not push to the bucket after 5 attempts"
+          exit 1
 
   verify_binstall:
     name: Verify cargo binstall resolves the release
@@ -2304,23 +2503,34 @@ jobs:
     if: >-
       !inputs.plugins-only && (needs.finalize_release.result == 'success' && !contains(needs.meta.outputs.version, '-rc') && !contains(needs.meta.outputs.version, '-beta') && !contains(needs.meta.outputs.version, '-alpha'))
     runs-on: ubuntu-latest
-    # RELEASE_TAG_TOKEN is a `release` environment secret.
-    environment: release
     permissions:
       contents: write
     steps:
+      # GITHUB_TOKEN cannot move a ref across commits that change .github/workflows (it lacks the
+      # `workflows` permission), so the push uses a token minted from the organization's GitHub App
+      # with contents and workflows write. If the App cannot grant that, the job falls back to
+      # GITHUB_TOKEN, which still moves the tag whenever the release left .github/workflows alone.
+      - uses: actions/create-github-app-token@v3
+        id: app-token
+        continue-on-error: true
+        with:
+          app-id: ${{ secrets.BOT_APP_ID }}
+          private-key: ${{ secrets.BOT_APP_PRIVATE_KEY }}
+          owner: polylint
+          repositories: polylint
+          permission-contents: write
+          permission-workflows: write
+
       - name: Checkout
         uses: actions/checkout@v7
         with:
           fetch-depth: 0
           ref: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.tag || '' }}
-          # GITHUB_TOKEN cannot move a ref across commits that change .github/workflows (it lacks the
-          # `workflows` permission), so the push uses a token that has it when one is configured.
-          token: ${{ secrets.RELEASE_TAG_TOKEN || github.token }}
+          token: ${{ steps.app-token.outputs.token || github.token }}
 
       - name: Move major tag to this release
         env:
-          HAS_RELEASE_TAG_TOKEN: ${{ secrets.RELEASE_TAG_TOKEN != '' }}
+          HAS_APP_TOKEN: ${{ steps.app-token.outputs.token != '' }}
         run: |
           set -euo pipefail
           version="${{ needs.meta.outputs.version }}"
@@ -2335,12 +2545,12 @@ jobs:
             echo "::notice::$tag is not the newest release tag ($newest); leaving the major tag unchanged"
             exit 0
           fi
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git config user.name "polylint-release-helper[bot]"
+          git config user.email "357288453+polylint-release-helper[bot]@users.noreply.github.com"
           git tag -f "$major" "$sha"
           if ! git push -f origin "refs/tags/${major}"; then
-            if [ "$HAS_RELEASE_TAG_TOKEN" != "true" ]; then
-              echo "::error::Moving ${major} needs a token with contents and workflows write access when the release changes .github/workflows. Add it as the RELEASE_TAG_TOKEN secret of the release environment."
+            if [ "$HAS_APP_TOKEN" != "true" ]; then
+              echo "::error::Moving ${major} needs contents and workflows write access when the release changes .github/workflows. The organization GitHub App (BOT_APP_ID / BOT_APP_PRIVATE_KEY) could not mint a token with them; grant the App the Workflows permission on polylint/polylint."
             fi
             exit 1
           fi

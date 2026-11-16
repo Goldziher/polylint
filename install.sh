@@ -5,7 +5,9 @@
 
 set -eu
 
-REPO="Goldziher/polylint"
+REPO="polylint/polylint"
+# The pre-transfer identity, which signed the attestations of v0.35.0 and earlier.
+LEGACY_REPO="Goldziher/polylint"
 BINARIES="poly"
 
 VERSION="${POLY_VERSION:-latest}"
@@ -236,12 +238,21 @@ actual=$(sha256_of "${tmp}/${asset}" || true)
 info "Checksum verified"
 
 # The build provenance attestation ties the archive to this repository's release workflow
-# (releases before the attestations began have none, so this fails for them).
+# (releases before the attestations began have none, so this fails for them). Releases
+# published before the repository moved to the polylint organization (v0.35.0 and earlier)
+# were signed as LEGACY_REPO, and a certificate keeps the identity it was issued under.
 if [ -n "$VERIFY_ATTESTATION" ]; then
-  gh attestation verify "${tmp}/${asset}" --repo "$REPO" \
-    --signer-workflow "${REPO}/.github/workflows/publish.yaml" >/dev/null ||
+  attested=""
+  for signer in "$REPO" "$LEGACY_REPO"; do
+    if gh attestation verify "${tmp}/${asset}" --repo "$signer" \
+      --signer-workflow "${signer}/.github/workflows/publish.yaml" >/dev/null 2>&1; then
+      attested="$signer"
+      break
+    fi
+  done
+  [ -n "$attested" ] ||
     die "the build provenance attestation of ${asset} did not verify — refusing to install"
-  info "Build provenance attestation verified"
+  info "Build provenance attestation verified (${attested})"
 fi
 
 if [ -n "$ARCHIVE_CACHE" ]; then

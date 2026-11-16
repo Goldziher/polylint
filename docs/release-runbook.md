@@ -41,23 +41,28 @@ platform and plugin packages under `release-<major>.<minor>` instead; prerelease
 
 - **GitHub release**: `gh release edit vX.Y.Z --draft=true`. The installers and the Action resolve
   `/releases/latest`, so a draft drops out of reach at once. Fix forward with a new patch tag; do not reuse the tag.
-- **Major tag (`v0`)**: never delete it, since `Goldziher/polylint@v0` users would break. Re-point it to the previous
-  good release: `git tag -f v0 vX.Y.(Z-1)^{commit} && git push -f origin refs/tags/v0` (needs `RELEASE_TAG_TOKEN`
-  when workflows changed between the two commits).
+- **Major tag (`v0`)**: never delete it, since `polylint/polylint@v0` users would break. Re-point it to the previous
+  good release: `git tag -f v0 vX.Y.(Z-1)^{commit} && git push -f origin refs/tags/v0` (needs a token with
+  workflows write access when workflows changed between the two commits).
 - **npm**: prefer `npm deprecate @polylint/polylint@X.Y.Z "reason"` (and the five `@polylint/polylint-<platform>`
   packages) and publish a fixed patch. `npm unpublish` is only allowed within 72 hours and when nothing depends on
   the version; otherwise it is refused.
 - **PyPI**: yank the release from the project's Manage page. A yanked version is
   skipped by resolvers unless pinned exactly; files cannot be re-uploaded under the same version.
-- **Homebrew**: revert the formula commit in `Goldziher/homebrew-tap` (`Formula/polylint.rb`).
-- **Scoop**: revert the manifest commit in `Goldziher/scoop-bucket` (`bucket/polylint.json` and `bucket/poly.json`).
+- **Homebrew**: revert the formula commit in `polylint/homebrew-tap` (`Formula/polylint.rb`).
+- **Scoop**: revert the manifest commit in `polylint/scoop-bucket` (`bucket/polylint.json` and `bucket/poly.json`).
 
 ## Release environment
 
-`sign_components`, `publish_homebrew`, `publish_scoop` and `update_major_tag` run in the `release` environment, which
-holds `POLY_COMPONENT_SIGNING_KEY`, `HOMEBREW_TOKEN` and `RELEASE_TAG_TOKEN`. Its deployment branch and tag policy
-must allow the `v*` tags (and `main`, for a `workflow_dispatch` re-publish). Without the environment or its secrets
-the release fails at `sign_components`.
+`sign_components` runs in the `release` environment, which holds `POLY_COMPONENT_SIGNING_KEY`. Its deployment branch
+and tag policy must allow the `v*` tags (and `main`, for a `workflow_dispatch` re-publish). Without the environment or
+its secret the release fails at `sign_components`.
+
+`publish_homebrew`, `publish_homebrew_bottles`, `publish_scoop` and `update_major_tag` authenticate with tokens minted
+from the polylint organization's GitHub App through the org secrets `BOT_APP_ID` and `BOT_APP_PRIVATE_KEY`, and commit
+as `polylint-release-helper[bot]`. The App must be installed on `polylint/homebrew-tap` and `polylint/scoop-bucket`
+(contents write) and on `polylint/polylint` (contents and workflows write, for moving `v0` across workflow changes).
+The `homebrew_bottles` legs upload their bottles to the release with the job's own `GITHUB_TOKEN`.
 
 ## Component signing key rotation
 

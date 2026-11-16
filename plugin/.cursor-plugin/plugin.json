@@ -8,8 +8,8 @@
     "email": "nhirschfeld@gmail.com",
     "url": "https://github.com/Goldziher"
   },
-  "homepage": "https://github.com/Goldziher/polylint",
-  "repository": "https://github.com/Goldziher/polylint",
+  "homepage": "https://github.com/polylint/polylint",
+  "repository": "https://github.com/polylint/polylint",
   "license": "MIT",
   "keywords": [
     "linter",

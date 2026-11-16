@@ -15,7 +15,7 @@
 //! module is first-party by finding `armis/common/lib` on disk, and without it a
 //! staged file's import blocks are reflowed differently from the full tree — and
 //! a plain directory walk must see the files too, which a directory symlink hid
-//! from every walker that does not follow one (Goldziher/poly#45). A mirror costs
+//! from every walker that does not follow one (polylint/polylint#45). A mirror costs
 //! one inode reference per tracked file and no byte copy. Nothing reached through
 //! a mirror is a staged file or a sibling of one, so nothing the run validates is
 //! read from the worktree.

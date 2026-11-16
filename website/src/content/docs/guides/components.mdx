@@ -231,7 +231,7 @@ The GitHub Action installs components before the first run and caches them by ve
 a second run downloads nothing:
 
 ```yaml
-- uses: Goldziher/polylint@v0
+- uses: polylint/polylint@v0
   with:
     version: from-config   # the version required_version in poly.toml names
     components: auto       # or all, none, or "sql,php"
@@ -242,7 +242,7 @@ Set `required_version` in `poly.toml` (for example `">=0.34, <0.35"`) to fix the
 Action installs, and with it every component: components are versioned in lock-step with poly, so
 there is no separate component lock to commit. `poly` itself refuses to load a config whose
 `required_version` the running binary does not satisfy.
-See [`ACTION_USAGE.md`](https://github.com/Goldziher/polylint/blob/main/ACTION_USAGE.md) for the inputs.
+See [`ACTION_USAGE.md`](https://github.com/polylint/polylint/blob/main/ACTION_USAGE.md) for the inputs.
 
 <Aside type="note" title="MCP in a core build">
     A core build serves MCP through the `mcp` component: `poly mcp` installs it on first use unless

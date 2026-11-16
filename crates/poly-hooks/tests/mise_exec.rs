@@ -51,7 +51,10 @@ fn fake_poly(path: &Path, label: &str) {
     );
 }
 
-const PINNED_POLY: &str = "[tools]\n\"github:Goldziher/poly\" = \"0.32.3\"\n";
+/// The pin as the polylint organization repository spells it, `github:polylint/polylint`.
+const PINNED_POLY: &str = "[tools]\n\"github:polylint/polylint\" = \"0.32.3\"\n";
+/// The pre-transfer spelling, which still names the binary `poly`.
+const PINNED_POLY_LEGACY: &str = "[tools]\n\"github:Goldziher/poly\" = \"0.32.3\"\n";
 
 /// A scratch repository root with `bin/mise` on `PATH`, mise's tool dir
 /// `tools/`, and the fake mise's call log.
@@ -241,6 +244,23 @@ fn a_pinned_poly_that_mise_cannot_provide_falls_back_with_a_notice() {
         "path hooks hook-impl --hook-type=pre-push -- origin url guard=unset stdin=refs/heads/main abc\n"
     );
     assert_eq!(repo.mise_log(), "mise auto=0 which poly\n");
+}
+
+/// A pin written before the move to the polylint organization still counts.
+#[test]
+fn a_legacy_poly_pin_that_mise_cannot_provide_still_gets_the_notice() {
+    let repo = Repo::new();
+    fake_poly(&repo.bin().join("poly"), "path");
+    std::fs::write(repo.root().join("mise.toml"), PINNED_POLY_LEGACY).unwrap();
+
+    let output = repo.run_pre_push("");
+
+    assert_eq!(output.status.code(), Some(0), "{}", stderr(&output));
+    assert!(
+        stderr(&output).starts_with("poly: mise.toml pins poly but"),
+        "{}",
+        stderr(&output)
+    );
 }
 
 #[test]

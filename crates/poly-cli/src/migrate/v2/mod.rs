@@ -20,7 +20,8 @@
 //!   already switched typos off for the whole engine (`poly.toml` only, not `poly.local.toml`).
 //! * `required_version = ">=<this poly>"` is added when absent (`poly.toml` only).
 //! * A leading `#:schema` URL naming `poly.schema.json` is pointed at `poly-v2.schema.json`, and a
-//!   `goldziher.github.io/poly/` base at `goldziher.github.io/polylint/`.
+//!   pre-transfer docs base (`goldziher.github.io/poly/` or `goldziher.github.io/polylint/`) at
+//!   `polylint.github.io/polylint/`.
 //!
 //! `poly-config.lock` and `poly-hooks.lock` are not merged here; the migration reports that
 //! they must be replaced by `poly lock`.
@@ -49,9 +50,10 @@ pub(crate) const CROSS_CUTTING_ENGINES: &[&str] = &["typos", "astgrep", "uncomme
 
 const V1_SCHEMA_FILE: &str = "poly.schema.json";
 const V2_SCHEMA_FILE: &str = "poly-v2.schema.json";
-/// The docs site is served under `/polylint`; configs written against the old `/poly` base 404.
-const OLD_SITE_BASE: &str = "goldziher.github.io/poly/";
-const SITE_BASE: &str = "goldziher.github.io/polylint/";
+/// Docs-site bases configs may still name. The site moved from `/poly` to `/polylint` and then to
+/// the `polylint` organization's Pages; neither old base redirects, so both 404.
+const OLD_SITE_BASES: &[&str] = &["goldziher.github.io/poly/", "goldziher.github.io/polylint/"];
+const SITE_BASE: &str = "polylint.github.io/polylint/";
 
 /// Lock files that `poly lock` replaces.
 const V1_LOCK_FILES: &[&str] = &["poly-config.lock", "poly-hooks.lock"];
@@ -391,9 +393,10 @@ fn split_schema_line(text: &str) -> (Option<String>, String) {
 fn updated_schema_line(line: &str, notes: &mut Vec<String>) -> String {
     if line.contains(V1_SCHEMA_FILE) {
         notes.push(format!("#:schema now points at {V2_SCHEMA_FILE}"));
-        return line
-            .replace(OLD_SITE_BASE, SITE_BASE)
-            .replace(V1_SCHEMA_FILE, V2_SCHEMA_FILE);
+        let line = OLD_SITE_BASES
+            .iter()
+            .fold(line.to_string(), |line, old| line.replace(old, SITE_BASE));
+        return line.replace(V1_SCHEMA_FILE, V2_SCHEMA_FILE);
     }
     notes.push("#:schema does not name poly.schema.json; update it to the v2 schema by hand".to_string());
     line.to_string()

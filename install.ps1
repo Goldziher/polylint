@@ -5,7 +5,7 @@
 .DESCRIPTION
     Installs poly. Re-run any time to UPDATE to the latest release (it overwrites in place).
 
-        irm https://raw.githubusercontent.com/Goldziher/polylint/main/install.ps1 | iex
+        irm https://raw.githubusercontent.com/polylint/polylint/main/install.ps1 | iex
 
     Pin a version or change the install dir with environment variables before running:
         $env:POLY_VERSION = "v0.1.5"
@@ -19,7 +19,9 @@
 
 $ErrorActionPreference = "Stop"
 
-$Repo = "Goldziher/polylint"
+$Repo = "polylint/polylint"
+# The pre-transfer identity, which signed the attestations of v0.35.0 and earlier.
+$LegacyRepo = "Goldziher/polylint"
 $Binaries = @("poly.exe")
 
 $Version = if ($env:POLY_VERSION) { $env:POLY_VERSION } else { "latest" }
@@ -198,11 +200,17 @@ try {
     Info "Checksum verified"
 
     # The build provenance attestation ties the archive to this repository's release workflow
-    # (releases before the attestations began have none, so this fails for them).
+    # (releases before the attestations began have none, so this fails for them). Releases
+    # published before the repository moved to the polylint organization (v0.35.0 and earlier)
+    # were signed as $LegacyRepo, and a certificate keeps the identity it was issued under.
     if ($VerifyAttestation) {
-        & gh attestation verify $archive --repo $Repo --signer-workflow "$Repo/.github/workflows/publish.yaml" | Out-Null
-        if ($LASTEXITCODE -ne 0) { Die "The build provenance attestation of $asset did not verify - refusing to install" }
-        Info "Build provenance attestation verified"
+        $attested = $null
+        foreach ($signer in @($Repo, $LegacyRepo)) {
+            & gh attestation verify $archive --repo $signer --signer-workflow "$signer/.github/workflows/publish.yaml" 2>&1 | Out-Null
+            if ($LASTEXITCODE -eq 0) { $attested = $signer; break }
+        }
+        if (-not $attested) { Die "The build provenance attestation of $asset did not verify - refusing to install" }
+        Info "Build provenance attestation verified ($attested)"
     }
 
     Expand-Archive -Path $archive -DestinationPath $tmp -Force
