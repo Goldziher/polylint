@@ -43,22 +43,22 @@ dependencies = [
 
 [[package]]
 name = "alef-component-abi"
-version = "0.129.4"
+version = "0.130.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b716c75f87a6a72ee4c1f78d3ad8829e23f4497e9ada9a9a04f3d20ff8789fdb"
+checksum = "67b0d0049bd634d265c4b837fabb8580121647a7b0199cf060d141f4f9e5b36e"
 
 [[package]]
 name = "alef-component-runtime"
-version = "0.129.4"
+version = "0.130.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "df778fa0adea8fff2ad7b0fd76f10f87f0659dc6599dd1f7bf3ba53c567fab27"
+checksum = "d3955b1db066deec30ff078e0e9bce6d57fb5a04979c1a91e556ff99ad9a5548"
 dependencies = [
  "alef-component-abi",
  "base64",
  "ed25519-dalek",
  "flate2",
- "fs2",
  "hex",
+ "libc",
  "libloading",
  "serde",
  "serde_json",
@@ -67,6 +67,7 @@ dependencies = [
  "tempfile",
  "thiserror 2.0.21",
  "ureq",
+ "url",
 ]
 
 [[package]]
