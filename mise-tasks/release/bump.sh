@@ -237,7 +237,7 @@ done
 # carries it in a pyproject and a module, not JSON. Assert both, scoped to the version key.
 hermes_pyproject="plugin/.hermes/package/pyproject.toml"
 hermes_init="plugin/.hermes/package/src/poly_hermes_plugin/__init__.py"
-grep -qE "^version = ['\"]$VERSION['\"]$" "$hermes_pyproject" 2>/dev/null ||
+grep -qE "^version = ['\"]${VERSION}['\"]$" "$hermes_pyproject" 2>/dev/null ||
   fail "$hermes_pyproject [project] version: expected $VERSION"
 grep -qxF "__version__ = \"$VERSION\"" "$hermes_init" 2>/dev/null ||
   fail "$hermes_init __version__: expected $VERSION"
