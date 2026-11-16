@@ -48,27 +48,22 @@ pub(super) fn run_plans(
     only: Option<&FxHashSet<&'static str>>,
     cache: &ResultCache,
 ) {
-    let run_scope = scope::RunScope::new(run.paths);
-    let roots: Vec<PathBuf> = plans.iter().map(|plan| root_for(run.configs, plan.config_id)).collect();
-    let environments: Environments = Mutex::new(FxHashMap::default());
+    let schedule = Schedule {
+        plans,
+        roots: plans.iter().map(|plan| root_for(run.configs, plan.config_id)).collect(),
+        files,
+        run,
+        only,
+        run_scope: scope::RunScope::new(run.paths),
+        environments: Mutex::new(FxHashMap::default()),
+        cache,
+    };
     let settled: Vec<Settled> = plans
         .par_iter()
         .enumerate()
-        .map(|(at, plan)| {
-            settle(
-                at,
-                plan,
-                plans,
-                &roots,
-                files,
-                run,
-                only,
-                &run_scope,
-                &environments,
-                cache,
-            )
-        })
+        .map(|(at, plan)| schedule.settle(at, plan))
         .collect();
+    let run_scope = schedule.run_scope;
     merge(outcome, settled, |outcome, at, ran| {
         let plan = &plans[at];
         let Ran { dirs, loaded, reported } = ran;
@@ -110,66 +105,80 @@ pub(super) fn merge(
     }
 }
 
-#[allow(clippy::too_many_arguments)] // one call site; bundling them would only rename the parameters
-fn settle(
-    at: usize,
-    plan: &ProjectPlan,
-    plans: &[ProjectPlan],
-    roots: &[PathBuf],
-    files: &[DiscoveredFile],
-    run: &RunInputs<'_>,
-    only: Option<&FxHashSet<&'static str>>,
-    run_scope: &scope::RunScope,
-    environments: &Environments,
-    cache: &ResultCache,
-) -> Settled {
-    if only.is_some_and(|only| !only.contains(plan.engine.name())) {
-        return Settled::Skip;
-    }
-    if let Some(outer) = covering_plan(plans, roots, at) {
-        return Settled::Note(ignored_options_note(plans, roots, at, outer));
-    }
-    let served = plan.engine.languages();
-    let scoped: Vec<&DiscoveredFile> = files
-        .iter()
-        .filter(|f| f.config_id == plan.config_id && (served.is_empty() || served.contains(&f.language)))
-        .collect();
-    if scoped.is_empty() && !plan.ancestor {
-        return Settled::Skip;
-    }
-    let root = roots[at].clone();
-    let failed = |message: String| {
-        Settled::Failed(LintError {
-            path: root.clone(),
-            message: format!("project check '{}': {message}", plan.engine.name()),
-        })
-    };
-    let dirs = match inputs::plan_dirs(plan) {
-        Ok(dirs) => dirs,
-        Err(message) => return failed(message),
-    };
-    if let Some(dirs) = &dirs
-        && !dirs.absolute(&root).any(|dir| run_scope.reaches(&dir))
-    {
-        return Settled::Skip;
-    }
-    let environment = Arc::clone(
-        environments
-            .lock()
-            .unwrap_or_else(PoisonError::into_inner)
-            .entry(root.clone())
-            .or_insert_with(|| Arc::new(crate::project::env::resolve_environment(&root))),
-    );
-    let loaded = match inputs::load(plan, &root, dirs.as_ref(), &scoped, run) {
-        Ok(loaded) => loaded,
-        Err(message) => return failed(message),
-    };
-    if !inputs::has_substance(&loaded) {
-        return Settled::Skip;
-    }
-    match report_for(plan, &root, &loaded, &environment, cache) {
-        Ok(reported) => Settled::Ran(Box::new(Ran { dirs, loaded, reported })),
-        Err(error) => Settled::Failed(error),
+/// What every plan of one run is settled against.
+struct Schedule<'a, 'r> {
+    plans: &'a [ProjectPlan],
+    /// The project root of each plan, by plan index.
+    roots: Vec<PathBuf>,
+    files: &'a [DiscoveredFile],
+    run: &'a RunInputs<'r>,
+    only: Option<&'a FxHashSet<&'static str>>,
+    run_scope: scope::RunScope,
+    environments: Environments,
+    cache: &'a ResultCache,
+}
+
+impl Schedule<'_, '_> {
+    /// Settle the plan at index `at`.
+    fn settle(&self, at: usize, plan: &ProjectPlan) -> Settled {
+        let Schedule {
+            plans,
+            roots,
+            files,
+            run,
+            only,
+            run_scope,
+            environments,
+            cache,
+        } = self;
+        if only.is_some_and(|only| !only.contains(plan.engine.name())) {
+            return Settled::Skip;
+        }
+        if let Some(outer) = covering_plan(plans, roots, at) {
+            return Settled::Note(ignored_options_note(plans, roots, at, outer));
+        }
+        let served = plan.engine.languages();
+        let scoped: Vec<&DiscoveredFile> = files
+            .iter()
+            .filter(|f| f.config_id == plan.config_id && (served.is_empty() || served.contains(&f.language)))
+            .collect();
+        if scoped.is_empty() && !plan.ancestor {
+            return Settled::Skip;
+        }
+        let root = roots[at].clone();
+        let failed = |message: String| {
+            Settled::Failed(LintError {
+                path: root.clone(),
+                message: format!("project check '{}': {message}", plan.engine.name()),
+            })
+        };
+        let dirs = match inputs::plan_dirs(plan) {
+            Ok(dirs) => dirs,
+            Err(message) => return failed(message),
+        };
+        if let Some(dirs) = &dirs
+            && !dirs.absolute(&root).any(|dir| run_scope.reaches(&dir))
+        {
+            return Settled::Skip;
+        }
+        let environment = Arc::clone(
+            environments
+                .lock()
+                .unwrap_or_else(PoisonError::into_inner)
+                .entry(root.clone())
+                .or_insert_with(|| Arc::new(crate::project::env::resolve_environment(&root))),
+        );
+        let loaded = match inputs::load(plan, &root, dirs.as_ref(), &scoped, run) {
+            Ok(loaded) => loaded,
+            Err(message) => return failed(message),
+        };
+        if !inputs::has_substance(&loaded) {
+            return Settled::Skip;
+        }
+        match report_for(plan, &root, &loaded, &environment, cache) {
+            Ok(reported) => Settled::Ran(Box::new(Ran { dirs, loaded, reported })),
+            Err(error) => Settled::Failed(error),
+        }
     }
 }
 
