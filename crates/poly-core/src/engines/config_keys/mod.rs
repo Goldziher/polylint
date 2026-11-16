@@ -57,6 +57,7 @@ use crate::config::{EngineConfig, Kind};
 use crate::engine::{
     Capabilities, Diagnostic, Engine, OptionKeys, OptionTable, OptionType, Severity, SourceFile, Span,
 };
+use crate::engines::line_index::LineIndex;
 use crate::language::Language;
 use crate::registry::{all_languages, engines_for};
 
@@ -260,7 +261,7 @@ fn collect_defaults(document: &toml::Table, findings: &mut Vec<Finding>) {
 ///
 /// Document-level problems (path empty) are left out: an unknown top-level section is already reported
 /// above, and TOML or schema errors fail the run when the config is loaded.
-fn v2_diagnostics(source: &str, spans: &KeySpans, engine_name: &str) -> Vec<Diagnostic> {
+fn v2_diagnostics(source: &str, spans: &KeySpans<'_>, engine_name: &str) -> Vec<Diagnostic> {
     crate::config_validate::validate_source(source)
         .problems
         .into_iter()
@@ -427,7 +428,7 @@ fn collect_table(
 }
 
 /// Render one finding, anchored at the offending key when its span is known.
-fn diagnostic(finding: Finding, spans: &KeySpans, engine_name: &str) -> Diagnostic {
+fn diagnostic(finding: Finding, spans: &KeySpans<'_>, engine_name: &str) -> Diagnostic {
     let Finding {
         table,
         key,
@@ -661,19 +662,16 @@ fn cross_cutting_engines() -> Vec<Box<dyn Engine>> {
 /// `toml::Table` drops positions, so the document is parsed a second time with
 /// `toml_edit`, which keeps them. Without this a warning could name the key but
 /// not point at it — and the whole point is to send the reader to the line.
-struct KeySpans {
+struct KeySpans<'a> {
     document: Option<toml_edit::Document<String>>,
-    /// Byte offset of the start of each line, for offset → line/column.
-    line_starts: Vec<usize>,
+    lines: LineIndex<'a>,
 }
 
-impl KeySpans {
-    fn parse(source: &str) -> KeySpans {
-        let mut line_starts = vec![0];
-        line_starts.extend(source.match_indices('\n').map(|(index, _)| index + 1));
+impl<'a> KeySpans<'a> {
+    fn parse(source: &'a str) -> KeySpans<'a> {
         KeySpans {
             document: toml_edit::Document::parse(source.to_string()).ok(),
-            line_starts,
+            lines: LineIndex::new(source),
         }
     }
 
@@ -691,24 +689,18 @@ impl KeySpans {
             }
         }
         let (key, _) = table.get_key_value(key)?;
-        self.to_span(key.span()?)
+        Some(self.to_span(key.span()?))
     }
 
     /// Convert a byte range into a 1-based line/column span.
-    fn to_span(&self, range: Range<usize>) -> Option<Span> {
-        let (start_line, start_col) = self.position(range.start)?;
-        let (end_line, end_col) = self.position(range.end)?;
-        Some(Span {
+    fn to_span(&self, range: Range<usize>) -> Span {
+        let (start_line, start_col) = self.lines.line_col(range.start);
+        let (end_line, end_col) = self.lines.line_col(range.end);
+        Span {
             start_line,
             start_col,
             end_line,
             end_col,
-        })
-    }
-
-    fn position(&self, offset: usize) -> Option<(u32, u32)> {
-        let line = self.line_starts.partition_point(|start| *start <= offset).max(1) - 1;
-        let column = offset.checked_sub(*self.line_starts.get(line)?)?;
-        Some((u32::try_from(line).ok()? + 1, u32::try_from(column).ok()? + 1))
+        }
     }
 }

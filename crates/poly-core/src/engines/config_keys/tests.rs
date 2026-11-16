@@ -177,6 +177,17 @@ fn the_warning_points_at_the_offending_key() {
 }
 
 #[test]
+fn the_warning_column_counts_characters_not_bytes() {
+    let found = warnings("[fmt.toml]\ntaplo = { trailing_commas = \"éé\", reorder_key = true }\n");
+    let span = found
+        .iter()
+        .find(|d| d.title.contains("reorder_key"))
+        .and_then(|d| d.span)
+        .unwrap_or_else(|| panic!("no span for reorder_key: {:?}", titles(&found)));
+    assert_eq!((span.start_line, span.start_col), (2, 35));
+}
+
+#[test]
 fn the_warning_lists_the_keys_the_table_does_accept() {
     let found = warnings("[fmt.python.ruff]\nnope = 1\n");
     let description = found[0].description.clone().expect("description");
