@@ -7,19 +7,6 @@ binary drives lint, format, hooks, and commit checks from one `poly.toml`.
 
 ## [Unreleased]
 
-### Changed
-
-- **The core binary is built for speed.** `--profile core` moves from `opt-level = "s"` to `opt-level = 3` (fat LTO, stripped), and the size gate moves from 14 MiB to 22 MiB (ADR 0065). The `release` profile used by the bundled build and every component also moves to fat LTO with stripped symbols.
-- **Cargo hooks hash their declared inputs once per run.** The clippy, sort, machete and deny hooks share one `git ls-files` listing and one parallel, streamed blake3 pass, and the staged-run mutation probe streams index blobs into hashes instead of holding the tracked tree in memory. (#215)
-- **The `file_safety` hook runs inside `poly hooks`.** It no longer starts a `poly hooks check` process per commit; the runner calls the same checks over the staged snapshot and reports the same lines. `lint`, `fmt` and `commit` still run as child processes. (ADR 0067, #215)
-- **The `commit`, `lint` and `fmt` hooks run inside `poly hooks` too.** `commit` always does; `lint` and `fmt` do when the hook runs from the repository root without a staged snapshot (`--all-files`, `pre-push`, `isolate = false`), and a staged pre-commit run still starts a child. The output and exit code are the child's. Every in-process hook now runs under the hook timeout and is reported as killed past it. (ADR 0071, #215)
-
-### Fixed
-
-- **golangci-lint keeps a project's own `run.timeout`.** poly passes `--timeout=0` only when the project's golangci-lint config (or the file `-c` names) sets no `run.timeout`; a recipe declares such arguments with the new `config_defaults` key. (ADR 0066)
-- **An invalid glob is reported instead of silently dropped.** A malformed pattern in ruff's `exclude`, typos' `extend_exclude`, an `.oxfmtrc` `overrides[].files`/`excludeFiles` entry, a jsonschema `schemas` glob or a recipe's dependency globs now logs a warning naming it, and the valid patterns beside it stay in force. (#217)
-- **Hook sources recover from a damaged cached mirror.** A mirror holding a locked commit without its tree is refetched, then re-cloned, instead of failing with `unable to read tree`; the final error names the cache directory to remove.
-
 ### Added
 
 - **Prose and grammar checks with harper.** The opt-in `harper` engine (`[engines.harper] enabled = true`, component `prose`) reads Markdown and the comments of every language with a loaded grammar, and reports repeated words, wrong articles and other grammar and style findings as warnings. Rules go through `select`/`extend_select`/`ignore`; `SpellCheck` is off unless selected, and `dictionary`, `dialect` and `comments` are the engine's own keys (ADR 0068).
@@ -63,9 +50,22 @@ binary drives lint, format, hooks, and commit checks from one `poly.toml`.
   new `$OUTPUT` argument placeholder, and a new `$FILES_COMMA:<flag>` placeholder passes its inputs as one list. (#133)
 - **kubeconform findings carry a line.** The offending resource is located in a multi-document manifest by `kind` and
   `metadata.name`, and a schema error's path is followed to its line. (#128)
+- **Scala formatting without a JVM:** `scalafmt` from the upstream native builds as a pinned release recipe, opt-in
+  under `[tools.scalafmt]`. (#178)
+- **Swift linting:** `swiftlint` as a pinned release recipe, opt-in under `[tools.swiftlint]`, reading its SARIF report.
+  (#177)
+- **RuboCop-compatible Ruby linting:** `rbcop` as a pinned release recipe, opt-in under `[tools.rbcop]`, reading the
+  RuboCop JSON report. (#135)
+- **`.editorconfig` conformance:** `editorconfig-checker` as a pinned release recipe, opt-in under
+  `[tools.editorconfig-checker]`. (#176)
+- **Makefile linting:** `checkmake` as a pinned release recipe, opt-in under `[tools.checkmake]`. (#175)
 
 ### Changed
 
+- **The core binary is built for speed.** `--profile core` moves from `opt-level = "s"` to `opt-level = 3` (fat LTO, stripped), and the size gate moves from 14 MiB to 22 MiB (ADR 0065). The `release` profile used by the bundled build and every component also moves to fat LTO with stripped symbols.
+- **Cargo hooks hash their declared inputs once per run.** The clippy, sort, machete and deny hooks share one `git ls-files` listing and one parallel, streamed blake3 pass, and the staged-run mutation probe streams index blobs into hashes instead of holding the tracked tree in memory. (#215)
+- **The `file_safety` hook runs inside `poly hooks`.** It no longer starts a `poly hooks check` process per commit; the runner calls the same checks over the staged snapshot and reports the same lines. `lint`, `fmt` and `commit` still run as child processes. (ADR 0067, #215)
+- **The `commit`, `lint` and `fmt` hooks run inside `poly hooks` too.** `commit` always does; `lint` and `fmt` do when the hook runs from the repository root without a staged snapshot (`--all-files`, `pre-push`, `isolate = false`), and a staged pre-commit run still starts a child. The output and exit code are the child's. Every in-process hook now runs under the hook timeout and is reported as killed past it. (ADR 0071, #215)
 - **Component protocol v3 (ADR 0058); every engine component and sidecar must be rebuilt.** Requests and responses are
   encoded positionally instead of with a field name per struct field, and a diagnostic no longer repeats the engine
   id of the request. Components built for protocol 2 are rejected as incompatible.
@@ -73,6 +73,8 @@ binary drives lint, format, hooks, and commit checks from one `poly.toml`.
   adrlint 0.5.2 builds on it, so the component no longer links a second, older oxc through rumdl. (#192)
 - **Markdown lists with mixed item spacing format as loose lists.** The rumdl update carries upstream's MD076 fix: when
   any items of a list are separated by a blank line, `poly fmt` separates all of them, so such lists reformat once.
+- **The `file_safety`, `commit`, `lint` and `fmt` hooks run inside `poly hooks`.** `file_safety` no longer starts a `poly hooks check` process per commit: the runner calls the same checks over the staged snapshot and reports the same lines (ADR 0067). `commit` always runs in process; `lint` and `fmt` do when the hook runs from the repository root without a staged snapshot (`--all-files`, `pre-push`, `isolate = false`), and a staged pre-commit run still starts a child, whose output and exit code are used. Every in-process hook now runs under the hook timeout and is reported as killed past it. (ADR 0071, #215)
+- **The repository moved to the `polylint` organization.** The repository is `polylint/polylint` and the Action is `polylint/polylint@v0`; install with `brew install polylint/tap/polylint` or `scoop bucket add polylint https://github.com/polylint/scoop-bucket`, and point a `#:schema` line at `https://polylint.github.io/polylint/` (`poly migrate` rewrites the old URLs). The old names redirect. Attestation checks (`POLY_VERIFY_ATTESTATION=1`, the Action's `verify-attestation`) accept both the new and the `Goldziher/polylint` identity, so releases up to v0.35.0 still verify. Homebrew and Scoop are rendered from `packaging/` templates by the organization's GitHub App, and `HOMEBREW_TOKEN` and `RELEASE_TAG_TOKEN` are retired. (ADR 0062, #228)
 
 ### Performance
 
@@ -89,26 +91,15 @@ binary drives lint, format, hooks, and commit checks from one `poly.toml`.
 - **uncomment shares the lint pass's parse.** With uncomment 3.12, the `uncomment` engine takes the tree `quality` or
   `ast-grep` already parsed for the file instead of parsing it again, where the engines are linked together. (#187)
 
-### Security
-
-- **Signed, attested releases with SBOMs.** Component signing moved out of the build jobs into a job on a fresh runner
-  in the `release` environment, which checks the build's payloads against a digest manifest before signing; build
-  jobs hold no secret and a read-only token, and only the upload job can write to the release. Every release file
-  carries a build provenance attestation, each archive ships a CycloneDX SBOM (`<archive>.cdx.json`, also inside the
-  npm and PyPI packages), and the binaries embed their dependency list (`cargo auditable`). The tools that run beside
-  the signing key are pinned by sha256, and a reused component lock is checked against its release before reuse
-  (ADR 0060).
-- **Installers verify more.** `install.sh` allows only HTTPS with TLS 1.2 or newer, including redirects, and
-  `install.ps1` requires TLS 1.2 or newer. `POLY_VERIFY_ATTESTATION=1` (and the Action's `verify-attestation: true`)
-  also verifies the archive's attestation with `gh` and fails closed. The Action caches the release archive and
-  re-checks it against `sha256sums.txt` on every run instead of trusting a cached binary.
-
 ### Fixed
 
+- **golangci-lint keeps a project's own `run.timeout`.** poly passes `--timeout=0` only when the project's golangci-lint config (or the file `-c` names) sets no `run.timeout`; a recipe declares such arguments with the new `config_defaults` key. (ADR 0066)
+- **An invalid glob is reported instead of silently dropped.** A malformed pattern in ruff's `exclude`, typos' `extend_exclude`, an `.oxfmtrc` `overrides[].files`/`excludeFiles` entry, a jsonschema `schemas` glob or a recipe's dependency globs now logs a warning naming it, and the valid patterns beside it stay in force. (#217)
+- **Hook sources recover from a damaged cached mirror.** A mirror holding a locked commit without its tree is refetched, then re-cloned, instead of failing with `unable to read tree`; the final error names the cache directory to remove.
 - **golangci-lint no longer fails beside another golangci-lint, or times out a cold module and reruns it.** poly
   passes `--allow-parallel-runners`, so a run no longer exits 3 (`parallel golangci-lint is running`) on every Go file
-  while an editor or another repository holds golangci-lint's per-user lock, and `--timeout=0`, so a project's
-  `run.timeout` no longer kills a cold-cache run; `POLY_TOOL_TIMEOUT_SECS` bounds it instead. A whole-run failure (a
+  while an editor or another repository holds golangci-lint's per-user lock, and `--timeout=0` when the project sets no `run.timeout`, so a cold-cache
+  run is not killed; `POLY_TOOL_TIMEOUT_SECS` bounds it instead. A whole-run failure (a
   recipe's new `unsplittable_exits`, a signal, poly's deadline, a missing program) fails the invocation's files once
   instead of being retried on halves of its packages or once per package by the per-file loop, and findings printed
   before such an exit are not taken as a verdict. A `serial` tool now runs one invocation at a time across the whole process, not only within one batch.
@@ -144,6 +135,17 @@ binary drives lint, format, hooks, and commit checks from one `poly.toml`.
   (or the `POLY_GITHUB_API_URL` mirror you set), and `env` may not set `LD_*`, `DYLD_*`, `GIT_CONFIG*`,
   `GIT_SSH_COMMAND`, `NODE_OPTIONS`, `JAVA_TOOL_OPTIONS` and similar code-injection variables. **Migration:** install
   a tool from another host yourself and name it with an absolute `bin`.
+- **Signed, attested releases with SBOMs.** Component signing moved out of the build jobs into a job on a fresh runner
+  in the `release` environment, which checks the build's payloads against a digest manifest before signing; build
+  jobs hold no secret and a read-only token, and only the upload job can write to the release. Every release file
+  carries a build provenance attestation, each archive ships a CycloneDX SBOM (`<archive>.cdx.json`, also inside the
+  npm and PyPI packages), and the binaries embed their dependency list (`cargo auditable`). The tools that run beside
+  the signing key are pinned by sha256, and a reused component lock is checked against its release before reuse
+  (ADR 0060).
+- **Installers verify more.** `install.sh` allows only HTTPS with TLS 1.2 or newer, including redirects, and
+  `install.ps1` requires TLS 1.2 or newer. `POLY_VERIFY_ATTESTATION=1` (and the Action's `verify-attestation: true`)
+  also verifies the archive's attestation with `gh` and fails closed. The Action caches the release archive and
+  re-checks it against `sha256sums.txt` on every run instead of trusting a cached binary.
 
 ## [0.35.0] - 2026-11-15
 
@@ -171,15 +173,6 @@ binary drives lint, format, hooks, and commit checks from one `poly.toml`.
   local schema, offline, with line and column spans (ADR 0052). (#111)
 - **R formatting and linting through pinned release binaries:** `air` formats and `jarl` lints R without an R install
   (opt-in under `[tools.air]` and `[tools.jarl]`); the in-process component for R is not done yet. (#130)
-- **Scala formatting without a JVM:** `scalafmt` from the upstream native builds as a pinned release recipe, opt-in
-  under `[tools.scalafmt]`. (#178)
-- **Swift linting:** `swiftlint` as a pinned release recipe, opt-in under `[tools.swiftlint]`, reading its SARIF report.
-  (#177)
-- **RuboCop-compatible Ruby linting:** `rbcop` as a pinned release recipe, opt-in under `[tools.rbcop]`, reading the
-  RuboCop JSON report. (#135)
-- **`.editorconfig` conformance:** `editorconfig-checker` as a pinned release recipe, opt-in under
-  `[tools.editorconfig-checker]`. (#176)
-- **Makefile linting:** `checkmake` as a pinned release recipe, opt-in under `[tools.checkmake]`. (#175)
 - **Catalog tools with pinned, checksummed downloads:** shellcheck, clang-format, zizmor, kubeconform, google-java-format
   and ktfmt; ktlint as a host-JRE recipe; Elixir `mix format` and `credo` as host-runtime recipes. ADR 0049 records the
   policy: GPL tools run as separate processes and no runtime is bundled. (#110, #124, #114, #128, #133, #134, #109)
