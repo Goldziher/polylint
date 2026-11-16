@@ -908,3 +908,108 @@ fn in_process_commit_reports_what_the_reexec_prints() {
     );
     assert_reports_match(&in_process, &child);
 }
+
+/// The `lint` / `fmt` builtin over `*.py`, and an inline job of the same name running its re-exec
+/// line over the same files.
+#[cfg(feature = "all-engines")]
+fn tool_configs(tool: &str, flags: &str) -> (String, String) {
+    let builtin = format!("[hooks.builtin]\n{tool} = {{ files = \"**/*.py\" }}\n");
+    let reexec = format!(
+        "{}glob = \"**/*.py\"\n",
+        reexec_job(
+            "pre-commit",
+            tool,
+            &format!("{tool} -j 1 {flags}--set discovery.force_exclude=true")
+        )
+    );
+    (builtin, reexec)
+}
+
+/// `-v` shows a passing hook's output too, so a clean run is compared as well as a failing one.
+#[cfg(feature = "all-engines")]
+const ALL_FILES: [&str; 5] = ["run", "pre-commit", "--all-files", "--no-cache", "-v"];
+
+/// The `lint` builtin runs `poly lint`'s per-file tier in the hook runner's process (ADR 0071)
+/// and reports what the re-exec child prints, findings and verdict included.
+#[cfg(feature = "all-engines")]
+#[test]
+fn in_process_lint_reports_what_the_reexec_prints() {
+    let repo = init_repo();
+    let root = repo.path();
+    let (builtin, reexec) = tool_configs("lint", "--workspace never ");
+    write(root, "poly.toml", &builtin);
+    write(root, "clean.py", "x = 1\n");
+    commit_all(root);
+
+    let (in_process, child) = in_process_and_reexec(root, &builtin, &reexec, &ALL_FILES);
+    assert_eq!(
+        child.status.code(),
+        Some(0),
+        "{}",
+        String::from_utf8_lossy(&child.stdout)
+    );
+    assert_reports_match(&in_process, &child);
+
+    write(root, "broken.py", "def (:\n");
+    write(root, "unused.py", "import os\n");
+    commit_all(root);
+    let (in_process, child) = in_process_and_reexec(root, &builtin, &reexec, &ALL_FILES);
+    let report = String::from_utf8_lossy(&child.stdout);
+    assert_eq!(child.status.code(), Some(1), "{report}");
+    assert!(
+        report.contains("broken.py"),
+        "the finding must reach the report: {report}"
+    );
+    assert_reports_match(&in_process, &child);
+}
+
+/// The `fmt` builtin runs `poly fmt` in the hook runner's process (ADR 0071) and reports what the
+/// re-exec child prints, for drift and for a formatted tree.
+#[cfg(feature = "all-engines")]
+#[test]
+fn in_process_fmt_reports_what_the_reexec_prints() {
+    let repo = init_repo();
+    let root = repo.path();
+    let (builtin, reexec) = tool_configs("fmt", "");
+    write(root, "poly.toml", &builtin);
+    write(root, "a.py", "x=1\n");
+    commit_all(root);
+
+    let (in_process, child) = in_process_and_reexec(root, &builtin, &reexec, &ALL_FILES);
+    let report = String::from_utf8_lossy(&child.stdout);
+    assert_eq!(child.status.code(), Some(1), "{report}");
+    assert!(report.contains("would reformat a.py"), "{report}");
+    assert_reports_match(&in_process, &child);
+    assert_eq!(
+        std::fs::read_to_string(root.join("a.py")).unwrap(),
+        "x=1\n",
+        "a dry run writes nothing"
+    );
+
+    write(root, "a.py", "x = 1\n");
+    commit_all(root);
+    let (in_process, child) = in_process_and_reexec(root, &builtin, &reexec, &ALL_FILES);
+    assert_eq!(
+        child.status.code(),
+        Some(0),
+        "{}",
+        String::from_utf8_lossy(&child.stdout)
+    );
+    assert_reports_match(&in_process, &child);
+}
+
+/// A staged run keeps the re-exec for `lint`: its engines read the working directory, which only
+/// a child started in the snapshot has (ADR 0071).
+#[cfg(feature = "all-engines")]
+#[test]
+fn a_staged_lint_keeps_the_reexec() {
+    let repo = init_repo();
+    let root = repo.path();
+    write(root, "poly.toml", "[hooks.builtin]\nlint = { files = \"**/*.md\" }\n");
+    write(root, "a.md", "# Title\n");
+    git(root, &["add", "a.md"]);
+
+    let output = poly_hooks(root, &["--debug", "run", "pre-commit", "--no-cache"]);
+    let log = String::from_utf8_lossy(&output.stderr);
+    assert!(!log.contains("ran in process"), "{log}");
+}

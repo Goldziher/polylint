@@ -7,12 +7,13 @@
 //! whenever it cannot promise that, so the runner starts the child after all.
 
 mod commit;
+mod tools;
 
 use std::ffi::OsString;
 use std::path::Path;
 
 use anyhow::Result;
-use poly_hooks::in_process::{COMMIT, Call, FILE_SAFETY, Outcome};
+use poly_hooks::in_process::{COMMIT, Call, FILE_SAFETY, FMT, LINT, Outcome};
 
 /// The handler registered with [`poly_hooks::in_process::register`]: dispatch
 /// `call` to the builtin it names, and decline every other name.
@@ -21,6 +22,7 @@ pub fn handle(call: &Call<'_>) -> Option<Result<Outcome>> {
     match call.name {
         FILE_SAFETY => super::checks::in_process(call),
         COMMIT => commit::run(call),
+        LINT | FMT => tools::run(call),
         _ => None,
     }
 }

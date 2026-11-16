@@ -9,6 +9,7 @@ use poly_core::{Config, LintResult, RunOptions, Severity, Verbosity, report};
 
 use crate::component_notes::report_blocking_components;
 use crate::config_sources::RemoteExtendsResolver;
+use crate::missing_paths::reject_missing_paths;
 
 pub mod adr_cmd;
 pub mod auto_lock;
@@ -25,6 +26,7 @@ pub mod hooks;
 pub mod lock_cmd;
 pub mod mcp_cmd;
 pub mod migrate;
+mod missing_paths;
 pub mod polylock;
 pub mod progress;
 pub mod remote;
@@ -789,29 +791,6 @@ fn any_path_is_workspace_root(paths: &[PathBuf]) -> bool {
         .iter()
         .filter_map(|path| path.canonicalize().ok())
         .any(|path| path == cwd)
-}
-
-/// Fail the run when a path argument does not exist.
-///
-/// A missing path used to be discarded silently by the walker, so
-/// `poly fmt --check typo.py` reported `All formatted. (0 file(s) scanned)` and
-/// exited 0 — a green result that verified nothing. Worse, a mix of real and
-/// missing paths checked only the real ones and still exited 0, so the file
-/// count looked plausible. A hook or CI step feeding poly a stale path list was
-/// indistinguishable from a passing gate.
-fn reject_missing_paths(paths: &[PathBuf]) -> Result<(), ExitCode> {
-    let missing: Vec<&PathBuf> = paths.iter().filter(|p| !p.exists()).collect();
-    if missing.is_empty() {
-        return Ok(());
-    }
-    for path in &missing {
-        eprintln!("error: path does not exist: {}", path.display());
-    }
-    eprintln!(
-        "error: refusing to report success for {} that could not be read",
-        report::paths(missing.len())
-    );
-    Err(ExitCode::from(2))
 }
 
 fn load_poly_config(

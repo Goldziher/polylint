@@ -108,9 +108,12 @@ pub(super) fn render_debug_block(out: &mut String, debug: &RunDebug) {
 
 /// Remove ANSI SGR sequences from `text`.
 ///
-/// Only ever applied to poly's own rendered notes, which contain nothing more
-/// exotic than `ESC [ … m`.
-pub(super) fn strip_ansi(text: &str) -> String {
+/// Only ever applied to poly's own rendered output, which contains nothing more
+/// exotic than `ESC [ … m`. Public so a caller rendering a report for a stream
+/// other than the process's own (an in-process hook's captured output) can drop
+/// the colour that was resolved against stdout.
+#[must_use]
+pub fn strip_ansi(text: &str) -> String {
     let mut out = String::with_capacity(text.len());
     let mut chars = text.chars();
     while let Some(ch) = chars.next() {

@@ -312,24 +312,29 @@ enum Tool {
     Fmt,
 }
 
-/// The run-scoped override every hook line carries; see [`append_builtins`].
-const FORCE_EXCLUDE: &str = "--set discovery.force_exclude=true";
+/// The run-scoped override every `lint` / `fmt` hook line carries as `--set`; see
+/// [`append_builtins`].
+const FORCE_EXCLUDE: &str = "discovery.force_exclude=true";
 
 impl Tool {
     fn id(self) -> &'static str {
         match self {
-            Tool::Lint => "lint",
-            Tool::Fmt => "fmt",
+            Tool::Lint => poly_hooks::in_process::LINT,
+            Tool::Fmt => poly_hooks::in_process::FMT,
         }
     }
 
-    fn command(self, poly: &str, fix: bool, jobs: usize) -> String {
-        match (self, fix) {
-            (Tool::Lint, false) => format!("{poly} lint -j {jobs} --workspace never {FORCE_EXCLUDE}"),
-            (Tool::Lint, true) => format!("{poly} lint -j {jobs} --workspace never {FORCE_EXCLUDE} --fix"),
-            (Tool::Fmt, false) => format!("{poly} fmt -j {jobs} {FORCE_EXCLUDE}"),
-            (Tool::Fmt, true) => format!("{poly} fmt -j {jobs} {FORCE_EXCLUDE} --fix"),
+    /// The subcommand's arguments: `-j <jobs> [--workspace never] --set <FORCE_EXCLUDE> [--fix]`.
+    fn args(self, fix: bool, jobs: usize) -> Vec<String> {
+        let mut args = vec!["-j".to_string(), jobs.to_string()];
+        if matches!(self, Tool::Lint) {
+            args.extend(["--workspace".to_string(), "never".to_string()]);
         }
+        args.extend(["--set".to_string(), FORCE_EXCLUDE.to_string()]);
+        if fix {
+            args.push("--fix".to_string());
+        }
+        args
     }
 }
 
@@ -403,7 +408,7 @@ fn append_scoped_tool(
             (None, true) => format!("{}-{}", tool.id(), index + 1),
             (None, false) => tool.id().to_string(),
         };
-        let mut hook = Hook::run(id, tool.command(poly, fix, worker_threads));
+        let mut hook = in_process_hook(&id, tool.id(), poly, tool.args(fix, worker_threads));
         let (files, exclude) = builtin_globs(
             job.files.as_ref().or(builtin.files.as_ref()),
             job.exclude.as_ref().or(builtin.exclude.as_ref()),

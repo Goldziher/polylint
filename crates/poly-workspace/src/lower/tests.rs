@@ -112,7 +112,7 @@ fmt = true
     );
     let spec = lower_stage(&hooks, &poly(), HookStage::PreCommit, &[], &HookCacheMode::Safe).unwrap();
     assert_eq!(ids(&spec), vec!["lint", "fmt"]);
-    let HookCommand::Run(line) = &spec.hooks[0].command else {
+    let Some(line) = spec.hooks[0].command.line() else {
         panic!("expected run command");
     };
     // `--set discovery.force_exclude=true` is not optional here: a hook is handed staged paths
@@ -124,6 +124,33 @@ fmt = true
     );
     assert!(line.contains("/opt/poly/bin/poly"));
     assert!(spec.hooks[0].pass_filenames);
+}
+
+#[test]
+fn lint_and_fmt_lower_to_in_process_hooks_whose_args_spell_their_line() {
+    let hooks = hooks_from("[hooks]\nstages = [\"pre-commit\"]\n[hooks.builtin]\nlint = true\nfmt = { fix = true }\n");
+    let spec = lower_stage(&hooks, &poly(), HookStage::PreCommit, &[], &HookCacheMode::Safe).unwrap();
+    let poly = shell_quote(&poly().to_string_lossy());
+    for (hook, check) in spec
+        .hooks
+        .iter()
+        .zip([poly_hooks::in_process::LINT, poly_hooks::in_process::FMT])
+    {
+        let HookCommand::InProcess { name, args, line } = &hook.command else {
+            panic!("expected an in-process hook, got {:?}", hook.command);
+        };
+        assert_eq!(name, check);
+        assert_eq!(*line, format!("{poly} {check} {}", args.join(" ")));
+        assert!(
+            args.windows(2)
+                .any(|pair| pair == ["--set", "discovery.force_exclude=true"]),
+            "{args:?}"
+        );
+    }
+    let HookCommand::InProcess { args, .. } = &spec.hooks[1].command else {
+        unreachable!("checked above");
+    };
+    assert_eq!(args.last().map(String::as_str), Some("--fix"));
 }
 
 #[test]
@@ -1007,7 +1034,7 @@ fmt = { fix = true }
     );
     let spec = lower_stage(&hooks, &poly(), HookStage::PreCommit, &[], &HookCacheMode::Safe).unwrap();
     let hook = &spec.hooks[0];
-    let HookCommand::Run(line) = &hook.command else {
+    let Some(line) = hook.command.line() else {
         panic!("expected run command");
     };
     assert!(
@@ -1026,7 +1053,7 @@ fmt = true
 "#,
     );
     let spec = lower_stage(&hooks, &poly(), HookStage::PreCommit, &[], &HookCacheMode::Safe).unwrap();
-    let HookCommand::Run(line) = &spec.hooks[0].command else {
+    let Some(line) = spec.hooks[0].command.line() else {
         panic!("expected run command");
     };
     assert!(line.contains(" fmt ") && !line.contains("--fix"), "{line}");
@@ -1084,7 +1111,7 @@ fn lint_and_fmt_children_get_a_bounded_job_count() {
     let cpus = std::thread::available_parallelism().map_or(1, usize::from);
     let expected = job_budget(cpus, 2);
     for (hook, tool) in spec.hooks.iter().zip(["lint", "fmt"]) {
-        let HookCommand::Run(line) = &hook.command else {
+        let Some(line) = hook.command.line() else {
             panic!("expected run command");
         };
         assert!(
