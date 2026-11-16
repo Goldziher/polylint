@@ -157,11 +157,11 @@ fn wait(
             (Some(limit), Some(notice)) => Some(limit.min(notice)),
             (limit, notice) => limit.or(notice),
         };
-        let received = match wake {
+        let reply = match wake {
             Some(at) => receiver.recv_timeout(at.saturating_sub(started.elapsed())),
             None => receiver.recv().map_err(|_| RecvTimeoutError::Disconnected),
         };
-        match received {
+        match reply {
             Ok(result) => return Dispatched::Finished(result),
             Err(RecvTimeoutError::Disconnected) => {
                 let error = anyhow::anyhow!("in-process check `{name}` stopped without a result");
