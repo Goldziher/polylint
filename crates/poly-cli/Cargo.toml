@@ -16,10 +16,6 @@ categories = ["development-tools", "command-line-utilities"]
 [target.'cfg(target_env = "musl")'.dependencies]
 mimalloc.workspace = true
 
-[dependencies.dhat]
-workspace = true
-optional = true
-
 # `{ archive-suffix }` carries its own leading dot, so it follows `{ target }` directly.
 [package.metadata.binstall]
 pkg-url = "{ repo }/releases/download/v{ version }/poly-{ version }-{ target }{ archive-suffix }"
@@ -94,6 +90,10 @@ tracing.workspace = true
 tracing-subscriber.workspace = true
 walkdir.workspace = true
 which.workspace = true
+
+[dependencies.dhat]
+workspace = true
+optional = true
 
 [dev-dependencies]
 insta.workspace = true

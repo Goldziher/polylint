@@ -37,5 +37,6 @@ tsrs_tsoptions = { version = "=7.1.0-beta.tsrs1", default-features = false }
 tsrs_vfs = { version = "=7.1.0-beta.tsrs1", default-features = false }
 
 [profile.release]
-lto = "thin"
+lto = "fat"
 codegen-units = 1
+strip = "symbols"

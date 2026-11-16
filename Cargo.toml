@@ -218,8 +218,9 @@ which = "8.0.6"
 zip = { version = "9.5", default-features = false, features = ["deflate-flate2-zlib-rs"] }
 
 [profile.release]
-lto = "thin"
+lto = "fat"
 codegen-units = 1
+strip = "symbols"
 
 # Symbolised release build for `mise run profile:samply` and `profile:dhat`: line tables, no strip.
 [profile.profiling]

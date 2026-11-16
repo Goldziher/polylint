@@ -71,8 +71,9 @@ toml = "1"
 tracing = "0.1"
 
 [profile.release]
-lto = "thin"
+lto = "fat"
 codegen-units = 1
+strip = "symbols"
 
 # Symbolised release build for `mise run profile:samply` (the bundled binary).
 [profile.profiling]
