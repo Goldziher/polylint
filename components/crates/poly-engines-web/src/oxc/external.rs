@@ -16,7 +16,7 @@ use anyhow::Context;
 use serde::Deserialize;
 
 use poly_engine_api::config::EngineConfig;
-use poly_engine_api::engine::{Diagnostic, Severity, SourceFile, Span};
+use poly_engine_api::engine::{Diagnostic, Severity, SourceFile};
 use poly_engine_api::line_index::LineIndex;
 use poly_engine_api::options::OptionsExt;
 
@@ -226,14 +226,7 @@ fn run_oxlint(binary: &Path, config: &Path, files: &[&SourceFile]) -> anyhow::Re
                 let line_index = indexes
                     .entry(index)
                     .or_insert_with(|| LineIndex::new(&files[index].content));
-                let (start_line, start_col) = line_index.line_col(label.span.offset);
-                let (end_line, end_col) = line_index.line_col(label.span.offset + label.span.length);
-                Span {
-                    start_line,
-                    start_col,
-                    end_line,
-                    end_col,
-                }
+                line_index.span(label.span.offset, label.span.offset + label.span.length)
             });
             results[index].push(Diagnostic {
                 engine: "oxc".to_owned(),

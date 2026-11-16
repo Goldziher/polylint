@@ -17,14 +17,7 @@ use poly_engine_api::rule_config::RuleSelection;
 pub(crate) fn text_range_to_span(index: &LineIndex<'_>, range: biome_rowan::TextRange) -> Span {
     let start = u32::from(range.start()) as usize;
     let end = u32::from(range.end()) as usize;
-    let (start_line, start_col) = index.line_col(start);
-    let (end_line, end_col) = index.line_col(end);
-    Span {
-        start_line,
-        start_col,
-        end_line,
-        end_col,
-    }
+    index.span(start, end)
 }
 
 /// Capture a biome `Diagnostic::description` as a plain `String`.

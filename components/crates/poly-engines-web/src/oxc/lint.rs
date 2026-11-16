@@ -13,7 +13,7 @@ use oxc_linter::{
 use super::plugins::extra_lint_plugins;
 use super::run::SourceLinter;
 use poly_engine_api::config::EngineConfig;
-use poly_engine_api::engine::{Diagnostic, Edit, Severity, SourceFile, Span};
+use poly_engine_api::engine::{Diagnostic, Edit, Severity, SourceFile};
 use poly_engine_api::line_index::LineIndex;
 use poly_engine_api::options::OptionsExt;
 use poly_engine_api::rule_config::{RuleOptions, RuleSelection};
@@ -459,14 +459,7 @@ fn map_oxlint_message(msg: Message, index: &LineIndex) -> Diagnostic {
 
     let start = msg.span.start as usize;
     let end = msg.span.end as usize;
-    let (start_line, start_col) = index.line_col(start);
-    let (end_line, end_col) = index.line_col(end);
-    let span = Some(Span {
-        start_line,
-        start_col,
-        end_line,
-        end_col,
-    });
+    let span = Some(index.span(start, end));
 
     let fix: Vec<Edit> = match msg.fixes {
         PossibleFixes::Single(f) => vec![Edit {

@@ -178,14 +178,7 @@ pub fn complexity_diagnostic(
 /// `[start, end)` of `index`'s text, with character columns. Mirrors
 /// `engines/uncomment.rs::span_of`.
 pub(super) fn span_of(index: &LineIndex<'_>, start: usize, end: usize) -> crate::engine::Span {
-    let (start_line, start_col) = index.line_col(start);
-    let (end_line, end_col) = index.line_col(end);
-    crate::engine::Span {
-        start_line,
-        start_col,
-        end_line,
-        end_col,
-    }
+    index.span(start, end)
 }
 
 fn diagnostic(code: &str, title: String, start_line: u32, start_col: u32, end_line: u32, end_col: u32) -> Diagnostic {

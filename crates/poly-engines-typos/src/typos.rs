@@ -34,7 +34,7 @@ use unicase::UniCase;
 
 use poly_engine_api::config::EngineConfig;
 use poly_engine_api::engine::{
-    Capabilities, Diagnostic, Engine, OptionKeys, OptionTable, OptionType, Severity, SourceFile, Span,
+    Capabilities, Diagnostic, Engine, OptionKeys, OptionTable, OptionType, Severity, SourceFile,
 };
 use poly_engine_api::language::Language;
 use poly_engine_api::line_index::LineIndex;
@@ -469,9 +469,6 @@ fn typo_to_diagnostic(index: &LineIndex<'_>, typo: typos::Typo<'_>) -> Diagnosti
     let start_byte = typo.byte_offset;
     let end_byte = start_byte + typo.typo.len();
 
-    let (start_line, start_col) = index.line_col(start_byte);
-    let (end_line, end_col) = index.line_col(end_byte);
-
     let corrections: Vec<&str> = match &typo.corrections {
         typos::Status::Corrections(c) => c.iter().map(Cow::as_ref).collect(),
         _ => vec![],
@@ -495,12 +492,7 @@ fn typo_to_diagnostic(index: &LineIndex<'_>, typo: typos::Typo<'_>) -> Diagnosti
         title: message,
         description: None,
         url: None,
-        span: Some(Span {
-            start_line,
-            start_col,
-            end_line,
-            end_col,
-        }),
+        span: Some(index.span(start_byte, end_byte)),
         fix: Vec::new(),
         metadata: Default::default(),
     }

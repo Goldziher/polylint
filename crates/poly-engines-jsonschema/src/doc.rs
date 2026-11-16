@@ -98,14 +98,7 @@ pub(crate) fn element(parent: &str, at: usize) -> String {
 
 /// The span covering `start..end` (byte offsets) of the source `lines` indexes.
 pub(crate) fn span_between(lines: &LineIndex<'_>, start: usize, end: usize) -> Span {
-    let (start_line, start_col) = lines.line_col(start);
-    let (end_line, end_col) = lines.line_col(end);
-    Span {
-        start_line,
-        start_col,
-        end_line,
-        end_col,
-    }
+    lines.span(start, end)
 }
 
 /// Parses `src` as the documents of `language` without recording spans; a document resolves them

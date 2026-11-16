@@ -694,13 +694,6 @@ impl<'a> KeySpans<'a> {
 
     /// Convert a byte range into a 1-based line/column span.
     fn to_span(&self, range: Range<usize>) -> Span {
-        let (start_line, start_col) = self.lines.line_col(range.start);
-        let (end_line, end_col) = self.lines.line_col(range.end);
-        Span {
-            start_line,
-            start_col,
-            end_line,
-            end_col,
-        }
+        self.lines.span(range.start, range.end)
     }
 }

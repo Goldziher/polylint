@@ -10,6 +10,8 @@
 //! code units and not bytes. In a CRLF file the `\r` is a column of its own. Consumers that expect
 //! UTF-16 columns (SARIF, LSP) are off by one for each astral character before the position.
 
+use crate::engine::Span;
+
 /// Granularity of the character-count checkpoints, in bytes.
 const CHUNK: usize = 1024;
 
@@ -57,6 +59,19 @@ impl<'a> LineIndex<'a> {
         (line_index as u32 + 1, col as u32 + 1)
     }
 
+    /// The [`Span`] covering the byte range `start..end`, both ends converted by
+    /// [`line_col`](Self::line_col).
+    pub fn span(&self, start: usize, end: usize) -> Span {
+        let (start_line, start_col) = self.line_col(start);
+        let (end_line, end_col) = self.line_col(end);
+        Span {
+            start_line,
+            start_col,
+            end_line,
+            end_col,
+        }
+    }
+
     fn char_starts_before(&self, offset: usize) -> usize {
         let chunk_start = offset - offset % CHUNK;
         self.chars_before[offset / CHUNK] + count_char_starts(&self.src.as_bytes()[chunk_start..offset])
@@ -102,6 +117,16 @@ mod tests {
     fn empty_text_is_line_one_column_one() {
         assert_eq!(LineIndex::new("").line_col(0), (1, 1));
         assert_eq!(LineIndex::new("").line_col(9), (1, 1));
+    }
+
+    #[test]
+    fn span_converts_both_ends() {
+        let span = LineIndex::new("ab\né x\n").span(1, 6);
+        assert_eq!(
+            (span.start_line, span.start_col, span.end_line, span.end_col),
+            (1, 2, 2, 3),
+            "columns count characters, so `é` is one"
+        );
     }
 
     #[test]

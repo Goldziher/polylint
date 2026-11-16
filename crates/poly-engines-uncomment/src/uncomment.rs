@@ -654,14 +654,7 @@ fn resolved_config(cfg: &EngineConfig) -> ResolvedConfig {
 /// Build a 1-based [`Span`] covering the byte range `[start, end)` of `index`'s
 /// text, with columns counted in characters.
 fn span_of(index: &LineIndex<'_>, start: usize, end: usize) -> Span {
-    let (start_line, start_col) = index.line_col(start);
-    let (end_line, end_col) = index.line_col(end);
-    Span {
-        start_line,
-        start_col,
-        end_line,
-        end_col,
-    }
+    index.span(start, end)
 }
 
 #[cfg(test)]

@@ -315,14 +315,7 @@ fn build_options(cfg: &EngineConfig) -> Options {
 /// Convert a byte range `[start_byte, end_byte)` of `index`'s text into a
 /// 1-based [`Span`] with character columns.
 fn byte_range_to_span(index: &LineIndex<'_>, start_byte: usize, end_byte: usize) -> Span {
-    let (start_line, start_col) = index.line_col(start_byte);
-    let (end_line, end_col) = index.line_col(end_byte.max(start_byte));
-    Span {
-        start_line,
-        start_col,
-        end_line,
-        end_col,
-    }
+    index.span(start_byte, end_byte.max(start_byte))
 }
 
 /// Extract a [`Span`] from a DOM [`dom::Error`], if any key has syntax.
