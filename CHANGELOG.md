@@ -61,6 +61,8 @@ binary drives lint, format, hooks, and commit checks from one `poly.toml`.
 - **Secret scanning on Linux.** The `secrets` component now ships for x86_64 and aarch64 Linux (glibc 2.28 and newer):
   the release compiles vectorscan from source in its manylinux_2_28 image instead of using the prebuilt archive, which
   needs glibc 2.32. (#112)
+- **uncomment shares the lint pass's parse.** With uncomment 3.12, the `uncomment` engine takes the tree `quality` or
+  `ast-grep` already parsed for the file instead of parsing it again, where the engines are linked together. (#187)
 
 ### Security
 

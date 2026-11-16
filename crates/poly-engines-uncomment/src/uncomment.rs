@@ -74,7 +74,7 @@ use poly_engine_api::options::OptionsExt;
 /// Cache-key version: the wrapped crate version plus a marker for this backend's
 /// own mapping logic. Bump whenever `uncomment` is updated OR the diagnostic/edit
 /// mapping below changes (either alters output and must bust the cache).
-const UNCOMMENT_VERSION: &str = "uncomment-3.10.4+map2-codeonly+prose3-blocks+cols1";
+const UNCOMMENT_VERSION: &str = "uncomment-3.12.0+map2-codeonly+prose3-blocks+cols1+shared-parse1";
 
 thread_local! {
     /// One `Processor` per rayon worker thread. The processor owns a reusable
@@ -130,8 +130,15 @@ impl Engine for UncommentEngine {
         }
 
         let resolved = resolved_config(cfg);
-        let removals =
-            PROCESSOR.with(|processor| processor.borrow_mut().plan_removals(&src.content, &src.path, &resolved));
+        // Another linked engine in this lint pass (quality, ast-grep) may already hold the tree (ADR 0057).
+        let content = &src.content;
+        let removals = PROCESSOR.with(|processor| {
+            processor
+                .borrow_mut()
+                .plan_removals_with(content, &src.path, &resolved, |language, parser| {
+                    poly_grammar::shared_tree(content, language, || parser.parse(content.as_bytes(), None))
+                })
+        });
 
         let removals = match removals {
             Ok(removals) => removals,

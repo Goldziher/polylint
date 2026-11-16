@@ -4068,6 +4068,7 @@ dependencies = [
  "anyhow",
  "insta",
  "poly-engine-api",
+ "poly-grammar",
  "toml 1.2.1+spec-1.1.0",
  "tracing",
  "uncomment",
@@ -6479,9 +6480,9 @@ checksum = "d0af592be68c579aa78a16846bd19422978c3c52e438523d45ff5d1bff1f9d4a"
 
 [[package]]
 name = "tree-sitter-language-pack"
-version = "1.25.0"
+version = "1.25.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "aeab6dd57fa75ca32f55a3160cce30a8d3217882260ae21c7527df2d41b50f2e"
+checksum = "647bdc6978de3f89489f11f56cb3744dcf6751930423e31f70533e0cbcd20291"
 dependencies = [
  "ahash",
  "cc",
@@ -6787,9 +6788,9 @@ checksum = "eaea85b334db583fe3274d12b4cd1880032beab409c0d774be044d4480ab9a94"
 
 [[package]]
 name = "uncomment"
-version = "3.10.4"
+version = "3.12.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c5b8dedd9a4108f57d02b02a28269a5c8dc1ac7f8c2e56cdb43a9b15faf72c9e"
+checksum = "ec408f98718eb63a1f44e3f8921588e859521299441892ac12cde55c0547a343"
 dependencies = [
  "ahash",
  "anstream",
