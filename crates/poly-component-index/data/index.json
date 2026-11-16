@@ -16,7 +16,7 @@
             "fix": true,
             "project": true
           },
-          "version": "adrlint-0.5.0+poly4",
+          "version": "adrlint-0.5.2+poly4",
           "option_keys": [
             {
               "table": "Lint",
@@ -459,7 +459,7 @@
             "fix": true,
             "project": true
           },
-          "version": "0.3.4+defaults5-mdx-rules-tmplskip-codeaware-md020guard-md038fmt-structfix+ruleparams1+extendsel2+oxc_formatter_markdown-74e5e66+md-embed-1+oxfmtrc-scope-1+links1+fmt-err-2",
+          "version": "0.3.5+polylint-rumdl-oxc158+defaults5-mdx-rules-tmplskip-codeaware-md020guard-md038fmt-structfix+ruleparams1+extendsel2+oxc_formatter_markdown-74e5e66+md-embed-1+oxfmtrc-scope-1+links1+fmt-err-2",
           "option_keys": [
             {
               "table": "Lint",
@@ -2439,7 +2439,7 @@
             "fix": true,
             "project": false
           },
-          "version": "uncomment-3.10.4+map2-codeonly+prose3-blocks+cols1",
+          "version": "uncomment-3.12.0+map2-codeonly+prose3-blocks+cols1+shared-parse1",
           "option_keys": [
             {
               "table": "Lint",
