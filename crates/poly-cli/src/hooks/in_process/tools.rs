@@ -4,10 +4,12 @@
 //! Only a call this process can stand in for exactly is taken; anything else is
 //! declined and re-execs (ADR 0071):
 //!
-//! - The hook's directory must be this process's working directory. Engines
-//!   still read the working directory themselves (a native tool's config
-//!   anchor, a recipe tool's run directory), so a staged snapshot or a hook
-//!   `cwd` keeps the child, whose working directory is that directory.
+//! - A hook directory other than this process's working directory (the staged
+//!   snapshot, a hook `cwd`) becomes the run's root ([`RunOptions::root`], ADR
+//!   0073): the run reads its config, files and every working-directory anchor
+//!   there, as the child started in it does. Such a call is declined when it
+//!   names no file or a file the directory does not hold, whose report the child
+//!   spells from paths this process does not have.
 //! - The parent's `--offline` and `--trust` flags, and a colour forced through
 //!   the environment, would reach an in-process run but not the child.
 //! - Only the arguments the lowering produces, plus flags that only feed
@@ -16,7 +18,7 @@
 //!   applied to this run's options rather than installed process-wide.
 
 use std::fmt::Write as _;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use anyhow::Result;
 use clap::Parser;
@@ -25,7 +27,7 @@ use poly_core::{Config, RunOptions, Verbosity, report};
 use poly_hooks::in_process::{Call, FMT, LINT, Outcome};
 
 use crate::component_notes::component_lines;
-use crate::config_sources::{RemoteExtendsResolver, repo_root};
+use crate::config_sources::{RemoteExtendsResolver, repo_root, repo_root_from};
 use crate::missing_paths::missing_paths_message;
 use crate::{CommonArgs, EXIT_NOT_VERIFIED, FmtArgs, LintArgs, OutputFormat, WorkspaceMode};
 
@@ -74,20 +76,36 @@ impl Streams {
 /// Run a `lint` or `fmt` call as `poly <name> <args> <files>` would from
 /// `call.dir`, or decline when this process cannot reproduce that child.
 pub(super) fn run(call: &Call<'_>) -> Option<Result<Outcome>> {
-    if !super::is_working_dir(call.dir) || !environment_matches_child() {
+    if !environment_matches_child() {
         return None;
     }
+    let root = run_root(call)?;
     match call.name {
         LINT => {
             let args = LintCommand::try_parse_from(super::argv(LINT, call)).ok()?.args;
-            (args.workspace == WorkspaceMode::Never && reproducible(&args.common)).then(|| Ok(lint(&args.common)))
+            (args.workspace == WorkspaceMode::Never && reproducible(&args.common))
+                .then(|| Ok(lint(&args.common, root.as_deref())))
         }
         FMT => {
             let args = FmtCommand::try_parse_from(super::argv(FMT, call)).ok()?.args;
-            (!args.check && reproducible(&args.common)).then(|| Ok(fmt(&args)))
+            (!args.check && reproducible(&args.common)).then(|| Ok(fmt(&args, root.as_deref())))
         }
         _ => None,
     }
+}
+
+/// Where the run is rooted: `Some(None)` in this process's working directory,
+/// `Some(Some(dir))` in the hook's directory `dir` (canonical, as the child's
+/// working directory is), `None` to decline. A rooted call must name files that
+/// exist under the root: with no file the child walks `.`, and a missing file is
+/// reported by the child in its own spelling.
+fn run_root(call: &Call<'_>) -> Option<Option<PathBuf>> {
+    if super::is_working_dir(call.dir) {
+        return Some(None);
+    }
+    let root = call.dir.canonicalize().ok()?;
+    let held = !call.files.is_empty() && call.files.iter().all(|file| root.join(file).exists());
+    held.then_some(Some(root))
 }
 
 /// Whether nothing this process was started with would make it behave
@@ -107,10 +125,11 @@ fn reproducible(common: &CommonArgs) -> bool {
         && common.set.iter().all(|set| set == FORCE_EXCLUDE_SET)
 }
 
-/// `poly lint --workspace never`'s pretty path (`crate::run_lint`).
-fn lint(common: &CommonArgs) -> Outcome {
+/// `poly lint --workspace never`'s pretty path (`crate::run_lint`), rooted at
+/// `root` when the hook's directory is not this process's.
+fn lint(common: &CommonArgs, root: Option<&Path>) -> Outcome {
     let mut streams = Streams::default();
-    let Some((paths, config, opts)) = prepare(common, &mut streams) else {
+    let Some((paths, config, opts)) = prepare(common, root, &mut streams) else {
         return streams.finish(EXIT_NOT_VERIFIED);
     };
     let run = match poly_core::lint_run(&paths, &config, &opts, common.fix, false) {
@@ -131,11 +150,11 @@ fn lint(common: &CommonArgs) -> Outcome {
     streams.finish(code)
 }
 
-/// `poly fmt`'s pretty path (`crate::run_fmt`).
-fn fmt(args: &FmtArgs) -> Outcome {
+/// `poly fmt`'s pretty path (`crate::run_fmt`), rooted as [`lint`] is.
+fn fmt(args: &FmtArgs, root: Option<&Path>) -> Outcome {
     let common = &args.common;
     let mut streams = Streams::default();
-    let Some((paths, config, opts)) = prepare(common, &mut streams) else {
+    let Some((paths, config, opts)) = prepare(common, root, &mut streams) else {
         return streams.finish(EXIT_NOT_VERIFIED);
     };
     let write = common.fix;
@@ -161,26 +180,44 @@ fn fmt(args: &FmtArgs) -> Outcome {
 /// The child's `prepare` (`crate::prepare_with_poly`) without its process-wide
 /// side effects: the `--set` override lands on this run's config, and nothing
 /// is printed but into `streams`. `None` once it has written why the run stops.
-fn prepare(common: &CommonArgs, streams: &mut Streams) -> Option<(Vec<PathBuf>, Config, RunOptions)> {
+///
+/// With a `root`, everything the child reads from its working directory is read
+/// from the root instead: the repository the resolver is rooted at, the config,
+/// and (through [`RunOptions::root`]) the files and every anchor below the runner.
+/// `run_root` already checked that the named files exist there.
+fn prepare(
+    common: &CommonArgs,
+    root: Option<&Path>,
+    streams: &mut Streams,
+) -> Option<(Vec<PathBuf>, Config, RunOptions)> {
     let paths = if common.paths.is_empty() {
         vec![PathBuf::from(".")]
     } else {
         common.paths.clone()
     };
-    if let Some(message) = missing_paths_message(&paths) {
+    if root.is_none()
+        && let Some(message) = missing_paths_message(&paths)
+    {
         streams.stderr.push_str(&message);
         return None;
     }
-    let resolver = match repo_root().and_then(|root| RemoteExtendsResolver::new(&root)) {
+    let repository = match root {
+        Some(root) => Ok(repo_root_from(root)),
+        None => repo_root(),
+    };
+    let resolver = match repository.and_then(|repository| RemoteExtendsResolver::new(&repository)) {
         Ok(resolver) => std::sync::Arc::new(resolver),
         Err(error) => {
             let _ = writeln!(streams.stderr, "error: failed to prepare config resolver: {error:#}");
             return None;
         }
     };
-    // The child's working directory is this one (`run` checked), and it loads from there.
-    let cwd = std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
-    let poly_config = match poly_config::PolyConfig::load_with(&cwd, resolver.as_ref()) {
+    // The child loads from its working directory: the root, else this process's own.
+    let dir = match root {
+        Some(root) => root.to_path_buf(),
+        None => std::env::current_dir().unwrap_or_else(|_| PathBuf::from(".")),
+    };
+    let poly_config = match poly_config::PolyConfig::load_with(&dir, resolver.as_ref()) {
         Ok(poly_config) => poly_config,
         Err(error) => {
             let _ = writeln!(streams.stderr, "error: failed to load config: {error:#}");
@@ -206,6 +243,7 @@ fn prepare(common: &CommonArgs, streams: &mut Streams) -> Option<(Vec<PathBuf>, 
         skip: common.skip.clone(),
         on_missing: common.on_missing.map(Into::into),
         timings: false,
+        root: root.map(Path::to_path_buf),
         ..RunOptions::default()
     };
     Some((paths, config, opts))
@@ -250,15 +288,24 @@ mod tests {
     }
 
     #[test]
-    fn a_call_from_another_directory_is_declined() {
+    fn a_call_from_another_directory_is_rooted_there_when_it_holds_the_files() {
         let dir = tempfile::tempdir().expect("tempdir");
-        let args = ["-j".to_string(), "1".to_string()];
-        let call = Call {
-            name: FMT,
-            args: &args,
-            dir: dir.path(),
-            files: &[],
+        std::fs::write(dir.path().join("a.py"), "x = 1\n").expect("write");
+        let call = |files: &[&Path]| {
+            run_root(&Call {
+                name: FMT,
+                args: &[],
+                dir: dir.path(),
+                files,
+            })
         };
-        assert!(run(&call).is_none());
+        let canonical = dir.path().canonicalize().expect("canonical");
+        assert_eq!(call(&[Path::new("a.py")]), Some(Some(canonical)));
+        assert_eq!(call(&[]), None, "a rooted call that names no file walks `.`");
+        assert_eq!(
+            call(&[Path::new("missing.py")]),
+            None,
+            "the child reports a missing file"
+        );
     }
 }

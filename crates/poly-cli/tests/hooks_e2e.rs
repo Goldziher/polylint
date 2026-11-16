@@ -998,18 +998,81 @@ fn in_process_fmt_reports_what_the_reexec_prints() {
     assert_reports_match(&in_process, &child);
 }
 
-/// A staged run keeps the re-exec for `lint`: its engines read the working directory, which only
-/// a child started in the snapshot has (ADR 0071).
+/// A pre-commit run over the staged snapshot (no `--all-files`), showing a passing hook's output too.
+#[cfg(feature = "all-engines")]
+const STAGED: [&str; 4] = ["run", "pre-commit", "--no-cache", "-v"];
+
+/// A staged `lint` runs in process, rooted at the snapshot (ADR 0073), and judges the staged
+/// content: the worktree copy is clean, the index copy is not, and the report is the child's.
 #[cfg(feature = "all-engines")]
 #[test]
-fn a_staged_lint_keeps_the_reexec() {
+fn a_staged_lint_runs_in_process_over_the_snapshot() {
     let repo = init_repo();
     let root = repo.path();
-    write(root, "poly.toml", "[hooks.builtin]\nlint = { files = \"**/*.md\" }\n");
-    write(root, "a.md", "# Title\n");
-    git(root, &["add", "a.md"]);
+    let (builtin, reexec) = tool_configs("lint", "--workspace never ");
+    write(root, "unused.py", "import os\n");
+    git(root, &["add", "unused.py"]);
+    write(root, "unused.py", "x = 1\n");
 
-    let output = poly_hooks(root, &["--debug", "run", "pre-commit", "--no-cache"]);
-    let log = String::from_utf8_lossy(&output.stderr);
-    assert!(!log.contains("ran in process"), "{log}");
+    let (in_process, child) = in_process_and_reexec(root, &builtin, &reexec, &STAGED);
+    let report = String::from_utf8_lossy(&child.stdout);
+    assert_eq!(child.status.code(), Some(1), "{report}");
+    assert!(
+        report.contains("unused.py"),
+        "the staged finding must reach the report: {report}"
+    );
+    assert_reports_match(&in_process, &child);
+}
+
+/// A staged `poly.toml` governs a staged run, not the worktree's: its `[per-file-ignores]` and
+/// `[discovery] exclude` drop findings the worktree config would report, in process as in the child.
+#[cfg(feature = "all-engines")]
+#[test]
+fn a_staged_lint_reads_the_staged_config() {
+    let repo = init_repo();
+    let root = repo.path();
+    let (builtin, reexec) = tool_configs("lint", "--workspace never ");
+    write(
+        root,
+        "poly.toml",
+        "[per-file-ignores]\n\"ignored.py\" = [\"F401\"]\n\n[discovery]\nexclude = [\"excluded.py\"]\n",
+    );
+    for name in ["kept.py", "ignored.py", "excluded.py"] {
+        write(root, name, "import os\n");
+    }
+    git(root, &["add", "poly.toml", "kept.py", "ignored.py", "excluded.py"]);
+
+    let (in_process, child) = in_process_and_reexec(root, &builtin, &reexec, &STAGED);
+    let report = String::from_utf8_lossy(&child.stdout);
+    assert_eq!(child.status.code(), Some(1), "{report}");
+    assert!(
+        report.contains("kept.py"),
+        "the unignored finding must be reported: {report}"
+    );
+    assert!(
+        !report.contains("ignored.py") && !report.contains("excluded.py"),
+        "the staged config must drop these: {report}"
+    );
+    assert_reports_match(&in_process, &child);
+}
+
+/// A staged `fmt` reports drift in the staged content, in process as in the child, and writes
+/// neither the worktree nor the index.
+#[cfg(feature = "all-engines")]
+#[test]
+fn a_staged_fmt_reports_drift_in_the_staged_content() {
+    let repo = init_repo();
+    let root = repo.path();
+    let (builtin, reexec) = tool_configs("fmt", "");
+    write(root, "a.py", "x=1\n");
+    git(root, &["add", "a.py"]);
+    write(root, "a.py", "x = 1\n");
+
+    let (in_process, child) = in_process_and_reexec(root, &builtin, &reexec, &STAGED);
+    let report = String::from_utf8_lossy(&child.stdout);
+    assert_eq!(child.status.code(), Some(1), "{report}");
+    assert!(report.contains("would reformat a.py"), "{report}");
+    assert_reports_match(&in_process, &child);
+    assert_eq!(std::fs::read_to_string(root.join("a.py")).unwrap(), "x = 1\n");
+    assert_eq!(staged_blob(root, "a.py"), "x=1");
 }
