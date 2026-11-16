@@ -119,7 +119,7 @@ fmt = true
     // rather than deliberately named ones, so without it the repo's
     // `[discovery] exclude` is silently inert in the one place it matters most.
     assert!(
-        line.ends_with(" lint --workspace never --set discovery.force_exclude=true"),
+        line.ends_with(" --workspace never --set discovery.force_exclude=true"),
         "unexpected line: {line}"
     );
     assert!(line.contains("/opt/poly/bin/poly"));
@@ -763,13 +763,13 @@ fn a_fix_mode_builtin_rewrites_and_restages() {
     let spec = lower_stage(&hooks, &poly(), HookStage::PreCommit, &[], &HookCacheMode::Safe).unwrap();
     let lint = hook(&spec, "lint");
     assert!(
-        run_line(lint).ends_with(" lint --workspace never --set discovery.force_exclude=true --fix"),
+        run_line(lint).ends_with(" --workspace never --set discovery.force_exclude=true --fix"),
         "{}",
         run_line(lint)
     );
     let fmt = hook(&spec, "fmt");
     assert!(
-        run_line(fmt).ends_with(" fmt --set discovery.force_exclude=true --fix"),
+        run_line(fmt).ends_with(" --set discovery.force_exclude=true --fix"),
         "{}",
         run_line(fmt)
     );
@@ -1047,4 +1047,38 @@ exclude = "pkg/gen/**"
         "check 'src/a.py' 'origin' 'origin' 'pkg/url'",
         "the exclude matches repo-relative paths, files are then root-relative, git arguments are verbatim"
     );
+}
+
+#[test]
+fn job_budget_splits_cores_across_concurrent_hooks() {
+    assert_eq!(job_budget(16, 1), 16);
+    assert_eq!(job_budget(16, 2), 8);
+    assert_eq!(job_budget(3, 2), 1);
+    assert_eq!(job_budget(1, 4), 1, "never below one worker");
+    assert_eq!(job_budget(8, 0), 8, "no hooks is treated as one");
+}
+
+#[test]
+fn concurrent_tool_hooks_counts_checks_and_one_serial_fix_group() {
+    let check = hooks_from("[hooks.builtin]\nlint = true\nfmt = true\n");
+    assert_eq!(concurrent_tool_hooks(&check), 2);
+    let lint_only = hooks_from("[hooks.builtin]\nlint = true\n");
+    assert_eq!(concurrent_tool_hooks(&lint_only), 1);
+}
+
+#[test]
+fn lint_and_fmt_children_get_a_bounded_job_count() {
+    let hooks = hooks_from("[hooks]\nstages = [\"pre-commit\"]\n[hooks.builtin]\nlint = true\nfmt = true\n");
+    let spec = lower_stage(&hooks, &poly(), HookStage::PreCommit, &[], &HookCacheMode::Safe).unwrap();
+    let cpus = std::thread::available_parallelism().map_or(1, usize::from);
+    let expected = job_budget(cpus, 2);
+    for (hook, tool) in spec.hooks.iter().zip(["lint", "fmt"]) {
+        let HookCommand::Run(line) = &hook.command else {
+            panic!("expected run command");
+        };
+        assert!(
+            line.contains(&format!(" {tool} -j {expected} ")),
+            "{tool} must carry its share of the cores, got: {line}"
+        );
+    }
 }

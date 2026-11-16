@@ -222,10 +222,12 @@ fn append_builtins(
     out: &mut Vec<Hook>,
 ) -> Result<()> {
     let poly = shell_quote(&poly_bin.to_string_lossy());
+    let cpus = std::thread::available_parallelism().map_or(1, usize::from);
+    let worker_threads = job_budget(cpus, concurrent_tool_hooks(hooks));
 
     for (tool, builtin) in [(Tool::Lint, &hooks.builtin.lint), (Tool::Fmt, &hooks.builtin.fmt)] {
         if builtin.enabled {
-            append_scoped_tool(tool, builtin, &poly, hooks, config_stage, out)?;
+            append_scoped_tool(tool, builtin, &poly, hooks, config_stage, worker_threads, out)?;
         }
     }
     if hooks.builtin.commit.enabled
@@ -299,14 +301,49 @@ impl Tool {
         }
     }
 
-    fn command(self, poly: &str, fix: bool) -> String {
+    fn command(self, poly: &str, fix: bool, jobs: usize) -> String {
         match (self, fix) {
-            (Tool::Lint, false) => format!("{poly} lint --workspace never {FORCE_EXCLUDE}"),
-            (Tool::Lint, true) => format!("{poly} lint --workspace never {FORCE_EXCLUDE} --fix"),
-            (Tool::Fmt, false) => format!("{poly} fmt {FORCE_EXCLUDE}"),
-            (Tool::Fmt, true) => format!("{poly} fmt {FORCE_EXCLUDE} --fix"),
+            (Tool::Lint, false) => format!("{poly} lint -j {jobs} --workspace never {FORCE_EXCLUDE}"),
+            (Tool::Lint, true) => format!("{poly} lint -j {jobs} --workspace never {FORCE_EXCLUDE} --fix"),
+            (Tool::Fmt, false) => format!("{poly} fmt -j {jobs} {FORCE_EXCLUDE}"),
+            (Tool::Fmt, true) => format!("{poly} fmt -j {jobs} {FORCE_EXCLUDE} --fix"),
         }
     }
+}
+
+/// The worker-thread budget each concurrent `lint` / `fmt` hook child gets.
+///
+/// Every child builds its own rayon pool sized to the machine, so two of them
+/// running side by side would oversubscribe the cores. Splitting the cores by
+/// the number of hooks that can run at once keeps the total at the core count.
+fn job_budget(cpus: usize, concurrent: usize) -> usize {
+    (cpus / concurrent.max(1)).max(1)
+}
+
+/// How many `lint` / `fmt` hooks can run at the same time: every check-mode
+/// hook, plus one for all fix-mode hooks together (they share a serial group).
+fn concurrent_tool_hooks(hooks: &HooksConfig) -> usize {
+    let (mut checks, mut any_fix) = (0, false);
+    for builtin in [&hooks.builtin.lint, &hooks.builtin.fmt] {
+        if !builtin.enabled {
+            continue;
+        }
+        if builtin.jobs.is_empty() {
+            if builtin.fix {
+                any_fix = true;
+            } else {
+                checks += 1;
+            }
+        }
+        for job in &builtin.jobs {
+            if job.fix.unwrap_or(builtin.fix) {
+                any_fix = true;
+            } else {
+                checks += 1;
+            }
+        }
+    }
+    checks + usize::from(any_fix)
 }
 
 /// Lower one `lint` / `fmt` builtin: a single hook, or one per `jobs` entry.
@@ -320,6 +357,7 @@ fn append_scoped_tool(
     poly: &str,
     hooks: &HooksConfig,
     config_stage: ConfigStage,
+    worker_threads: usize,
     out: &mut Vec<Hook>,
 ) -> Result<()> {
     let jobs = if builtin.jobs.is_empty() {
@@ -343,7 +381,7 @@ fn append_scoped_tool(
             (None, true) => format!("{}-{}", tool.id(), index + 1),
             (None, false) => tool.id().to_string(),
         };
-        let mut hook = Hook::run(id, tool.command(poly, fix));
+        let mut hook = Hook::run(id, tool.command(poly, fix, worker_threads));
         let (files, exclude) = builtin_globs(
             job.files.as_ref().or(builtin.files.as_ref()),
             job.exclude.as_ref().or(builtin.exclude.as_ref()),
