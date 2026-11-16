@@ -146,8 +146,8 @@ fn project_config_files_are_honoured_and_poly_toml_wins() {
 
     let content = "local a = \"x\"\n";
     let src = source(path, content);
-    let merged =
-        poly_engine_api::host_hooks::format_config(StyluaEngine.host_hook(), StyluaEngine.name(), &src, &cfg(""));
+    let base = cfg("");
+    let merged = poly_engine_api::host_hooks::format_config(StyluaEngine.host_hook(), StyluaEngine.name(), &src, &base);
     match StyluaEngine.format(&src, &merged).unwrap() {
         FormatOutput::Formatted(text) => assert_eq!(text, "local a = 'x'\n"),
         FormatOutput::Unchanged => panic!("stylua.toml's quote_style did not reach the formatter"),
