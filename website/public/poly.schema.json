@@ -42,6 +42,9 @@
             },
             "secrets": {
               "$ref": "#/$defs/lint_secrets"
+            },
+            "harper": {
+              "$ref": "#/$defs/lint_harper"
             }
           },
           "additionalProperties": true
@@ -67,6 +70,9 @@
             },
             "secrets": {
               "$ref": "#/$defs/lint_secrets"
+            },
+            "harper": {
+              "$ref": "#/$defs/lint_harper"
             }
           },
           "additionalProperties": true
@@ -92,6 +98,9 @@
             },
             "secrets": {
               "$ref": "#/$defs/lint_secrets"
+            },
+            "harper": {
+              "$ref": "#/$defs/lint_harper"
             }
           },
           "additionalProperties": true
@@ -117,6 +126,9 @@
             },
             "secrets": {
               "$ref": "#/$defs/lint_secrets"
+            },
+            "harper": {
+              "$ref": "#/$defs/lint_harper"
             }
           },
           "additionalProperties": true
@@ -142,6 +154,9 @@
             },
             "secrets": {
               "$ref": "#/$defs/lint_secrets"
+            },
+            "harper": {
+              "$ref": "#/$defs/lint_harper"
             }
           },
           "additionalProperties": true
@@ -170,6 +185,9 @@
             },
             "secrets": {
               "$ref": "#/$defs/lint_secrets"
+            },
+            "harper": {
+              "$ref": "#/$defs/lint_harper"
             }
           },
           "additionalProperties": true
@@ -198,6 +216,9 @@
             },
             "secrets": {
               "$ref": "#/$defs/lint_secrets"
+            },
+            "harper": {
+              "$ref": "#/$defs/lint_harper"
             }
           },
           "additionalProperties": true
@@ -226,6 +247,9 @@
             },
             "secrets": {
               "$ref": "#/$defs/lint_secrets"
+            },
+            "harper": {
+              "$ref": "#/$defs/lint_harper"
             }
           },
           "additionalProperties": true
@@ -257,6 +281,9 @@
             },
             "secrets": {
               "$ref": "#/$defs/lint_secrets"
+            },
+            "harper": {
+              "$ref": "#/$defs/lint_harper"
             }
           },
           "additionalProperties": true
@@ -285,6 +312,9 @@
             },
             "secrets": {
               "$ref": "#/$defs/lint_secrets"
+            },
+            "harper": {
+              "$ref": "#/$defs/lint_harper"
             }
           },
           "additionalProperties": true
@@ -310,6 +340,9 @@
             },
             "secrets": {
               "$ref": "#/$defs/lint_secrets"
+            },
+            "harper": {
+              "$ref": "#/$defs/lint_harper"
             }
           },
           "additionalProperties": true
@@ -335,6 +368,9 @@
             },
             "secrets": {
               "$ref": "#/$defs/lint_secrets"
+            },
+            "harper": {
+              "$ref": "#/$defs/lint_harper"
             }
           },
           "additionalProperties": true
@@ -360,6 +396,9 @@
             },
             "biome": {
               "$ref": "#/$defs/lint_biome"
+            },
+            "harper": {
+              "$ref": "#/$defs/lint_harper"
             }
           },
           "additionalProperties": true
@@ -385,6 +424,9 @@
             },
             "biome": {
               "$ref": "#/$defs/lint_biome"
+            },
+            "harper": {
+              "$ref": "#/$defs/lint_harper"
             }
           },
           "additionalProperties": true
@@ -407,6 +449,9 @@
             },
             "secrets": {
               "$ref": "#/$defs/lint_secrets"
+            },
+            "harper": {
+              "$ref": "#/$defs/lint_harper"
             }
           },
           "additionalProperties": true
@@ -429,6 +474,9 @@
             },
             "secrets": {
               "$ref": "#/$defs/lint_secrets"
+            },
+            "harper": {
+              "$ref": "#/$defs/lint_harper"
             }
           },
           "additionalProperties": true
@@ -451,6 +499,9 @@
             },
             "secrets": {
               "$ref": "#/$defs/lint_secrets"
+            },
+            "harper": {
+              "$ref": "#/$defs/lint_harper"
             }
           },
           "additionalProperties": true
@@ -473,6 +524,9 @@
             },
             "secrets": {
               "$ref": "#/$defs/lint_secrets"
+            },
+            "harper": {
+              "$ref": "#/$defs/lint_harper"
             }
           },
           "additionalProperties": true
@@ -495,6 +549,9 @@
             },
             "secrets": {
               "$ref": "#/$defs/lint_secrets"
+            },
+            "harper": {
+              "$ref": "#/$defs/lint_harper"
             }
           },
           "additionalProperties": true
@@ -517,6 +574,9 @@
             },
             "secrets": {
               "$ref": "#/$defs/lint_secrets"
+            },
+            "harper": {
+              "$ref": "#/$defs/lint_harper"
             }
           },
           "additionalProperties": true
@@ -539,6 +599,9 @@
             },
             "secrets": {
               "$ref": "#/$defs/lint_secrets"
+            },
+            "harper": {
+              "$ref": "#/$defs/lint_harper"
             }
           },
           "additionalProperties": true
@@ -561,6 +624,9 @@
             },
             "secrets": {
               "$ref": "#/$defs/lint_secrets"
+            },
+            "harper": {
+              "$ref": "#/$defs/lint_harper"
             }
           },
           "additionalProperties": true
@@ -583,6 +649,9 @@
             },
             "secrets": {
               "$ref": "#/$defs/lint_secrets"
+            },
+            "harper": {
+              "$ref": "#/$defs/lint_harper"
             }
           },
           "additionalProperties": true
@@ -605,6 +674,9 @@
             },
             "secrets": {
               "$ref": "#/$defs/lint_secrets"
+            },
+            "harper": {
+              "$ref": "#/$defs/lint_harper"
             }
           },
           "additionalProperties": true
@@ -633,6 +705,9 @@
             },
             "biome": {
               "$ref": "#/$defs/lint_biome"
+            },
+            "harper": {
+              "$ref": "#/$defs/lint_harper"
             }
           },
           "additionalProperties": true
@@ -658,6 +733,9 @@
             },
             "secrets": {
               "$ref": "#/$defs/lint_secrets"
+            },
+            "harper": {
+              "$ref": "#/$defs/lint_harper"
             }
           },
           "additionalProperties": true
@@ -680,6 +758,9 @@
             },
             "secrets": {
               "$ref": "#/$defs/lint_secrets"
+            },
+            "harper": {
+              "$ref": "#/$defs/lint_harper"
             }
           },
           "additionalProperties": true
@@ -705,6 +786,9 @@
             },
             "secrets": {
               "$ref": "#/$defs/lint_secrets"
+            },
+            "harper": {
+              "$ref": "#/$defs/lint_harper"
             }
           },
           "additionalProperties": true
@@ -730,6 +814,9 @@
             },
             "secrets": {
               "$ref": "#/$defs/lint_secrets"
+            },
+            "harper": {
+              "$ref": "#/$defs/lint_harper"
             }
           },
           "additionalProperties": true
@@ -752,6 +839,9 @@
             },
             "secrets": {
               "$ref": "#/$defs/lint_secrets"
+            },
+            "harper": {
+              "$ref": "#/$defs/lint_harper"
             }
           },
           "additionalProperties": true
@@ -774,6 +864,9 @@
             },
             "secrets": {
               "$ref": "#/$defs/lint_secrets"
+            },
+            "harper": {
+              "$ref": "#/$defs/lint_harper"
             }
           },
           "additionalProperties": true
@@ -796,6 +889,9 @@
             },
             "secrets": {
               "$ref": "#/$defs/lint_secrets"
+            },
+            "harper": {
+              "$ref": "#/$defs/lint_harper"
             }
           },
           "additionalProperties": true
@@ -818,6 +914,9 @@
             },
             "secrets": {
               "$ref": "#/$defs/lint_secrets"
+            },
+            "harper": {
+              "$ref": "#/$defs/lint_harper"
             }
           },
           "additionalProperties": true
@@ -843,6 +942,9 @@
             },
             "secrets": {
               "$ref": "#/$defs/lint_secrets"
+            },
+            "harper": {
+              "$ref": "#/$defs/lint_harper"
             }
           },
           "additionalProperties": true
@@ -868,6 +970,9 @@
             },
             "secrets": {
               "$ref": "#/$defs/lint_secrets"
+            },
+            "harper": {
+              "$ref": "#/$defs/lint_harper"
             }
           },
           "additionalProperties": true
@@ -890,6 +995,9 @@
             },
             "secrets": {
               "$ref": "#/$defs/lint_secrets"
+            },
+            "harper": {
+              "$ref": "#/$defs/lint_harper"
             }
           },
           "additionalProperties": true
@@ -912,6 +1020,9 @@
             },
             "secrets": {
               "$ref": "#/$defs/lint_secrets"
+            },
+            "harper": {
+              "$ref": "#/$defs/lint_harper"
             }
           },
           "additionalProperties": true
@@ -934,6 +1045,9 @@
             },
             "secrets": {
               "$ref": "#/$defs/lint_secrets"
+            },
+            "harper": {
+              "$ref": "#/$defs/lint_harper"
             }
           },
           "additionalProperties": true
@@ -956,6 +1070,9 @@
             },
             "secrets": {
               "$ref": "#/$defs/lint_secrets"
+            },
+            "harper": {
+              "$ref": "#/$defs/lint_harper"
             }
           },
           "additionalProperties": true
@@ -978,6 +1095,9 @@
             },
             "secrets": {
               "$ref": "#/$defs/lint_secrets"
+            },
+            "harper": {
+              "$ref": "#/$defs/lint_harper"
             }
           },
           "additionalProperties": true
@@ -1000,6 +1120,9 @@
             },
             "secrets": {
               "$ref": "#/$defs/lint_secrets"
+            },
+            "harper": {
+              "$ref": "#/$defs/lint_harper"
             }
           },
           "additionalProperties": true
@@ -1022,6 +1145,9 @@
             },
             "secrets": {
               "$ref": "#/$defs/lint_secrets"
+            },
+            "harper": {
+              "$ref": "#/$defs/lint_harper"
             }
           },
           "additionalProperties": true
@@ -1044,6 +1170,9 @@
             },
             "secrets": {
               "$ref": "#/$defs/lint_secrets"
+            },
+            "harper": {
+              "$ref": "#/$defs/lint_harper"
             }
           },
           "additionalProperties": true
@@ -1066,6 +1195,9 @@
             },
             "secrets": {
               "$ref": "#/$defs/lint_secrets"
+            },
+            "harper": {
+              "$ref": "#/$defs/lint_harper"
             }
           },
           "additionalProperties": true
@@ -1088,6 +1220,9 @@
             },
             "secrets": {
               "$ref": "#/$defs/lint_secrets"
+            },
+            "harper": {
+              "$ref": "#/$defs/lint_harper"
             }
           },
           "additionalProperties": true
@@ -1113,6 +1248,9 @@
             },
             "secrets": {
               "$ref": "#/$defs/lint_secrets"
+            },
+            "harper": {
+              "$ref": "#/$defs/lint_harper"
             }
           },
           "additionalProperties": true
@@ -1138,6 +1276,9 @@
             },
             "secrets": {
               "$ref": "#/$defs/lint_secrets"
+            },
+            "harper": {
+              "$ref": "#/$defs/lint_harper"
             }
           },
           "additionalProperties": true
@@ -1160,6 +1301,9 @@
             },
             "secrets": {
               "$ref": "#/$defs/lint_secrets"
+            },
+            "harper": {
+              "$ref": "#/$defs/lint_harper"
             }
           },
           "additionalProperties": true
@@ -1182,6 +1326,9 @@
             },
             "secrets": {
               "$ref": "#/$defs/lint_secrets"
+            },
+            "harper": {
+              "$ref": "#/$defs/lint_harper"
             }
           },
           "additionalProperties": true
@@ -1200,6 +1347,37 @@
         },
         "secrets": {
           "$ref": "#/$defs/lint_cross_secrets"
+        },
+        "lua": {
+          "type": "object",
+          "description": "Backends that handle lua files.",
+          "properties": {
+            "quality": {
+              "$ref": "#/$defs/lint_quality"
+            },
+            "secrets": {
+              "$ref": "#/$defs/lint_secrets"
+            },
+            "typos": {
+              "$ref": "#/$defs/lint_typos"
+            },
+            "astgrep": {
+              "$ref": "#/$defs/lint_astgrep"
+            },
+            "uncomment": {
+              "$ref": "#/$defs/lint_uncomment"
+            },
+            "harper": {
+              "$ref": "#/$defs/lint_harper"
+            },
+            "selene": {
+              "$ref": "#/$defs/lint_selene"
+            }
+          },
+          "additionalProperties": true
+        },
+        "harper": {
+          "$ref": "#/$defs/lint_cross_harper"
         }
       },
       "additionalProperties": true
@@ -1697,6 +1875,16 @@
           "properties": {
             "tex-fmt": {
               "$ref": "#/$defs/fmt_tex-fmt"
+            }
+          },
+          "additionalProperties": true
+        },
+        "lua": {
+          "type": "object",
+          "description": "Backends that handle lua files.",
+          "properties": {
+            "stylua": {
+              "$ref": "#/$defs/fmt_stylua"
             }
           },
           "additionalProperties": true
@@ -5805,6 +5993,139 @@
         },
         "table": {
           "type": "array"
+        }
+      },
+      "additionalProperties": true
+    },
+    "lint_harper": {
+      "type": "object",
+      "properties": {
+        "comments": {
+          "type": "boolean"
+        },
+        "dialect": {
+          "type": "string"
+        },
+        "dictionary": {
+          "type": "array"
+        },
+        "enabled": {
+          "type": "boolean"
+        },
+        "extend_select": {
+          "type": "array"
+        },
+        "ignore": {
+          "type": "array"
+        },
+        "indent_width": {
+          "type": "integer"
+        },
+        "rules": {
+          "oneOf": [
+            {
+              "type": "array"
+            },
+            {
+              "type": "object"
+            }
+          ]
+        },
+        "select": {
+          "type": "array"
+        }
+      },
+      "additionalProperties": true
+    },
+    "lint_selene": {
+      "type": "object",
+      "properties": {
+        "config": {
+          "type": "object"
+        },
+        "enabled": {
+          "type": "boolean"
+        },
+        "ignore": {
+          "type": "array"
+        },
+        "indent_width": {
+          "type": "integer"
+        },
+        "lints": {
+          "type": "object"
+        },
+        "rules": {
+          "oneOf": [
+            {
+              "type": "array"
+            },
+            {
+              "type": "object"
+            }
+          ]
+        },
+        "std": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": true
+    },
+    "lint_cross_harper": {
+      "type": "object",
+      "properties": {
+        "comments": {
+          "type": "boolean"
+        },
+        "dialect": {
+          "type": "string"
+        },
+        "dictionary": {
+          "type": "array"
+        },
+        "enabled": {
+          "type": "boolean"
+        },
+        "extend_select": {
+          "type": "array"
+        },
+        "ignore": {
+          "type": "array"
+        },
+        "rules": {
+          "oneOf": [
+            {
+              "type": "array"
+            },
+            {
+              "type": "object"
+            }
+          ]
+        },
+        "select": {
+          "type": "array"
+        }
+      },
+      "additionalProperties": true
+    },
+    "fmt_stylua": {
+      "type": "object",
+      "properties": {
+        "enabled": {
+          "type": "boolean"
+        },
+        "indent_width": {
+          "type": "integer"
+        },
+        "rules": {
+          "oneOf": [
+            {
+              "type": "array"
+            },
+            {
+              "type": "object"
+            }
+          ]
         }
       },
       "additionalProperties": true
