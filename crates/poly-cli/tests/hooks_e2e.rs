@@ -1050,8 +1050,14 @@ fn a_staged_lint_reads_the_staged_config() {
         "the unignored finding must be reported: {report}"
     );
     assert!(
-        !report.contains("ignored.py") && !report.contains("excluded.py"),
-        "the staged config must drop these: {report}"
+        !report.contains("ignored.py"),
+        "the staged per-file-ignore must drop this finding: {report}"
+    );
+    // The excluded file is named once, in the exclusion note, and never gets findings of its own.
+    assert!(
+        report.contains("excluded by [discovery] exclude / --exclude: excluded.py")
+            && report.matches("excluded.py").count() == 1,
+        "the staged exclude must drop this file: {report}"
     );
     assert_reports_match(&in_process, &child);
 }
