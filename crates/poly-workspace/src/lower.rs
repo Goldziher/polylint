@@ -238,11 +238,33 @@ fn append_builtins(
             config_stage,
         )?
     {
-        out.push(Hook::run("poly-commit", format!("{poly} commit")));
+        out.push(in_process_hook(
+            "poly-commit",
+            poly_hooks::in_process::COMMIT,
+            &poly,
+            Vec::new(),
+        ));
     }
     builtins::append_file_safety(hooks, &poly, config_stage, out)?;
     builtins::append_cargo(hooks, config_stage, cache_mode, probe, out)?;
     Ok(())
+}
+
+/// A builtin that runs the `poly` subcommand `name` with `args` in the hook
+/// runner's process (ADR 0067, ADR 0071), carrying the equivalent
+/// `{poly} {name} {args…}` line it re-execs when no handler takes it.
+fn in_process_hook(id: &str, name: &str, poly: &str, args: Vec<String>) -> Hook {
+    let line = std::iter::once(format!("{poly} {name}"))
+        .chain(args.iter().cloned())
+        .collect::<Vec<_>>()
+        .join(" ");
+    let mut hook = Hook::run(id, line.clone());
+    hook.command = HookCommand::InProcess {
+        name: name.to_string(),
+        args,
+        line,
+    };
+    hook
 }
 
 /// Whether a builtin runs on `config_stage`, given its own `stages`, the global

@@ -1,6 +1,7 @@
 //! The `poly commit` flow: map the command line onto gitfluff's library runner and exit code.
 
-use std::io::{self, Write};
+use std::io::{self, Read, Write};
+use std::path::Path;
 
 use anyhow::{Result, anyhow};
 use gitfluff::LintSettings;
@@ -22,22 +23,36 @@ use crate::global::ColorChoice;
 /// Returns an error if the message source is missing, the config is invalid, a preset is
 /// unknown, a user-supplied regex fails to compile, or writing the cleaned message back fails.
 pub fn run_commit_lint(args: CommitArgs, resolver: &dyn BaseConfigResolver) -> Result<i32> {
-    let explicit = args.config.as_deref();
-    let options = run_options(&args)?;
     let mut stdin = io::stdin().lock();
     let mut stdout = io::stdout().lock();
     let mut diagnostics = Vec::new();
-    let code = {
-        let mut io = RunIo {
-            stdin: &mut stdin,
-            stdout: &mut stdout,
-            stderr: &mut diagnostics,
-        };
-        run_lint_with(&options, &mut io, |cwd| config::load(explicit, cwd, resolver))?
-    };
+    let code = lint_with_io(&args, resolver, None, &mut stdin, &mut stdout, &mut diagnostics)?;
     let mut stderr = io::stderr().lock();
     stderr.write_all(&diagnostics)?;
     Ok(code)
+}
+
+/// [`run_commit_lint`] over explicit streams, run as if from `cwd` (the process working directory
+/// when `None`): the in-process `commit` hook runs this from the hook's directory, writing into
+/// buffers instead of the process streams (ADR 0071).
+///
+/// # Errors
+///
+/// As [`run_commit_lint`]. What gitfluff wrote to `stderr` before an error is left there for the
+/// caller to keep or drop.
+pub(crate) fn lint_with_io(
+    args: &CommitArgs,
+    resolver: &dyn BaseConfigResolver,
+    cwd: Option<&Path>,
+    stdin: &mut dyn Read,
+    stdout: &mut dyn Write,
+    stderr: &mut dyn Write,
+) -> Result<i32> {
+    let explicit = args.config.as_deref();
+    let mut options = run_options(args)?;
+    options.cwd = cwd.map(Path::to_path_buf);
+    let mut io = RunIo { stdin, stdout, stderr };
+    run_lint_with(&options, &mut io, |cwd| config::load(explicit, cwd, resolver))
 }
 
 const NO_SOURCE: &str = "no commit message source provided (pass COMMIT_FILE, --from-file, --stdin, or --message)";

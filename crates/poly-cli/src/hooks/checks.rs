@@ -9,7 +9,8 @@
 //! when anything fails.
 //!
 //! Under `poly hooks` the runner does not re-exec that line: [`in_process`] is
-//! registered as its in-process handler (ADR 0067) and runs the same parse and
+//! its in-process handler (ADR 0067, reached through
+//! [`crate::hooks::in_process::handle`]) and runs the same parse and
 //! the same checks over the directory and files the child would have been given,
 //! producing the bytes the child would have printed.
 //!

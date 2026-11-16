@@ -832,3 +832,79 @@ fn in_process_file_safety_judges_the_index_and_reports_what_the_check_prints() {
         assert!(report.contains(line), "missing `{line}` in:\n{report}");
     }
 }
+
+/// Run `poly hooks --debug <args>` twice in `root`: once under `builtin`, a `poly.toml` whose
+/// builtin the runner performs in process, and once under `reexec`, one whose inline job of the
+/// same name runs the builtin's own command line as a child. `--debug` makes the runner log each
+/// hook it ran in process, which is how the test knows the first run did.
+fn in_process_and_reexec(root: &Path, builtin: &str, reexec: &str, args: &[&str]) -> (Output, Output) {
+    let debug_args: Vec<&str> = std::iter::once("--debug").chain(args.iter().copied()).collect();
+    write(root, "poly.toml", builtin);
+    let in_process = poly_hooks(root, &debug_args);
+    write(root, "poly.toml", reexec);
+    let child = poly_hooks(root, &debug_args);
+    (in_process, child)
+}
+
+/// The in-process run reported exactly what the re-exec run did: the same report bytes (the
+/// hook's captured output included) and the same exit code, and only the first ran in process.
+fn assert_reports_match(in_process: &Output, child: &Output) {
+    let in_process_log = String::from_utf8_lossy(&in_process.stderr);
+    assert!(
+        in_process_log.contains("ran in process"),
+        "the builtin did not run in process:\n{in_process_log}"
+    );
+    let child_log = String::from_utf8_lossy(&child.stderr);
+    assert!(
+        !child_log.contains("ran in process"),
+        "the control ran in process:\n{child_log}"
+    );
+    assert_eq!(
+        String::from_utf8_lossy(&in_process.stdout),
+        String::from_utf8_lossy(&child.stdout),
+        "in-process and re-exec reports differ"
+    );
+    assert_eq!(in_process.status.code(), child.status.code());
+}
+
+/// An inline job named `id` on `stage` running `poly <command>`, the way a builtin's re-exec
+/// line does.
+fn reexec_job(stage: &str, id: &str, command: &str) -> String {
+    format!("[[hooks.{stage}.jobs]]\nname = \"{id}\"\nrun = \"'{POLY}' {command}\"\n")
+}
+
+/// The `commit` builtin runs gitfluff in the hook runner's process (ADR 0071) and reports what
+/// `poly commit <message file>` prints, for a rejected message and an accepted one.
+#[test]
+fn in_process_commit_reports_what_the_reexec_prints() {
+    let repo = init_repo();
+    let root = repo.path();
+    let builtin = "[hooks.builtin]\ncommit = true\n";
+    let reexec = reexec_job("commit-msg", "poly-commit", "commit");
+    let run = ["run", "commit-msg", "--message-file", "msg.txt", "--no-cache"];
+
+    write(root, "msg.txt", "nope: not a conventional type\n");
+    let (in_process, child) = in_process_and_reexec(root, builtin, &reexec, &run);
+    assert_eq!(
+        child.status.code(),
+        Some(1),
+        "{}",
+        String::from_utf8_lossy(&child.stdout)
+    );
+    assert!(
+        String::from_utf8_lossy(&child.stdout).contains("gitfluff"),
+        "the rejection must carry gitfluff's diagnostics: {}",
+        String::from_utf8_lossy(&child.stdout)
+    );
+    assert_reports_match(&in_process, &child);
+
+    write(root, "msg.txt", "feat: add a thing\n");
+    let (in_process, child) = in_process_and_reexec(root, builtin, &reexec, &run);
+    assert_eq!(
+        child.status.code(),
+        Some(0),
+        "{}",
+        String::from_utf8_lossy(&child.stdout)
+    );
+    assert_reports_match(&in_process, &child);
+}

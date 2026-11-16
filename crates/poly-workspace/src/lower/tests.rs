@@ -218,6 +218,18 @@ commit = true
 }
 
 #[test]
+fn commit_builtin_lowers_to_an_in_process_hook_carrying_its_line() {
+    let hooks = hooks_from("[hooks.builtin]\ncommit = true\n");
+    let msg = lower_stage(&hooks, &poly(), HookStage::CommitMsg, &[], &HookCacheMode::Safe).unwrap();
+    let HookCommand::InProcess { name, args, line } = &msg.hooks[0].command else {
+        panic!("expected an in-process hook, got {:?}", msg.hooks[0].command);
+    };
+    assert_eq!(name, poly_hooks::in_process::COMMIT);
+    assert!(args.is_empty(), "{args:?}");
+    assert_eq!(*line, format!("{} commit", shell_quote(&poly().to_string_lossy())));
+}
+
+#[test]
 fn file_builtins_do_not_inherit_message_stages_from_the_global_default() {
     let hooks = hooks_from(
         r#"

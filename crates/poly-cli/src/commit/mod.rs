@@ -7,4 +7,5 @@ mod config;
 mod run;
 
 pub use args::CommitArgs;
+pub(crate) use run::lint_with_io;
 pub use run::run_commit_lint;

@@ -165,14 +165,22 @@ pub fn resolver() -> anyhow::Result<RemoteExtendsResolver> {
 /// commands subprocess-free when no remote `extends` base is in play.
 pub fn repo_root() -> anyhow::Result<PathBuf> {
     let cwd = std::env::current_dir().context("resolving the working directory")?;
-    let mut dir: &Path = &cwd;
+    Ok(repo_root_from(&cwd))
+}
+
+/// [`repo_root`] for a run started in `start` rather than the working directory, as an
+/// in-process hook is (ADR 0071): the nearest ancestor of `start` containing `.git`, else
+/// `start` itself.
+#[must_use]
+pub fn repo_root_from(start: &Path) -> PathBuf {
+    let mut dir = start;
     loop {
         if dir.join(".git").exists() {
-            return Ok(dir.to_path_buf());
+            return dir.to_path_buf();
         }
         match dir.parent() {
             Some(parent) => dir = parent,
-            None => return Ok(cwd.clone()),
+            None => return start.to_path_buf(),
         }
     }
 }

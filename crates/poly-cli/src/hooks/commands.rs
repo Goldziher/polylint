@@ -196,7 +196,7 @@ pub fn run_hooks(args: HooksArgs) -> ExitCode {
     }
     // Builtins this binary implements run in this process instead of a `poly`
     // child per hook (ADR 0067).
-    poly_hooks::in_process::register(checks::in_process);
+    poly_hooks::in_process::register(super::in_process::handle);
     let result = match args.command {
         None => run_stage(RunArgs::default()),
         Some(HooksCommand::Run(run_args)) => run_stage(run_args),
