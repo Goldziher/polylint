@@ -128,7 +128,7 @@ fn engine_versions_track_cargo_lock() {
         (
             "rumdl",
             RumdlEngine.version().to_owned(),
-            vec![("rumdl", Registry), ("oxc_formatter_markdown", Git)],
+            vec![("polylint-rumdl", Registry), ("oxc_formatter_markdown", Git)],
         ),
         (
             "yaml",
