@@ -14,19 +14,26 @@
 //! `--fix-generated`) and the withdrawal reason if an instruction emptied the
 //! plan. An **engine** key folds in the engine's name, `version()` and
 //! serialized args — which already carry the config's options and the engine's
-//! [`run_context`] — and, per file, its [`file_context`].
+//! [`run_context`] — and, per file, its [`file_context`] and, for a lint run of an
+//! engine that declares the hook, its [`lint_cache_salt`]. The salt is computed
+//! from the file's content, so a file whose engine declares it is read even when
+//! its `stat` is unchanged; every other engine's key costs no read.
 //!
 //! [`run_context`]: crate::engine::Engine::run_context
 //! [`file_context`]: crate::engine::Engine::file_context
+//! [`lint_cache_salt`]: crate::engine::Engine::lint_cache_salt
 
 use poly_cache::{
     ContentDigest, FileStat, Namespace, PathKey, PlanKey, Record, ResultCache, Segment, StatIndex, Verdict,
 };
+use poly_engine_api::desc::hooks;
 use rustc_hash::FxHashMap;
+use std::cell::OnceCell;
+use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
 use crate::discover::DiscoveredFile;
-use crate::engine::Diagnostic;
+use crate::engine::{Diagnostic, SourceFile};
 use crate::language::Language;
 
 use super::plan::{EnginePlan, RunPlan, provides_language_lint};
@@ -66,6 +73,51 @@ struct Slot<'a> {
     scope: PlanKey,
     engines: &'a [EnginePlan],
     bases: Vec<PlanKey>,
+    /// Per engine, whether its key folds in [`Engine::lint_cache_salt`](crate::engine::Engine::lint_cache_salt):
+    /// a lint run of an engine that declares the hook.
+    salted: Vec<bool>,
+}
+
+/// Tags the lint cache salt within an engine key, so it can never stand in for a file context.
+const LINT_CACHE_SALT_PART: &str = "lint_cache_salt";
+
+/// The file being resolved, read at most once and only when something needs its bytes: a salted
+/// engine's key or the content check of a touched file.
+struct FileContent<'f> {
+    file: &'f DiscoveredFile,
+    bytes: OnceCell<Option<Vec<u8>>>,
+    source: OnceCell<Option<SourceFile>>,
+}
+
+impl<'f> FileContent<'f> {
+    fn new(file: &'f DiscoveredFile) -> Self {
+        Self {
+            file,
+            bytes: OnceCell::new(),
+            source: OnceCell::new(),
+        }
+    }
+
+    fn bytes(&self) -> Option<&[u8]> {
+        self.bytes
+            .get_or_init(|| std::fs::read(&self.file.path).ok())
+            .as_deref()
+    }
+
+    /// The file as an engine sees it; `None` when it cannot be read as UTF-8 text, which the
+    /// per-file path reports or skips on its own.
+    fn source(&self) -> Option<&SourceFile> {
+        self.source
+            .get_or_init(|| {
+                let text = std::str::from_utf8(self.bytes()?).ok()?;
+                Some(SourceFile {
+                    path: self.file.path.clone(),
+                    language: self.file.language.clone(),
+                    content: Arc::from(text),
+                })
+            })
+            .as_ref()
+    }
 }
 
 thread_local! {
@@ -135,6 +187,7 @@ impl<'a> FastPath<'a> {
                     scope: scope.finish(),
                     engines: engines.as_slice(),
                     bases: engines.iter().map(|engine| base_key(namespace, engine)).collect(),
+                    salted: engines.iter().map(|engine| salted(namespace, engine)).collect(),
                 },
             );
         }
@@ -153,15 +206,32 @@ impl<'a> FastPath<'a> {
     }
 
     /// Fill `out` with each engine's key for `file`: the run-wide base, extended
-    /// by the engine's per-file context when it has one.
-    fn engine_keys(slot: &Slot<'_>, file: &DiscoveredFile, out: &mut Vec<PlanKey>) {
+    /// by the engine's per-file context when it has one and, for a salted engine,
+    /// by its lint cache salt.
+    ///
+    /// The one place a key is made: the index lookup and the record the per-file
+    /// path writes both take their keys from here, so they cannot disagree.
+    fn engine_keys(slot: &Slot<'_>, file: &DiscoveredFile, content: &FileContent, out: &mut Vec<PlanKey>) {
         out.clear();
-        out.extend(slot.bases.iter().zip(slot.engines).map(|(base, engine)| {
-            match engine.engine.file_context(&file.path, &engine.config) {
-                Some(context) => base.extended([context.as_str()]),
-                None => *base,
-            }
-        }));
+        out.extend(
+            slot.bases
+                .iter()
+                .zip(slot.engines)
+                .zip(&slot.salted)
+                .map(|((base, engine), &salted)| {
+                    let key = match engine.engine.file_context(&file.path, &engine.config) {
+                        Some(context) => base.extended([context.as_str()]),
+                        None => *base,
+                    };
+                    if !salted {
+                        return key;
+                    }
+                    match content.source().and_then(|src| engine.engine.lint_cache_salt(src)) {
+                        Some(salt) => key.extended([LINT_CACHE_SALT_PART, salt.as_str()]),
+                        None => key,
+                    }
+                }),
+        );
     }
 
     /// The stat and keys for `file`, without consulting the index.
@@ -169,7 +239,7 @@ impl<'a> FastPath<'a> {
         let stat = self.cache.file_stat(&file.path).ok()?;
         let slot = self.slot(file)?;
         let mut keys = Vec::with_capacity(slot.bases.len());
-        Self::engine_keys(slot, file, &mut keys);
+        Self::engine_keys(slot, file, &FileContent::new(file), &mut keys);
         let path = self.cache.path_key(&file.path);
         let prior = self.index.get(&path).filter(|record| record.scope == slot.scope);
         Some(Probe {
@@ -207,9 +277,10 @@ impl<'a> FastPath<'a> {
         }
         let path = self.cache.path_key(&file.path);
         let prior = self.index.get(&path).filter(|record| record.scope == slot.scope);
+        let content = FileContent::new(file);
         let vouched = KEY_SCRATCH.with_borrow_mut(|keys| {
-            Self::engine_keys(slot, file, keys);
-            self.vouched_for(file, path, &stat, prior, keys)
+            Self::engine_keys(slot, file, &content, keys);
+            self.vouched_for(&content, path, &stat, prior, keys)
                 .ok_or_else(|| keys.clone())
         });
         match vouched {
@@ -238,7 +309,7 @@ impl<'a> FastPath<'a> {
     /// tally line to count it on.
     fn vouched_for(
         &self,
-        file: &DiscoveredFile,
+        content: &FileContent,
         path: PathKey,
         stat: &FileStat,
         prior: Option<&'a Record>,
@@ -251,8 +322,7 @@ impl<'a> FastPath<'a> {
         if record.trusts(stat) {
             return Some((record, VouchedBy::Stat));
         }
-        let bytes = std::fs::read(&file.path).ok()?;
-        if record.digest != ContentDigest::of(&bytes) {
+        if record.digest != ContentDigest::of(content.bytes()?) {
             return None;
         }
         self.index.vouch(path, *stat, record.digest);
@@ -347,6 +417,12 @@ impl Probe<'_> {
             .map(|(key, segment)| (segment.key == *key).then_some(segment.payload.as_slice()))
             .collect()
     }
+}
+
+/// Whether `engine`'s key in a `namespace` run folds in its lint cache salt: only in a lint run,
+/// and only for an engine that declares the hook, since computing the salt reads the file.
+fn salted(namespace: Namespace, engine: &EnginePlan) -> bool {
+    namespace == Namespace::Lint && engine.engine.overridden_hooks() & hooks::LINT_CACHE_SALT != 0
 }
 
 fn base_key(namespace: Namespace, engine: &EnginePlan) -> PlanKey {

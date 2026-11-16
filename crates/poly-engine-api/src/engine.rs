@@ -644,6 +644,10 @@ pub trait Engine: Send + Sync {
     /// [`Engine::format_input_salt`], [`Engine::lint_cache_salt`] or [`Batching::batch_support`]
     /// must set its bit. Methods answered by [`Engine::host_hook`] count as not overridden.
     /// Defaults to every bit, the safe answer for an engine that does not say.
+    ///
+    /// The runner reads it too: a lint run asks [`Engine::lint_cache_salt`] of an engine that sets
+    /// that bit, which reads every file it lints even when the file's `stat` is unchanged. An engine
+    /// on many files narrows the default so it does not pay that read.
     /// `tests/component_hooks.rs` in `poly-core` fails an engine that overrides an undeclared hook.
     fn overridden_hooks(&self) -> u32 {
         crate::desc::ALL_HOOKS
@@ -747,6 +751,10 @@ pub trait Engine: Send + Sync {
     /// whole chart, and a buf lint of one proto of every proto it imports. Such a
     /// backend answers here with a digest of that context, so editing a sibling
     /// invalidates the cached verdict of the files that depend on it.
+    ///
+    /// Asked on every lint run, stat hits included, and only of an engine whose
+    /// [`Engine::overridden_hooks`] sets the `LINT_CACHE_SALT` bit, which an engine that answers here
+    /// must set.
     ///
     /// Defaults to `None`: the file alone decides.
     fn lint_cache_salt(&self, _src: &SourceFile) -> Option<String> {

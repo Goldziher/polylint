@@ -132,6 +132,10 @@ impl Engine for QualityEngine {
         }
     }
 
+    fn overridden_hooks(&self) -> u32 {
+        poly_engine_api::desc::hooks::PROVIDES_LANGUAGE
+    }
+
     fn version(&self) -> &str {
         QUALITY_VERSION
     }

@@ -412,6 +412,12 @@ impl Engine for ComponentEngine {
         self.option_keys[table_slot(table)]
     }
 
+    /// The hooks the component declared, so the runner asks a hosted engine only the per-file
+    /// questions it answers (a lint cache salt reads the file and loads the component).
+    fn overridden_hooks(&self) -> u32 {
+        self.hooks
+    }
+
     fn version(&self) -> &str {
         &self.version
     }

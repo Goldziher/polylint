@@ -117,6 +117,10 @@ binary drives lint, format, hooks, and commit checks from one `poly.toml`.
   every locked record as `ADR51` missing from disk. The config governing a file is now chosen by the directory's
   identity, not by comparing the paths as written, so a project check gets the same project root for every spelling
   and argument order. A project finding under a named directory is reported under the run's own spelling of the file.
+- **A lint verdict that depends on other files is re-checked when they change.** The per-file lint cache key now
+  folds in an engine's `lint_cache_salt`, so jarl re-lints an R file after an edit to the package's `DESCRIPTION`,
+  `jarl.toml` or a file it sources instead of replaying the verdict recorded before. The salt is asked only of an
+  engine that declares it, and only in `poly lint`. (#229)
 
 ### Security
 

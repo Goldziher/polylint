@@ -293,6 +293,15 @@ impl Engine for NativeToolEngine {
         self.role.spec().engine_name
     }
 
+    fn overridden_hooks(&self) -> u32 {
+        use poly_engine_api::desc::hooks;
+        hooks::RUN_CONTEXT
+            | hooks::FILE_CONTEXT
+            | hooks::PROVIDES_LANGUAGE
+            | hooks::FORMAT_INPUT_SALT
+            | hooks::BATCH_SUPPORT
+    }
+
     fn languages(&self) -> &'static [Language] {
         match self.role {
             NativeRole::GoFmt => GO_LANGUAGES,

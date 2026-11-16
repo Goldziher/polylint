@@ -632,3 +632,215 @@ mod shared_parse {
         assert_eq!(parse_count() - before, 2);
     }
 }
+
+mod lint_cache_salt {
+    //! A backend whose lint verdict depends on files besides the one linted (a helm chart, a
+    //! proto's imports, an R package) keys the file's recorded verdict on them through
+    //! [`Engine::lint_cache_salt`], so editing such a file re-runs the backend instead of
+    //! replaying the verdict it gave before (polylint/polylint#229).
+
+    use std::collections::BTreeMap;
+    use std::path::Path;
+    use std::sync::Arc;
+    use std::sync::atomic::{AtomicUsize, Ordering};
+
+    use super::*;
+    use crate::config::{EngineConfig, GlobalDefaults};
+    use crate::engine::{Capabilities, Engine, Severity};
+    use crate::filter::SeverityRemap;
+    use poly_engine_api::desc::hooks;
+
+    /// Reports the contents of `sibling.txt` beside the linted file. With `salted` it declares
+    /// and answers a lint cache salt of those contents; without, it declares no hooks at all.
+    struct SiblingReader {
+        salted: bool,
+        lints: Arc<AtomicUsize>,
+        salts: Arc<AtomicUsize>,
+    }
+
+    fn sibling(path: &Path) -> String {
+        std::fs::read_to_string(path.with_file_name("sibling.txt")).unwrap_or_default()
+    }
+
+    impl Engine for SiblingReader {
+        fn name(&self) -> &'static str {
+            "sibling-reader"
+        }
+
+        fn languages(&self) -> &'static [Language] {
+            &[Language::Python]
+        }
+
+        fn capabilities(&self) -> Capabilities {
+            Capabilities {
+                lint: true,
+                format: false,
+                fix: false,
+                project: false,
+            }
+        }
+
+        fn version(&self) -> &str {
+            "1"
+        }
+
+        fn overridden_hooks(&self) -> u32 {
+            if self.salted { hooks::LINT_CACHE_SALT } else { 0 }
+        }
+
+        fn lint_cache_salt(&self, src: &SourceFile) -> Option<String> {
+            self.salts.fetch_add(1, Ordering::SeqCst);
+            self.salted.then(|| sibling(&src.path))
+        }
+
+        fn lint(&self, src: &SourceFile, _cfg: &EngineConfig) -> anyhow::Result<Vec<Diagnostic>> {
+            self.lints.fetch_add(1, Ordering::SeqCst);
+            Ok(vec![Diagnostic {
+                engine: "sibling-reader".to_owned(),
+                code: Some("S001".to_owned()),
+                severity: Severity::Warning,
+                title: sibling(&src.path),
+                description: None,
+                url: None,
+                span: None,
+                fix: Vec::new(),
+                metadata: BTreeMap::new(),
+            }])
+        }
+    }
+
+    struct Fixture {
+        _directory: tempfile::TempDir,
+        cache_root: std::path::PathBuf,
+        file: DiscoveredFile,
+        lints: Arc<AtomicUsize>,
+        salts: Arc<AtomicUsize>,
+    }
+
+    impl Fixture {
+        fn new() -> Self {
+            let directory = tempfile::tempdir().expect("tempdir");
+            let path = directory.path().join("main.py");
+            std::fs::write(&path, "x = 1\n").expect("write the linted file");
+            let fixture = Self {
+                cache_root: directory.path().join("cache"),
+                file: DiscoveredFile {
+                    path,
+                    language: Language::Python,
+                    config_id: 0,
+                },
+                _directory: directory,
+                lints: Arc::new(AtomicUsize::new(0)),
+                salts: Arc::new(AtomicUsize::new(0)),
+            };
+            fixture.write_sibling("v1");
+            fixture
+        }
+
+        fn write_sibling(&self, content: &str) {
+            std::fs::write(self.file.path.with_file_name("sibling.txt"), content).expect("write the sibling");
+        }
+
+        /// One `poly lint` of the file over a cache reopened from disk, as a fresh process runs it:
+        /// the stat index resolves the file first and the per-file path records what it found.
+        fn lint(&self, salted: bool) -> Vec<String> {
+            let cache = ResultCache::open(self.cache_root.clone(), true).expect("open the cache");
+            let plan = RunPlan::serving(
+                0,
+                Language::Python,
+                vec![EnginePlan {
+                    engine: Box::new(SiblingReader {
+                        salted,
+                        lints: Arc::clone(&self.lints),
+                        salts: Arc::clone(&self.salts),
+                    }),
+                    config: EngineConfig {
+                        globals: GlobalDefaults::default(),
+                        indent_width: 4,
+                        options: toml::Table::new(),
+                    },
+                    serialized_args: ResultCache::serialize_args(&toml::Table::new()),
+                    severity_remap: SeverityRemap::new(Vec::new()),
+                    provides_language_lint: true,
+                    format_ignore: None,
+                }],
+            );
+            let setup = LintSetup {
+                ignores: vec![PerFileIgnores::compile(&BTreeMap::new())],
+                ignore_bases: vec![Vec::new()],
+                act_on_generated: vec![true],
+                size_limits: SizeLimits::default(),
+            };
+            let fast = FastPath::new(
+                &cache,
+                Namespace::Lint,
+                &plan,
+                &|_| 1u8,
+                &setup.size_limits,
+                Replay {
+                    diagnostics: true,
+                    verdicts: true,
+                },
+            );
+            let resolution = fast
+                .as_ref()
+                .map_or(Resolution::Unavailable, |fast| fast.resolve(&self.file));
+            let prefilled = LintPrefill::default();
+            let ctx = LintCtx {
+                plan: &plan,
+                fix: false,
+                fix_generated: false,
+                collect_debug: false,
+                setup: &setup,
+                externally_linted: &[],
+                prefilled: &prefilled,
+                fast: fast.as_ref(),
+            };
+            let result = lint_one(&ctx, &self.file, resolution).expect("lint");
+            flush_stat_indexes(&cache);
+            result.diagnostics.into_iter().map(|d| d.title).collect()
+        }
+
+        fn lints(&self) -> usize {
+            self.lints.load(Ordering::SeqCst)
+        }
+    }
+
+    #[test]
+    fn editing_a_file_the_salt_reads_re_runs_the_engine() {
+        let fixture = Fixture::new();
+        assert_eq!(fixture.lint(true), ["v1"]);
+        assert_eq!(fixture.lints(), 1);
+
+        // The control: an unchanged sibling is answered from the record, so the re-run below is
+        // the salt's doing and not a cache that never hits.
+        assert_eq!(fixture.lint(true), ["v1"]);
+        assert_eq!(
+            fixture.lints(),
+            1,
+            "an unchanged sibling must be answered from the record"
+        );
+
+        fixture.write_sibling("v2");
+        assert_eq!(fixture.lint(true), ["v2"], "the verdict must follow the edited sibling");
+        assert_eq!(fixture.lints(), 2, "editing the sibling must re-run the engine");
+
+        assert_eq!(fixture.lint(true), ["v2"]);
+        assert_eq!(
+            fixture.lints(),
+            2,
+            "the new verdict must be recorded under the new salt"
+        );
+    }
+
+    /// The cost side: the salt needs the file's content, so asking for it reads the file on every
+    /// run. An engine that does not declare the hook is never asked, and its file stays a stat hit.
+    #[test]
+    fn an_engine_that_declares_no_salt_is_never_asked_for_one() {
+        let fixture = Fixture::new();
+        assert_eq!(fixture.lint(false), ["v1"]);
+        assert_eq!(fixture.lint(false), ["v1"]);
+        assert_eq!(fixture.lints(), 1, "the second run must be answered from the record");
+        assert_eq!(fixture.salts.load(Ordering::SeqCst), 0);
+    }
+}
