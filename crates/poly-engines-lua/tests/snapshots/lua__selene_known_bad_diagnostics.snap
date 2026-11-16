@@ -2,5 +2,5 @@
 source: crates/poly-engines-lua/tests/lua.rs
 expression: "render(&diagnostics)"
 ---
-1:7-1:13 Warning unused_variable unused is defined, but never used
+1:7-1:13 Warning unused_variable unused is assigned a value, but never used
 4:32-4:45 Error undefined_variable `unknown_value` is not defined
