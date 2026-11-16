@@ -22,6 +22,10 @@ binary drives lint, format, hooks, and commit checks from one `poly.toml`.
 ### Added
 
 - **Prose and grammar checks with harper.** The opt-in `harper` engine (`[engines.harper] enabled = true`, component `prose`) reads Markdown and the comments of every language with a loaded grammar, and reports repeated words, wrong articles and other grammar and style findings as warnings. Rules go through `select`/`extend_select`/`ignore`; `SpellCheck` is off unless selected, and `dictionary`, `dialect` and `comments` are the engine's own keys (ADR 0068).
+- **Lua formatting and linting.** `.lua` files format through StyLua and lint through selene, both in-process engines in
+  the new `lua` component. `stylua.toml` / `.stylua.toml` and `selene.toml` are read from the nearest directory up to the
+  repository root, with `[engines.stylua]` and `[engines.selene]` layered on top. selene runs its built-in `lua51`, `lua52`,
+  `lua53` and `luau` standard libraries; a `std` that names a library file reports `unsupported-std`. (ADR 0069, #173)
 - **`poly adr lock`, `poly adr unlock <file> --reason <text>` and `poly adr new <title>`.** Maintain `adrlint.lock`
   and create numbered records with the bundled adrlint and the `[engines.adrlint]` settings, so a repository no
   longer needs the standalone adrlint CLI or `.adrlint.toml`. `lock` refuses while `poly lint` reports an adrlint

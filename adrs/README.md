@@ -83,6 +83,7 @@ Context, Decision, Consequences (positive and negative/risks), and Alternatives 
 | [0066](0066-project-config-wins-over-recipe-defaults.md) | A Project's Config Wins Over a Recipe's Default Arguments | Accepted |
 | [0067](0067-run-builtin-hooks-in-process.md) | Run Builtin Hooks In Process | Accepted |
 | [0068](0068-harper-prose-checks.md) | Prose and Grammar Checks with harper | Accepted |
+| [0069](0069-lua-engines-stylua-and-selene.md) | Lua Engines: StyLua and selene | Accepted |
 
 ## Conventions
 

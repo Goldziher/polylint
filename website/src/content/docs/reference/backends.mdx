@@ -48,6 +48,7 @@ checksummed release (macOS and Linux), and `RT` one that needs a host runtime.
 | INI and compatible (`.ini`, `.cfg`, `.desktop`, `.npmrc`, `.editorconfig`, `.pylintrc`, `.coveragerc`, `.flake8`, …) | `rust-ini` | yes | no | component `misc` |
 | Typst (`.typ`) | `typstyle-core` | no | yes | component `misc` |
 | LaTeX (`.tex`, `.sty`, `.cls`) | `tex-fmt` | no | yes | component `misc` |
+| Lua (`.lua`) | selene (lint; `selene.toml`, built-in `lua51`, `lua52`, `lua53`, `luau` std libraries) + StyLua (format; `stylua.toml`); opt-in `luacheck` | yes | yes | component `lua` |
 | Nix | alejandra | no | yes | component `nix` |
 | Ruby (`*.rb`, `Gemfile`, `Rakefile`, `*.gemspec`, `*.rake`, `*.ru`, `Podfile`, …) | rubyfmt | no | yes | component `ruby` |
 | PHP | mago | yes | yes | component `php` |

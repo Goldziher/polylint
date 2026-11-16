@@ -116,6 +116,7 @@ built-in ast-grep rules.
 | Ruby | Q · AG | rubyfmt | component `ruby` |
 | Typst | — | typstyle | component `misc` |
 | LaTeX | — | tex-fmt | component `misc` |
+| Lua | selene | StyLua | component `lua` |
 | Nix | — | alejandra | component `nix` |
 | HCL, Terraform | hcl-edit; tflint (recipe ↓) | hclwrite port; tofu (recipe ↓), terraform (recipe) | component `misc` |
 | Dockerfile | built-in rules; hadolint (recipe ↓) | — | component `misc` |

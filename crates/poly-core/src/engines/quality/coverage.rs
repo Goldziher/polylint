@@ -46,7 +46,7 @@
 //!
 //! # Why a definition query alone is not enough
 //!
-//! Zig, Swift, Dart, Gleam, Elixir, PHP, Nix, Scala, Lua and R resolve a
+//! Zig, Swift, Dart, Gleam, Elixir, PHP, Nix, Scala and R resolve a
 //! definition query but have no construct table. Their functions can be
 //! *measured* (how many lines, how many parameters) while everything that
 //! happens inside them — every branch, loop and `switch` — is invisible:

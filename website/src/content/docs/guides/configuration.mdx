@@ -274,6 +274,34 @@ safety and security rules (`no-ffi`, `no-eval`, `no-literal-password`, `tainted-
 level = "error"
 ```
 
+### Lua (StyLua and selene)
+
+`.lua` files format with StyLua and lint with selene. Both read the project files Lua repositories already carry: the
+nearest `stylua.toml` or `.stylua.toml` and the nearest `selene.toml`, searching from the file's directory up to the
+repository root. `[engines.stylua]` takes StyLua's own keys (`column_width`, `indent_type`, `indent_width`,
+`quote_style`, `call_parentheses`, `collapse_simple_statement`, `space_after_function_names`, `block_newline_gaps`,
+`sort_requires`, `syntax`, `line_endings`) and wins over the file. `column_width` and `line_endings` default to
+`[defaults]`; indentation stays StyLua's default (tabs) until `indent_type = "Spaces"`. StyLua verifies every result
+against the input's syntax tree, so a formatter bug is an error on that file, never changed code.
+
+```toml
+[engines.stylua]
+indent_type = "Spaces"
+quote_style = "ForceDouble"
+
+[engines.selene]
+std = "lua53"
+ignore = ["unused_variable"]
+
+[engines.selene.lints]
+shadowing = "deny"
+```
+
+`[engines.selene]` takes `std` (`lua51`, the default, `lua52`, `lua53` or `luau`, joined with `+`), `lints` (a lint's level:
+`allow`, `warn` or `deny`), `config` (a lint's own settings) and `ignore`. A `std` that names a library file, such as
+`roblox`, is reported as `unsupported-std` instead of linting against the wrong globals. `-- selene: allow(lint)`
+comments work as in selene.
+
 ### Formatter layering
 
 For the formatters that layer on `[defaults]` — the oxfmt-equivalent JS/TS, JSON, YAML, TOML,
@@ -769,7 +797,7 @@ function_too_long_lines = 200      # per-language override wins
 <Aside type="note" title="Coverage is claimed honestly">
     The structural rules need a grammar poly holds a construct table for: **Python, Rust, Go,
     JavaScript, TypeScript, TSX, Java, Kotlin, C, C++, C# and Ruby**. A language poly can parse but
-    not model — Zig, Swift, Dart, Gleam, Elixir, PHP, Nix, Scala, Lua, R — gets the file-length and
+    not model — Zig, Swift, Dart, Gleam, Elixir, PHP, Nix, Scala, R — gets the file-length and
     ignore-marker checks only, and still reports `no lint rules for <language>`. Counting lines is
     not knowledge of a language, and poly will not claim it is. Even a modelled language does not
     count as linted on the quality tier alone: size and complexity are not correctness, so a file
