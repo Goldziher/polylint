@@ -97,7 +97,7 @@ pinned_alef_version() {
 }
 
 # Tool pins: version and per-architecture sha256 of every binary the release containers run.
-ALEF_PIN_VERSION="0.130.0"
+ALEF_PIN_VERSION="0.130.1"
 MISE_PIN_VERSION="2026.10.24"
 JQ_VERSION="1.8.2"
 RUSTUP_VERSION="1.29.3"
@@ -105,8 +105,8 @@ RUSTUP_VERSION="1.29.3"
 # The pinned sha256 of <tool> for <arch> (x86_64 or aarch64).
 pinned_sha256() {
   case "$1/$2" in
-  alef/x86_64) echo "656b651c3eeb42a18599659ee852e765741c63b0fc498a0c6589a50ac6a1107e" ;;
-  alef/aarch64) echo "79707434396178d30f2691bb91d7c8532d03e4aed0f5670a702ba25168131f7e" ;;
+  alef/x86_64) echo "b572a2d13b387fa0d85b7ad9f61dce3e2dbae4fdd7862485a6895820d532f639" ;;
+  alef/aarch64) echo "a22694869bd806abff1750501fbf2ebb4f54b7c8356e6b8de9ee5b5d235bea71" ;;
   mise/x86_64) echo "257bc6521a2401470fc38cf6be45bbf5783c0443c80298b61fb13f3354f7e06e" ;;
   mise/aarch64) echo "c1391f191cce6019ead500b6b22eb50f73bb0ba48f64619cc66bb27ff42840d0" ;;
   jq/x86_64) echo "b1c22172dd303f3be49e935aa56aa48a8b7a46e0bc838b4997d3bb451495870f" ;;
