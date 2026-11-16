@@ -194,6 +194,9 @@ pub fn run_hooks(args: HooksArgs) -> ExitCode {
         eprintln!("poly hooks: skipped ({SKIP_HOOKS_ENV} is set)");
         return ExitCode::SUCCESS;
     }
+    // Builtins this binary implements run in this process instead of a `poly`
+    // child per hook (ADR 0067).
+    poly_hooks::in_process::register(checks::in_process);
     let result = match args.command {
         None => run_stage(RunArgs::default()),
         Some(HooksCommand::Run(run_args)) => run_stage(run_args),

@@ -744,10 +744,9 @@ files = "**/*.py"
 }
 
 fn run_line(hook: &Hook) -> &str {
-    match &hook.command {
-        HookCommand::Run(line) => line,
-        other => panic!("expected a run command, got {other:?}"),
-    }
+    hook.command
+        .line()
+        .unwrap_or_else(|| panic!("expected a run command, got {:?}", hook.command))
 }
 
 fn hook<'a>(spec: &'a StageSpec, id: &str) -> &'a Hook {

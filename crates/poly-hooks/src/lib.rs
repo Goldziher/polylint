@@ -40,6 +40,7 @@ pub mod filter;
 pub mod git;
 pub mod hook_impl;
 pub mod identify;
+pub mod in_process;
 pub mod install;
 pub mod model;
 pub mod process;

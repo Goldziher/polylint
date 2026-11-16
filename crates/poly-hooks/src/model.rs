@@ -58,6 +58,33 @@ pub enum HookCommand {
         /// Interpreter program, if any.
         runner: Option<String>,
     },
+    /// A check the running `poly` binary performs in its own process, through
+    /// the handler registered with [`crate::in_process::register`] (ADR 0067).
+    ///
+    /// `line` is the equivalent shell command line. It is what runs when no
+    /// handler is registered or the handler declines `name`, and it is the
+    /// command identity everywhere else (cache key, argv budget, snapshot scope),
+    /// so the two forms are interchangeable.
+    InProcess {
+        /// The check the handler dispatches on (e.g. `file-safety`).
+        name: String,
+        /// The check's own arguments, one per argv element; the matched files
+        /// follow them, as they would on `line`.
+        args: Vec<String>,
+        /// The equivalent re-exec command line.
+        line: String,
+    },
+}
+
+impl HookCommand {
+    /// The shell command line this command runs as, or `None` for a script.
+    #[must_use]
+    pub fn line(&self) -> Option<&str> {
+        match self {
+            Self::Run(line) | Self::InProcess { line, .. } => Some(line),
+            Self::Script { .. } => None,
+        }
+    }
 }
 
 impl Default for HookCommand {

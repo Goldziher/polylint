@@ -88,10 +88,7 @@ fn run_line<'a>(spec: &'a StageSpec, id: &str) -> &'a str {
         .iter()
         .find(|hook| hook.id == id)
         .unwrap_or_else(|| panic!("hook `{id}` not lowered"));
-    match &hook.command {
-        HookCommand::Run(line) => line,
-        HookCommand::Script { .. } => panic!("expected run command"),
-    }
+    hook.command.line().expect("expected run command")
 }
 
 #[test]
@@ -114,6 +111,21 @@ fn file_safety_bare_toggle_lowers_to_one_check_hook_with_every_flag() {
     }
     let hook = &spec.hooks[0];
     assert!(hook.pass_filenames);
+}
+
+#[test]
+fn file_safety_lowers_to_an_in_process_hook_whose_args_spell_its_line() {
+    let hooks = hooks_from("[hooks.builtin]\nfile_safety = true\n");
+    let spec = lower_stage(&hooks, &poly(), HookStage::PreCommit, &[], &HookCacheMode::Safe).unwrap();
+    let HookCommand::InProcess { name, args, line } = &spec.hooks[0].command else {
+        panic!("expected an in-process hook, got {:?}", spec.hooks[0].command);
+    };
+    assert_eq!(name, poly_hooks::in_process::FILE_SAFETY);
+    let max_kb = args.iter().position(|arg| arg == "--max-added-kb").expect("size flag");
+    assert_eq!(args[max_kb + 1], "500", "the value is its own argv element");
+    let suffix = format!(" hooks check {}", args.join(" "));
+    assert!(line.ends_with(&suffix), "`{line}` re-execs the same arguments");
+    assert!(spec.hooks[0].args.is_empty() && spec.hooks[0].env.is_empty() && spec.hooks[0].pass_filenames);
 }
 
 #[test]

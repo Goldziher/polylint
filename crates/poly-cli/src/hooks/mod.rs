@@ -4,8 +4,9 @@
 //! `[hooks]` config is lowered ([`lower`]) into the runner's model and executed
 //! by [`poly_hooks::run`]. There is no external hook engine and no generated
 //! YAML — poly's own tools (`[hooks.builtin]`) lower to commands invoking the
-//! running `poly` binary, and inline jobs (`[[hooks.<stage>.jobs]]`, `.commands`,
-//! `.scripts`) lower to per-stage hooks.
+//! running `poly` binary (`file_safety` runs in this process through
+//! [`checks::in_process`], ADR 0067), and inline jobs (`[[hooks.<stage>.jobs]]`,
+//! `.commands`, `.scripts`) lower to per-stage hooks.
 
 pub mod checks;
 pub mod commands;

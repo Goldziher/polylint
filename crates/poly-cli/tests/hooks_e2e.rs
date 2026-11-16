@@ -805,3 +805,30 @@ fn hooks_outside_a_git_repository_explain_themselves_in_one_line() {
         );
     }
 }
+
+/// `file_safety` runs in the hook runner's process (ADR 0067): over the staged
+/// snapshot, as the re-exec child did, and reporting the lines that child prints.
+#[test]
+fn in_process_file_safety_judges_the_index_and_reports_what_the_check_prints() {
+    let repo = init_repo();
+    let root = repo.path();
+    write(root, "poly.toml", "[hooks.builtin]\nfile_safety = true\n");
+    write(root, "bad.txt", "<<<<<<< HEAD\n");
+    git(root, &["add", "bad.txt"]);
+    // Only the worktree copy is resolved; the commit would still capture the marker.
+    write(root, "bad.txt", "resolved\n");
+
+    let hook = poly_hooks(root, &["run", "pre-commit"]);
+    assert!(!hook.status.success(), "the staged marker must fail the gate");
+    let report = String::from_utf8_lossy(&hook.stdout);
+
+    // The re-exec form, over the same bytes.
+    write(root, "bad.txt", "<<<<<<< HEAD\n");
+    let direct = poly_hooks(root, &["check", "--merge-conflict", "bad.txt"]);
+    assert_eq!(direct.status.code(), Some(1));
+    let printed = String::from_utf8_lossy(&direct.stderr);
+    assert!(printed.contains("[check-merge-conflict]"), "{printed}");
+    for line in printed.lines().filter(|line| !line.trim().is_empty()) {
+        assert!(report.contains(line), "missing `{line}` in:\n{report}");
+    }
+}

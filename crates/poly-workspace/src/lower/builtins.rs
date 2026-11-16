@@ -3,10 +3,11 @@
 //! These two families are richer than the single-tool builtins (`lint` /
 //! `fmt` / `commit`) handled inline in [`super`]:
 //!
-//! - `file_safety` lowers to one hidden `poly hooks check …` invocation whose
-//!   flags select the enabled member checks (the runner appends the matched
-//!   files); the check flags themselves are lowered by the CLI's
-//!   `poly hooks check` module.
+//! - `file_safety` lowers to one in-process `file-safety` hook whose arguments
+//!   select the enabled member checks (the runner appends the matched files),
+//!   carrying the equivalent hidden `poly hooks check …` line it re-execs when
+//!   no in-process handler is registered (ADR 0067); the check flags themselves
+//!   are parsed by the CLI's `poly hooks check` module.
 //! - `cargo` lowers to whole-workspace `cargo clippy` / `sort` / `machete` /
 //!   `deny` hooks, each capability-probed against `PATH` so an absent tool is
 //!   skipped (with a `tracing::info!` notice) rather than failing the run.
@@ -148,15 +149,22 @@ pub(super) fn append_file_safety(
         if !builtin_runs_on(stages, &hooks.stages, ConfigStage::PreCommit, config_stage)? {
             continue;
         }
-        let Some(flags) = file_safety_flags(safety, &job.checks) else {
+        let flags = file_safety_flags(safety, &job.checks);
+        if flags.is_empty() {
             continue;
-        };
+        }
         let id = match (&job.name, scoped) {
             (Some(name), _) => name.clone(),
             (None, true) => format!("file-safety-{}", index + 1),
             (None, false) => "file-safety".to_string(),
         };
-        let mut hook = Hook::run(id, format!("{poly} hooks check {flags}"));
+        let line = format!("{poly} hooks check {}", flags.join(" "));
+        let mut hook = Hook::run(id, line.clone());
+        hook.command = HookCommand::InProcess {
+            name: poly_hooks::in_process::FILE_SAFETY.to_string(),
+            args: flags,
+            line,
+        };
         let (files, exclude) = super::builtin_globs(
             job.files.as_ref().or(safety.files.as_ref()),
             job.exclude.as_ref().or(safety.exclude.as_ref()),
@@ -180,9 +188,9 @@ fn member_wanted(safety: &FileSafetyHooks, checks: &[String], name: &str) -> boo
     safety.check_enabled(name) && (checks.is_empty() || checks.iter().any(|check| check == name))
 }
 
-/// Build the `poly hooks check` flag string for `checks` (every enabled member
-/// when empty), or `None` when none is enabled.
-fn file_safety_flags(safety: &FileSafetyHooks, checks: &[String]) -> Option<String> {
+/// Build the `poly hooks check` arguments for `checks` (every enabled member
+/// when empty), one per argv element; empty when none is enabled.
+fn file_safety_flags(safety: &FileSafetyHooks, checks: &[String]) -> Vec<String> {
     let wanted = |name: &str| member_wanted(safety, checks, name);
     let mut flags: Vec<String> = Vec::new();
     if wanted("merge_conflict") {
@@ -190,7 +198,8 @@ fn file_safety_flags(safety: &FileSafetyHooks, checks: &[String]) -> Option<Stri
     }
     if wanted("added_large_files") {
         flags.push("--added-large-files".to_string());
-        flags.push(format!("--max-added-kb {}", safety.max_added_file_kb));
+        flags.push("--max-added-kb".to_string());
+        flags.push(safety.max_added_file_kb.to_string());
     }
     if wanted("private_key") {
         flags.push("--private-key".to_string());
@@ -210,7 +219,7 @@ fn file_safety_flags(safety: &FileSafetyHooks, checks: &[String]) -> Option<Stri
     if wanted("aws_credentials") {
         flags.push("--aws-credentials".to_string());
     }
-    (!flags.is_empty()).then(|| flags.join(" "))
+    flags
 }
 
 /// One whole-workspace Cargo tool: its hook id, the `PATH` binary that gates it,

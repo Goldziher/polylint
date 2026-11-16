@@ -36,7 +36,9 @@ pub(super) fn build_command(
     let files = relative_to_cwd(hook, files);
     let files = files.as_slice();
     let mut cmd = match &hook.command {
-        HookCommand::Run(line) => shell_command(line, &hook.id, &hook.args, files, hook.pass_filenames, &hook.env),
+        HookCommand::Run(line) | HookCommand::InProcess { line, .. } => {
+            shell_command(line, &hook.id, &hook.args, files, hook.pass_filenames, &hook.env)
+        }
         HookCommand::Script { path, runner } => {
             let mut cmd = match runner {
                 Some(runner) => {
@@ -101,7 +103,7 @@ pub(super) fn hook_working_dir(hook: &Hook, root: &Path) -> std::path::PathBuf {
 
 #[cfg(windows)]
 pub(super) fn partition_hook_files<'a>(hook: &Hook, files: &'a [&'a Path]) -> Result<Vec<&'a [&'a Path]>, String> {
-    if let HookCommand::Run(line) = &hook.command {
+    if let Some(line) = hook.command.line() {
         return shell::partition_cmd_files(line, hook, files);
     }
     Ok(crate::concurrency::partition_files(files, base_arg_len(hook)))
@@ -112,7 +114,7 @@ pub(super) fn partition_hook_files<'a>(hook: &Hook, files: &'a [&'a Path]) -> Re
 pub(super) fn base_arg_len(hook: &Hook) -> usize {
     const FIXED: usize = 256;
     let command_len = match &hook.command {
-        HookCommand::Run(line) => line.len(),
+        HookCommand::Run(line) | HookCommand::InProcess { line, .. } => line.len(),
         HookCommand::Script { path, runner } => path.len() + runner.as_ref().map_or(0, String::len),
     };
     let args_len: usize = hook.args.iter().map(|a| a.len() + 9).sum();

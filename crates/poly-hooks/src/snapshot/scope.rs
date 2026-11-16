@@ -169,7 +169,9 @@ pub fn referenced_paths(hooks: &[Hook]) -> Vec<String> {
     let mut words: Vec<String> = Vec::new();
     for hook in hooks {
         match &hook.command {
-            HookCommand::Run(line) => words.extend(line.split_whitespace().map(str::to_owned)),
+            HookCommand::Run(line) | HookCommand::InProcess { line, .. } => {
+                words.extend(line.split_whitespace().map(str::to_owned));
+            }
             HookCommand::Script { path, .. } => words.push(path.clone()),
         }
         words.extend(hook.args.iter().cloned());

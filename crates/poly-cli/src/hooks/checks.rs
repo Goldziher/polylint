@@ -8,20 +8,28 @@
 //! check over that file set, prints one line per problem, and exits non-zero
 //! when anything fails.
 //!
+//! Under `poly hooks` the runner does not re-exec that line: [`in_process`] is
+//! registered as its in-process handler (ADR 0067) and runs the same parse and
+//! the same checks over the directory and files the child would have been given,
+//! producing the bytes the child would have printed.
+//!
 //! Each check is a free function over `(root, files)` so it can be unit-tested
 //! against a temporary directory without going through the CLI. Files are read
 //! relative to `root`; a path that cannot be read (e.g. a staged deletion) is
 //! skipped rather than reported, so the checks never fail on a vanished file.
 
+use std::ffi::OsString;
 use std::fmt;
+use std::fmt::Write as _;
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 use std::sync::LazyLock;
 
 use aho_corasick::AhoCorasick;
 use anyhow::{Context, Result};
-use clap::Args;
+use clap::{Args, Parser};
 use poly_config::DEFAULT_MAX_ADDED_FILE_KB;
+use poly_hooks::in_process::{Call, FILE_SAFETY, Outcome};
 
 mod aws;
 mod requirements;
@@ -166,14 +174,68 @@ pub fn run_file_safety_checks(args: &CheckArgs) -> Result<ExitCode> {
     if violations.is_empty() {
         return Ok(ExitCode::SUCCESS);
     }
-    for violation in &violations {
-        eprintln!("{violation}");
+    eprint!("{}", render_violations(&violations));
+    Ok(ExitCode::FAILURE)
+}
+
+/// What [`run_file_safety_checks`] prints for `violations`: one line per
+/// problem, then the count.
+fn render_violations(violations: &[Violation]) -> String {
+    let mut rendered = String::new();
+    for violation in violations {
+        let _ = writeln!(rendered, "{violation}");
     }
-    eprintln!(
+    let _ = writeln!(
+        rendered,
         "file-safety: {} found",
         poly_core::report::quantity(violations.len(), "problem", "problems")
     );
-    Ok(ExitCode::FAILURE)
+    rendered
+}
+
+/// `poly hooks check`'s argument grammar, for parsing an in-process call's
+/// argv the way the re-exec child parses its command line.
+#[derive(Parser)]
+#[command(name = "poly hooks check")]
+struct CheckCommand {
+    #[command(flatten)]
+    args: CheckArgs,
+}
+
+/// The in-process handler for `poly hooks` (ADR 0067): runs a
+/// [`FILE_SAFETY`] call as `poly hooks check` would, from `call.dir` over
+/// `call.files`, and declines every other name.
+#[must_use]
+pub fn in_process(call: &Call<'_>) -> Option<Result<Outcome>> {
+    (call.name == FILE_SAFETY).then(|| Ok(file_safety_in_process(call)))
+}
+
+/// The exit code and output `poly hooks check <args> <files>` would produce
+/// when run from `call.dir`.
+fn file_safety_in_process(call: &Call<'_>) -> Outcome {
+    let argv = std::iter::once(OsString::from("check"))
+        .chain(call.args.iter().map(OsString::from))
+        .chain(call.files.iter().map(|file| file.as_os_str().to_owned()));
+    let args = match CheckCommand::try_parse_from(argv) {
+        Ok(command) => command.args,
+        Err(error) => {
+            return Outcome {
+                code: error.exit_code(),
+                output: error.render().to_string().into_bytes(),
+            };
+        }
+    };
+    let violations = collect_violations(call.dir, &args);
+    if violations.is_empty() {
+        return Outcome {
+            code: 0,
+            output: Vec::new(),
+        };
+    }
+    Outcome {
+        code: 1,
+        output: render_violations(&violations).into_bytes(),
+    }
 }
 
 /// Collect the problems from every check requested in `args`.
@@ -581,6 +643,47 @@ mod tests {
             ..CheckArgs::default()
         };
         assert!(collect_violations(dir.path(), &args).is_empty());
+    }
+
+    #[test]
+    fn in_process_check_parses_the_lowered_argv_and_prints_what_the_child_prints() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = write(dir.path(), "bad.txt", b"<<<<<<< HEAD\nmore\n");
+        let args = ["--merge-conflict", "--added-large-files", "--max-added-kb", "500"].map(String::from);
+        let files = [path.as_path()];
+        let call = Call {
+            name: FILE_SAFETY,
+            args: &args,
+            dir: dir.path(),
+            files: &files,
+        };
+
+        let outcome = in_process(&call).expect("handled").expect("ran");
+
+        assert_eq!(outcome.code, 1);
+        assert_eq!(
+            String::from_utf8(outcome.output).unwrap(),
+            "bad.txt: merge-conflict marker on line 1 [check-merge-conflict]\nfile-safety: 1 problem found\n"
+        );
+    }
+
+    #[test]
+    fn in_process_check_passes_clean_files_silently_and_declines_other_names() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = write(dir.path(), "ok.txt", b"fine\n");
+        let args = ["--merge-conflict".to_string()];
+        let files = [path.as_path()];
+        let mut call = Call {
+            name: FILE_SAFETY,
+            args: &args,
+            dir: dir.path(),
+            files: &files,
+        };
+        let clean = in_process(&call).expect("handled").expect("ran");
+        assert_eq!((clean.code, clean.output.len()), (0, 0));
+
+        call.name = "lint";
+        assert!(in_process(&call).is_none());
     }
 
     #[test]

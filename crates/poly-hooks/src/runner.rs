@@ -90,8 +90,9 @@ use rayon::prelude::*;
 use tracing::warn;
 
 use crate::model::{
-    Hook, HookCache, HookOutcome, HookRunOutcome, HookRunRequest, HookStatus, SHARED_SERIAL_GROUP, SccacheSettings,
-    SetupScope, SkipReason, StageOutcome, StageSpec, StageStatus, StepOutcome, UnknownReason, ValidatedTree,
+    Hook, HookCache, HookCommand, HookOutcome, HookRunOutcome, HookRunRequest, HookStatus, SHARED_SERIAL_GROUP,
+    SccacheSettings, SetupScope, SkipReason, StageOutcome, StageSpec, StageStatus, StepOutcome, UnknownReason,
+    ValidatedTree,
 };
 use crate::reporter::{HookBar, ProgressUi};
 
@@ -604,6 +605,9 @@ fn run_hook(
     matched: &[&Path],
     bar: Option<&ProgressBar>,
 ) -> HookOutcome {
+    if let Some(outcome) = run_in_process(context, hook, position, matched) {
+        return outcome;
+    }
     #[cfg(windows)]
     let batches = match exec::partition_hook_files(hook, matched) {
         Ok(batches) => batches,
@@ -669,6 +673,49 @@ fn run_hook(
         show_output: hook.show_output,
         validated: context.tree,
     }
+}
+
+/// Run a [`HookCommand::InProcess`] hook through the registered handler, or
+/// `None` to run its command line instead.
+///
+/// Only a hook whose command line would carry nothing but the check's own
+/// arguments and the matched files is eligible: declared `args` or `env`, or
+/// files withheld from the command, keep the re-exec, whose argv and environment
+/// the handler does not reproduce. The handler is given the directory the child
+/// would have run from and the files as the child would have received them, so
+/// under a staged run it reads the snapshot exactly as the child did (ADR 0019).
+fn run_in_process(context: &ExecContext<'_>, hook: &Hook, position: usize, matched: &[&Path]) -> Option<HookOutcome> {
+    let HookCommand::InProcess { name, args, .. } = &hook.command else {
+        return None;
+    };
+    if !hook.args.is_empty() || !hook.env.is_empty() || !hook.pass_filenames {
+        return None;
+    }
+    let dir = exec::hook_working_dir(hook, context.root);
+    let files = exec::relative_to_cwd(hook, matched);
+    let call = crate::in_process::Call {
+        name,
+        args,
+        dir: &dir,
+        files: &files,
+    };
+    let start = Instant::now();
+    let (status, output) = match crate::in_process::dispatch(&call)? {
+        Ok(outcome) if outcome.code == 0 => (HookStatus::Passed, outcome.output),
+        Ok(outcome) => (
+            HookStatus::Failed {
+                code: Some(outcome.code),
+            },
+            outcome.output,
+        ),
+        Err(error) => (HookStatus::Error(format!("{error:#}")), Vec::new()),
+    };
+    Some(HookOutcome {
+        status,
+        output,
+        duration: start.elapsed(),
+        ..blank_outcome(hook, position, context.tree)
+    })
 }
 
 /// Name every hook a stage never got to, so "nothing ran" is never invisible.

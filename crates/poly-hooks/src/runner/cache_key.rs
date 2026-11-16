@@ -241,7 +241,7 @@ fn hook_version(hook: &Hook) -> String {
     use std::fmt::Write as _;
     let mut version = String::new();
     match &hook.command {
-        HookCommand::Run(line) => version.push_str(line),
+        HookCommand::Run(line) | HookCommand::InProcess { line, .. } => version.push_str(line),
         HookCommand::Script { path, runner } => {
             let _ = write!(version, "script\0{runner:?}\0{path}");
         }
