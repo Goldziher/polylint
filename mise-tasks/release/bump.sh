@@ -11,6 +11,7 @@
 #   pip-package/polylint/__init__.py      __version__
 #   plugin/.ai-rulez/config.plugins.toml                 [plugin] version
 #   .claude-plugin/*.json                 generated — asserted to match
+#   plugin/.hermes/package/               generated Hermes wheel (pyproject.toml version, __version__) — asserted to match
 #   components/Cargo.toml                 [workspace.package] version (poly-bundled and the poly-engines-* crates
 #                                         inherit it); components/Cargo.lock is refreshed with the root lock.
 #   components-pyrefly/Cargo.toml         the same for the pyrefly workspace and its lock.
@@ -231,6 +232,15 @@ for entry in "${PLUGIN_MANIFESTS[@]}"; do
     validation_failed=1
   fi
 done
+
+# The Hermes plugin wheel is generated from [plugin].version like the manifests above, but
+# carries it in a pyproject and a module, not JSON. Assert both, scoped to the version key.
+hermes_pyproject="plugin/.hermes/package/pyproject.toml"
+hermes_init="plugin/.hermes/package/src/poly_hermes_plugin/__init__.py"
+grep -qE "^version = ['\"]$VERSION['\"]$" "$hermes_pyproject" 2>/dev/null ||
+  fail "$hermes_pyproject [project] version: expected $VERSION"
+grep -qxF "__version__ = \"$VERSION\"" "$hermes_init" 2>/dev/null ||
+  fail "$hermes_init __version__: expected $VERSION"
 
 if ! jq -e '.plugins | map(select(.name == "poly" and .source == "./plugin")) | length == 1' \
   .claude-plugin/marketplace.json >/dev/null; then

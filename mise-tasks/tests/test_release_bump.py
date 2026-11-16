@@ -66,6 +66,10 @@ class ReleaseBumpTests(unittest.TestCase):
         for workspace in ["components", "components-pyrefly", "components-r", "components-secrets", "components-tsrs"]:
             manifest = tomllib.loads((self.root / workspace / "Cargo.toml").read_text())
             self.assertEqual(manifest["workspace"]["package"]["version"], "0.29.1", workspace)
+        hermes = tomllib.loads((self.root / "plugin/.hermes/package/pyproject.toml").read_text())
+        self.assertEqual(hermes["project"]["version"], "0.29.1")
+        hermes_init = (self.root / "plugin/.hermes/package/src/poly_hermes_plugin/__init__.py").read_text()
+        self.assertIn('__version__ = "0.29.1"', hermes_init)
         self.assertEqual(len(package["pi"]["skills"]), 5)
         self.assertEqual(len(package["pi"]["prompts"]), 2)
         marketplace = json.loads((self.root / ".claude-plugin/marketplace.json").read_text())
