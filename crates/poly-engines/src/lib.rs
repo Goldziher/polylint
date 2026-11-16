@@ -4,13 +4,6 @@
 //! (`poly_engines::sql`, `poly_engines::python`, ...), together with the ready-made component
 //! types and the [`Producer`] that adapts engines to the [`PolyComponent`] contract.
 
-// The contract lives in `poly-component-protocol`. The re-export stays because `alef` extracts the
-// contract traits through this crate's `lib.rs` and the producer crates it generates name them by
-// this path. It precedes `mod producer`: alef 0.130 reads a sibling crate once per run, so when
-// `producer`'s `poly_engine_api` re-export reaches `poly-component-protocol` first, a later
-// re-export from it here extracts nothing and `alef generate` cannot find the contract.
-pub use poly_component_protocol::{ComponentCallError, PolyComponent, PolyFrontend};
-
 mod components;
 pub mod producer;
 
@@ -34,6 +27,7 @@ pub use components::SqlComponent;
 pub use components::TyposComponent;
 #[cfg(feature = "uncomment")]
 pub use components::UncommentComponent;
+pub use poly_component_protocol::{ComponentCallError, PolyComponent, PolyFrontend};
 pub use producer::Producer;
 
 #[cfg(feature = "astgrep")]
