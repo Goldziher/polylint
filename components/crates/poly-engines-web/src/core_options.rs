@@ -9,6 +9,7 @@ use std::sync::{Mutex, OnceLock};
 use oxc_formatter_core::{CoreFormatOptions, IndentStyle, IndentWidth, LineEnding, LineWidth};
 
 use poly_engine_api::config::{EngineConfig, LineEnding as ConfiguredLineEnding};
+use poly_engine_api::options::OptionsExt;
 
 /// An option value the formatters cannot use; a default is substituted and the user warned.
 #[derive(Debug, PartialEq, Eq)]
@@ -56,7 +57,7 @@ fn parse_line_width(cfg: &EngineConfig) -> Result<LineWidth, InvalidOption> {
         value,
         expected: "an integer from 1 to 320",
     };
-    let width = match cfg.options.get("line_width").and_then(toml::Value::as_integer) {
+    let width = match cfg.options.opt_i64("line_width") {
         Some(explicit) => u16::try_from(explicit).map_err(|_| invalid(explicit.to_string()))?,
         None => {
             return Ok(u16::try_from(cfg.globals.line_length)
@@ -74,7 +75,7 @@ pub(crate) fn resolve_line_width(cfg: &EngineConfig) -> LineWidth {
 }
 
 fn parse_line_ending(cfg: &EngineConfig) -> Result<LineEnding, InvalidOption> {
-    match cfg.options.get("line_ending").and_then(toml::Value::as_str) {
+    match cfg.options.opt_str("line_ending") {
         Some("crlf") => Ok(LineEnding::Crlf),
         Some("cr") => Ok(LineEnding::Cr),
         Some("lf") => Ok(LineEnding::Lf),
@@ -100,7 +101,7 @@ pub(crate) fn resolve_line_ending(cfg: &EngineConfig) -> LineEnding {
 }
 
 fn parse_indent_style(cfg: &EngineConfig) -> Result<IndentStyle, InvalidOption> {
-    match cfg.options.get("indent_style").and_then(toml::Value::as_str) {
+    match cfg.options.opt_str("indent_style") {
         Some("tab") => Ok(IndentStyle::Tab),
         Some("space") | None => Ok(IndentStyle::Space),
         Some(other) => Err(InvalidOption {

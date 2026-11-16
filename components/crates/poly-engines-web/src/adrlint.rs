@@ -64,6 +64,7 @@ use poly_engine_api::engine::{
     ProjectRequest, ProjectSideFile, Severity, SourceFile, Span,
 };
 use poly_engine_api::language::Language;
+use poly_engine_api::options::OptionsExt;
 use poly_engine_api::rule_config::string_list;
 
 /// Cache-key identity: the wrapped crate version plus a marker for this backend's own mapping.
@@ -306,8 +307,7 @@ impl Selection {
             ignore: string_list(cfg, "ignore"),
             configured: cfg
                 .options
-                .get("rules")
-                .and_then(toml::Value::as_table)
+                .opt_table("rules")
                 .map(|rules| {
                     rules
                         .iter()
@@ -364,10 +364,7 @@ fn matches_code(pattern: &str, code: &str) -> bool {
 
 /// The universal `enabled` key, defaulting to `false`: this backend is opt-in.
 fn enabled(cfg: &EngineConfig) -> bool {
-    cfg.options
-        .get("enabled")
-        .and_then(toml::Value::as_bool)
-        .unwrap_or(false)
+    cfg.options.opt_bool("enabled").unwrap_or(false)
 }
 
 #[cfg(test)]

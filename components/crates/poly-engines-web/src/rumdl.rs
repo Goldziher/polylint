@@ -46,6 +46,7 @@ use poly_engine_api::engine::{
     ProjectRequest, Severity, SourceFile, Span,
 };
 use poly_engine_api::language::Language;
+use poly_engine_api::options::OptionsExt;
 use poly_engine_api::rule_config::{RuleOptions, RuleSelection, string_list, union_codes, warn_and_skip_blank};
 use poly_engine_api::template::{GO_TEMPLATE_SKIP, contains_go_template_markdown};
 
@@ -240,8 +241,7 @@ fn build_rumdl_config(cfg: &EngineConfig, language: &Language) -> RumdlConfig {
 
     let line_length = cfg
         .options
-        .get("line_length")
-        .and_then(toml::Value::as_integer)
+        .opt_i64("line_length")
         .map(|v| v as usize)
         .unwrap_or(cfg.globals.line_length);
     config.global.line_length = LineLength::new(line_length);

@@ -18,6 +18,7 @@ use serde::Deserialize;
 use poly_engine_api::config::EngineConfig;
 use poly_engine_api::engine::{Diagnostic, Severity, SourceFile, Span};
 use poly_engine_api::line_index::LineIndex;
+use poly_engine_api::options::OptionsExt;
 
 const OXLINT: &str = "oxlint";
 const OXFMT: &str = "oxfmt";
@@ -25,15 +26,12 @@ const FILES_PER_RUN: usize = 400;
 
 /// Whether `[lint.<lang>.oxc] js_plugins = "external"`.
 pub(super) fn lint_requested(cfg: &EngineConfig) -> bool {
-    cfg.options.get("js_plugins").and_then(toml::Value::as_str) == Some("external")
+    cfg.options.opt_str("js_plugins") == Some("external")
 }
 
 /// Whether `[fmt.<lang>.oxc] external = true`.
 pub(super) fn format_requested(cfg: &EngineConfig) -> bool {
-    cfg.options
-        .get("external")
-        .and_then(toml::Value::as_bool)
-        .unwrap_or(false)
+    cfg.options.opt_bool("external").unwrap_or(false)
 }
 
 /// `name` from the nearest `node_modules/.bin` at or above `start`, else from `path_var`.

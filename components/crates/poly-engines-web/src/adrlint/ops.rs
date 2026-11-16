@@ -20,6 +20,7 @@ use anyhow::{Context, bail};
 use poly_component_protocol::{WireAdrOp, WireAdrPlan, WireAdrWrite};
 use poly_engine_api::config::EngineConfig;
 use poly_engine_api::engine::ProjectFile;
+use poly_engine_api::options::OptionsExt;
 
 use super::project::DEFAULT_LOCK;
 
@@ -53,11 +54,7 @@ fn key_of(path: &Path) -> String {
 
 /// The manifest's key, from the `lock` option (default `adrlint.lock`), as the project check reads it.
 fn lock_key(cfg: &EngineConfig) -> String {
-    let configured = cfg
-        .options
-        .get("lock")
-        .and_then(toml::Value::as_str)
-        .unwrap_or(DEFAULT_LOCK);
+    let configured = cfg.options.opt_str("lock").unwrap_or(DEFAULT_LOCK);
     key_of(Path::new(configured))
 }
 
@@ -237,8 +234,7 @@ fn new_record(
 /// The first number of an empty log: the `start` option, else adrlint's own default.
 fn start(cfg: &EngineConfig) -> u32 {
     cfg.options
-        .get("start")
-        .and_then(toml::Value::as_integer)
+        .opt_i64("start")
         .and_then(|start| u32::try_from(start).ok())
         .unwrap_or_else(|| AdrConfig::default().start)
 }

@@ -19,6 +19,7 @@ use super::markdown_embed;
 use crate::core_options::core_format_options;
 use poly_engine_api::config::EngineConfig;
 use poly_engine_api::engine::{FormatOutput, SourceFile};
+use poly_engine_api::options::OptionsExt;
 
 /// Keys that belong to rumdl's own rule-based formatter; setting one keeps that formatter.
 pub(super) const RUMDL_FORMAT_KEYS: &[&str] = &[
@@ -76,10 +77,10 @@ pub(super) fn format(src: &SourceFile, cfg: &EngineConfig) -> anyhow::Result<For
 pub(super) fn build_options(cfg: &EngineConfig) -> MarkdownFormatOptions {
     let mut options = MarkdownFormatOptions::default();
     options.apply_core(core_format_options(cfg));
-    if let Some(single) = cfg.options.get("single_quote").and_then(toml::Value::as_bool) {
+    if let Some(single) = cfg.options.opt_bool("single_quote") {
         options.single_quote = single.into();
     }
-    options.prose_wrap = match cfg.options.get("prose_wrap").and_then(toml::Value::as_str) {
+    options.prose_wrap = match cfg.options.opt_str("prose_wrap") {
         Some("always") => ProseWrap::Always,
         Some("never") => ProseWrap::Never,
         _ => ProseWrap::Preserve,

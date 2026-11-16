@@ -17,6 +17,7 @@ use std::path::PathBuf;
 
 use poly_engine_api::engine::{Diagnostic, ProjectDirs, ProjectFile, ProjectInputs, ProjectRequest};
 use poly_engine_api::language::Language;
+use poly_engine_api::options::OptionsExt;
 use poly_engine_api::template::contains_go_template_markdown;
 use rumdl_lib::config::Config as RumdlConfig;
 use rumdl_lib::rule::Rule;
@@ -36,7 +37,7 @@ const FRAGMENT_RULE: &str = "MD051";
 
 /// Whether the cross-file check is switched on. A present-but-false key is off.
 pub(super) fn enabled(cfg: &poly_engine_api::config::EngineConfig) -> bool {
-    cfg.options.get("cross_file_links").and_then(toml::Value::as_bool) == Some(true)
+    cfg.options.opt_bool("cross_file_links") == Some(true)
 }
 
 /// The whole Markdown tree under `cross_file_links_dir` (default the project root), unaffected by

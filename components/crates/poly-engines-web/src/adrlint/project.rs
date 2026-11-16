@@ -27,6 +27,7 @@ use ::adrlint::lock;
 use anyhow::Context;
 use poly_engine_api::engine::{Diagnostic, ProjectFile, ProjectRequest};
 use poly_engine_api::language::Language;
+use poly_engine_api::options::OptionsExt;
 use poly_engine_api::project::LISTING_LANGUAGE;
 
 use super::{Selection, enabled, map_diagnostic};
@@ -101,16 +102,12 @@ struct Settings {
 impl Settings {
     fn from_options(cfg: &poly_engine_api::config::EngineConfig) -> Self {
         Self {
-            start: cfg
-                .options
-                .get("start")
-                .and_then(toml::Value::as_integer)
-                .and_then(|start| u32::try_from(start).ok()),
+            start: cfg.options.opt_i64("start").and_then(|start| u32::try_from(start).ok()),
             allow_gaps: option_bool(cfg, "allow_gaps"),
         }
     }
 }
 
 fn option_bool(cfg: &poly_engine_api::config::EngineConfig, key: &str) -> bool {
-    cfg.options.get(key).and_then(toml::Value::as_bool).unwrap_or(false)
+    cfg.options.opt_bool(key).unwrap_or(false)
 }

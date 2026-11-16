@@ -9,6 +9,7 @@ use oxc_span::SourceType;
 use poly_engine_api::config::EngineConfig;
 use poly_engine_api::engine::{FormatOutput, SourceFile};
 use poly_engine_api::language::Language;
+use poly_engine_api::options::OptionsExt;
 
 use super::config::{build_js_options, build_json_options, sorted_package_json};
 
@@ -93,14 +94,8 @@ pub(crate) fn format_embedded_js(
 /// `arrow_parentheses`, `bracket_spacing`, `bracket_same_line`, `indent_style`)
 /// can be set via `[fmt.<lang>.oxc]` in `poly.toml`.
 pub(super) fn format_js(src: &SourceFile, cfg: &EngineConfig) -> anyhow::Result<FormatOutput> {
-    if super::external::format_requested(cfg)
-        && cfg.options.get("requires_oxfmt").and_then(toml::Value::as_bool) == Some(true)
-    {
-        let config = cfg
-            .options
-            .get("oxfmtrc")
-            .and_then(toml::Value::as_str)
-            .map(std::path::Path::new);
+    if super::external::format_requested(cfg) && cfg.options.opt_bool("requires_oxfmt") == Some(true) {
+        let config = cfg.options.opt_str("oxfmtrc").map(std::path::Path::new);
         if let Some(code) = super::external::format_with_oxfmt(src, config) {
             return Ok(if code == *src.content {
                 FormatOutput::Unchanged

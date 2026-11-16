@@ -39,6 +39,7 @@ use poly_engine_api::engine::{
     Capabilities, Diagnostic, Engine, FormatOutput, OptionKeys, OptionTable, OptionType, Severity, SourceFile, Span,
 };
 use poly_engine_api::language::Language;
+use poly_engine_api::options::OptionsExt;
 use poly_engine_api::template::{GO_TEMPLATE_SKIP, contains_go_template};
 
 /// Flow-collection depth beyond which a document is validated before it is
@@ -291,16 +292,16 @@ fn first_syntax_error(content: &str) -> Option<serde_yaml::Error> {
 pub(super) fn build_format_options(cfg: &EngineConfig) -> YamlFormatOptions {
     let mut options = YamlFormatOptions::default();
     options.apply_core(core_format_options(cfg));
-    if let Some(single) = cfg.options.get("single_quote").and_then(toml::Value::as_bool) {
+    if let Some(single) = cfg.options.opt_bool("single_quote") {
         options.single_quote = single.into();
     }
-    if let Some(spacing) = cfg.options.get("bracket_spacing").and_then(toml::Value::as_bool) {
+    if let Some(spacing) = cfg.options.opt_bool("bracket_spacing") {
         options.bracket_spacing = spacing.into();
     }
-    if cfg.options.get("trailing_commas").and_then(toml::Value::as_str) == Some("never") {
+    if cfg.options.opt_str("trailing_commas") == Some("never") {
         options.trailing_commas = TrailingCommas::Never;
     }
-    options.prose_wrap = match cfg.options.get("prose_wrap").and_then(toml::Value::as_str) {
+    options.prose_wrap = match cfg.options.opt_str("prose_wrap") {
         Some("always") => ProseWrap::Always,
         Some("never") => ProseWrap::Never,
         _ => ProseWrap::Preserve,

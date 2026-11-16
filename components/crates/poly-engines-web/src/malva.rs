@@ -37,6 +37,7 @@ use poly_engine_api::css_hacks::{IE_PROPERTY_HACK_SKIP, has_ie_property_hack};
 use poly_engine_api::engine::{Capabilities, Engine, FormatOutput, OptionKeys, OptionTable, OptionType, SourceFile};
 use poly_engine_api::engine_guard::{deep_unbalanced_nesting, refuse_pathological_nesting};
 use poly_engine_api::language::Language;
+use poly_engine_api::options::OptionsExt;
 
 /// malva CSS / SCSS / Less formatter backend.
 pub struct MalvaEngine;
@@ -186,10 +187,10 @@ pub(super) fn oxc_css_options(cfg: &EngineConfig, variant: CssVariant) -> CssFor
         ..CssFormatOptions::default()
     };
     options.apply_core(core_format_options(cfg));
-    if let Some(single) = cfg.options.get("single_quote").and_then(toml::Value::as_bool) {
+    if let Some(single) = cfg.options.opt_bool("single_quote") {
         options.single_quote = single.into();
     }
-    if cfg.options.get("trailing_commas").and_then(toml::Value::as_str) == Some("never") {
+    if cfg.options.opt_str("trailing_commas") == Some("never") {
         options.trailing_commas = TrailingCommas::Never;
     }
     options

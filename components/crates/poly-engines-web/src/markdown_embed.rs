@@ -22,6 +22,7 @@ use oxc_formatter_markdown::XxxInMarkdownCodeBlock;
 use oxc_span::SourceType;
 
 use poly_engine_api::config::EngineConfig;
+use poly_engine_api::options::OptionsExt;
 
 enum Target {
     Js(SourceType),
@@ -60,8 +61,7 @@ fn child_config(host: &EngineConfig, family: &str) -> EngineConfig {
     let mut indent_width = host.indent_width;
     let overlay = host
         .options
-        .get("embedded")
-        .and_then(toml::Value::as_table)
+        .opt_table("embedded")
         .and_then(|families| families.get(family))
         .and_then(toml::Value::as_table);
     if let Some(overlay) = overlay {
@@ -108,12 +108,7 @@ impl ChildConfigs {
 /// The dispatcher for a Markdown file formatted under `host`, or `None` when embedded
 /// formatting is switched off.
 pub(super) fn dispatcher(host: &EngineConfig) -> Option<FormatDispatcher> {
-    if host
-        .options
-        .get("embedded_language_formatting")
-        .and_then(toml::Value::as_str)
-        == Some("off")
-    {
+    if host.options.opt_str("embedded_language_formatting") == Some("off") {
         return None;
     }
     Some(build(Arc::new(ChildConfigs::new(host))))

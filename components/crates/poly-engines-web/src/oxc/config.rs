@@ -7,16 +7,17 @@ use oxc_formatter_json::{JsonFormatOptions, JsonVariant};
 use poly_engine_api::config::EngineConfig;
 use poly_engine_api::engine::SourceFile;
 use poly_engine_api::language::Language;
+use poly_engine_api::options::OptionsExt;
 
 use super::sort_imports::build_sort_imports;
 use crate::core_options::{resolve_indent_style, resolve_indent_width, resolve_line_ending, resolve_line_width};
 
 fn option_str<'a>(cfg: &'a EngineConfig, key: &str) -> Option<&'a str> {
-    cfg.options.get(key).and_then(toml::Value::as_str)
+    cfg.options.opt_str(key)
 }
 
 fn option_bool(cfg: &EngineConfig, key: &str) -> Option<bool> {
-    cfg.options.get(key).and_then(toml::Value::as_bool)
+    cfg.options.opt_bool(key)
 }
 
 /// Build [`JsFormatOptions`] from a resolved [`EngineConfig`].
@@ -56,8 +57,7 @@ pub(super) fn build_js_options(cfg: &EngineConfig) -> JsFormatOptions {
 
     let jsx_quote_style = cfg
         .options
-        .get("jsx_quote_style")
-        .and_then(|v| v.as_str())
+        .opt_str("jsx_quote_style")
         .map(|s| match s {
             "single" => QuoteStyle::Single,
             _ => QuoteStyle::Double,
@@ -66,36 +66,31 @@ pub(super) fn build_js_options(cfg: &EngineConfig) -> JsFormatOptions {
 
     let semicolons = cfg
         .options
-        .get("semicolons")
-        .and_then(|v| v.as_str())
+        .opt_str("semicolons")
         .and_then(|s| s.parse::<Semicolons>().ok())
         .unwrap_or_default();
 
     let trailing_commas = cfg
         .options
-        .get("trailing_commas")
-        .and_then(|v| v.as_str())
+        .opt_str("trailing_commas")
         .and_then(|s| s.parse::<JsTrailingCommas>().ok())
         .unwrap_or_default();
 
     let arrow_parentheses = cfg
         .options
-        .get("arrow_parentheses")
-        .and_then(|v| v.as_str())
+        .opt_str("arrow_parentheses")
         .and_then(|s| s.parse::<ArrowParentheses>().ok())
         .unwrap_or_default();
 
     let bracket_spacing = cfg
         .options
-        .get("bracket_spacing")
-        .and_then(|v| v.as_bool())
+        .opt_bool("bracket_spacing")
         .map(BracketSpacing::from)
         .unwrap_or_default();
 
     let bracket_same_line = cfg
         .options
-        .get("bracket_same_line")
-        .and_then(|v| v.as_bool())
+        .opt_bool("bracket_same_line")
         .map(BracketSameLine::from)
         .unwrap_or_default();
 
@@ -167,8 +162,7 @@ pub(super) fn build_json_options(src: &SourceFile, cfg: &EngineConfig) -> JsonFo
 
     let bracket_spacing = cfg
         .options
-        .get("bracket_spacing")
-        .and_then(|v| v.as_bool())
+        .opt_bool("bracket_spacing")
         .map(JsonBracketSpacing::from)
         .unwrap_or_default();
 

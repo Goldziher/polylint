@@ -54,6 +54,7 @@ use taplo::{
 };
 
 use crate::core_options::core_format_options;
+use poly_engine_api::options::OptionsExt;
 use poly_engine_api::{
     config::EngineConfig,
     engine::OptionKeys,
@@ -232,7 +233,7 @@ impl Engine for TaploEngine {
 pub(super) fn build_oxc_options(cfg: &EngineConfig) -> TomlFormatOptions {
     let mut options = TomlFormatOptions::default();
     options.apply_core(core_format_options(cfg));
-    if cfg.options.get("trailing_commas").and_then(toml::Value::as_str) == Some("never") {
+    if cfg.options.opt_str("trailing_commas") == Some("never") {
         options.trailing_commas = TrailingCommas::Never;
     }
     options
@@ -257,54 +258,54 @@ fn build_options(cfg: &EngineConfig) -> Options {
         ..Options::default()
     };
 
-    if let Some(v) = cfg.options.get("column_width").and_then(toml::Value::as_integer)
+    if let Some(v) = cfg.options.opt_i64("column_width")
         && v > 0
     {
         opts.column_width = v as usize;
     }
-    if let Some(v) = cfg.options.get("indent_width").and_then(toml::Value::as_integer)
+    if let Some(v) = cfg.options.opt_i64("indent_width")
         && (1..=32).contains(&v)
     {
         opts.indent_string = " ".repeat(v as usize);
     }
-    if let Some(v) = cfg.options.get("allowed_blank_lines").and_then(toml::Value::as_integer)
+    if let Some(v) = cfg.options.opt_i64("allowed_blank_lines")
         && v >= 0
     {
         opts.allowed_blank_lines = v as usize;
     }
 
-    if let Some(v) = cfg.options.get("align_entries").and_then(toml::Value::as_bool) {
+    if let Some(v) = cfg.options.opt_bool("align_entries") {
         opts.align_entries = v;
     }
-    if let Some(v) = cfg.options.get("align_comments").and_then(toml::Value::as_bool) {
+    if let Some(v) = cfg.options.opt_bool("align_comments") {
         opts.align_comments = v;
     }
-    if let Some(v) = cfg.options.get("reorder_keys").and_then(toml::Value::as_bool) {
+    if let Some(v) = cfg.options.opt_bool("reorder_keys") {
         opts.reorder_keys = v;
     }
-    if let Some(v) = cfg.options.get("indent_tables").and_then(toml::Value::as_bool) {
+    if let Some(v) = cfg.options.opt_bool("indent_tables") {
         opts.indent_tables = v;
     }
-    if let Some(v) = cfg.options.get("indent_entries").and_then(toml::Value::as_bool) {
+    if let Some(v) = cfg.options.opt_bool("indent_entries") {
         opts.indent_entries = v;
     }
 
-    if let Some(v) = cfg.options.get("array_trailing_comma").and_then(toml::Value::as_bool) {
+    if let Some(v) = cfg.options.opt_bool("array_trailing_comma") {
         opts.array_trailing_comma = v;
     }
-    if let Some(v) = cfg.options.get("array_auto_expand").and_then(toml::Value::as_bool) {
+    if let Some(v) = cfg.options.opt_bool("array_auto_expand") {
         opts.array_auto_expand = v;
     }
-    if let Some(v) = cfg.options.get("array_auto_collapse").and_then(toml::Value::as_bool) {
+    if let Some(v) = cfg.options.opt_bool("array_auto_collapse") {
         opts.array_auto_collapse = v;
     }
-    if let Some(v) = cfg.options.get("compact_arrays").and_then(toml::Value::as_bool) {
+    if let Some(v) = cfg.options.opt_bool("compact_arrays") {
         opts.compact_arrays = v;
     }
-    if let Some(v) = cfg.options.get("compact_inline_tables").and_then(toml::Value::as_bool) {
+    if let Some(v) = cfg.options.opt_bool("compact_inline_tables") {
         opts.compact_inline_tables = v;
     }
-    if let Some(v) = cfg.options.get("inline_table_expand").and_then(toml::Value::as_bool) {
+    if let Some(v) = cfg.options.opt_bool("inline_table_expand") {
         opts.inline_table_expand = v;
     }
 

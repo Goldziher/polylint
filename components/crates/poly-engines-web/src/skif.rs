@@ -49,6 +49,7 @@ use poly_engine_api::engine::{
     ProjectSideFile, Severity,
 };
 use poly_engine_api::language::Language;
+use poly_engine_api::options::OptionsExt;
 use skif::{ConfigOverrides, Linter, RunOptions};
 
 pub use fs::ReadLog;
@@ -231,7 +232,7 @@ pub fn analyze(req: &ProjectRequest<'_>) -> anyhow::Result<Analysis> {
         log: ReadLog::default(),
         note: None,
     };
-    if req.config.options.get("enabled").and_then(toml::Value::as_bool) != Some(true) {
+    if req.config.options.opt_bool("enabled") != Some(true) {
         return Ok(nothing());
     }
     let settings = Settings::from_options(&req.config.options, req.threads)?;
@@ -394,7 +395,7 @@ impl Settings {
         overrides.production = flag(options, "production")?;
         overrides.no_js = flag(options, "js")? == Some(false);
         let select = str_list(options, "select")?;
-        let configured = options.get("rules").and_then(toml::Value::as_table);
+        let configured = options.opt_table("rules");
         let asked_for = select
             .iter()
             .flatten()

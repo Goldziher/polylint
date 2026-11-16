@@ -15,6 +15,7 @@ use super::run::SourceLinter;
 use poly_engine_api::config::EngineConfig;
 use poly_engine_api::engine::{Diagnostic, Edit, Severity, SourceFile, Span};
 use poly_engine_api::line_index::LineIndex;
+use poly_engine_api::options::OptionsExt;
 use poly_engine_api::rule_config::{RuleOptions, RuleSelection};
 
 /// The opinionated filters layered on top of oxlint's own default.
@@ -365,11 +366,7 @@ pub(super) const DEFAULT_MAX_LINE_BYTES: i64 = 20_000;
 /// Whether `src` is minified output: more than half of its bytes sit on lines
 /// longer than the configured `max_line_bytes`.
 fn looks_minified(src: &SourceFile, cfg: &EngineConfig) -> bool {
-    let limit = cfg
-        .options
-        .get("max_line_bytes")
-        .and_then(toml::Value::as_integer)
-        .unwrap_or(DEFAULT_MAX_LINE_BYTES);
+    let limit = cfg.options.opt_i64("max_line_bytes").unwrap_or(DEFAULT_MAX_LINE_BYTES);
     let Ok(limit) = usize::try_from(limit) else {
         return false;
     };
