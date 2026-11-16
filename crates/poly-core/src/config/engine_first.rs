@@ -19,6 +19,7 @@
 use std::collections::BTreeMap;
 
 use poly_config::v2::{BUILTIN_PACK_KEY, EngineTable, PhaseTable, RULE_DIRS_KEY, RuleOverride};
+use poly_engine_api::options::OptionsExt;
 
 use super::Kind;
 use crate::engine::ENABLED_OPTION_KEY;
@@ -156,6 +157,6 @@ pub(super) fn astgrep_rule_settings(engines: &BTreeMap<String, EngineTable>) -> 
                 .map(str::to_string)
                 .collect()
         });
-    let builtin = merged.get(BUILTIN_PACK_KEY).and_then(toml::Value::as_bool);
+    let builtin = merged.opt_bool(BUILTIN_PACK_KEY);
     (dirs, builtin)
 }

@@ -10,6 +10,7 @@
 use std::path::PathBuf;
 use std::sync::OnceLock;
 
+use poly_engine_api::options::OptionsExt;
 use tracing::warn;
 
 use super::probe::probe_at;
@@ -40,7 +41,7 @@ pub(super) struct Selected<'a> {
 /// Whether the config asks for the pinned download when `shellcheck` is not on
 /// `PATH`. Anything but `"auto"` keeps today's zero-download behavior.
 pub(super) fn install_auto(cfg: &EngineConfig) -> bool {
-    match cfg.options.get("install").and_then(toml::Value::as_str) {
+    match cfg.options.opt_str("install") {
         Some("auto") => true,
         Some("never") | None => false,
         Some(other) => {

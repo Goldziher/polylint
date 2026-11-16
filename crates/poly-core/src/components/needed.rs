@@ -6,6 +6,7 @@ use std::sync::OnceLock;
 use poly_component_index::{Component, ComponentIndex};
 use poly_component_protocol::WireEngineDesc;
 use poly_config::v2::Enable;
+use poly_engine_api::options::OptionsExt;
 
 use crate::config::{Config, Kind};
 use crate::language::Language;
@@ -96,14 +97,7 @@ fn engine_in_play(config: &Config, language: Option<&Language>, desc: &WireEngin
     let off = |kind| {
         language.map_or_else(
             || config.engines.get(table).and_then(|table| table.enabled) == Some(false),
-            |language| {
-                config
-                    .engine_config(language, table, kind)
-                    .options
-                    .get("enabled")
-                    .and_then(toml::Value::as_bool)
-                    == Some(false)
-            },
+            |language| config.engine_config(language, table, kind).options.opt_bool("enabled") == Some(false),
         )
     };
     !(off(Kind::Lint) && off(Kind::Format))
@@ -123,8 +117,7 @@ fn opted_in(config: &Config, language: &Language, component: &Component) -> bool
             config
                 .engine_config(language, &desc.name, kind)
                 .options
-                .get("enabled")
-                .and_then(toml::Value::as_bool)
+                .opt_bool("enabled")
                 == Some(true)
         })
     })
@@ -143,10 +136,7 @@ fn selected_by_options<'a>(index: &'a ComponentIndex, options_of: &dyn Fn(&str) 
         .filter(|component| {
             component.engines.iter().any(|desc| {
                 desc.selection.as_ref().is_some_and(|selection| {
-                    options_of(&selection.table)
-                        .get(&selection.key)
-                        .and_then(toml::Value::as_str)
-                        == Some(selection.value.as_str())
+                    options_of(&selection.table).opt_str(&selection.key) == Some(selection.value.as_str())
                 })
             })
         })

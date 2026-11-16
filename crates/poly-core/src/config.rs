@@ -11,6 +11,7 @@ use std::path::Path;
 
 pub use poly_config::{GlobalDefaults, LineEnding};
 pub use poly_engine_api::config::EngineConfig;
+use poly_engine_api::options::OptionsExt;
 
 mod engine_first;
 
@@ -184,9 +185,7 @@ impl Config {
                 crate::host_hooks::oxfmt_native::warn_if_unusable(&self.oxfmt_native);
                 crate::host_hooks::oxfmt_native::engine_defaults(&self.oxfmt_native, lang, engine_name)
             }
-            Kind::Lint if lang_options.get("oxlintrc").and_then(toml::Value::as_bool) == Some(false) => {
-                toml::Table::new()
-            }
+            Kind::Lint if lang_options.opt_bool("oxlintrc") == Some(false) => toml::Table::new(),
             // Read host-side, so the defaults do not depend on the web family being compiled in.
             Kind::Lint => crate::host_hooks::oxlintrc::engine_defaults(&self.oxlint_native, lang, engine_name),
         };
@@ -194,8 +193,7 @@ impl Config {
             lang_options.entry(key).or_insert(value);
         }
         let indent_width = lang_options
-            .get("indent_width")
-            .and_then(toml::Value::as_integer)
+            .opt_i64("indent_width")
             .and_then(|v| usize::try_from(v).ok())
             .filter(|&v| v > 0)
             .unwrap_or_else(|| lang.default_indent_width());
@@ -206,7 +204,7 @@ impl Config {
         // lifted out here or it silently does nothing.
         let enabled = match &v2_layers {
             // The layers already folded the language and engine levels together.
-            Some(_) => lang_options.get(ENABLED_OPTION_KEY).and_then(toml::Value::as_bool),
+            Some(_) => lang_options.opt_bool(ENABLED_OPTION_KEY),
             None => self.resolve_enabled(tables, engine_name, &lang_options),
         };
         // typos, astgrep and uncomment build host-side whether or not their families are linked, so a
@@ -244,8 +242,7 @@ impl Config {
             Some(layers) => layers.iter().collect(),
             None => self
                 .lint
-                .get(engine_name)
-                .and_then(toml::Value::as_table)
+                .opt_table(engine_name)
                 .into_iter()
                 .chain(std::iter::once(lang_options))
                 .collect(),
@@ -257,12 +254,7 @@ impl Config {
     fn astgrep_layers<'a>(&'a self, v2_layers: &'a Option<Vec<toml::Table>>) -> Vec<&'a toml::Table> {
         match v2_layers {
             Some(layers) => layers.iter().collect(),
-            None => self
-                .lint
-                .get("astgrep")
-                .and_then(toml::Value::as_table)
-                .into_iter()
-                .collect(),
+            None => self.lint.opt_table("astgrep").into_iter().collect(),
         }
     }
 
@@ -277,11 +269,11 @@ impl Config {
     /// language-agnostic `[<kind>.<engine>]` one, which only the cross-cutting
     /// backends have.
     fn resolve_enabled(&self, tables: &toml::Table, engine_name: &str, lang_options: &toml::Table) -> Option<bool> {
-        let flag = |table: &toml::Table| table.get(ENABLED_OPTION_KEY).and_then(toml::Value::as_bool);
+        let flag = |table: &toml::Table| table.opt_bool(ENABLED_OPTION_KEY);
         flag(lang_options).or_else(|| {
             CROSS_CUTTING_ENGINES
                 .contains(&engine_name)
-                .then(|| tables.get(engine_name).and_then(toml::Value::as_table).and_then(flag))
+                .then(|| tables.opt_table(engine_name).and_then(flag))
                 .flatten()
         })
     }
@@ -470,7 +462,7 @@ fn last_value<'a>(layers: &[&'a toml::Table], key: &str) -> Option<&'a toml::Val
 /// incoming layer winning on a duplicate key. Non-table values and non-string
 /// entries are ignored.
 fn extend_string_map(dest: &mut BTreeMap<String, String>, table: &toml::Table, key: &str) {
-    if let Some(entries) = table.get(key).and_then(|v| v.as_table()) {
+    if let Some(entries) = table.opt_table(key) {
         for (name, value) in entries {
             if let Some(value) = value.as_str() {
                 dest.insert(name.clone(), value.to_string());

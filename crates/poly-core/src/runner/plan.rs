@@ -11,6 +11,7 @@ use poly_cache::{ResultCache, SerializedArgs};
 use rustc_hash::{FxHashMap, FxHashSet};
 
 use poly_component_host::ComponentEngine;
+use poly_engine_api::options::OptionsExt;
 
 use crate::components::{ComponentsReport, ResolvedComponents, resolve as resolve_components};
 use crate::config::{Config, EngineConfig, Kind};
@@ -282,7 +283,7 @@ fn retaining_enabled(
                 return true;
             }
             let cfg = config.engine_config(language, engine.name(), kind);
-            let enabled = cfg.options.get(ENABLED_OPTION_KEY).and_then(toml::Value::as_bool);
+            let enabled = cfg.options.opt_bool(ENABLED_OPTION_KEY);
             // Never switched on is not a withdrawal worth reporting: the engine was never in play.
             if enabled.is_none() && OPT_IN_ENGINES.contains(&engine.name()) {
                 return false;

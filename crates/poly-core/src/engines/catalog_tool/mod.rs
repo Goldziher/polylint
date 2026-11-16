@@ -37,6 +37,7 @@ use anyhow::Context;
 use globset::GlobSet;
 use poly_catalog::{PATH_PLACEHOLDER, Tool};
 use poly_config::ToolConfig;
+use poly_engine_api::options::OptionsExt;
 
 use crate::config::EngineConfig;
 use crate::engine::{
@@ -627,7 +628,7 @@ impl Engine for CatalogToolEngine {
         let Some(recipe) = &self.recipe else {
             return BatchSupport::default();
         };
-        let wanted = cfg.options.get("batch").and_then(toml::Value::as_bool) != Some(false);
+        let wanted = cfg.options.opt_bool("batch") != Some(false);
         BatchSupport {
             format: wanted && !self.is_lint() && recipe.can_batch(),
             lint: wanted && self.is_lint() && recipe.can_batch(),

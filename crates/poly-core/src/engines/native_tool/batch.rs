@@ -23,6 +23,7 @@ use std::path::{Path, PathBuf};
 use std::process::Command;
 
 use anyhow::Context;
+use poly_engine_api::options::OptionsExt;
 
 use super::format::normalize_newlines;
 use super::isolate::{Isolation, Members};
@@ -65,7 +66,7 @@ const ARGV_BUDGET: usize = 30_000;
 /// it in `mod.rs` would force `batch` to be declared on the four tools that
 /// cannot batch at all.
 pub(crate) fn wants_batch(cfg: &EngineConfig) -> bool {
-    cfg.options.get("batch").and_then(toml::Value::as_bool).unwrap_or(true)
+    cfg.options.opt_bool("batch").unwrap_or(true)
 }
 
 /// Format every member of `batch` by mirroring it into a scratch tree.

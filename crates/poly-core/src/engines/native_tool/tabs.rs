@@ -8,6 +8,8 @@
 //! ignore it. Declaring a key a backend does not honour is the exact defect the
 //! audit exists to catch, so the read is sited where only shfmt claims it. ~keep
 
+use poly_engine_api::options::OptionsExt;
+
 use crate::config::EngineConfig;
 
 /// Whether this tool should indent with tabs rather than spaces.
@@ -19,8 +21,5 @@ use crate::config::EngineConfig;
 /// asked for: tab-indented shell is common, and a formatter that reindents the
 /// whole tree on adoption is one that does not get adopted.
 pub(super) fn use_tabs(cfg: &EngineConfig) -> bool {
-    cfg.options
-        .get("use_tabs")
-        .and_then(toml::Value::as_bool)
-        .unwrap_or(false)
+    cfg.options.opt_bool("use_tabs").unwrap_or(false)
 }

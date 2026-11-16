@@ -122,6 +122,7 @@
 //! A non-zero exit is a per-file error, never a silently unchanged file: the file is
 //! reported as failed rather than counted as formatted.
 
+use poly_engine_api::options::OptionsExt;
 use tracing::warn;
 
 use crate::config::EngineConfig;
@@ -221,10 +222,7 @@ impl NativeToolEngine {
     /// `enabled = …` from user config if present, otherwise the tool's
     /// `default_on` policy.
     fn is_enabled(&self, cfg: &EngineConfig) -> bool {
-        cfg.options
-            .get("enabled")
-            .and_then(toml::Value::as_bool)
-            .unwrap_or(self.role.spec().default_on)
+        cfg.options.opt_bool("enabled").unwrap_or(self.role.spec().default_on)
     }
 
     /// Emit the tier-2 fallback notice at most once per language per run.

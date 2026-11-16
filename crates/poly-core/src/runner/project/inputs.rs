@@ -23,6 +23,7 @@ use crate::engine::{ProjectDirs, ProjectFile};
 use crate::filter::is_generated_source;
 use crate::language::Language;
 use crate::resolve::ConfigSet;
+use poly_engine_api::options::OptionsExt;
 use poly_engine_api::project::LISTING_LANGUAGE;
 
 /// How much of a listed file is read to tell whether it is generated: the marker sits in the
@@ -194,7 +195,7 @@ fn side_paths(plan: &ProjectPlan, root: &Path) -> Vec<PathBuf> {
         .files
         .iter()
         .filter_map(|file| {
-            let option = plan.config.options.get(&file.option_key).and_then(toml::Value::as_str);
+            let option = plan.config.options.opt_str(&file.option_key);
             inside_root(option.unwrap_or(&file.default_path))
         })
         .map(|relative| root.join(relative))
@@ -329,7 +330,7 @@ pub(super) fn load(
     };
     let sides = side_paths(plan, root);
     for file in &plan.engine.project_inputs().files {
-        let option = plan.config.options.get(&file.option_key).and_then(toml::Value::as_str);
+        let option = plan.config.options.opt_str(&file.option_key);
         loaded.extend(side_file(root, option, &file.default_path)?);
     }
     if dirs.is_some_and(|dirs| dirs.list_unserved) {

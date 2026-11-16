@@ -30,6 +30,7 @@ use std::sync::{Arc, Mutex, PoisonError};
 
 use poly_cache::{Namespace, ResultCache};
 use poly_component_index::ComponentIndex;
+use poly_engine_api::options::OptionsExt;
 use rayon::prelude::*;
 use rustc_hash::{FxHashMap, FxHashSet};
 
@@ -132,7 +133,7 @@ impl ProjectOutcome {
 
 /// Whether `engine` is switched on in `config`: not `enabled = false`, and past its gate key.
 fn is_active(engine: &dyn Engine, config: &EngineConfig) -> bool {
-    if config.options.get(ENABLED_OPTION_KEY).and_then(toml::Value::as_bool) == Some(false) {
+    if config.options.opt_bool(ENABLED_OPTION_KEY) == Some(false) {
         return false;
     }
     !engine
@@ -264,7 +265,7 @@ fn plan_project_engines(
                 continue;
             }
             let config = configs.config(*config_id).engine_config(language, table, Kind::Lint);
-            if config.options.get(ENABLED_OPTION_KEY).and_then(toml::Value::as_bool) == Some(false) {
+            if config.options.opt_bool(ENABLED_OPTION_KEY) == Some(false) {
                 continue;
             }
             if !is_active(&*engine, &config) {
@@ -300,7 +301,7 @@ fn plan_project_engines(
                 continue;
             }
             let config = configs.config(*config_id).engine_config(language, &table, Kind::Lint);
-            if config.options.get(ENABLED_OPTION_KEY).and_then(toml::Value::as_bool) == Some(false) {
+            if config.options.opt_bool(ENABLED_OPTION_KEY) == Some(false) {
                 continue;
             }
             let served = plans
@@ -310,7 +311,7 @@ fn plan_project_engines(
             if served || errored.contains(&(*config_id, table.clone())) {
                 continue;
             }
-            let value = config.options.get(&key).and_then(toml::Value::as_str);
+            let value = config.options.opt_str(&key);
             if let Some(value) = value
                 && let Some(error) = unavailable_backend((&table, &key), value, selection, (*config_id, configs), index)
             {
