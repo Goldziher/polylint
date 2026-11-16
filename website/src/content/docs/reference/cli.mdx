@@ -29,7 +29,7 @@ These work on every subcommand, before or after it (`poly --color never lint` an
 | `-q`, `--quiet` | Trim pretty output to the findings and the summary. Conflicts with `--verbose` and `--debug`. |
 | `-v`, `--verbose` | Pretty output includes descriptions, URLs and metadata, and names **every** skipped file rather than the first 3 per skip reason. For `poly hooks run`, also shows the output of jobs that passed. |
 | `--debug` | Include cache hit/miss and timing data. Implies `--verbose`. Conflicts with `--quiet`. |
-| `--trust` | Honour the repository's config keys that run programs for this run, as if it were [trusted](/poly/guides/trust/). Also set by `POLY_TRUST=1`. Ignored by `poly mcp`. |
+| `--trust` | Honour the repository's config keys that run programs for this run, as if it were [trusted](/polylint/guides/trust/). Also set by `POLY_TRUST=1`. Ignored by `poly mcp`. |
 
 ### Writing changes
 
@@ -112,7 +112,7 @@ skipped main.rs: no engine selected by --only/--skip for this file
 ```
 
 To turn an engine off for every run rather than one invocation, use
-[`enabled`](/poly/guides/configuration/#turning-one-engine-off) in `poly.toml` instead.
+[`enabled`](/polylint/guides/configuration/#turning-one-engine-off) in `poly.toml` instead.
 
 ### The whole-project phase (`poly lint` only)
 
@@ -221,7 +221,7 @@ clean pass.
 Only some of those reasons count against `--deny-skips` / `--max-skips`: a reason that names a
 limit of poly is charged, a reason that names an instruction the caller gave (`--only`/`--skip`,
 `enabled = false`) is not. See
-[Coverage and withdrawal](/poly/guides/configuration/#coverage-and-withdrawal) for the full split.
+[Coverage and withdrawal](/polylint/guides/configuration/#coverage-and-withdrawal) for the full split.
 
 `poly lint` reports a file whose language nothing in the run lints as:
 
@@ -321,7 +321,7 @@ poly components import <archive>          # seed an air-gapped host from a downl
 
 `component` is an alias. Every subcommand takes `--format pretty|json|toon`; the machine-readable
 documents carry `schema: 1`. Selection, offline use and mirrors are covered in
-[Components and offline use](/poly/guides/components/).
+[Components and offline use](/polylint/guides/components/).
 
 A build that links every engine family is **bundled**: its components never download, and
 `install` only prints a note. `list` and `status` never download on any build; they read the cache
@@ -392,7 +392,7 @@ poly trust --list              # every trusted repository
 Until a repository is trusted, poly ignores the config keys that run programs (tool `bin`, `env`,
 argv and `url`, whole-project `[hooks]` jobs, `[cache] dir`) and prints one note naming them;
 `poly hooks run` refuses. The record binds the keys' current values, so changing one untrusts the
-repository again. `POLY_CONFIG_HOME` relocates the store. See [Repository trust](/poly/guides/trust/).
+repository again. `POLY_CONFIG_HOME` relocates the store. See [Repository trust](/polylint/guides/trust/).
 
 ## `poly config` — what did poly actually parse?
 
@@ -455,7 +455,7 @@ a problem was found or a file could not be read. `extends` bases are not resolve
 the parser uses, with each backend's declared `[engines.<id>]` option keys included. Use it for
 editor validation and autocomplete; the schema is also published at
 `https://polylint.github.io/polylint/poly.schema.json`. `--output <PATH>` writes it to a file. See the
-[configuration reference](/poly/reference/configuration/#editor-setup-json-schema).
+[configuration reference](/polylint/reference/configuration/#editor-setup-json-schema).
 
 ## `poly commit`, `poly hooks`, `poly cache`, `poly mcp`
 
@@ -481,8 +481,8 @@ poly mcp --allow-outside-workspace  # let tool calls name paths outside the star
 | `poly mcp` | `--allow-outside-workspace` (off by default: `paths`, `dirs` and `config` of tool calls must resolve inside the directory the server started in) |
 | `poly cache …` | `--cache-dir <DIR>` (before or after the subcommand) operates on another cache directory; `--format pretty\|json\|toon` |
 
-See [Git hooks](/poly/guides/hooks/) for the full `[hooks]` surface, and
-[Agents and MCP](/poly/guides/agents-and-mcp/) for the MCP tool reference. In short: the MCP server
+See [Git hooks](/polylint/guides/hooks/) for the full `[hooks]` surface, and
+[Agents and MCP](/polylint/guides/agents-and-mcp/) for the MCP tool reference. In short: the MCP server
 is **stdio-only**; `components`, `cache_stats`, `rules`, `config_show` and
 `version` are read-only (`lint` and `format_check` are not: they run the repository's configured tools); `lint_fix`, `format_write`, `cache_clean`, `components_install` and
 `components_uninstall` are mutating; `workspace_lint` and
@@ -551,7 +551,7 @@ kept. `--write` outside a git work tree needs `--allow-dirty`, and writes `poly.
 | `--recurse` | Walk nested projects, skipping `.git`, `node_modules`, virtualenvs, build output and `.gitignore`d trees. |
 | `--verify` | Re-run lint and format after writing. |
 | `--strip-superseded` | Additionally strip `pyproject.toml` `[tool.*]` sections for the Python tools ruff supersedes — black, isort, flake8, … |
-| `--to-v2` | After the importers, rewrite `poly.toml` and `poly.local.toml` from the v1 to the v2 schema (ADR 0038), keeping comments. Conflicts with `--verify`. See [Migrating to the v2 config schema](/poly/guides/migrating-to-v2/). |
+| `--to-v2` | After the importers, rewrite `poly.toml` and `poly.local.toml` from the v1 to the v2 schema (ADR 0038), keeping comments. Conflicts with `--verify`. See [Migrating to the v2 config schema](/polylint/guides/migrating-to-v2/). |
 | `--allow-dirty` | Let it write into a repository with uncommitted changes, or outside a git work tree (deleted source configs are then unrecoverable). |
 
 It takes an optional path, defaulting to the current directory.

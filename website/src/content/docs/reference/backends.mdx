@@ -7,17 +7,17 @@ description: >-
 
 import { Aside, LinkCard } from '@astrojs/starlight/components';
 
-Every file is handled by one of four mechanisms (defined in the [glossary](/poly/reference/glossary/)):
+Every file is handled by one of four mechanisms (defined in the [glossary](/polylint/reference/glossary/)):
 
 1. **Engines from components** — signed downloads a core build fetches per language; linked in on
    the bundled build. Configured as `[engines.<id>]`. See
-   [Components and offline use](/poly/guides/components/) for the component list; `poly
+   [Components and offline use](/polylint/guides/components/) for the component list; `poly
    components list` names the engines in each.
 2. **Host tools** — a language's canonical CLI, used when it is on `PATH` (`rustfmt`, `gofmt`,
    `shellcheck` by default; the rest opt-in).
 3. **Tree-sitter tier** — best-effort formatting for identified languages with nothing better.
 4. **Recipes and catalog tools** — opt-in `[tools.<name>]`. See
-   [Toolchains, runtimes and recipes](/poly/guides/toolchains/).
+   [Toolchains, runtimes and recipes](/polylint/guides/toolchains/).
 
 ## Language table
 
@@ -29,9 +29,9 @@ checksummed release (macOS and Linux), and `RT` one that needs a host runtime.
 | JavaScript / TypeScript / JSX / TSX | oxc | yes | yes | component `web` |
 | JSON / JSONC | oxc parse diagnostics + formatter | yes | yes | component `web` |
 | Python | ruff internals | yes | yes | component `python` |
-| Python (type checking) | opt-in project check, ty (`[engines.python-types] backend = "ty"`) or pyrefly (`backend = "pyrefly"`); imports resolve through the detected virtualenv's `site-packages`; `--only`/`--skip` accept `python-types` for either, and a backend whose component is disabled or missing is an error, not a silent skip (see [Python type checking](/poly/reference/configuration/#python-type-checking)) | opt-in | no | component `python` (ty) or `pyrefly` |
+| Python (type checking) | opt-in project check, ty (`[engines.python-types] backend = "ty"`) or pyrefly (`backend = "pyrefly"`); imports resolve through the detected virtualenv's `site-packages`; `--only`/`--skip` accept `python-types` for either, and a backend whose component is disabled or missing is an error, not a silent skip (see [Python type checking](/polylint/reference/configuration/#python-type-checking)) | opt-in | no | component `python` (ty) or `pyrefly` |
 | JS/TS workspaces (npm, pnpm, yarn, bun) | [skif](https://github.com/polylint/skif) (opt-in dependency, manifest, version-policy and dead-code project check; `[engines.skif] enabled = true`) | opt-in | no | component `web` |
-| TypeScript (type checking) | tsrs (experimental): `tsc --noEmit` as an opt-in project check, `[engines.tsrs] enabled = true`; reports `TS<code>` findings from the project's `tsconfig.json`; packages the project declares but the hermetic run cannot see are not reported (see [TypeScript type checking](/poly/reference/configuration/#typescript-type-checking)) | opt-in | no | component `tsrs` |
+| TypeScript (type checking) | tsrs (experimental): `tsc --noEmit` as an opt-in project check, `[engines.tsrs] enabled = true`; reports `TS<code>` findings from the project's `tsconfig.json`; packages the project declares but the hermetic run cannot see are not reported (see [TypeScript type checking](/polylint/reference/configuration/#typescript-type-checking)) | opt-in | no | component `tsrs` |
 | TOML | taplo (lint) + `oxc_formatter_toml` (format; taplo's formatter when a taplo layout key is set) | yes | yes | component `web` |
 | Markdown | rumdl (lint) + `oxc_formatter_markdown` (format; rumdl's fixer when a rumdl rule key is set) | yes | yes | component `web` |
 | Markdown cross-file link anchors (`file.md#heading`) | rumdl `MD051` as a project check | opt-in (`cross_file_links`) | no | component `web` |
@@ -85,7 +85,7 @@ formatted.
     "opt-in" and "default-on" above describe each backend's *own* default. Every engine table also
     accepts an explicit `enabled`, which always wins over that default — `[engines.zigfmt] enabled =
     true` turns on an opt-in formatter, and `[engines.ruff] enabled = false` turns off a
-    default-on one. See [Turning one engine off](/poly/guides/configuration/#turning-one-engine-off).
+    default-on one. See [Turning one engine off](/polylint/guides/configuration/#turning-one-engine-off).
 </Aside>
 
 <Aside type="note" title="Batching native tools">
@@ -111,7 +111,7 @@ Beyond the dedicated engines above, two lint tiers run on **every** language:
 - The native **`quality` metric engine** — file and function length, type length, parameter count,
   nesting depth, cyclomatic complexity, lazy ignore markers, and test files the runner will not
   collect. See
-  [code quality metrics](/poly/guides/configuration/#code-quality-metrics).
+  [code quality metrics](/polylint/guides/configuration/#code-quality-metrics).
 - A built-in **ast-grep rule pack** of 42 rules across C#, Elixir, Go, Java, Kotlin, Python, Ruby,
   Rust and Swift. **13 are on by default**; the other 13 author their own `severity: off` and are
   one `extend_select` away.
@@ -122,7 +122,7 @@ own YAML, with the standard ast-grep `ignores:` key — `placeholder-implementat
 test source sets, and `unwrap-used` excludes test and generated paths. Those are **defaults**: a
 `[per_file_ignores]` entry naming the rule replaces them, and every finding they drop is listed in
 the run's `suppressed` array. See
-[per-file ignores](/poly/reference/configuration/#per_file_ignores).
+[per-file ignores](/polylint/reference/configuration/#per_file_ignores).
 
 Both run alongside the engines in the table, at warning severity — so neither fails an
 unconfigured CI on its own.
@@ -149,7 +149,7 @@ names (`MADR41`–`MADR44`) and the immutability lock (`ADR50`/`ADR51`) — as a
 Link-target existence (`MADR12a`/`MADR12c`) and external links (`MADR11`) depend on the tree or the network,
 which a content-hash-cached engine cannot model honestly; the `adrlint` CLI remains the tool for those.
 `poly adr lock`, `unlock` and `new` maintain `adrlint.lock` and create records with the same engine. See
-[architecture decision records](/poly/guides/configuration/#architecture-decision-records-opt-in).
+[architecture decision records](/polylint/guides/configuration/#architecture-decision-records-opt-in).
 
 ### Reaching an oxlint plugin
 
@@ -269,6 +269,6 @@ files = "**/*.{js,ts}"
 
 <LinkCard
     title="Tool catalog"
-    href="/poly/reference/catalog/"
+    href="/polylint/reference/catalog/"
     description="All 348 catalog tools across 175 languages, with the type and languages each one covers."
 />

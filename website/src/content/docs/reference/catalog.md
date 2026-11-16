@@ -16,7 +16,7 @@ files = "**/*.{js,ts}"
 ```
 
 Findings from a catalog tool are file-level: a lint failure maps to one diagnostic with no span and
-no rule code. Where fidelity matters, prefer the [native backends](/poly/reference/backends/) —
+no rule code. Where fidelity matters, prefer the [native backends](/polylint/reference/backends/) —
 poly runs those first and a catalog tool alongside them, not instead of them.
 
 A tool whose lint command rewrites files (`sqruff fix`, `rubocop --autocorrect`, `pyupgrade`) is not

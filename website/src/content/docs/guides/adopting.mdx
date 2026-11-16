@@ -23,7 +23,7 @@ and per-language CI jobs, and wants one gate instead.
    `poly migrate` reads ruff, taplo, markdownlint and typos configs (including `pyproject.toml`'s
    `[tool.ruff]`, `[tool.typos]`, `[tool.codespell]`), and turns a `.pre-commit-config.yaml` or
    `lefthook.yml` into `[hooks]`, `[hooks.builtin]` and `[tools]` entries — mapping jobs such as
-   golangci-lint, hadolint or actionlint onto their [recipes](/poly/guides/toolchains/#recipes). It
+   golangci-lint, hadolint or actionlint onto their [recipes](/polylint/guides/toolchains/#recipes). It
    deletes a source only when nothing in it was lost; `--verify` re-runs polylint afterwards.
    There is no eslint or prettier importer; an existing `.oxlintrc.json` or `.oxfmtrc.json` is read
    directly.
@@ -32,7 +32,7 @@ and per-language CI jobs, and wants one gate instead.
 
    Run `poly lint --verbose .` and read the summary. Every file is either checked or listed as
    skipped with a reason, such as `no lint rules for Zig`. Compare that with what your current
-   tools cover; the [language table](/poly/reference/backends/#language-table) shows how each
+   tools cover; the [language table](/polylint/reference/backends/#language-table) shows how each
    language runs. Gaps that commonly matter:
 
    | Language | What to enable |
@@ -49,7 +49,7 @@ and per-language CI jobs, and wants one gate instead.
    Put shared settings in the root `poly.toml`. A nested `poly.toml` deep-merges over its
    ancestors for the files beneath it, so a package can tune rules without repeating the baseline;
    `root = true` stops the cascade. `extends` shares a baseline across repositories. See
-   [Nested config in a monorepo](/poly/guides/configuration/#nested-config-in-a-monorepo).
+   [Nested config in a monorepo](/polylint/guides/configuration/#nested-config-in-a-monorepo).
 
 4. ### Replace the hook framework
 
@@ -59,7 +59,7 @@ and per-language CI jobs, and wants one gate instead.
 
    A foreign hook already in place is kept as `<hook>.legacy` and run before polylint; a lefthook
    hook is kept but not run (`--replace-lefthook` discards it). Hooks check a snapshot of the staged
-   index, so unstaged edits neither hide nor cause failures. See [Git hooks](/poly/guides/hooks/).
+   index, so unstaged edits neither hide nor cause failures. See [Git hooks](/polylint/guides/hooks/).
 
 5. ### Roll out in CI
 
@@ -88,7 +88,7 @@ and per-language CI jobs, and wants one gate instead.
 - Run with `--offline` (or `POLY_OFFLINE=1`) so nothing is attempted. Recipe tools need their
   binaries installed or cached the same way.
 
-See [Components and offline use](/poly/guides/components/).
+See [Components and offline use](/polylint/guides/components/).
 
 <Aside type="caution" title="Windows runners">
     Recipe downloads are available on macOS and Linux only. On Windows, install recipe tools

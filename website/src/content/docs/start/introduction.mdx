@@ -18,7 +18,7 @@ contract. The built-in engines need no Node, Python or Ruby runtime: they ship a
 **components** that the binary downloads the first time a run needs them, verified against a lock
 embedded in the binary. Where a language's canonical tool is a CLI (`rustfmt`, `gofmt`), polylint
 runs the one you have installed. Terms used throughout the docs are defined in the
-[glossary](/poly/reference/glossary/).
+[glossary](/polylint/reference/glossary/).
 
 ## How a file gets checked
 
@@ -33,7 +33,7 @@ change to how you invoke poly.
    taplo and rumdl for TOML and Markdown lint, sqruff for SQL, mago for PHP, `markup_fmt` for
    HTML/Vue/Svelte, shfmt for shell (a Go sidecar), and more. Linked into the bundled Linux musl
    build, or downloaded as signed components by every other build (see
-   [Components and offline use](/poly/guides/components/)).
+   [Components and offline use](/polylint/guides/components/)).
 
 2. **Host tools.** For languages whose canonical formatter is a CLI with no usable Rust library.
    `rustfmt`, `gofmt` and `shellcheck` run as subprocesses automatically when present on `PATH`;
@@ -50,7 +50,7 @@ change to how you invoke poly.
    them — `golangci-lint`, `helm`, `buf`, `hadolint`, `tflint`, `actionlint`, `checkstyle`, … —
    carry a **recipe** that runs them batched, parses their reports into per-line findings, and for
    most can download a checksummed release. See
-   [Toolchains, runtimes and recipes](/poly/guides/toolchains/).
+   [Toolchains, runtimes and recipes](/polylint/guides/toolchains/).
 
 </Steps>
 
@@ -112,7 +112,7 @@ deliberately withholds a write from, a binary file, or an engine the caller with
 `--only`/`--skip` or `enabled = false`. All of them appear in the summary and the `--format json`
 payload, but only the ones naming a limit of poly count against `--deny-skips` / `--max-skips` — a
 caller instruction never does, since it already says so in its own name (see
-[Coverage and withdrawal](/poly/guides/configuration/#coverage-and-withdrawal)). A run that verified
+[Coverage and withdrawal](/polylint/guides/configuration/#coverage-and-withdrawal)). A run that verified
 less than it claims exits **2**, distinct from the **1** that means real findings.
 
 <Aside type="caution" title="`poly lint` is not read-only by default">
@@ -127,9 +127,9 @@ less than it claims exits **2**, distinct from the **1** that means real finding
 ## Where to go next
 
 <CardGrid>
-    <LinkCard title="Installation" href="/poly/start/installation/" description="Every channel, and what each one actually installs." />
-    <LinkCard title="Quickstart" href="/poly/start/quickstart/" description="First lint, first format, first hook install." />
-    <LinkCard title="Why polylint" href="/poly/start/why-polylint/" description="How it compares with the tools you may use now." />
-    <LinkCard title="Languages and engines" href="/poly/reference/backends/" description="The language-by-language table." />
-    <LinkCard title="Configuration" href="/poly/guides/configuration/" description="Everything poly.toml can say." />
+    <LinkCard title="Installation" href="/polylint/start/installation/" description="Every channel, and what each one actually installs." />
+    <LinkCard title="Quickstart" href="/polylint/start/quickstart/" description="First lint, first format, first hook install." />
+    <LinkCard title="Why polylint" href="/polylint/start/why-polylint/" description="How it compares with the tools you may use now." />
+    <LinkCard title="Languages and engines" href="/polylint/reference/backends/" description="The language-by-language table." />
+    <LinkCard title="Configuration" href="/polylint/guides/configuration/" description="Everything poly.toml can say." />
 </CardGrid>

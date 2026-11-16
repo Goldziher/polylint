@@ -35,7 +35,7 @@ each file is and which engine should handle it.
    each against the signed lock embedded in the binary, and caches them in the per-user cache
    directory. Later runs download nothing. `poly components status .` shows what a directory
    needs; `--offline` forbids downloads. See
-   [Components and offline use](/poly/guides/components/).
+   [Components and offline use](/polylint/guides/components/).
    </Aside>
 
 2. ### Check formatting
@@ -107,7 +107,7 @@ file_safety = true
 ```
 
 `poly.local.toml` layers machine-local overrides on top, and nested `poly.toml` files cascade in a
-monorepo. See [Configuration](/poly/guides/configuration/) for the full surface.
+monorepo. See [Configuration](/polylint/guides/configuration/) for the full surface.
 
 <Aside type="tip" title="Already have a pile of tool configs?">
     `poly migrate` reads your existing `ruff`, `taplo`, markdownlint and `typos` configs (including
@@ -156,7 +156,7 @@ jobs:
 language, a generated-file skip, a binary file — into an exit-2 failure, so the job cannot quietly
 stop covering part of the tree. A skip that names a caller instruction (`--only`/`--skip`,
 `enabled = false`) is never charged; see
-[Coverage and withdrawal](/poly/guides/configuration/#coverage-and-withdrawal). Use
+[Coverage and withdrawal](/polylint/guides/configuration/#coverage-and-withdrawal). Use
 `--max-skips <N>` if you have a known, budgeted set of charged skips.
 
 Add `-q` on a large repository to trim the per-file discovery detail; every count and reason still
@@ -165,10 +165,10 @@ appears in the summary.
 ## Next
 
 <CardGrid>
-    <LinkCard title="Adopting polylint" href="/poly/guides/adopting/" description="Migrating an existing polyglot repository and rolling it out in CI." />
-    <LinkCard title="Configuration" href="/poly/guides/configuration/" description="Rule selection, inline suppression, monorepo cascade, quality metrics." />
-    <LinkCard title="Components and offline use" href="/poly/guides/components/" description="Bundled and core builds, downloads, mirrors, air-gapped hosts." />
-    <LinkCard title="Git hooks" href="/poly/guides/hooks/" description="Builtins, stages, staged isolation, timeouts, caching." />
-    <LinkCard title="CLI reference" href="/poly/reference/cli/" description="Every flag and every subcommand." />
-    <LinkCard title="Languages and engines" href="/poly/reference/backends/" description="Which engine handles which language, and how it runs." />
+    <LinkCard title="Adopting polylint" href="/polylint/guides/adopting/" description="Migrating an existing polyglot repository and rolling it out in CI." />
+    <LinkCard title="Configuration" href="/polylint/guides/configuration/" description="Rule selection, inline suppression, monorepo cascade, quality metrics." />
+    <LinkCard title="Components and offline use" href="/polylint/guides/components/" description="Bundled and core builds, downloads, mirrors, air-gapped hosts." />
+    <LinkCard title="Git hooks" href="/polylint/guides/hooks/" description="Builtins, stages, staged isolation, timeouts, caching." />
+    <LinkCard title="CLI reference" href="/polylint/reference/cli/" description="Every flag and every subcommand." />
+    <LinkCard title="Languages and engines" href="/polylint/reference/backends/" description="Which engine handles which language, and how it runs." />
 </CardGrid>

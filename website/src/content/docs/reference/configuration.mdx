@@ -8,7 +8,7 @@ description: >-
 import { Aside, LinkCard, CardGrid } from '@astrojs/starlight/components';
 
 poly reads a single `poly.toml`. This page is the key-by-key reference; the
-[Configuration guide](/poly/guides/configuration/) explains how the pieces fit
+[Configuration guide](/polylint/guides/configuration/) explains how the pieces fit
 together.
 
 ## Editor setup (JSON Schema)
@@ -49,7 +49,7 @@ key no engine reads. The v2 schema is committed as `schemas/poly-v2.schema.json`
     This page documents the v2 schema (ADR 0038). The loader still reads v1 files
     (`[lint.<lang>.<tool>]`, `[fmt.<lang>.<tool>]`, `[rules]`, `[lint] workspace`,
     `[workspace] root`, `per-file-ignores`), and rejects a file that mixes the two.
-    [Migrating to the v2 config schema](/poly/guides/migrating-to-v2/) maps each v1 spelling to v2.
+    [Migrating to the v2 config schema](/polylint/guides/migrating-to-v2/) maps each v1 spelling to v2.
 </Aside>
 
 ## Top-level sections
@@ -79,7 +79,7 @@ key no engine reads. The v2 schema is committed as `schemas/poly-v2.schema.json`
 ## `[components]`
 
 Selection and policy for downloadable engine components. See
-[Components and offline use](/poly/guides/components/).
+[Components and offline use](/polylint/guides/components/).
 
 | Key | Type | Default | Meaning |
 | --- | --- | --- | --- |
@@ -112,7 +112,7 @@ setting.
 ## Engines
 
 `[engines.<id>]`: one table per engine, keyed by the engine id (`ruff`, `oxc`, `taplo`, `rumdl`, `typos`,
-`astgrep`, `quality`, `uncomment`, …). See [Languages and engines](/poly/reference/backends/)
+`astgrep`, `quality`, `uncomment`, …). See [Languages and engines](/polylint/reference/backends/)
 page for which engine serves each language. Options that apply everywhere sit directly in the
 table; narrow with sub-tables:
 
@@ -383,7 +383,7 @@ Opt into tools from the vendored catalog, keyed by catalog name
 | `goos` | array | `[]` | golangci-lint: run once per operating system with `GOOS` set and merge the findings. |
 
 `bin`, `url`/`sha256`, `env`, `args`, `extra_args`, `format_extra_args`, `lint_extra_args`,
-`new_from_rev` and `root` are honoured only in a [trusted](/poly/guides/trust/) repository (a bare
+`new_from_rev` and `root` are honoured only in a [trusted](/polylint/guides/trust/) repository (a bare
 `bin` name always is). Trusted or not, `bin` is a program name or an absolute path, `root` stays
 inside the repository, `url` must be https on a host the catalog names for the tool, and `env` may
 not set loader, git-config or runtime-injection variables (`LD_*`, `DYLD_*`, `GIT_CONFIG*`,
@@ -392,7 +392,7 @@ not set loader, git-config or runtime-injection variables (`LD_*`, `DYLD_*`, `GI
 Tools with a recipe (`checkstyle`, `palantir-java-format`, `buildifier`, `buf`, `actionlint`, `gau`,
 `hadolint`, `golangci-lint`, `helm`, `helm-template`, `tflint`, `tofu`, `terraform`,
 `pyproject-fmt`, `npm-groovy-lint`, `air`, `jarl`, `checkmake`, `editorconfig-checker`, `rbcop`, `swiftlint`, `scalafmt`) run batched, parse the tool's report into file/line/rule
-diagnostics, and are described in [Tool catalog](/poly/reference/catalog/#tools-with-a-recipe).
+diagnostics, and are described in [Tool catalog](/polylint/reference/catalog/#tools-with-a-recipe).
 
 ## `[cache]`
 
@@ -407,7 +407,7 @@ diagnostics, and are described in [Tool catalog](/poly/reference/catalog/#tools-
 | `[cache.sccache] max_size` | string | — | Maximum cache size (e.g. `"10G"`). |
 
 `dir`, `[cache.sccache] dir` and a path `[cache.sccache] bin` are honoured only in a
-[trusted](/poly/guides/trust/) repository.
+[trusted](/polylint/guides/trust/) repository.
 
 Without `dir`, the result cache lives in the per-user cache directory (`POLY_CACHE_HOME`, else
 `~/.cache/poly` on Linux, `~/Library/Caches/poly` on macOS, `%LOCALAPPDATA%\poly` on Windows), in a
@@ -505,7 +505,7 @@ extends = [
 ```
 
 A local path outside the repository is read only once the repository is
-[trusted](/poly/guides/trust/).
+[trusted](/polylint/guides/trust/).
 
 `exclude_mode = "replace"` in a table next to an `exclude` list makes that list
 replace the inherited one rather than accumulate. A symbolic (branch/tag) `git`

@@ -9,12 +9,12 @@ description: >-
 | --- | --- |
 | **polylint** | The product. The command is `poly` (with `polylint` as an alias) and the config file is `poly.toml`. |
 | **engine** | One tool as you configure it, under `[engines.<id>]`: `ruff`, `oxc`, `rustfmt`, `quality`, … Every finding names the engine that produced it. |
-| **component** | A signed, checksum-verified download that carries one or more engines (`web`, `python`, `sql`, `sh`, …). A core build fetches components on first use; the bundled build links them all in. See [Components and offline use](/poly/guides/components/). |
+| **component** | A signed, checksum-verified download that carries one or more engines (`web`, `python`, `sql`, `sh`, …). A core build fetches components on first use; the bundled build links them all in. See [Components and offline use](/polylint/guides/components/). |
 | **core build** | A release binary that downloads components. Every release target except Linux x86_64 musl. |
 | **bundled build** | The Linux x86_64 musl release binary: every engine and the MCP server linked in, nothing downloaded. |
-| **host tool** | A language's canonical CLI that polylint runs as a subprocess when it is on `PATH` — `rustfmt`, `gofmt`, `shellcheck` by default, others opt-in. See [Toolchains, runtimes and recipes](/poly/guides/toolchains/#host-tools). |
-| **recipe** | A built-in integration for an ecosystem tool (`golangci-lint`, `hadolint`, `buf`, …), enabled under `[tools.<name>]`: batched runs, parsed per-line findings, and for most an optional checksummed download. See [Recipes](/poly/guides/toolchains/#recipes). |
-| **catalog tool** | Any of the 348 tools in the embedded mdsf catalog, enabled under `[tools.<name>]`. Without a recipe it gives one verdict per file. See the [tool catalog](/poly/reference/catalog/). |
+| **host tool** | A language's canonical CLI that polylint runs as a subprocess when it is on `PATH` — `rustfmt`, `gofmt`, `shellcheck` by default, others opt-in. See [Toolchains, runtimes and recipes](/polylint/guides/toolchains/#host-tools). |
+| **recipe** | A built-in integration for an ecosystem tool (`golangci-lint`, `hadolint`, `buf`, …), enabled under `[tools.<name>]`: batched runs, parsed per-line findings, and for most an optional checksummed download. See [Recipes](/polylint/guides/toolchains/#recipes). |
+| **catalog tool** | Any of the 348 tools in the embedded mdsf catalog, enabled under `[tools.<name>]`. Without a recipe it gives one verdict per file. See the [tool catalog](/polylint/reference/catalog/). |
 | **host runtime** | A JVM, Node or Python installation a recipe tool needs. polylint never bundles one. |
 | **tree-sitter tier** | Best-effort formatting for languages with no dedicated engine, from tree-sitter grammars fetched on demand. Formatting only; it establishes no lint coverage. |
 | **cross-cutting engine** | An engine that runs on every language: `quality` and `astgrep` (on by default), `typos` and `uncomment` (opt-in). |

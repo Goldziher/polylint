@@ -8,7 +8,7 @@ description: >-
 
 import { Aside } from '@astrojs/starlight/components';
 
-polylint's built-in engines ship as [components](/poly/guides/components/) pinned to the poly
+polylint's built-in engines ship as [components](/polylint/guides/components/) pinned to the poly
 version. Two other mechanisms run tools that are not components: **host tools** and **recipes**.
 Both run as subprocesses, and both are where a run can depend on the machine. This page says
 exactly where.
@@ -74,7 +74,7 @@ install = "auto"     # download it when it is missing
 
 Recipe tools run batched (once per Go module, Helm chart or `buf.yaml` module where that is the
 tool's unit), and their reports are parsed into per-line findings with rule codes and URLs. The
-full behavior is on the [tool catalog](/poly/reference/catalog/#tools-with-a-recipe) page.
+full behavior is on the [tool catalog](/polylint/reference/catalog/#tools-with-a-recipe) page.
 
 | Tool | Covers | Download (`install = "auto"`) | Needs on the host |
 | --- | --- | --- | --- |
@@ -121,7 +121,7 @@ full behavior is on the [tool catalog](/poly/reference/catalog/#tools-with-a-rec
 
 Any of the 348 tools in the embedded [mdsf](https://github.com/hougesen/mdsf) catalog can be
 enabled the same way. Without a recipe, a catalog tool is probed on `PATH`, run per file, and gives
-a file-level verdict (no line, no rule code). See the [tool catalog](/poly/reference/catalog/).
+a file-level verdict (no line, no rule code). See the [tool catalog](/polylint/reference/catalog/).
 
 ## Reproducible runs
 

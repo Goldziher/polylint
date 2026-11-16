@@ -14,7 +14,7 @@ workspace root down.
 <Aside type="note" title="poly.toml v2">
     This guide uses the v2 schema: one `[engines.<id>]` table per engine. The loader still reads
     v1 files (`[lint.<lang>.<tool>]`, `[fmt.<lang>.<tool>]`), but not a file that mixes both. See
-    [Migrating to the v2 config schema](/poly/guides/migrating-to-v2/) to convert.
+    [Migrating to the v2 config schema](/polylint/guides/migrating-to-v2/) to convert.
 </Aside>
 
 <Aside type="tip" title="Editor autocomplete">
@@ -22,7 +22,7 @@ workspace root down.
     `https://polylint.github.io/polylint/poly-v2.schema.json`. Add
     `#:schema https://polylint.github.io/polylint/poly-v2.schema.json` as the first line of your config
     for validation and autocomplete, or run `poly config schema` to generate it locally. Every key
-    is listed on the [configuration reference](/poly/reference/configuration/) page.
+    is listed on the [configuration reference](/polylint/reference/configuration/) page.
 </Aside>
 
 ## An annotated `poly.toml`
@@ -327,7 +327,7 @@ the `[engines.<name>]` table names the *built-in* — the catalog tool keeps run
 ## Coverage and withdrawal
 
 Every file a run does not check ends up in the `skipped` list with a reason, and `--deny-skips` /
-`--max-skips` (see [CLI reference](/poly/reference/cli/#coverage-gates)) decide whether that fails
+`--max-skips` (see [CLI reference](/polylint/reference/cli/#coverage-gates)) decide whether that fails
 the run. The rule that decides which reasons count:
 
 **A limit of poly is charged to the coverage budget and names the limit; an instruction the caller
@@ -595,7 +595,7 @@ into `poly.lock` and prints the `[hooks]` / `[tools]` the base introduces. `exte
 
 `poly config show` prints the effective, fully-merged result — every layer applied, every key as
 poly resolved it — so diffing it against your own `poly.toml` answers "what did poly actually
-keep?". See the [CLI reference](/poly/reference/cli/#poly-config--what-did-poly-actually-parse) for its
+keep?". See the [CLI reference](/polylint/reference/cli/#poly-config--what-did-poly-actually-parse) for its
 output formats.
 
 ## Optional catalog tools
@@ -614,10 +614,10 @@ files = "**/*.py"
 
 Catalog tools are capability-probed on `PATH`; a missing binary is skipped with a warning instead
 of making the whole run fail. Keys that change what a tool runs — `bin`, `env`, `args`,
-`extra_args`, `root`, `url` — take effect only in a [trusted](/poly/guides/trust/) repository. Fifteen tools carry a [recipe](/poly/reference/catalog/#tools-with-a-recipe)
+`extra_args`, `root`, `url` — take effect only in a [trusted](/polylint/guides/trust/) repository. Fifteen tools carry a [recipe](/polylint/reference/catalog/#tools-with-a-recipe)
 — batched runs, parsed per-line findings, and `install = "auto"` downloads of a pinned, checksummed
-release; see [Toolchains, runtimes and recipes](/poly/guides/toolchains/). The full list of 348
-tools is on the [tool catalog](/poly/reference/catalog/) page.
+release; see [Toolchains, runtimes and recipes](/polylint/guides/toolchains/). The full list of 348
+tools is on the [tool catalog](/polylint/reference/catalog/) page.
 
 ## Custom rules
 
@@ -1010,5 +1010,5 @@ template that shares number `0000` with the first record is exempted for that pa
 
 `new` copies `template.md` or `NNNN-template.md` from the ADR directory when there is one (MADR's
 template otherwise), sets `status: proposed` and today's date, and never counts or locks the template.
-See the [CLI reference](/poly/reference/cli/#poly-adr--maintain-an-adr-log) and
+See the [CLI reference](/polylint/reference/cli/#poly-adr--maintain-an-adr-log) and
 [ADR 0061](https://github.com/polylint/polylint/blob/main/adrs/0061-adr-maintenance-commands.md).
