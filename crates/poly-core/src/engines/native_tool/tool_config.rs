@@ -159,9 +159,8 @@ pub(crate) fn rooted_version(tool: &'static str, root: &Path, build: impl FnOnce
     }
     let mut keys = keys.write().unwrap_or_else(PoisonError::into_inner);
     let by_tool = keys.entry(root.to_path_buf()).or_default();
-    *by_tool
-        .entry(tool)
-        .or_insert_with(|| Box::leak(build().into_boxed_str()))
+    by_tool.entry(tool).or_insert_with(|| Box::leak(build().into_boxed_str()));
+    by_tool[tool]
 }
 
 /// [`fingerprint`] with an explicit anchor directory, so the search is testable
