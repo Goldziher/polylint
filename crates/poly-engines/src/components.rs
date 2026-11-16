@@ -84,6 +84,13 @@ family_component!(
     vec![Box::new(crate::jsonschema::JsonSchemaEngine)]
 );
 family_component!(
+    "prose",
+    prose,
+    ProseComponent,
+    "The `prose` component: harper grammar and style checks on Markdown and source comments.",
+    vec![Box::new(crate::prose::HarperEngine)]
+);
+family_component!(
     "astgrep",
     astgrep,
     AstgrepComponent,

@@ -474,6 +474,7 @@ const ENGINE_SOURCES: &[(&str, &[&str])] = &[
             "../../../poly-engine-api/src/host_hooks/jsonschema_source.rs",
         ],
     ),
+    ("harper", &["../../../poly-engines-prose/src/harper.rs"]),
     ("astgrep", &["../../../poly-engines-astgrep/src/lib.rs"]),
     // Every wrapped toolchain binary shares one implementation and one key —
     // except shfmt, which also takes `use_tabs`, and the batch-capable tools,

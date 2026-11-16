@@ -45,6 +45,7 @@ describe_test!(
     "uncomment",
     poly_engines::UncommentComponent
 );
+describe_test!("prose", prose_matches_the_index, "prose", poly_engines::ProseComponent);
 describe_test!(
     "jsonschema",
     jsonschema_matches_the_index,

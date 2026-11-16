@@ -151,6 +151,15 @@ expression: json
       ]
     },
     {
+      "name": "prose",
+      "kind": "engines",
+      "state": "bundled",
+      "opt_in": true,
+      "engines": [
+        "harper"
+      ]
+    },
+    {
       "name": "misc",
       "kind": "engines",
       "state": "bundled",

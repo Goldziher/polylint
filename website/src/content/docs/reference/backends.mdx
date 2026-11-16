@@ -69,6 +69,7 @@ checksummed release (macOS and Linux), and `RT` one that needs a host runtime.
 | `pyproject.toml` | opt-in `pyproject-fmt` | no | opt-in | recipe RT (Python) |
 | All text files | opt-in `typos` spell-check (`[engines.typos] enabled = true`) | opt-in | no | component `typos` |
 | Any recognized language | opt-in `uncomment` comment removal | opt-in | no | component `uncomment` |
+| Markdown and source comments | opt-in `harper` prose and grammar checks (`[engines.harper] enabled = true`) | opt-in | no | component `prose` |
 | JSON, JSONC, YAML, TOML | opt-in `jsonschema` validation against a local schema (`[engines.jsonschema] enabled = true`) | opt-in | no | component `jsonschema` |
 | All text files | opt-in `secrets` secret scanning with kingfisher (`[engines.secrets] enabled = true`); never autofixes, never reads the value | opt-in | no | component `secrets` (download only) |
 | Other identified grammars (C, C++, C#, Elixir, …) | tree-sitter generic tier | no | best effort | tree-sitter |

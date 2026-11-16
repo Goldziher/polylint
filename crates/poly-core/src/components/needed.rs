@@ -31,6 +31,8 @@ const LINKED_FEATURES: &[&str] = &[
     "engine-uncomment",
     #[cfg(feature = "engine-jsonschema")]
     "engine-jsonschema",
+    #[cfg(feature = "engine-prose")]
+    "engine-prose",
     #[cfg(feature = "engine-dockerfile")]
     "engine-dockerfile",
     #[cfg(feature = "engine-dotenv")]

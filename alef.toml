@@ -73,6 +73,14 @@ features = ["jsonschema"]
 default_features = false
 targets = ["aarch64-apple-darwin", "x86_64-unknown-linux-gnu", "aarch64-unknown-linux-gnu", "x86_64-pc-windows-msvc"]
 
+# The prose family: harper grammar and style checks on Markdown and source comments, opt-in.
+[[crates.components]]
+name = "prose"
+provides = [{ contract = "poly", implementation = "poly_engines::ProseComponent" }]
+features = ["prose"]
+default_features = false
+targets = ["aarch64-apple-darwin", "x86_64-unknown-linux-gnu", "aarch64-unknown-linux-gnu", "x86_64-pc-windows-msvc"]
+
 # The astgrep family: ast-grep and its built-in rule pack.
 [[crates.components]]
 name = "astgrep"

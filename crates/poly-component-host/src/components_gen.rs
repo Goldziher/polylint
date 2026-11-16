@@ -20,6 +20,7 @@ pub const COMPONENT_IDS: &[&str] = &[
     "nix",
     "typos",
     "jsonschema",
+    "prose",
     "astgrep",
     "uncomment",
     "misc",

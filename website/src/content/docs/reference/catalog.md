@@ -98,7 +98,7 @@ How they differ from the breadth tier above:
   project's `.golangci.{yml,yaml,toml,json}` (or the file `-c` names) is kept; without one poly
   passes `--timeout=0`, so `POLY_TOOL_TIMEOUT_SECS` (30 minutes by default) bounds a cold run
   instead of golangci-lint's own default, and `lint_extra_args = ["--timeout=5m"]` sets a limit in
-  `poly.toml` (ADR 0066). A timeout or a refused lock fails the module's files once, without
+  `poly.toml` (ADR 0068). A timeout or a refused lock fails the module's files once, without
   retrying on fewer packages.
 - **Reports.** Findings carry file, line, column, rule and URL, and are cached per file. A tool that
   judges a file in context (`buf`, `golangci-lint`) is cached against a digest of that context, so

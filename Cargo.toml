@@ -26,6 +26,8 @@ members = [
   "crates/poly-engines-nix-component",
   "crates/poly-engines-php",
   "crates/poly-engines-php-component",
+  "crates/poly-engines-prose",
+  "crates/poly-engines-prose-component",
   "crates/poly-engines-python",
   "crates/poly-engines-python-component",
   "crates/poly-engines-sql",
@@ -89,6 +91,9 @@ gitfluff = { version = "0.11.2", default-features = false }
 globset = "0.4.21"
 granit-parser = "2.1"
 graphql-parser = "0.4"
+# No default features: `thesaurus` bundles a synonym data set the lints do not need. `concurrent` stays, as the
+# configuration upstream tests.
+harper-core = { version = "=3.2.0", default-features = false, features = ["concurrent"] }
 hcl-edit = "0.10.0"
 hex = "0.4.3"
 http = "1.5.0"
@@ -137,6 +142,7 @@ poly-engines-jsonschema = { path = "crates/poly-engines-jsonschema" }
 poly-engines-misc = { path = "crates/poly-engines-misc", default-features = false }
 poly-engines-nix = { path = "crates/poly-engines-nix" }
 poly-engines-php = { path = "crates/poly-engines-php" }
+poly-engines-prose = { path = "crates/poly-engines-prose" }
 poly-engines-python = { path = "crates/poly-engines-python" }
 poly-engines-sql = { path = "crates/poly-engines-sql" }
 poly-engines-typos = { path = "crates/poly-engines-typos" }

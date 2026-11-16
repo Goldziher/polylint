@@ -21,6 +21,7 @@ binary drives lint, format, hooks, and commit checks from one `poly.toml`.
 
 ### Added
 
+- **Prose and grammar checks with harper.** The opt-in `harper` engine (`[engines.harper] enabled = true`, component `prose`) reads Markdown and the comments of every language with a loaded grammar, and reports repeated words, wrong articles and other grammar and style findings as warnings. Rules go through `select`/`extend_select`/`ignore`; `SpellCheck` is off unless selected, and `dictionary`, `dialect` and `comments` are the engine's own keys (ADR 0068).
 - **`poly adr lock`, `poly adr unlock <file> --reason <text>` and `poly adr new <title>`.** Maintain `adrlint.lock`
   and create numbered records with the bundled adrlint and the `[engines.adrlint]` settings, so a repository no
   longer needs the standalone adrlint CLI or `.adrlint.toml`. `lock` refuses while `poly lint` reports an adrlint

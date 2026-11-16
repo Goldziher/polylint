@@ -19,6 +19,8 @@ pub use components::MiscComponent;
 pub use components::NixComponent;
 #[cfg(feature = "php")]
 pub use components::PhpComponent;
+#[cfg(feature = "prose")]
+pub use components::ProseComponent;
 #[cfg(feature = "python")]
 pub use components::PythonComponent;
 #[cfg(feature = "sql")]
@@ -40,6 +42,8 @@ pub use poly_engines_misc as misc;
 pub use poly_engines_nix as nix;
 #[cfg(feature = "php")]
 pub use poly_engines_php as php;
+#[cfg(feature = "prose")]
+pub use poly_engines_prose as prose;
 #[cfg(feature = "python")]
 pub use poly_engines_python as python;
 #[cfg(feature = "sql")]

@@ -201,6 +201,8 @@ pub fn engines_for(lang: &Language) -> Vec<Box<dyn Engine>> {
     let mut engines = with_external_engines(lang, engines);
     #[cfg(feature = "engine-jsonschema")]
     engines.extend(poly_engines_jsonschema::engines_for(lang));
+    #[cfg(feature = "engine-prose")]
+    engines.extend(poly_engines_prose::engines_for(lang));
     #[cfg(feature = "engine-typos")]
     engines.extend(poly_engines_typos::engines_for(lang));
     #[cfg(feature = "engine-astgrep")]
@@ -343,7 +345,7 @@ pub fn engine_versions() -> &'static BTreeMap<&'static str, String> {
 ///
 /// Not feature-gated: a family left out of the build is served by a component, and its engine
 /// reads the same tables.
-pub(crate) const CROSS_CUTTING_ENGINES: &[&str] = &["typos", "astgrep", "uncomment", "quality", "secrets"];
+pub(crate) const CROSS_CUTTING_ENGINES: &[&str] = &["typos", "astgrep", "uncomment", "quality", "secrets", "harper"];
 
 /// Engines that are planned only when their `enabled` option is explicitly `true`.
 ///
@@ -355,7 +357,7 @@ pub(crate) const CROSS_CUTTING_ENGINES: &[&str] = &["typos", "astgrep", "uncomme
 /// `secrets` is served only by a downloaded component (no build links it), so this gate is what keeps
 /// the component, and its scan of every file, off a project that never enabled it.
 /// Not feature-gated, like [`CROSS_CUTTING_ENGINES`]: a component-served typos is opt-in too.
-pub(crate) const OPT_IN_ENGINES: &[&str] = &["typos", "uncomment", "jsonschema", "secrets"];
+pub(crate) const OPT_IN_ENGINES: &[&str] = &["typos", "uncomment", "jsonschema", "secrets", "harper"];
 
 /// Every concrete (non-[`Language::Other`]) [`Language`] variant, used to
 /// walk every arm of [`engines_for`]. Kept from silently narrowing by

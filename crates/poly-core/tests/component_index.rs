@@ -41,6 +41,7 @@ const PLACEMENT: &[(&str, Placement)] = &[
     ("tex-fmt", In("misc")),
     ("uncomment", In("uncomment")),
     ("jsonschema", In("jsonschema")),
+    ("harper", In("prose")),
     ("quality", Core),
     ("treesitter", Core),
     ("polyconfig", Core),
@@ -90,6 +91,7 @@ const COMPONENTS: &[(&str, ComponentKind, bool, &[&str])] = &[
     ("astgrep", ComponentKind::Engines, false, &["engine-astgrep"]),
     ("uncomment", ComponentKind::Engines, true, &["engine-uncomment"]),
     ("jsonschema", ComponentKind::Engines, true, &["engine-jsonschema"]),
+    ("prose", ComponentKind::Engines, true, &["engine-prose"]),
     (
         "misc",
         ComponentKind::Engines,

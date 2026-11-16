@@ -860,6 +860,28 @@ remove_docs = true
 Per-language booleans override the global value; `preserve_patterns` are unioned with the global
 list. A language `uncomment` does not recognize is simply left untouched.
 
+## Prose and grammar checks (opt-in)
+
+The `harper` backend checks the grammar and style of prose with `harper-core`, in process and offline. It is a
+**lint** backend and **off by default**; findings are warnings with no autofix, and it never claims a language as
+linted. It reads Markdown files whole (code blocks, inline code and front matter are skipped) and the comments of
+every language poly has a grammar for; MDX is not read.
+
+```toml
+[engines.harper]
+enabled = true
+dialect = "british"          # american (default), british, canadian, australian, indian
+dictionary = ["poly", "kubectl"]
+comments = true              # false: Markdown files only
+ignore = ["RepeatedWords"]   # select, extend_select and ignore take harper's rule ids
+```
+
+Rule ids are harper's own (`AnA`, `RepeatedWords`, ...), matched without regard to case, `-` or `_`. The default set
+is harper's curated one without `SpellCheck`, which `typos` already covers; `extend_select = ["SpellCheck"]` turns
+it on. A comment block shorter than three words, a tool directive such as `noqa` or `eslint-disable`, and a line
+that ends like a statement are not read as prose. Set the keys under `[engines.harper]`; the v1 `[lint.harper]`
+table passes only `enabled`.
+
 ## JSON Schema validation (opt-in)
 
 The `jsonschema` backend validates JSON, JSONC, YAML and TOML files against a JSON Schema, in process and

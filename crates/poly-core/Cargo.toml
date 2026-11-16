@@ -49,6 +49,7 @@ all-engines = [
   "engine-astgrep",
   "engine-uncomment",
   "engine-jsonschema",
+  "engine-prose",
   "engine-dockerfile",
   "engine-dotenv",
   "engine-ini",
@@ -67,6 +68,7 @@ engine-shfmt = []
 engine-gofmt = []
 engine-python = ["dep:poly-engines-python"]
 engine-php = ["dep:poly-engines-php"]
+engine-prose = ["dep:poly-engines-prose"]
 engine-sql = ["dep:poly-engines-sql"]
 engine-nix = ["dep:poly-engines-nix"]
 engine-typos = ["dep:poly-engines-typos"]
@@ -103,6 +105,7 @@ poly-engines-jsonschema = { workspace = true, optional = true }
 poly-engines-misc = { workspace = true, optional = true }
 poly-engines-nix = { workspace = true, optional = true }
 poly-engines-php = { workspace = true, optional = true }
+poly-engines-prose = { workspace = true, optional = true }
 poly-engines-python = { workspace = true, optional = true }
 poly-engines-sql = { workspace = true, optional = true }
 poly-engines-typos = { workspace = true, optional = true }

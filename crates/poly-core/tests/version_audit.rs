@@ -35,6 +35,7 @@ use poly_core::engines::astgrep::AstGrepEngine;
 use poly_core::engines::dockerfile::DockerfileEngine;
 use poly_core::engines::dotenv::DotenvEngine;
 use poly_core::engines::graphql::GraphQlEngine;
+use poly_core::engines::harper::HarperEngine;
 use poly_core::engines::hcl::HclEngine;
 use poly_core::engines::ini::IniEngine;
 use poly_core::engines::jsonschema::JsonSchemaEngine;
@@ -137,6 +138,7 @@ fn engine_versions_track_cargo_lock() {
             JsonSchemaEngine.version(),
             vec!["jsonschema", "granit-parser"],
         ),
+        check("harper", HarperEngine.version(), vec!["harper-core"]),
         check("dotenv", DotenvEngine.version(), vec!["dotenv-analyzer", "dotenv-core"]),
         check("ini", IniEngine.version(), vec!["rust-ini"]),
         check("typstyle", TypstEngine.version(), vec!["typstyle-core"]),

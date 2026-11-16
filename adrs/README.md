@@ -82,6 +82,7 @@ Context, Decision, Consequences (positive and negative/risks), and Alternatives 
 | [0065](0065-ship-the-core-at-opt-level-3.md) | Ship the Core at opt-level 3 | Accepted |
 | [0066](0066-project-config-wins-over-recipe-defaults.md) | A Project's Config Wins Over a Recipe's Default Arguments | Accepted |
 | [0067](0067-run-builtin-hooks-in-process.md) | Run Builtin Hooks In Process | Accepted |
+| [0068](0068-harper-prose-checks.md) | Prose and Grammar Checks with harper | Accepted |
 
 ## Conventions
 
