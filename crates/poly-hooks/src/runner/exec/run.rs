@@ -103,7 +103,7 @@ fn status_of(run: &Supervised, budget: Budget) -> HookStatus {
 /// `waiting_on` names the lock the hook is queued behind, when it said so:
 /// "quiet because it is working" and "quiet because cargo will not let it start"
 /// are different diagnoses and the notice reports whichever one is true.
-fn announce_still_running(
+pub(crate) fn announce_still_running(
     bar: Option<&ProgressBar>,
     id: &str,
     elapsed: Duration,

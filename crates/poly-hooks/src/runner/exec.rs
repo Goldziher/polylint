@@ -24,7 +24,7 @@ mod shell;
 use sccache::inject_sccache_env;
 use shell::shell_command;
 
-pub(super) use run::{Probe, await_cargo_package_cache, execute, run_precondition, run_step};
+pub(super) use run::{Probe, announce_still_running, await_cargo_package_cache, execute, run_precondition, run_step};
 
 pub(super) fn build_command(
     hook: &Hook,

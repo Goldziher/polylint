@@ -6,9 +6,11 @@
 
 use std::path::{Path, PathBuf};
 use std::process::Command;
+use std::time::{Duration, Instant};
 
 use poly_hooks::in_process::{self, Call, Outcome};
 use poly_hooks::model::{HookCommand, HookStatus};
+use poly_hooks::timeout::HookTimeout;
 use poly_hooks::{Hook, HookRunRequest, Stage, StageSpec, run};
 use tempfile::TempDir;
 
@@ -31,9 +33,19 @@ fn init_repo() -> TempDir {
     dir
 }
 
-/// Fails with the names of the files under `dir` that contain `BROKEN`; declines
-/// every other check name.
+/// How long the `hangs` check blocks: far past any budget a test sets.
+const HANG: Duration = Duration::from_secs(30);
+
+/// Fails with the names of the files under `dir` that contain `BROKEN`; `hangs`
+/// blocks for [`HANG`]; declines every other check name.
 fn handler(call: &Call<'_>) -> Option<anyhow::Result<Outcome>> {
+    if call.name == "hangs" {
+        std::thread::sleep(HANG);
+        return Some(Ok(Outcome {
+            code: 0,
+            output: Vec::new(),
+        }));
+    }
     if call.name != "reject-broken" {
         return None;
     }
@@ -117,4 +129,18 @@ fn a_hook_with_its_own_env_keeps_the_reexec() {
     hook.env.insert("EXTRA".to_string(), "1".to_string());
     let (status, _) = staged_run(&repo, &snapshot, hook);
     assert_eq!(status, HookStatus::Passed);
+}
+
+/// A check that never returns is stopped by the hook's budget like a child
+/// process would be (ADR 0071), not waited on: the run reports it as timed out
+/// well before the check would have finished.
+#[test]
+fn an_in_process_check_past_its_timeout_is_reported_as_timed_out() {
+    let (repo, snapshot) = broken_index();
+    let mut hook = in_process_hook("hangs", "sh -c 'exit 0' --");
+    hook.timeout = HookTimeout::Limit(Duration::from_millis(200));
+    let started = Instant::now();
+    let (status, _) = staged_run(&repo, &snapshot, hook);
+    assert!(matches!(status, HookStatus::TimedOut(_)), "{status:?}");
+    assert!(started.elapsed() < HANG, "the run waited for the check");
 }

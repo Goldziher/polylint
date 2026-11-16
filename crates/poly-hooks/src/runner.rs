@@ -89,10 +89,11 @@ use poly_cache::{CacheKey, Namespace};
 use rayon::prelude::*;
 use tracing::warn;
 
+use crate::in_process::Dispatched;
 use crate::model::{
     Hook, HookCache, HookCommand, HookOutcome, HookRunOutcome, HookRunRequest, HookStatus, SHARED_SERIAL_GROUP,
-    SccacheSettings, SetupScope, SkipReason, StageOutcome, StageSpec, StageStatus, StepOutcome, UnknownReason,
-    ValidatedTree,
+    SccacheSettings, SetupScope, SkipReason, StageOutcome, StageSpec, StageStatus, StepOutcome, TimeoutReason,
+    UnknownReason, ValidatedTree,
 };
 use crate::reporter::{HookBar, ProgressUi};
 
@@ -605,7 +606,7 @@ fn run_hook(
     matched: &[&Path],
     bar: Option<&ProgressBar>,
 ) -> HookOutcome {
-    if let Some(outcome) = run_in_process(context, hook, position, matched) {
+    if let Some(outcome) = run_in_process(context, hook, position, matched, bar) {
         return outcome;
     }
     #[cfg(windows)]
@@ -684,7 +685,15 @@ fn run_hook(
 /// the handler does not reproduce. The handler is given the directory the child
 /// would have run from and the files as the child would have received them, so
 /// under a staged run it reads the snapshot exactly as the child did (ADR 0019).
-fn run_in_process(context: &ExecContext<'_>, hook: &Hook, position: usize, matched: &[&Path]) -> Option<HookOutcome> {
+/// It runs under the budget a child would have had and announces itself on the
+/// same cadence; past the limit it is reported as timed out (ADR 0071).
+fn run_in_process(
+    context: &ExecContext<'_>,
+    hook: &Hook,
+    position: usize,
+    matched: &[&Path],
+    bar: Option<&ProgressBar>,
+) -> Option<HookOutcome> {
     let HookCommand::InProcess { name, args, .. } = &hook.command else {
         return None;
     };
@@ -699,17 +708,25 @@ fn run_in_process(context: &ExecContext<'_>, hook: &Hook, position: usize, match
         dir: &dir,
         files: &files,
     };
+    let budget = crate::timeout::budget_for(hook);
+    let announce = |elapsed: Duration| exec::announce_still_running(bar, &hook.id, elapsed, budget.limit, None);
     let start = Instant::now();
-    let (status, output) = match crate::in_process::dispatch(&call)? {
-        Ok(outcome) if outcome.code == 0 => (HookStatus::Passed, outcome.output),
-        Ok(outcome) => (
+    let (status, output) = match crate::in_process::dispatch(&call, budget, &announce) {
+        Dispatched::Finished(None) => return None,
+        Dispatched::Finished(Some(Ok(outcome))) if outcome.code == 0 => (HookStatus::Passed, outcome.output),
+        Dispatched::Finished(Some(Ok(outcome))) => (
             HookStatus::Failed {
                 code: Some(outcome.code),
             },
             outcome.output,
         ),
-        Err(error) => (HookStatus::Error(format!("{error:#}")), Vec::new()),
+        Dispatched::Finished(Some(Err(error))) => (HookStatus::Error(format!("{error:#}")), Vec::new()),
+        Dispatched::TimedOut(elapsed) => (
+            HookStatus::TimedOut(TimeoutReason::command(budget.limit.unwrap_or(elapsed), elapsed)),
+            Vec::new(),
+        ),
     };
+    tracing::debug!(hook = %hook.id, check = %name, "ran in process");
     Some(HookOutcome {
         status,
         output,
