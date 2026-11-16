@@ -29,7 +29,7 @@ use std::borrow::Cow;
 use std::collections::{HashMap, HashSet};
 use std::sync::{Arc, LazyLock, Mutex};
 
-use globset::{Glob, GlobSet, GlobSetBuilder};
+use globset::GlobSet;
 use unicase::UniCase;
 
 use poly_engine_api::config::EngineConfig;
@@ -268,17 +268,8 @@ fn prepared_for(cfg: &EngineConfig) -> Arc<Prepared> {
 impl Prepared {
     fn build(options: &toml::Table) -> Self {
         let exclude_globs = options.opt_string_list("extend_exclude");
-        let exclude = if exclude_globs.is_empty() {
-            None
-        } else {
-            let mut builder = GlobSetBuilder::new();
-            for pattern in &exclude_globs {
-                if let Ok(glob) = Glob::new(pattern) {
-                    builder.add(glob);
-                }
-            }
-            builder.build().ok()
-        };
+        let exclude =
+            (!exclude_globs.is_empty()).then(|| poly_engine_api::glob_set::build_glob_set_lossy(&exclude_globs));
 
         let mut valid_words: HashSet<String> = options
             .opt_string_list("extend_ignore_words")
@@ -362,7 +353,7 @@ fn is_generated_or_minified(content: &str) -> bool {
 /// Matching is tried against the full path first, then against each
 /// successive suffix (leading component stripped repeatedly) so bare patterns
 /// like `CHANGELOG.md` match `/repo/CHANGELOG.md` and `tests/**` matches
-/// `/repo/tests/foo.rs`. Malformed patterns are silently ignored when the set is built.
+/// `/repo/tests/foo.rs`. A malformed pattern is skipped with a warning when the set is built.
 fn path_matches_set(path: &std::path::Path, set: &GlobSet) -> bool {
     if set.is_match(path) {
         return true;

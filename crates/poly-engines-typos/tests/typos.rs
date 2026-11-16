@@ -223,6 +223,33 @@ fn extend_exclude_skips_matching_file() {
     );
 }
 
+#[test]
+fn an_invalid_extend_exclude_pattern_leaves_the_valid_ones_in_force() {
+    let src = SourceFile {
+        path: "tests/fixtures/typos/known_bad.txt".into(),
+        language: Language::Markdown,
+        content: KNOWN_BAD.into(),
+    };
+    let mut options = toml::Table::new();
+    options.insert(
+        "extend_exclude".to_string(),
+        toml::Value::Array(vec![
+            toml::Value::String("[unclosed".to_string()),
+            toml::Value::String("tests/fixtures/**".to_string()),
+        ]),
+    );
+    let cfg = EngineConfig {
+        globals: GlobalDefaults::default(),
+        indent_width: 4,
+        options,
+    };
+    let diags = TyposEngine.lint(&src, &cfg).unwrap();
+    assert!(
+        diags.is_empty(),
+        "the valid pattern must still exclude the file; got: {diags:?}",
+    );
+}
+
 /// Titles of the typos flagged for KNOWN_BAD, so tests can assert which
 /// misspellings survive a filter without inlining the misspellings themselves.
 fn flagged_words(cfg: &EngineConfig) -> Vec<String> {
