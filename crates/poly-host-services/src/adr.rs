@@ -27,6 +27,7 @@ use poly_core::{Config, Kind, Language, RunOptions};
 use poly_engine_api::component_wire::engine_config_to_wire;
 use poly_engine_api::config::EngineConfig;
 use poly_engine_api::engine::{ProjectDirs, ProjectFile};
+use poly_engine_api::toml;
 
 /// The engine that answers ADR operations.
 pub const ENGINE: &str = "adrlint";

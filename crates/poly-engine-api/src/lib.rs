@@ -4,6 +4,10 @@
 //! neither, and its dependency tree contains no engine crates (enforced by `tests/no_engine_deps.rs`).
 //! `poly-core` re-exports everything here at its historical paths.
 
+/// The `toml` crate whose `Table`/`Value` types [`config::EngineConfig`] exposes, so a consumer
+/// names the same version without its own dependency.
+pub use toml;
+
 pub mod component_wire;
 pub mod config;
 pub mod css_hacks;
