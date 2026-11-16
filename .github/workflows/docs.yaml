@@ -5,6 +5,7 @@ on:
     branches: [main]
     paths:
       - "website/**"
+      - "mise-tasks/docs/**"
       - ".github/workflows/docs.yaml"
   workflow_dispatch: {}
 
@@ -28,6 +29,11 @@ jobs:
       - uses: xberg-io/actions/setup-mise@v1
         with:
           tools: node pnpm
+      - name: Check for stale base-path links
+        working-directory: .
+        env:
+          MISE_TASK_RUN_AUTO_INSTALL: "false"
+        run: mise run docs:check-links
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
       - name: Build site
