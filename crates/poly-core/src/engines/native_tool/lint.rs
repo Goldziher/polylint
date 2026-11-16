@@ -237,7 +237,24 @@ mod tests {
             language: crate::language::Language::Shell,
             content: "echo hi\n".into(),
         };
-        lint_via_shellcheck_at(&spec, binary, &src)
+        // A concurrent test's fork can inherit the script's write handle for an instant, so Linux
+        // refuses the spawn with ETXTBSY; retry that rather than report it as the tool's failure.
+        let mut attempts = 0;
+        loop {
+            let result = lint_via_shellcheck_at(&spec, binary, &src);
+            let busy = result.as_ref().is_err_and(|error| {
+                error.chain().any(|cause| {
+                    cause
+                        .downcast_ref::<std::io::Error>()
+                        .is_some_and(|io| io.kind() == std::io::ErrorKind::ExecutableFileBusy)
+                })
+            });
+            if !busy || attempts == 50 {
+                return result;
+            }
+            attempts += 1;
+            std::thread::sleep(std::time::Duration::from_millis(20));
+        }
     }
 
     #[cfg(unix)]
