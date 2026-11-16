@@ -13,15 +13,16 @@ or whether a lint rule can be on by default:
 _which_ real code, and why the three corpora are allowed to assert different
 things.
 
-It is a tool you run, not a job that runs itself. There is no CI schedule: the
-harness clones several large third-party trees, and the output that justifies
-that cost — the per-rule counts — is the part that cannot fail a build on its
-own. A nightly job whose realistic failures are "GitHub was slow" and "a pinned
-tree moved shape" gets muted, and the invariants that _can_ gate would be muted
-with it. `cargo test --workspace` compiles the `#[ignore]`d harness on every PR
-so it cannot rot, and the `dogfood` CI job already answers "does poly survive a
-real tree" per commit. Run this before a release, or when a rule's default
-severity is in question.
+It is a tool you run, not a job that runs itself. There is no CI schedule and no
+push trigger: the harness clones several large third-party trees, and the output
+that justifies that cost — the per-rule counts — is the part that cannot fail a
+build on its own. A nightly job whose realistic failures are "GitHub was slow"
+and "a pinned tree moved shape" gets muted, and the invariants that _can_ gate
+would be muted with it. `cargo test --workspace` compiles the `#[ignore]`d harness
+on every PR so it cannot rot, and the `dogfood` CI job already answers "does poly
+survive a real tree" per commit. Run this before a release, or when a rule's
+default severity is in question — on a laptop, or on demand through the
+`harden` workflow (`workflow_dispatch` only, see "Running it on CI").
 
 ## The rule that splits them
 
@@ -194,3 +195,29 @@ over 2 s, from the `backend run` log lines). Lint findings are not failures;
 only poly failing on a file is. `meta.json` lists the files the first
 `fmt --fix` changed, which is the place to look when a formatter rewrites code
 it should not.
+
+## Running it on CI
+
+`.github/workflows/harden.yaml` is dispatch-only (`gh workflow run harden.yaml`).
+Inputs: `ref` (branch, tag or commit; default the dispatched ref), `only`
+(comma-separated root names, applied to corpora B and C and to `harden:repos
+--only`; a name that matches nothing in a corpus skips that corpus, and a name
+that matches nothing anywhere fails the release-gate pass) and `tier` (`core` or
+`extended` for B and C when no root is named).
+
+It builds the **bundled** binary (`components/` crate `poly-bundled`, the same
+build as the `dogfood` job and the musl release, with every engine linked
+in-process), then runs, in order: corpus B, corpus C, and the release-gate pass
+(`harden:repos`) over the B and C clones plus shallow clones of the public
+polylint org repositories (`adrlint`, `skif`, `uncomment`, `rumdl`).
+
+Corpus A is not run: it is the maintainer's local sibling trees, and
+`mise run harden --corpus a` refuses to run under CI. The org clones in the
+release-gate pass are its stand-in.
+
+The job fails only on the invariants the scripts already assert (errors,
+non-convergence, cache mismatch, `-j` mismatch, panic, timeout); per-rule counts
+never fail it. The job summary lists each stage's outcome, per-root checked and
+finding counts, the top rules by findings and `harden:repos`' `failures.md`. The
+`harden-reports` artifact (30 days) holds the corpus NDJSON files and the
+`harden:repos` output directory.

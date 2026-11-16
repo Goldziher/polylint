@@ -2,6 +2,12 @@
 
 How a release flows, and how to take one back. The workflow is `.github/workflows/publish.yaml`.
 
+## Before tagging
+
+Dispatch the `harden` workflow (`gh workflow run harden.yaml -f ref=<release commit>`) and triage its job summary
+and `harden-reports` artifact; it fails on invariant violations only (`docs/harden-corpus.md`). It is not part of the
+tag-triggered flow below and nothing waits for it, so a release does not check that it ran.
+
 ## Flow
 
 1. `verify_ci` waits (up to 60 minutes) for the `ci` workflow's required check runs on the tagged commit. A

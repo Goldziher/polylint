@@ -1,0 +1,216 @@
+name: harden
+
+# The pre-release hardening pass (docs/harden-corpus.md), run on demand. It is dispatch-only on purpose:
+# the harness clones large third-party trees and its per-rule counts cannot fail a build, so a schedule
+# or a push trigger would only produce a muted job. Run it before tagging a release.
+on:
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: "Branch, tag or commit of poly to harden (default: the dispatched ref)"
+        required: false
+        default: ""
+      only:
+        description: "Comma-separated corpus root names, for example ripgrep,gin,adrlint (empty runs everything)"
+        required: false
+        default: ""
+      tier:
+        description: Corpus B/C rows to run when no root is named
+        type: choice
+        options: [core, extended]
+        default: core
+
+concurrency:
+  group: harden-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+  RUST_BACKTRACE: 1
+  # Integration binaries link the full engine registry; line tables exhaust the Linux runner disk.
+  CARGO_PROFILE_DEV_DEBUG: "0"
+  CARGO_PROFILE_TEST_DEBUG: "0"
+  MISE_TASK_RUN_AUTO_INSTALL: "false"
+  HARDEN_ONLY: ${{ inputs.only }}
+  HARDEN_TIER: ${{ inputs.tier }}
+
+jobs:
+  harden:
+    name: harden
+    runs-on: ubuntu-latest
+    timeout-minutes: 300
+    steps:
+      - name: Validate inputs
+        shell: bash
+        run: |
+          set -euo pipefail
+          [[ "$HARDEN_ONLY" =~ ^[A-Za-z0-9_.,/-]*$ ]] || { echo "::error::only must be comma-separated root names"; exit 1; }
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ inputs.ref }}
+      - uses: dtolnay/rust-toolchain@v1
+        with:
+          toolchain: stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: |
+            .
+            components
+      - uses: xberg-io/actions/setup-mise@v1
+
+      # The bundled build: components/'s poly-bundled links every engine statically, the same crate the
+      # musl release ships and the one the dogfood job runs. The release's other triples ship the core
+      # flavour, which downloads the rest as components, so they would not exercise every engine in-process.
+      # The Alpine container the release uses is skipped: the engines are the same, only libc differs.
+      - name: Build the bundled poly (release)
+        id: build
+        shell: bash
+        run: |
+          set -euo pipefail
+          cargo build --release --locked --manifest-path components/Cargo.toml -p poly-bundled --bin poly
+          bin="$PWD/components/target/release/poly"
+          [ -x "$bin" ] || bin="$PWD/target/release/poly"
+          [ -x "$bin" ] || { echo "::error::no release poly binary was produced"; exit 1; }
+          "$bin" --version
+          echo "bin=$bin" >> "$GITHUB_OUTPUT"
+
+      - name: Prepare report directory
+        shell: bash
+        run: mkdir -p "$RUNNER_TEMP/harden-reports"
+
+      # Corpus A is the maintainer's local sibling trees and does not exist on a runner (and
+      # `mise run harden --corpus a` refuses to run under CI). The release-gate pass below is pointed at
+      # clones of the public polylint org repositories instead.
+      - name: Clone the polylint org repositories (stand-in for corpus A)
+        shell: bash
+        run: |
+          set -euo pipefail
+          org="$RUNNER_TEMP/org"
+          mkdir -p "$org"
+          for repo in adrlint skif uncomment rumdl; do
+            git clone --quiet --depth 1 "https://github.com/polylint/${repo}.git" "$org/$repo" \
+              || echo "::warning::could not clone polylint/${repo}; it is not measured"
+          done
+
+      - name: Corpus B (pinned third-party trees)
+        id: corpus_b
+        if: ${{ !cancelled() && steps.build.outcome == 'success' }}
+        shell: bash
+        env:
+          CORPUS: b
+        run: |
+          set -euo pipefail
+          names=()
+          if [ -n "$HARDEN_ONLY" ]; then
+            manifest="crates/poly-cli/tests/harden/data/repos.${CORPUS}.tsv"
+            for name in ${HARDEN_ONLY//,/ }; do
+              awk -F'\t' '!/^#/ && NF {print $1}' "$manifest" | grep -qx -- "$name" && names+=("$name")
+            done
+            if [ "${#names[@]}" -eq 0 ]; then
+              echo "no corpus ${CORPUS} root named in 'only'; skipping this corpus"
+              exit 0
+            fi
+          fi
+          POLY_HARDEN_RESULTS="$RUNNER_TEMP/harden-reports/corpus-${CORPUS}.ndjson" \
+            mise run harden --corpus "$CORPUS" --tier "$HARDEN_TIER" "${names[@]}"
+
+      - name: Corpus C (generated code)
+        id: corpus_c
+        if: ${{ !cancelled() && steps.build.outcome == 'success' }}
+        shell: bash
+        env:
+          CORPUS: c
+        run: |
+          set -euo pipefail
+          names=()
+          if [ -n "$HARDEN_ONLY" ]; then
+            manifest="crates/poly-cli/tests/harden/data/repos.${CORPUS}.tsv"
+            for name in ${HARDEN_ONLY//,/ }; do
+              awk -F'\t' '!/^#/ && NF {print $1}' "$manifest" | grep -qx -- "$name" && names+=("$name")
+            done
+            if [ "${#names[@]}" -eq 0 ]; then
+              echo "no corpus ${CORPUS} root named in 'only'; skipping this corpus"
+              exit 0
+            fi
+          fi
+          POLY_HARDEN_RESULTS="$RUNNER_TEMP/harden-reports/corpus-${CORPUS}.ndjson" \
+            mise run harden --corpus "$CORPUS" --tier "$HARDEN_TIER" "${names[@]}"
+
+      # The CLI-level release gate over the corpus B and C clones and the org repositories, with the
+      # release binary. A root directory that was not cloned (filtered out) is skipped by the script.
+      - name: Release-gate pass (harden:repos)
+        id: repos
+        if: ${{ !cancelled() && steps.build.outcome == 'success' }}
+        shell: bash
+        env:
+          POLY_BIN: ${{ steps.build.outputs.bin }}
+        run: |
+          set -euo pipefail
+          args=(--poly "$POLY_BIN" --out "$RUNNER_TEMP/harden-reports/repos"
+            --root /tmp/poly-harden/b --root /tmp/poly-harden/c --root "$RUNNER_TEMP/org")
+          [ -z "$HARDEN_ONLY" ] || args+=(--only "$HARDEN_ONLY")
+          mise run harden:repos -- "${args[@]}"
+
+      - name: Job summary
+        if: ${{ always() }}
+        shell: bash
+        env:
+          BUILD: ${{ steps.build.outcome }}
+          CORPUS_B: ${{ steps.corpus_b.outcome }}
+          CORPUS_C: ${{ steps.corpus_c.outcome }}
+          REPOS: ${{ steps.repos.outcome }}
+        run: |
+          reports="$RUNNER_TEMP/harden-reports"
+          {
+            echo "## Hardening pass"
+            echo
+            echo "Invariants gate this job (errors, non-convergence, cache and thread-count mismatch, panics, timeouts). Per-rule counts do not."
+            echo
+            echo "| Stage | Result |"
+            echo "| --- | --- |"
+            echo "| build (bundled release) | ${BUILD} |"
+            echo "| corpus B (pinned OSS) | ${CORPUS_B} |"
+            echo "| corpus C (generated) | ${CORPUS_C} |"
+            echo "| release-gate pass (harden:repos) | ${REPOS} |"
+            echo "| corpus A (local siblings) | not run on CI; org clones go through the release-gate pass |"
+            echo
+            for file in "$reports"/corpus-*.ndjson; do
+              [ -s "$file" ] || continue
+              echo "### $(basename "$file" .ndjson)"
+              echo
+              echo "| root | checked | skipped | errored | rule rows | findings | failed invariants |"
+              echo "| --- | ---: | ---: | ---: | ---: | ---: | ---: |"
+              jq -r '"| \(.root) | \(.lint.checked) | \(.lint.skipped) | \(.lint.errored) | \(.rules | length) | \([.rules[].findings] | add // 0) | \(.failures | length) |"' "$file"
+              echo
+              echo "Top rules by findings:"
+              echo
+              echo "| root | engine | rule | findings |"
+              echo "| --- | --- | --- | ---: |"
+              jq -r '.root as $r | .rules[] | [$r, .engine, .code, .findings]' "$file" \
+                | jq -rs 'sort_by(-.[3]) | .[:10][] | "| \(.[0]) | \(.[1]) | \(.[2]) | \(.[3]) |"'
+              echo
+            done
+            if [ -f "$reports/repos/failures.md" ]; then
+              echo "### harden:repos failures"
+              echo
+              cat "$reports/repos/failures.md"
+              echo
+            fi
+            if [ -f "$reports/repos/summary.md" ]; then
+              echo "### harden:repos summary"
+              echo
+              cat "$reports/repos/summary.md"
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload reports
+        if: ${{ always() }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: harden-reports
+          path: ${{ runner.temp }}/harden-reports
+          if-no-files-found: error
+          retention-days: 30
