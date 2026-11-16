@@ -73,7 +73,7 @@ impl TransportConnector for AlefConnector {
         if self.sidecars.contains(component_id) {
             return Ok(Arc::new(SidecarTransport { loaded }));
         }
-        let proxy = PolyProxy::new(&loaded).map_err(anyhow::Error::msg)?;
+        let proxy = PolyProxy::new(&loaded)?;
         Ok(Arc::new(ProxyTransport { proxy }))
     }
 }

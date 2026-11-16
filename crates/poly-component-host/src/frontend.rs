@@ -32,7 +32,7 @@ impl ComponentHost {
             .ensure_contract(component_id, CONTRACT, POLY_FRONTEND_ENTRY_SYMBOL)
             .with_context(|| format!("cannot load the `{component_id}` component"))?;
         crate::loaded::record(component_id);
-        let proxy = PolyFrontendProxy::new(&loaded).map_err(anyhow::Error::msg)?;
+        let proxy = PolyFrontendProxy::new(&loaded)?;
         let described: Value =
             serde_json::from_slice(&proxy.describe()?).context("the component's description is not valid")?;
         anyhow::ensure!(
