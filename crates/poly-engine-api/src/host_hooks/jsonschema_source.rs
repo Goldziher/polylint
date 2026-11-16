@@ -234,7 +234,13 @@ fn compiled_mappings(cfg: &EngineConfig) -> Matchers {
     let built: Matchers = Arc::new(
         mappings(cfg)
             .into_iter()
-            .filter_map(|(glob, schema)| Some((globset::Glob::new(&glob).ok()?.compile_matcher(), schema)))
+            .filter_map(|(glob, schema)| {
+                let matcher = globset::Glob::new(&glob)
+                    .inspect_err(|error| tracing::warn!(%glob, %error, "skipping invalid `schemas` glob"))
+                    .ok()?
+                    .compile_matcher();
+                Some((matcher, schema))
+            })
             .collect(),
     );
     let mut memo = memo.lock().unwrap_or_else(std::sync::PoisonError::into_inner);

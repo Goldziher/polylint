@@ -82,44 +82,42 @@ fn quote_style(cfg: &EngineConfig) -> Option<QuoteStyle> {
 ///
 /// The engine is handed no config root, so each pattern matches at any depth, the
 /// way a gitignore pattern without a leading slash does; a pattern also covers
-/// everything below a directory it names.
+/// everything below a directory it names. A malformed pattern is skipped with a
+/// warning and the rest stay in force.
 pub(super) fn excluded(path: &Path, cfg: &EngineConfig) -> bool {
     let Some(patterns) = cfg.options.get("exclude").and_then(toml::Value::as_array) else {
         return false;
     };
     let patterns: Vec<&str> = patterns.iter().filter_map(toml::Value::as_str).collect();
-    exclude_set(&patterns).is_some_and(|set| set.is_match(path))
+    exclude_set(&patterns).is_match(path)
 }
 
 /// The compiled glob set for `patterns`, built once per distinct pattern list. The memo is cleared
 /// when it outgrows [`EXCLUDE_MEMO_CAP`], which a run's handful of configs never reach.
-fn exclude_set(patterns: &[&str]) -> Option<Arc<globset::GlobSet>> {
-    type Compiled = Option<Arc<globset::GlobSet>>;
-    static MEMO: OnceLock<Mutex<HashMap<Vec<String>, Compiled>>> = OnceLock::new();
+fn exclude_set(patterns: &[&str]) -> Arc<globset::GlobSet> {
+    static MEMO: OnceLock<Mutex<HashMap<Vec<String>, Arc<globset::GlobSet>>>> = OnceLock::new();
     let key: Vec<String> = patterns.iter().map(|p| (*p).to_owned()).collect();
     let memo = MEMO.get_or_init(Mutex::default);
     if let Some(hit) = memo.lock().unwrap_or_else(PoisonError::into_inner).get(&key) {
-        return hit.clone();
+        return Arc::clone(hit);
     }
-    let mut builder = globset::GlobSetBuilder::new();
-    for pattern in patterns {
-        let pattern = pattern
-            .strip_prefix("./")
-            .unwrap_or(pattern)
-            .trim_start_matches('/')
-            .trim_end_matches('/');
-        for glob in [format!("**/{pattern}"), format!("**/{pattern}/**")] {
-            if let Ok(glob) = globset::Glob::new(&glob) {
-                builder.add(glob);
-            }
-        }
-    }
-    let built = builder.build().ok().map(Arc::new);
+    let globs: Vec<String> = patterns
+        .iter()
+        .flat_map(|pattern| {
+            let pattern = pattern
+                .strip_prefix("./")
+                .unwrap_or(pattern)
+                .trim_start_matches('/')
+                .trim_end_matches('/');
+            [format!("**/{pattern}"), format!("**/{pattern}/**")]
+        })
+        .collect();
+    let built = Arc::new(poly_engine_api::glob_set::build_glob_set_lossy(&globs));
     let mut memo = memo.lock().unwrap_or_else(PoisonError::into_inner);
     if memo.len() >= EXCLUDE_MEMO_CAP {
         memo.clear();
     }
-    memo.insert(key, built.clone());
+    memo.insert(key, Arc::clone(&built));
     built
 }
 
@@ -238,5 +236,12 @@ mod exclude_tests {
             Path::new("app/migrations/0001.py"),
             &cfg_excluding(&["other"])
         ));
+    }
+
+    #[test]
+    fn an_invalid_exclude_pattern_leaves_the_valid_ones_in_force() {
+        let cfg = cfg_excluding(&["[unclosed", "gen.py"]);
+        assert!(excluded(Path::new("a/b/gen.py"), &cfg));
+        assert!(!excluded(Path::new("app/models.py"), &cfg));
     }
 }

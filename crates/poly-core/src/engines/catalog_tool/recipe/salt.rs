@@ -13,7 +13,6 @@
 
 use std::path::{Path, PathBuf};
 
-use globset::{Glob, GlobSetBuilder};
 use ignore::WalkBuilder;
 
 use super::memo::Memo;
@@ -106,7 +105,8 @@ fn hash_file(hasher: &mut blake3::Hasher, path: &Path) {
 
 pub(super) static DIGESTS: Memo<(PathBuf, Vec<String>), String> = Memo::new();
 
-/// Digest of the files under `root` matching `globs` (relative to `root`).
+/// Digest of the files under `root` matching `globs` (relative to `root`). A
+/// malformed glob is skipped with a warning; the valid ones still decide the digest.
 /// Memoized per `(root, globs)` for the run: a run asks once per file of the
 /// root, and the tree does not change underneath it.
 pub(super) fn dependency_digest(root: &Path, globs: &[String]) -> String {
@@ -122,15 +122,7 @@ pub(super) fn dependency_digest(root: &Path, globs: &[String]) -> String {
 }
 
 fn compute_digest(root: &Path, globs: &[String]) -> String {
-    let mut builder = GlobSetBuilder::new();
-    for pattern in globs {
-        if let Ok(glob) = Glob::new(pattern) {
-            builder.add(glob);
-        }
-    }
-    let Ok(set) = builder.build() else {
-        return String::new();
-    };
+    let set = poly_engine_api::glob_set::build_glob_set_lossy(globs);
     let mut files: Vec<PathBuf> = WalkBuilder::new(root)
         .hidden(false)
         .git_ignore(true)
@@ -225,6 +217,20 @@ mod tests {
             first,
             compute_digest(dir.path(), &globs),
             "a dependency edit changes the digest"
+        );
+    }
+
+    #[test]
+    fn an_invalid_dependency_glob_leaves_the_valid_ones_in_force() {
+        let dir = tempfile::tempdir().expect("dir");
+        std::fs::write(dir.path().join("a.proto"), "message A {}").expect("a");
+        let globs = strings(&["[unclosed", "**/*.proto"]);
+        let first = compute_digest(dir.path(), &globs);
+        std::fs::write(dir.path().join("a.proto"), "message B {}").expect("a");
+        assert_ne!(
+            first,
+            compute_digest(dir.path(), &globs),
+            "the valid glob still tracks its dependency"
         );
     }
 }

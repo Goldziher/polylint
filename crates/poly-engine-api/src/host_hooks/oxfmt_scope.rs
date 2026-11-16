@@ -12,7 +12,7 @@ use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex, OnceLock};
 
-use globset::{GlobBuilder, GlobSet, GlobSetBuilder};
+use globset::GlobSet;
 use poly_config::{OxfmtNative, OxfmtOverride, resolve_oxfmt_native};
 
 use crate::config::EngineConfig;
@@ -64,24 +64,24 @@ impl Scope {
 }
 
 /// Globs as oxfmt reads them: relative to the config's directory, `*` stays inside a path
-/// segment, and a pattern with no `/` matches at any depth unless it starts with `./`.
+/// segment, and a pattern with no `/` matches at any depth unless it starts with `./`. A malformed
+/// pattern is skipped with a warning; the rest of its override still applies.
 fn compile(patterns: &[String]) -> GlobSet {
-    let mut builder = GlobSetBuilder::new();
-    for pattern in patterns {
-        let (bare, anchored) = match pattern.strip_prefix("./") {
-            Some(rest) => (rest, true),
-            None => (pattern.as_str(), false),
-        };
-        let normalized = if anchored || bare.contains('/') {
-            bare.to_owned()
-        } else {
-            format!("**/{bare}")
-        };
-        if let Ok(glob) = GlobBuilder::new(&normalized).literal_separator(true).build() {
-            builder.add(glob);
-        }
-    }
-    builder.build().unwrap_or_else(|_| GlobSet::empty())
+    let normalized: Vec<String> = patterns
+        .iter()
+        .map(|pattern| {
+            let (bare, anchored) = match pattern.strip_prefix("./") {
+                Some(rest) => (rest, true),
+                None => (pattern.as_str(), false),
+            };
+            if anchored || bare.contains('/') {
+                bare.to_owned()
+            } else {
+                format!("**/{bare}")
+            }
+        })
+        .collect();
+    crate::glob_set::build_glob_set_lossy_with(&normalized, crate::glob_set::Separator::Literal)
 }
 
 /// The scope of the nearest oxfmt config at or above `dir`, memoized per directory so a tree of
@@ -243,6 +243,14 @@ mod tests {
         assert_eq!(indent(&cfg, repo.path().join("keep/a.gen.ts")), 4);
         assert_eq!(indent(&cfg, repo.path().join("top.ts")), 6);
         assert_eq!(indent(&cfg, repo.path().join("sub/top.ts")), 4);
+    }
+
+    #[test]
+    fn an_invalid_override_glob_leaves_the_valid_ones_in_force() {
+        let repo = repo(r#"{"tabWidth":4,"overrides":[{"files":["[unclosed","*.gen.ts"],"options":{"tabWidth":2}}]}"#);
+        let cfg = engine_cfg(repo.path(), 4);
+        assert_eq!(indent(&cfg, repo.path().join("a.gen.ts")), 2);
+        assert_eq!(indent(&cfg, repo.path().join("a.ts")), 4);
     }
 
     #[test]

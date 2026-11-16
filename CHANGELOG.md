@@ -13,6 +13,7 @@ binary drives lint, format, hooks, and commit checks from one `poly.toml`.
 
 ### Fixed
 
+- **An invalid glob is reported instead of silently dropped.** A malformed pattern in ruff's `exclude`, typos' `extend_exclude`, an `.oxfmtrc` `overrides[].files`/`excludeFiles` entry, a jsonschema `schemas` glob or a recipe's dependency globs now logs a warning naming it, and the valid patterns beside it stay in force. (#217)
 - **Hook sources recover from a damaged cached mirror.** A mirror holding a locked commit without its tree is refetched, then re-cloned, instead of failing with `unable to read tree`; the final error names the cache directory to remove.
 
 ### Added

@@ -3,7 +3,24 @@
 use std::collections::HashSet;
 use std::sync::{Mutex, OnceLock};
 
-use globset::{Glob, GlobSet, GlobSetBuilder};
+use globset::{Glob, GlobBuilder, GlobSet, GlobSetBuilder};
+
+/// Whether `*` and `?` may match a path separator.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub enum Separator {
+    /// `*` crosses `/`, as [`Glob::new`] reads a pattern.
+    #[default]
+    Crossed,
+    /// `*` stays inside one path segment; only `**` crosses `/` (gitignore and oxfmt semantics).
+    Literal,
+}
+
+fn parse(pattern: &str, separator: Separator) -> Result<Glob, globset::Error> {
+    match separator {
+        Separator::Crossed => Glob::new(pattern),
+        Separator::Literal => GlobBuilder::new(pattern).literal_separator(true).build(),
+    }
+}
 
 /// A glob pattern that failed to parse, or a set that failed to build.
 #[derive(Debug)]
@@ -41,7 +58,7 @@ pub fn build_glob_set(patterns: &[impl AsRef<str>]) -> Result<GlobSet, GlobSetEr
     let mut builder = GlobSetBuilder::new();
     for pattern in patterns {
         let pattern = pattern.as_ref();
-        let glob = Glob::new(pattern).map_err(|source| GlobSetError::Pattern {
+        let glob = parse(pattern, Separator::Crossed).map_err(|source| GlobSetError::Pattern {
             pattern: pattern.to_owned(),
             source,
         })?;
@@ -52,11 +69,16 @@ pub fn build_glob_set(patterns: &[impl AsRef<str>]) -> Result<GlobSet, GlobSetEr
 
 /// Build a set from the valid `patterns`, logging each invalid one once per process.
 pub fn build_glob_set_lossy(patterns: &[impl AsRef<str>]) -> GlobSet {
+    build_glob_set_lossy_with(patterns, Separator::Crossed)
+}
+
+/// [`build_glob_set_lossy`] with the given treatment of the path separator.
+pub fn build_glob_set_lossy_with(patterns: &[impl AsRef<str>], separator: Separator) -> GlobSet {
     static WARNED: OnceLock<Mutex<HashSet<String>>> = OnceLock::new();
     let mut builder = GlobSetBuilder::new();
     for pattern in patterns {
         let pattern = pattern.as_ref();
-        match Glob::new(pattern) {
+        match parse(pattern, separator) {
             Ok(glob) => {
                 builder.add(glob);
             }
@@ -72,7 +94,10 @@ pub fn build_glob_set_lossy(patterns: &[impl AsRef<str>]) -> GlobSet {
             }
         }
     }
-    builder.build().unwrap_or_else(|_| GlobSet::empty())
+    builder.build().unwrap_or_else(|error| {
+        tracing::warn!(%error, "could not build glob set; it matches nothing");
+        GlobSet::empty()
+    })
 }
 
 #[cfg(test)]
@@ -113,6 +138,15 @@ mod tests {
     fn lossy_empty_matches_nothing() {
         let set = build_glob_set_lossy(&[] as &[&str]);
         assert!(set.is_empty());
+    }
+
+    #[test]
+    fn literal_separator_keeps_star_inside_one_segment() {
+        let crossed = build_glob_set_lossy(&["src/*.rs"]);
+        let literal = build_glob_set_lossy_with(&["src/*.rs", "[unclosed"], Separator::Literal);
+        assert!(crossed.is_match("src/a/b.rs"));
+        assert!(!literal.is_match("src/a/b.rs"));
+        assert!(literal.is_match("src/b.rs"));
     }
 
     #[test]
