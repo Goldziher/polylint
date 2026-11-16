@@ -11,6 +11,8 @@ binary drives lint, format, hooks, and commit checks from one `poly.toml`.
 
 - **The core binary is built for speed.** `--profile core` moves from `opt-level = "s"` to `opt-level = 3` (fat LTO, stripped), and the size gate moves from 14 MiB to 22 MiB (ADR 0065). The `release` profile used by the bundled build and every component also moves to fat LTO with stripped symbols.
 
+- **Cargo hooks hash their declared inputs once per run.** The clippy, sort, machete and deny hooks share one `git ls-files` listing and one parallel, streamed blake3 pass, and the staged-run mutation probe streams index blobs into hashes instead of holding the tracked tree in memory. (#215)
+
 ### Fixed
 
 - **golangci-lint keeps a project's own `run.timeout`.** poly passes `--timeout=0` only when the project's golangci-lint config (or the file `-c` names) sets no `run.timeout`; a recipe declares such arguments with the new `config_defaults` key. (ADR 0066)

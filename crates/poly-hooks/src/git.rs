@@ -34,7 +34,7 @@ mod testutil;
 
 pub(crate) use self::index::{
     StagedEntry, add, checkout_index_paths, is_safe_relative_path, list_staged_entries, list_submodule_gitlinks,
-    stage_contents_from, staged_blobs, worktree_digest,
+    stage_contents_from, staged_blob_hashes, staged_blobs, worktree_digest,
 };
 pub use self::index::{get_staged_files, list_files};
 pub use self::revision::get_changed_files;

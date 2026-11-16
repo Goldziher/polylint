@@ -450,77 +450,133 @@ pub fn staged_blob(root: &Path, path: &Path) -> Result<Option<Vec<u8>>, Error> {
 /// the batch protocol's line-based input, so it falls back to [`staged_blob`].
 #[instrument(level = "trace", skip(paths))]
 pub fn staged_blobs(root: &Path, paths: &[PathBuf]) -> Result<Vec<Option<Vec<u8>>>, Error> {
-    use std::io::{BufRead as _, BufReader, Read as _, Write as _};
-    use std::process::Stdio;
+    visit_staged_blobs(root, paths, |blob| {
+        blob.map(|reader| {
+            let mut content = Vec::new();
+            reader.read_to_end(&mut content).map(|_| content)
+        })
+        .transpose()
+    })
+}
 
+/// The blake3 hash of each path's staged blob, in `paths` order, streamed
+/// through the hasher so the blobs are never held in memory together.
+///
+/// The declared-input mutation probe compares a whole tracked tree against the
+/// index; collecting every blob first, as [`staged_blobs`] does, held the tree
+/// in RAM for a 32-byte answer per file.
+#[instrument(level = "trace", skip(paths))]
+pub fn staged_blob_hashes(root: &Path, paths: &[PathBuf]) -> Result<Vec<Option<[u8; 32]>>, Error> {
+    visit_staged_blobs(root, paths, |blob| {
+        blob.map(|reader| {
+            let mut hasher = blake3::Hasher::new();
+            std::io::copy(reader, &mut hasher).map(|_| *hasher.finalize().as_bytes())
+        })
+        .transpose()
+    })
+}
+
+/// Read each path's staged blob and hand it to `visit` as a bounded reader, in
+/// `paths` order; `None` when the path has no stage-0 entry. Paths the batch
+/// protocol can address go through one `git cat-file --batch` process; a path
+/// containing a newline falls back to [`staged_blob`].
+fn visit_staged_blobs<T>(
+    root: &Path,
+    paths: &[PathBuf],
+    mut visit: impl FnMut(Option<&mut dyn std::io::Read>) -> std::io::Result<T>,
+) -> Result<Vec<T>, Error> {
     for path in paths {
         reject_unsafe_path(path)?;
     }
     let batchable = |path: &PathBuf| !path.as_os_str().as_encoded_bytes().contains(&b'\n');
     let batch: Vec<&PathBuf> = paths.iter().filter(|path| batchable(path)).collect();
-    let mut fetched: Vec<Option<Vec<u8>>> = Vec::with_capacity(batch.len());
-    if !batch.is_empty() {
-        let mut child = git_cmd("read staged blobs")?
-            .current_dir(root)
-            .arg("cat-file")
-            .arg("--batch")
-            .stdin(Stdio::piped())
-            .stdout(Stdio::piped())
-            .stderr(Stdio::null())
-            .spawn()?;
-        let mut stdin = child.stdin.take().expect("piped stdin");
-        let mut reader = BufReader::new(child.stdout.take().expect("piped stdout"));
-        let expected = batch.len();
-        let invalid = |what: &str| std::io::Error::new(std::io::ErrorKind::InvalidData, what.to_owned());
-        let result: Result<(), std::io::Error> = std::thread::scope(|scope| {
-            // Written from its own thread: git answers while it is still being
-            // asked, and a request list larger than the pipe buffer would
-            // otherwise block both sides.
-            let writer = scope.spawn(move || {
-                for path in &batch {
-                    stdin.write_all(b":0:")?;
-                    stdin.write_all(path.as_os_str().as_encoded_bytes())?;
-                    stdin.write_all(b"\n")?;
-                }
-                Ok::<(), std::io::Error>(())
-            });
-            let mut header = String::new();
-            for _ in 0..expected {
-                header.clear();
-                if reader.read_line(&mut header)? == 0 {
-                    return Err(invalid("git cat-file closed early"));
-                }
-                if header.trim_end().ends_with(" missing") {
-                    fetched.push(None);
-                    continue;
-                }
-                let size: usize = header
-                    .split_whitespace()
-                    .nth(2)
-                    .and_then(|size| size.parse().ok())
-                    .ok_or_else(|| invalid("unexpected cat-file header"))?;
-                let mut content = vec![0; size];
-                reader.read_exact(&mut content)?;
-                let mut newline = [0u8; 1];
-                reader.read_exact(&mut newline)?;
-                fetched.push(Some(content));
-            }
-            writer.join().map_err(|_| invalid("writer panicked"))?
-        });
-        let _ = child.wait();
-        result?;
+    let mut fetched = if batch.is_empty() {
+        Vec::new()
+    } else {
+        visit_batch(root, &batch, &mut visit)?
     }
-    let mut fetched = fetched.into_iter();
-    paths
-        .iter()
-        .map(|path| {
-            if batchable(path) {
-                Ok(fetched.next().flatten())
-            } else {
-                staged_blob(root, path)
+    .into_iter();
+    let mut visited = Vec::with_capacity(paths.len());
+    for path in paths {
+        if batchable(path) {
+            visited.push(
+                fetched
+                    .next()
+                    .ok_or_else(|| std::io::Error::other("staged blob count mismatch"))?,
+            );
+        } else {
+            let blob = staged_blob(root, path)?;
+            let mut bytes = blob.as_deref();
+            visited.push(visit(bytes.as_mut().map(|bytes| bytes as &mut dyn std::io::Read))?);
+        }
+    }
+    Ok(visited)
+}
+
+/// The `git cat-file --batch` half of [`visit_staged_blobs`]. Bytes `visit`
+/// leaves unread are drained so the next header lines up.
+fn visit_batch<T>(
+    root: &Path,
+    batch: &[&PathBuf],
+    visit: &mut impl FnMut(Option<&mut dyn std::io::Read>) -> std::io::Result<T>,
+) -> Result<Vec<T>, Error> {
+    use std::io::{BufRead as _, BufReader, Read as _, Write as _};
+    use std::process::Stdio;
+
+    let mut child = git_cmd("read staged blobs")?
+        .current_dir(root)
+        .arg("cat-file")
+        .arg("--batch")
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::null())
+        .spawn()?;
+    let mut stdin = child.stdin.take().expect("piped stdin");
+    let mut reader = BufReader::new(child.stdout.take().expect("piped stdout"));
+    let mut fetched: Vec<T> = Vec::with_capacity(batch.len());
+    let invalid = |what: &str| std::io::Error::new(std::io::ErrorKind::InvalidData, what.to_owned());
+    let result: Result<(), std::io::Error> = std::thread::scope(|scope| {
+        // Written from its own thread: git answers while it is still being
+        // asked, and a request list larger than the pipe buffer would
+        // otherwise block both sides.
+        let writer = scope.spawn(move || {
+            for path in batch {
+                stdin.write_all(b":0:")?;
+                stdin.write_all(path.as_os_str().as_encoded_bytes())?;
+                stdin.write_all(b"\n")?;
             }
-        })
-        .collect()
+            Ok::<(), std::io::Error>(())
+        });
+        let mut header = String::new();
+        for _ in 0..batch.len() {
+            header.clear();
+            if reader.read_line(&mut header)? == 0 {
+                return Err(invalid("git cat-file closed early"));
+            }
+            if header.trim_end().ends_with(" missing") {
+                fetched.push(visit(None)?);
+                continue;
+            }
+            let size: u64 = header
+                .split_whitespace()
+                .nth(2)
+                .and_then(|size| size.parse().ok())
+                .ok_or_else(|| invalid("unexpected cat-file header"))?;
+            let mut content = (&mut reader).take(size);
+            let blob: &mut dyn std::io::Read = &mut content;
+            fetched.push(visit(Some(blob))?);
+            std::io::copy(&mut content, &mut std::io::sink())?;
+            if content.limit() != 0 {
+                return Err(invalid("git cat-file blob truncated"));
+            }
+            let mut newline = [0u8; 1];
+            reader.read_exact(&mut newline)?;
+        }
+        writer.join().map_err(|_| invalid("writer panicked"))?
+    });
+    let _ = child.wait();
+    result?;
+    Ok(fetched)
 }
 
 #[cfg(test)]
@@ -715,6 +771,42 @@ S 100755 bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb 0\tomitted/run.sh\0";
                 Some(Vec::new()),
                 Some(b"newline name\n".to_vec())
             ]
+        );
+    }
+
+    #[test]
+    #[cfg(unix)]
+    fn staged_blob_hashes_equal_the_hash_of_each_collected_blob() {
+        let repo = init_temp_repo();
+        let root = repo.path();
+        std::fs::write(root.join("a.txt"), "staged a\n").expect("write");
+        std::fs::write(root.join("b b.txt"), "").expect("write");
+        std::fs::write(root.join("new\nline.txt"), "newline name\n").expect("write");
+        std::fs::write(root.join("big.txt"), "y".repeat(300_000)).expect("write");
+        git_run(root, &["add", "-A"]);
+        std::fs::write(root.join("a.txt"), "worktree edit\n").expect("write");
+
+        let paths: Vec<PathBuf> = ["a.txt", "absent.txt", "big.txt", "b b.txt", "new\nline.txt"]
+            .iter()
+            .map(PathBuf::from)
+            .collect();
+        let hashes = staged_blob_hashes(root, &paths).expect("hashes");
+        let expected: Vec<Option<[u8; 32]>> = staged_blobs(root, &paths)
+            .expect("blobs")
+            .iter()
+            .map(|blob| blob.as_deref().map(|bytes| *blake3::hash(bytes).as_bytes()))
+            .collect();
+
+        assert_eq!(hashes, expected);
+        assert_eq!(
+            hashes[0],
+            Some(*blake3::hash(b"staged a\n").as_bytes()),
+            "the index, not the worktree"
+        );
+        assert_eq!(hashes[1], None);
+        assert_eq!(
+            hashes[2],
+            Some(*blake3::hash("y".repeat(300_000).as_bytes()).as_bytes())
         );
     }
 

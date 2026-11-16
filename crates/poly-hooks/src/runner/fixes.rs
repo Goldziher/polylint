@@ -348,13 +348,16 @@ fn matches_staged(root: &Path, path: &Path, staged: Option<&[u8]>) -> bool {
 }
 
 /// The subset of `paths` whose worktree content differs from the index, with all
-/// the staged blobs read through a single git process.
+/// the staged blobs streamed through a single git process into their hashes and
+/// the worktree side hashed in parallel. Same answer as [`matches_staged`].
 pub(super) fn differing_from_staged(root: &Path, paths: &[PathBuf]) -> anyhow::Result<Vec<PathBuf>> {
-    let blobs = git::staged_blobs(root, paths)?;
+    use rayon::prelude::*;
+
+    let staged = git::staged_blob_hashes(root, paths)?;
     Ok(paths
-        .iter()
-        .zip(blobs)
-        .filter(|(path, staged)| !matches_staged(root, path, staged.as_deref()))
+        .par_iter()
+        .zip(staged.par_iter())
+        .filter(|(path, staged)| staged.is_none_or(|staged| hash_file(&root.join(path)) != Some(staged)))
         .map(|(path, _)| path.clone())
         .collect())
 }
