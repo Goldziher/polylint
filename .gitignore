@@ -66,6 +66,7 @@ node_modules/
 /.pi/mcp.json
 .alef/
 /components-pyrefly/target
+/components-r/target
 /components-secrets/target
 /components-tsrs/target
 /components/target

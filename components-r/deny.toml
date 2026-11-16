@@ -1,0 +1,59 @@
+[licenses]
+version = 2
+# Workspace crates are never published; the alef-generated component producer crate carries no
+# license field.
+private = { ignore = true }
+confidence-threshold = 0.9
+allow = [
+  "MIT",
+  "MIT-0",
+  "Apache-2.0",
+  "Apache-2.0 WITH LLVM-exception",
+  "BSD-3-Clause",
+  "Unlicense",
+  "MPL-2.0",
+  "Zlib",
+  "CC0-1.0",
+  "Unicode-3.0",
+  "0BSD",
+]
+
+# jarl's workspace Cargo.toml sets `license-file = "LICENSE.md"`, but the file at the repository root is named
+# `LICENSE`, so cargo-deny cannot read the licence of its crates; `clarify` states it (MIT) and pins the file by its
+# hash. The path is relative to each crate, two levels below the repository root.
+[[licenses.clarify]]
+name = "jarl-core"
+expression = "MIT"
+
+[[licenses.clarify.license-files]]
+path = "../../LICENSE"
+hash = 0x3B9B906C
+
+[[licenses.clarify]]
+name = "jarl-semantic"
+expression = "MIT"
+
+[[licenses.clarify.license-files]]
+path = "../../LICENSE"
+hash = 0x3B9B906C
+
+[bans]
+multiple-versions = "allow"
+wildcards = "allow"
+
+[advisories]
+version = 2
+
+[sources]
+unknown-registry = "deny"
+unknown-git = "deny"
+# air (the formatter), jarl (the linter) and ark (the R tooling jarl's semantic analysis is built on) are only available
+# from git: none of their crates is published (air's are `publish = false`), and the crates.io `jarl` is an unrelated
+# crate. biome is the formatter framework both are built on, at the one rev air and jarl share; the biome crates air
+# needs are not published at that rev either (ADR 0066).
+allow-git = [
+  "https://github.com/biomejs/biome",
+  "https://github.com/etiennebacher/jarl",
+  "https://github.com/posit-dev/air",
+  "https://github.com/posit-dev/ark",
+]

@@ -1,0 +1,20 @@
+---
+source: crates/poly-engines-r/tests/air.rs
+expression: text
+---
+f <- function(x, y) {
+  z <- x + y
+  if (z > 10) {
+    print("big")
+  } else {
+    print("small")
+  }
+  z
+}
+result <- some_function(
+  argument_one = 1,
+  argument_two = "two",
+  argument_three = c(1, 2, 3),
+  argument_four = TRUE
+)
+df %>% filter(a > 1) %>% select(a, b)

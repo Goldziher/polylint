@@ -1,0 +1,44 @@
+# The R engine family (air and jarl), in a cargo workspace of its own. Both tools are git dependencies that pin their
+# own biome revision (`biomejs/biome` 8c43bc0), which is not the one `components/` pins for its biome engine, and a
+# lockfile holds one source per git rev: the two could only share a workspace by moving one tool to the other's
+# biome (ADR 0066). alef builds the component from here (`source_manifest` / `producer_dir` in the root alef.toml).
+[workspace]
+resolver = "3"
+members = ["crates/*"]
+
+[workspace.package]
+version = "0.35.0"
+edition = "2024"
+rust-version = "1.100"
+license = "MIT"
+authors = ["Na'aman Hirschfeld <nhirschfeld@gmail.com>"]
+repository = "https://github.com/polylint/polylint"
+documentation = "https://github.com/polylint/polylint"
+
+[workspace.dependencies]
+anyhow = "1"
+blake3 = "1"
+insta = "1"
+poly-component-host = { path = "../crates/poly-component-host" }
+poly-component-index = { path = "../crates/poly-component-index" }
+poly-component-protocol = { path = "../crates/poly-component-protocol" }
+poly-engine-api = { path = "../crates/poly-engine-api" }
+poly-engines = { path = "../crates/poly-engines", default-features = false }
+poly-engines-r = { path = "crates/poly-engines-r" }
+serde_json = { version = "1", features = ["preserve_order"] }
+tempfile = "3"
+toml = "1"
+# air (posit-dev/air) at the rev jarl pins, so the formatter and the linter share one parser and one biome. The crates
+# are `publish = false`; `workspace` is air's air.toml reader and is renamed because the name is generic.
+air_r_formatter = { git = "https://github.com/posit-dev/air", rev = "9b7627a0e05511a9052ea569e88cf8192474b85f" }
+air_r_parser = { git = "https://github.com/posit-dev/air", rev = "9b7627a0e05511a9052ea569e88cf8192474b85f" }
+air_workspace = { package = "workspace", git = "https://github.com/posit-dev/air", rev = "9b7627a0e05511a9052ea569e88cf8192474b85f" }
+# jarl (etiennebacher/jarl) main at dc3f249, after 0.7.1. The 0.7.1 tag pins personal forks of air, ark and biome; main
+# pins the upstream ones, so every git source here is a project's own repository (ADR 0066). jarl-semantic comes along
+# as jarl-core's own dependency.
+jarl-core = { git = "https://github.com/etiennebacher/jarl", rev = "dc3f249eaa2ead5d8d2f6328ab16800c5fed8c0c" }
+
+[profile.release]
+lto = "fat"
+codegen-units = 1
+strip = "symbols"

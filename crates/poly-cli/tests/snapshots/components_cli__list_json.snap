@@ -106,6 +106,17 @@ expression: json
       "detail": "this build embeds no component lock"
     },
     {
+      "name": "r",
+      "kind": "engines",
+      "state": "unavailable",
+      "opt_in": false,
+      "engines": [
+        "air",
+        "jarl"
+      ],
+      "detail": "this build embeds no component lock"
+    },
+    {
       "name": "nix",
       "kind": "engines",
       "state": "bundled",

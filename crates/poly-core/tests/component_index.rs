@@ -67,12 +67,13 @@ const PLACEMENT: &[(&str, Placement)] = &[
 /// `components/crates/poly-engines-web/tests/component_index.rs`, and
 /// `components-pyrefly/crates/poly-engines-pyrefly/tests/index.rs` for the pyrefly workspace and
 /// `components-secrets/crates/poly-engines-secrets/tests/index.rs` for the secrets one and
-/// `components-tsrs/crates/poly-engines-tsrs/tests/component_index.rs` for the tsrs one) check the
+/// `components-tsrs/crates/poly-engines-tsrs/tests/component_index.rs` for the tsrs one and
+/// `components-r/crates/poly-engines-r/tests/component_index.rs` for the R one) check the
 /// entries against the real engines.
-const EXTERNAL_COMPONENTS: &[&str] = &["biome", "pyrefly", "ruby", "secrets", "tsrs", "web", "sh", "go"];
+const EXTERNAL_COMPONENTS: &[&str] = &["biome", "pyrefly", "r", "ruby", "secrets", "tsrs", "web", "sh", "go"];
 
 /// Components built outside the `components/` workspace: no bundled build can link them.
-const DOWNLOAD_ONLY: &[&str] = &["pyrefly", "secrets", "tsrs"];
+const DOWNLOAD_ONLY: &[&str] = &["pyrefly", "r", "secrets", "tsrs"];
 
 /// Components in index order: name, kind, opt-in, cargo features.
 const COMPONENTS: &[(&str, ComponentKind, bool, &[&str])] = &[
@@ -88,6 +89,8 @@ const COMPONENTS: &[(&str, ComponentKind, bool, &[&str])] = &[
     ("php", ComponentKind::Engines, false, &["engine-php"]),
     ("biome", ComponentKind::Engines, false, &["engine-biome"]),
     ("ruby", ComponentKind::Engines, false, &["engine-ruby"]),
+    // air formats and jarl lints R; both pin a biome of their own, so no bundled build links them.
+    ("r", ComponentKind::Engines, false, &["engine-r"]),
     ("nix", ComponentKind::Engines, false, &["engine-nix"]),
     ("typos", ComponentKind::Engines, true, &["engine-typos"]),
     ("astgrep", ComponentKind::Engines, false, &["engine-astgrep"]),
@@ -144,6 +147,7 @@ const ALIASES: &[(&str, &[&str])] = &[
     ("sql", &["sql"]),
     ("nix", &["nix"]),
     ("ruby", &["ruby"]),
+    ("r", &["r"]),
     ("graphql", &["graphql"]),
     ("dockerfile", &["dockerfile"]),
     ("hcl", &["hcl"]),

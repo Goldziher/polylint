@@ -1,0 +1,7 @@
+---
+source: crates/poly-engines-r/tests/jarl.rs
+expression: "summarize(&diagnostics)"
+---
+2:5-2:18 any_is_na warning `any(is.na(...))` is inefficient. | Use `anyNA(...)` instead. | fix [21..34 -> anyNA(x)] | https://jarl.etiennebacher.com/rules/any_is_na
+5:6-5:13 equals_na error Comparing to NA with `==` is problematic. | Use `is.na()` instead. | fix [75..82 -> is.na(x)] | https://jarl.etiennebacher.com/rules/equals_na
+6:6-6:17 seq warning `1:length(...)` can be wrong if the RHS is 0. | Use `seq_along(...)` instead. | fix [88..99 -> seq_along(x)] | https://jarl.etiennebacher.com/rules/seq

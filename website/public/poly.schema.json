@@ -851,6 +851,9 @@
           "type": "object",
           "description": "Backends that handle r files.",
           "properties": {
+            "jarl": {
+              "$ref": "#/$defs/lint_jarl"
+            },
             "typos": {
               "$ref": "#/$defs/lint_typos"
             },
@@ -1549,6 +1552,9 @@
           "type": "object",
           "description": "Backends that handle r files.",
           "properties": {
+            "air": {
+              "$ref": "#/$defs/fmt_air"
+            },
             "styler": {
               "$ref": "#/$defs/fmt_styler"
             }
@@ -5716,6 +5722,89 @@
               "type": "object"
             }
           ]
+        }
+      },
+      "additionalProperties": true
+    },
+    "lint_jarl": {
+      "type": "object",
+      "properties": {
+        "check_roxygen": {
+          "type": "boolean"
+        },
+        "enabled": {
+          "type": "boolean"
+        },
+        "extend_select": {
+          "type": "array"
+        },
+        "ignore": {
+          "type": "array"
+        },
+        "indent_width": {
+          "type": "integer"
+        },
+        "min_r_version": {
+          "type": "string"
+        },
+        "rules": {
+          "oneOf": [
+            {
+              "type": "array"
+            },
+            {
+              "type": "object"
+            }
+          ]
+        },
+        "select": {
+          "type": "array"
+        }
+      },
+      "additionalProperties": true
+    },
+    "fmt_air": {
+      "type": "object",
+      "properties": {
+        "assignment_style": {
+          "type": "string"
+        },
+        "default_table": {
+          "type": "boolean"
+        },
+        "enabled": {
+          "type": "boolean"
+        },
+        "indent_style": {
+          "type": "string"
+        },
+        "indent_width": {
+          "type": "integer"
+        },
+        "line_ending": {
+          "type": "string"
+        },
+        "line_width": {
+          "type": "integer"
+        },
+        "persistent_line_breaks": {
+          "type": "boolean"
+        },
+        "rules": {
+          "oneOf": [
+            {
+              "type": "array"
+            },
+            {
+              "type": "object"
+            }
+          ]
+        },
+        "skip": {
+          "type": "array"
+        },
+        "table": {
+          "type": "array"
         }
       },
       "additionalProperties": true

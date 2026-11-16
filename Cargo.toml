@@ -1,5 +1,5 @@
 [workspace]
-exclude = ["components", "components-pyrefly", "components-secrets", "components-tsrs"]
+exclude = ["components", "components-pyrefly", "components-r", "components-secrets", "components-tsrs"]
 resolver = "3"
 members = [
   "crates/conformance",

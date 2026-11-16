@@ -2177,6 +2177,162 @@
       "lock_sha": null
     },
     {
+      "name": "r",
+      "kind": "engines",
+      "opt_in": false,
+      "download_only": true,
+      "features": ["engine-r"],
+      "engines": [
+        {
+          "name": "air",
+          "languages": ["r"],
+          "capabilities": {
+            "lint": false,
+            "format": true,
+            "fix": false,
+            "project": false
+          },
+          "version": "air-git:9b7627a+biome-8c43bc0+opts-1",
+          "option_keys": [
+            {
+              "table": "Lint",
+              "checked": true,
+              "declared": [],
+              "rule_selection": false,
+              "has_derived": false,
+              "note": null
+            },
+            {
+              "table": "Format",
+              "checked": true,
+              "declared": [
+                {
+                  "name": "line_width",
+                  "types": 2
+                },
+                {
+                  "name": "indent_width",
+                  "types": 2
+                },
+                {
+                  "name": "indent_style",
+                  "types": 8
+                },
+                {
+                  "name": "line_ending",
+                  "types": 8
+                },
+                {
+                  "name": "persistent_line_breaks",
+                  "types": 1
+                },
+                {
+                  "name": "assignment_style",
+                  "types": 8
+                },
+                {
+                  "name": "skip",
+                  "types": 16
+                },
+                {
+                  "name": "table",
+                  "types": 16
+                },
+                {
+                  "name": "default_table",
+                  "types": 1
+                }
+              ],
+              "rule_selection": false,
+              "has_derived": false,
+              "note": null
+            },
+            {
+              "table": "CrossCuttingLint",
+              "checked": true,
+              "declared": [],
+              "rule_selection": false,
+              "has_derived": false,
+              "note": null
+            }
+          ],
+          "hooks": 40,
+          "takes_over_tier_one": false,
+          "claimed_paths": [],
+          "host_hook": "none",
+          "supplements_tier_one": false,
+          "self_manages_enabled": false,
+          "supersedes_generic_formatter": false,
+          "batch_shard_floor": 2,
+          "project_inputs": {
+            "gate_key": null,
+            "files": [],
+            "dirs": null
+          }
+        },
+        {
+          "name": "jarl",
+          "languages": ["r"],
+          "capabilities": {
+            "lint": true,
+            "format": false,
+            "fix": true,
+            "project": false
+          },
+          "version": "jarl-git:dc3f249+air-9b7627a+ark-d2d011b+map-1",
+          "option_keys": [
+            {
+              "table": "Lint",
+              "checked": true,
+              "declared": [
+                {
+                  "name": "check_roxygen",
+                  "types": 1
+                },
+                {
+                  "name": "min_r_version",
+                  "types": 8
+                }
+              ],
+              "rule_selection": true,
+              "has_derived": false,
+              "note": null
+            },
+            {
+              "table": "Format",
+              "checked": true,
+              "declared": [],
+              "rule_selection": false,
+              "has_derived": false,
+              "note": null
+            },
+            {
+              "table": "CrossCuttingLint",
+              "checked": true,
+              "declared": [],
+              "rule_selection": false,
+              "has_derived": false,
+              "note": null
+            }
+          ],
+          "hooks": 64,
+          "takes_over_tier_one": false,
+          "claimed_paths": [],
+          "host_hook": "none",
+          "supplements_tier_one": false,
+          "self_manages_enabled": false,
+          "supersedes_generic_formatter": false,
+          "batch_shard_floor": 2,
+          "project_inputs": {
+            "gate_key": null,
+            "files": [],
+            "dirs": null
+          }
+        }
+      ],
+      "lock_sha": null
+    },
+    {
       "name": "nix",
       "kind": "engines",
       "opt_in": false,
@@ -3363,7 +3519,7 @@
     }
   ],
   "presets": {
-    "all": ["web", "python", "sql", "php", "biome", "ruby", "nix", "astgrep", "lua", "misc", "sh", "go"],
+    "all": ["web", "python", "sql", "php", "biome", "ruby", "r", "nix", "astgrep", "lua", "misc", "sh", "go"],
     "css": ["web", "biome"],
     "dockerfile": ["misc"],
     "dotenv": ["misc"],
@@ -3380,6 +3536,7 @@
     "nix": ["nix"],
     "php": ["php"],
     "python": ["python"],
+    "r": ["r"],
     "ruby": ["ruby"],
     "shell": ["sh"],
     "skif": ["web"],

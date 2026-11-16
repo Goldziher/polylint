@@ -15,6 +15,7 @@ sql         bundled      -  sqruff
 php         bundled      -  mago
 biome       unavailable  -  biome  [this build embeds no component lock]
 ruby        unavailable  -  rubyfmt  [this build embeds no component lock]
+r           unavailable  -  air, jarl  [this build embeds no component lock]
 nix         bundled      -  alejandra
 typos       bundled      -  typos  (opt-in)
 astgrep     bundled      -  astgrep

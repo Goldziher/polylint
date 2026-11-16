@@ -1,0 +1,37 @@
+[package]
+name = "poly-engines-r"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+documentation.workspace = true
+publish = false
+description = "The R engine family for poly (air formatting, jarl linting) and its component."
+
+[lib]
+name = "poly_engines_r"
+path = "src/lib.rs"
+
+[dependencies]
+air_r_formatter.workspace = true
+air_r_parser.workspace = true
+air_workspace.workspace = true
+anyhow.workspace = true
+blake3.workspace = true
+jarl-core.workspace = true
+poly-component-protocol.workspace = true
+poly-engine-api.workspace = true
+poly-engines.workspace = true
+toml.workspace = true
+
+[dev-dependencies]
+insta.workspace = true
+poly-component-host.workspace = true
+poly-component-index.workspace = true
+serde_json.workspace = true
+tempfile.workspace = true
+
+[lints.rust]
+unsafe_code = "forbid"

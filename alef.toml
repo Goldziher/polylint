@@ -156,6 +156,17 @@ producer_dir = "components-pyrefly/crates/poly-engines-pyrefly-component"
 default_features = false
 targets = ["aarch64-apple-darwin", "x86_64-unknown-linux-gnu", "aarch64-unknown-linux-gnu", "x86_64-pc-windows-msvc"]
 
+# R formatting with air and linting with jarl. Both pin a biome revision of their own (8c43bc0), which is not the one
+# `components/` pins for its biome engine, so the family crate lives in the separate `components-r/` workspace and alef
+# generates and builds the producer there (ADR 0066).
+[[crates.components]]
+name = "r"
+provides = [{ contract = "poly", implementation = "poly_engines_r::RComponent" }]
+source_manifest = "components-r/crates/poly-engines-r/Cargo.toml"
+producer_dir = "components-r/crates/poly-engines-r-component"
+default_features = false
+targets = ["aarch64-apple-darwin", "x86_64-unknown-linux-gnu", "aarch64-unknown-linux-gnu", "x86_64-pc-windows-msvc"]
+
 # TypeScript type checking with tsrs, the Rust port of the TypeScript 7 compiler, opt-in. tsrs pins `icu_normalizer`
 # exactly, which cannot share a lockfile with the SQL engine's ICU dependencies in `components/`, so its family crate
 # lives in the separate `components-tsrs/` workspace and alef generates and builds the producer there (ADR 0051).

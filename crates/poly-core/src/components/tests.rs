@@ -423,6 +423,7 @@ fn an_explicit_selection_is_not_needed_when_its_engines_are_skipped() {
 const EXTERNAL_FAMILIES: &[&str] = &[
     "engine-biome",
     "engine-pyrefly",
+    "engine-r",
     "engine-ruby",
     "engine-secrets",
     "engine-tsrs",
@@ -451,7 +452,7 @@ fn the_committed_index_needs_only_the_external_families_in_the_core_build() {
             &super::feature_is_linked,
             &|_, _| true
         )),
-        ["web", "biome", "ruby"]
+        ["web", "biome", "ruby", "r"]
     );
 }
 
