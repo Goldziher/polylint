@@ -796,3 +796,56 @@ fn component_engines_keep_the_built_in_order_for_toml() {
 
     assert_eq!(names, ["taplo", "polyconfig"]);
 }
+
+/// The `air` formatter of the `r` component, as the component index describes it.
+fn air_component() -> ComponentEngine {
+    let wire = poly_component_protocol::WireEngineDesc {
+        name: "air".into(),
+        languages: vec!["r".into()],
+        capabilities: poly_component_protocol::WireCapabilities {
+            lint: false,
+            format: true,
+            fix: false,
+            project: false,
+        },
+        version: "1.0.0".into(),
+        option_keys: Vec::new(),
+        hooks: 0,
+        takes_over_tier_one: false,
+        claimed_paths: Vec::new(),
+        host_hook: "none".into(),
+        supplements_tier_one: false,
+        self_manages_enabled: false,
+        supersedes_generic_formatter: false,
+        batch_shard_floor: 2,
+        project_inputs: Default::default(),
+        selection: None,
+    };
+    ComponentEngine::unavailable("r", &wire, "feedfacefeedface00", "not installed").unwrap()
+}
+
+/// `styler` is off unless enabled, and an off native tool hands its file to the reindenter inside `format`. With
+/// air serving R that fallback must not run after it, or the two fight over indentation.
+#[test]
+fn the_r_component_replaces_the_styler_fallback_in_a_format_plan() {
+    let config = Config::default();
+    let components = [air_component()];
+    let plan = plan_engines_with(
+        &Language::R,
+        &config,
+        Kind::Format,
+        unrestricted(),
+        &components,
+        &mut None,
+    );
+    let names: Vec<&str> = plan.iter().map(|each| each.engine.name()).collect();
+    assert_eq!(names, ["air"], "styler is not enabled, so only air formats R");
+
+    let without = plan_engines_with(&Language::R, &config, Kind::Format, unrestricted(), &[], &mut None);
+    let names: Vec<&str> = without.iter().map(|each| each.engine.name()).collect();
+    assert_eq!(
+        names,
+        ["styler"],
+        "without the component the tier-2 fallback keeps R formatted"
+    );
+}

@@ -355,6 +355,31 @@ fn with_component_engines(mut engines: Vec<Box<dyn Engine>>, components: &[Compo
     )
 }
 
+/// Drops a native tool that cannot run from a format plan whose language a component formats.
+///
+/// A native tool that is off or absent hands its file to the tier-2 reindenter inside `format`, which keeps a language
+/// formatted when nothing better exists. Once a component formatter serves the language it is the authority, and the
+/// reindenter running after it would fight it over indentation (R: air, then the opt-in `styler`'s fallback).
+fn drop_superseded_fallbacks(
+    engines: &mut Vec<Box<dyn Engine>>,
+    components: &[ComponentEngine],
+    language: &Language,
+    config: &Config,
+    kind: Kind,
+) {
+    if kind != Kind::Format
+        || !components
+            .iter()
+            .any(|engine| engine.capabilities().format && !engine.languages().is_empty())
+    {
+        return;
+    }
+    engines.retain(|engine| {
+        !engine.self_manages_enabled()
+            || engine.provides_language_format(language, &config.engine_config(language, engine.name(), kind))
+    });
+}
+
 pub(super) fn plan_engines_with(
     language: &Language,
     config: &Config,
@@ -366,6 +391,7 @@ pub(super) fn plan_engines_with(
     let mut disabled = None;
     let engines = retaining_capable(with_component_engines(engines_for(language), components), kind);
     let mut engines = retaining_enabled(engines, language, config, kind, &mut disabled);
+    drop_superseded_fallbacks(&mut engines, components, language, config, kind);
     // Asked *after* the enabled filter, not before: a disabled tier-one
     // formatter is not a tier-one formatter, and asking first discarded the
     // catalog list on its behalf — so switching off `gofmt` to reach for a

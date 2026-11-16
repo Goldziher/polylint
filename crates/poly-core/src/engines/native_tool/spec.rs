@@ -446,7 +446,8 @@ pub(super) enum NativeRole {
     JavaFmt,
     /// `ktfmt --kotlinlang-style -` for Kotlin (format only). Opt-in.
     KtFmt,
-    /// `Rscript` / `styler` for R (format only). Opt-in.
+    /// `Rscript` / `styler` for R (format only). Opt-in. The `r` component's `air` formats R ahead of it (ADR 0066), and
+    /// while the component serves R the planner drops this role's tier-2 fallback.
     RStyler,
     /// `swift-format -` for Swift (format only). Opt-in.
     SwiftFmt,
