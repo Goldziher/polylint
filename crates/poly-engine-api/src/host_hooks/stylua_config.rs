@@ -90,7 +90,8 @@ mod tests {
         native_config::forget();
         let path = repo.path().join("a.lua");
 
-        let merged = apply(&cfg("quote_style = \"ForceDouble\"\n"), &path);
+        let base = cfg("quote_style = \"ForceDouble\"\n");
+        let merged = apply(&base, &path);
         assert_eq!(merged.options["column_width"].as_integer(), Some(80));
         assert_eq!(merged.options["quote_style"].as_str(), Some("ForceDouble"));
         assert!(!merged.options.contains_key("unknown"));
