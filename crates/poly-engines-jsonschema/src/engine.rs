@@ -23,6 +23,7 @@ use poly_engine_api::host_hooks::jsonschema_source::{
     SchemaSource, Scope, declared_json_refs, directive_ref, is_metaschema, resolve_in,
 };
 use poly_engine_api::language::Language;
+use poly_engine_api::options::OptionsExt;
 
 use crate::doc::{self, Document};
 use crate::validator::{self, Finding};
@@ -42,10 +43,7 @@ pub struct JsonSchemaEngine;
 
 /// Whether `[engines.jsonschema] enabled` is `true`; the backend is opt-in.
 fn enabled(cfg: &EngineConfig) -> bool {
-    cfg.options
-        .get("enabled")
-        .and_then(toml::Value::as_bool)
-        .unwrap_or(false)
+    cfg.options.opt_bool("enabled").unwrap_or(false)
 }
 
 fn note(code: &str, severity: Severity, title: String, span: Option<Span>, description: Option<String>) -> Diagnostic {
