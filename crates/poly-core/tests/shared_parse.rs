@@ -115,12 +115,12 @@ mod uncomment {
             (
                 "app/show.go",
                 Language::Go,
-                "package app\n\nfunc show() {\n\t// fmt.Println(\"debug\")\n\trun()\n}\n",
+                "package app\n\nfunc show() {\n\t// fmt.Println(\"hello\")\n\trun()\n}\n",
             ),
             (
                 "pkg/mod.py",
                 Language::Python,
-                "def show():\n    # print(\"debug\")\n    return 1\n",
+                "def show():\n    # print(\"hello\")\n    return 1\n",
             ),
         ]
     }
