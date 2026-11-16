@@ -280,6 +280,43 @@ fn settings_memo(key: SettingsKey, build: impl FnOnce() -> LinterSettings) -> Ar
     built
 }
 
+/// `settings` with isort's source roots anchored at the run `root` (ADR 0073).
+///
+/// ruff defaults them to the process working directory, which a `poly` child
+/// started in the root shares with the root and a run rooted elsewhere does not;
+/// a configured `src` entry is relative to that same directory. Memoised per base
+/// settings and root: the base settings live in process-wide memos that are never
+/// evicted, so their address identifies them.
+fn anchored_settings(settings: &LinterSettings, cfg: &EngineConfig, root: Arc<Path>) -> Arc<LinterSettings> {
+    type Key = (usize, Arc<Path>);
+    static MEMO: OnceLock<Mutex<HashMap<Key, Arc<LinterSettings>>>> = OnceLock::new();
+    let memo = MEMO.get_or_init(Mutex::default);
+    let key = (std::ptr::from_ref(settings) as usize, root);
+    if let Some(hit) = memo.lock().unwrap_or_else(PoisonError::into_inner).get(&key) {
+        return Arc::clone(hit);
+    }
+    let root = &key.1;
+    let mut anchored = settings.clone();
+    anchored.src = match cfg
+        .options
+        .get("src")
+        .and_then(toml::Value::as_array)
+        .filter(|roots| !roots.is_empty())
+    {
+        Some(roots) => roots
+            .iter()
+            .filter_map(toml::Value::as_str)
+            .map(|src| root.join(src))
+            .collect(),
+        None => vec![root.to_path_buf(), root.join("src")],
+    };
+    let anchored = Arc::new(anchored);
+    memo.lock()
+        .unwrap_or_else(PoisonError::into_inner)
+        .insert(key, Arc::clone(&anchored));
+    anchored
+}
+
 /// Build [`LinterSettings`] from user config, layered over the opinionated base.
 ///
 /// Honors `[lint.python.ruff]` keys: `select` (replaces the default rule set),
@@ -498,6 +535,14 @@ impl Engine for RuffEngine {
             owned_settings = settings_for(cfg);
             &*owned_settings
         };
+        let anchored;
+        let settings = match poly_engine_api::run_root::get() {
+            Some(root) => {
+                anchored = anchored_settings(settings, cfg, root);
+                &*anchored
+            }
+            None => settings,
+        };
 
         let unsafe_fixes = cfg.options.opt_bool("unsafe_fixes") == Some(true);
         let is_stub = src.path.extension().is_some_and(|e| e == "pyi");
@@ -586,7 +631,7 @@ impl Engine for RuffEngine {
 
     fn format(&self, src: &SourceFile, cfg: &EngineConfig) -> anyhow::Result<FormatOutput> {
         refuse_pathological_nesting(&src.path, &src.content)?;
-        if format::excluded(&src.path, cfg) {
+        if format::excluded(poly_engine_api::run_root::relative(&src.path), cfg) {
             return Ok(FormatOutput::Unchanged);
         }
         let options = format::build_options(src, cfg);

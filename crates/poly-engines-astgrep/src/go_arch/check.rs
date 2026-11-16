@@ -25,7 +25,9 @@ impl Location {
     fn of(path: &Path) -> Self {
         let Some((root, module)) = go_mod::nearest_root(path) else {
             return Self {
-                rel: slashed(path).trim_start_matches("./").to_owned(),
+                rel: slashed(poly_engine_api::run_root::relative(path))
+                    .trim_start_matches("./")
+                    .to_owned(),
                 module: None,
             };
         };

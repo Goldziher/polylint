@@ -175,6 +175,48 @@ pub struct NativeToolEngine {
 }
 
 impl NativeToolEngine {
+    /// The cache-key version string, with the tool's config fingerprinted from
+    /// `root` (the process directory when `None`); see [`Engine::version`].
+    ///
+    /// [`Engine::version`]: crate::engine::Engine::version
+    fn version_key(&self, root: Option<&std::path::Path>) -> String {
+        let ts = TreeSitterEngine.version();
+        let edition_marker = if self.role.spec().edition_flag {
+            " | edition-aware"
+        } else {
+            ""
+        };
+        let config_path_marker = if self.role.spec().rustfmt_config_flag {
+            " | rustfmt-defaults"
+        } else {
+            ""
+        };
+        // Folded in so flipping a tool's shipped default invalidates cached
+        // results: a run before the flip cached "no diagnostics" for files
+        // the tool never saw.
+        let default_marker = if self.role.spec().default_on {
+            " | default-on"
+        } else {
+            ""
+        };
+        // Empty for a tool with no config file of its own, so those roles
+        // keep a stable key and pay no filesystem cost.
+        let config_marker = match self.role.spec().config_files {
+            [] => String::new(),
+            names => format!(" | cfg:{}", tool_config::fingerprint(names, root)),
+        };
+        let post_marker = match self.role {
+            NativeRole::GoFmt => " | goimports-groups-v1",
+            NativeRole::Shfmt => " | editorconfig-v1",
+            _ => "",
+        };
+        let markers = format!("{edition_marker}{config_path_marker}{default_marker}{config_marker}{post_marker}");
+        match self.probed_version() {
+            Some(tool) => format!("{tool} | ts:{ts}{markers}"),
+            None => format!("native-tool:absent | ts:{ts}{markers}"),
+        }
+    }
+
     /// Construct the format engine for the given language.
     ///
     /// Supported: Go, Rust, Zig, Java, Kotlin, R, Swift, Dart, Gleam.
@@ -429,47 +471,21 @@ impl Engine for NativeToolEngine {
     /// memoised in a `OnceLock` and [`Engine::version`] is called once per file
     /// per engine inside the runner's rayon `par_iter`, so nothing here may
     /// touch the filesystem per file. See [`mod@tool_config`] for the resulting
-    /// bounded scope.
+    /// bounded scope. A run rooted elsewhere (ADR 0073) keys its own string per
+    /// root instead ([`tool_config::rooted_version`]), so it never reads another
+    /// root's fingerprint.
     ///
     /// [`Engine::version`]: crate::engine::Engine::version
     fn version(&self) -> &str {
-        self.role.key_lock().get_or_init(|| {
-            let ts = TreeSitterEngine.version();
-            let edition_marker = if self.role.spec().edition_flag {
-                " | edition-aware"
-            } else {
-                ""
-            };
-            let config_path_marker = if self.role.spec().rustfmt_config_flag {
-                " | rustfmt-defaults"
-            } else {
-                ""
-            };
-            // Folded in so flipping a tool's shipped default invalidates cached
-            // results: a run before the flip cached "no diagnostics" for files
-            // the tool never saw.
-            let default_marker = if self.role.spec().default_on {
-                " | default-on"
-            } else {
-                ""
-            };
-            // Empty for a tool with no config file of its own, so those roles
-            // keep a stable key and pay no filesystem cost.
-            let config_marker = match self.role.spec().config_files {
-                [] => String::new(),
-                names => format!(" | cfg:{}", tool_config::fingerprint(names)),
-            };
-            let post_marker = match self.role {
-                NativeRole::GoFmt => " | goimports-groups-v1",
-                NativeRole::Shfmt => " | editorconfig-v1",
-                _ => "",
-            };
-            let markers = format!("{edition_marker}{config_path_marker}{default_marker}{config_marker}{post_marker}");
-            match self.probed_version() {
-                Some(tool) => format!("{tool} | ts:{ts}{markers}"),
-                None => format!("native-tool:absent | ts:{ts}{markers}"),
-            }
-        })
+        let spec = self.role.spec();
+        if !spec.config_files.is_empty()
+            && let Some(rooted) = poly_engine_api::run_root::with(|root| {
+                root.map(|root| tool_config::rooted_version(spec.engine_name, root, || self.version_key(Some(root))))
+            })
+        {
+            return rooted;
+        }
+        self.role.key_lock().get_or_init(|| self.version_key(None))
     }
 
     /// Lint dispatch:

@@ -219,6 +219,24 @@ pub(crate) fn run(
     run_for(command, tool, stdin, budget.timeout())
 }
 
+/// Start `command` where a `poly` child started in the run root would have
+/// started it: in the root when the caller set no directory, and a relative
+/// directory under the root (ADR 0073). Outside a rooted run it is untouched, so
+/// the tool inherits the process working directory as before.
+fn anchor_at_run_root(command: &mut Command) {
+    let anchored = poly_engine_api::run_root::with(|root| {
+        let root = root?;
+        match command.get_current_dir() {
+            None => Some(root.to_path_buf()),
+            Some(dir) if dir.is_relative() => Some(root.join(dir)),
+            Some(_) => None,
+        }
+    });
+    if let Some(dir) = anchored {
+        command.current_dir(dir);
+    }
+}
+
 /// Run `command` with `stdin` fed from a dedicated thread while stdout and
 /// stderr are drained on others, killing it after `timeout` (`None`: never).
 ///
@@ -231,6 +249,7 @@ pub(crate) fn run_for(
     stdin: Option<Arc<[u8]>>,
     timeout: Option<Duration>,
 ) -> anyhow::Result<ToolOutput> {
+    anchor_at_run_root(command);
     command
         .stdin(if stdin.is_some() { Stdio::piped() } else { Stdio::null() })
         .stdout(Stdio::piped())

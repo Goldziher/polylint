@@ -62,7 +62,7 @@ impl Scope {
         let absolute = if file.is_absolute() {
             file.to_path_buf()
         } else {
-            std::env::current_dir().unwrap_or_default().join(file)
+            crate::run_root::current_dir().unwrap_or_default().join(file)
         };
         let file = canonical(&absolute).unwrap_or(absolute);
         let root = project_root(&file);
@@ -208,7 +208,7 @@ fn project_root(file: &Path) -> PathBuf {
         None => None,
     };
     found.unwrap_or_else(|| {
-        let cwd = std::env::current_dir().unwrap_or_default();
+        let cwd = crate::run_root::current_dir().unwrap_or_default();
         canonical(&cwd).unwrap_or(cwd)
     })
 }

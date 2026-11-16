@@ -23,4 +23,5 @@ pub mod option_probe;
 pub mod options;
 pub mod project;
 pub mod rule_config;
+pub mod run_root;
 pub mod template;

@@ -28,6 +28,7 @@ mod lint_pass;
 mod plan;
 mod project;
 pub(crate) use project::ancestor_pairs;
+mod rooted;
 mod schedule;
 pub(crate) mod selection;
 mod served;
@@ -112,9 +113,22 @@ pub fn lint_run(
     fix: bool,
     collect_debug: bool,
 ) -> anyhow::Result<LintRun> {
+    rooted::run(opts, paths, |paths| {
+        lint_run_here(paths, config, opts, fix, collect_debug)
+    })
+}
+
+/// [`lint_run`] on the calling thread's root and pool.
+fn lint_run_here(
+    paths: &[PathBuf],
+    config: &Config,
+    opts: &RunOptions,
+    fix: bool,
+    collect_debug: bool,
+) -> anyhow::Result<LintRun> {
     start_timings(opts);
-    configure_pool(opts.jobs);
-    let cache = ResultCache::open_default(!opts.no_cache)?;
+    configure_pool(opts);
+    let cache = open_cache(!opts.no_cache)?;
     let phase = timings::phase("config resolve");
     let configs = build_config_set(paths, config, opts)?;
     let selection = EngineSelection::new(&opts.only, &opts.skip);
@@ -456,9 +470,22 @@ pub fn format_run(
     write: bool,
     collect_debug: bool,
 ) -> anyhow::Result<FormatRun> {
+    rooted::run(opts, paths, |paths| {
+        format_run_here(paths, config, opts, write, collect_debug)
+    })
+}
+
+/// [`format_run`] on the calling thread's root and pool.
+fn format_run_here(
+    paths: &[PathBuf],
+    config: &Config,
+    opts: &RunOptions,
+    write: bool,
+    collect_debug: bool,
+) -> anyhow::Result<FormatRun> {
     start_timings(opts);
-    configure_pool(opts.jobs);
-    let cache = ResultCache::open_default(!opts.no_cache)?;
+    configure_pool(opts);
+    let cache = open_cache(!opts.no_cache)?;
     let explicit: FxHashSet<&std::path::Path> = paths.iter().map(PathBuf::as_path).collect();
     let phase = timings::phase("config resolve");
     let configs = build_config_set(paths, config, opts)?;
@@ -664,7 +691,23 @@ const WORKER_STACK_SIZE: usize = 16 * 1024 * 1024;
 
 static POOL_JOBS: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
 
-fn configure_pool(jobs: Option<usize>) {
+/// The result cache of the run's root: the process working directory, or the root
+/// [`rooted`] entered (a child started there would have opened that one).
+fn open_cache(enabled: bool) -> anyhow::Result<ResultCache> {
+    match poly_engine_api::run_root::get() {
+        Some(root) => ResultCache::open_from(&root, enabled),
+        None => ResultCache::open_default(enabled),
+    }
+}
+
+/// Size the global pool once. A rooted run brings a pool of its own ([`rooted`]).
+fn configure_pool(opts: &RunOptions) {
+    if opts.root.is_none() {
+        configure_global_pool(opts.jobs);
+    }
+}
+
+fn configure_global_pool(jobs: Option<usize>) {
     static INIT: Once = Once::new();
     static WARNED: Once = Once::new();
     if INIT.is_completed() && jobs.unwrap_or(0) != POOL_JOBS.load(std::sync::atomic::Ordering::Relaxed) {

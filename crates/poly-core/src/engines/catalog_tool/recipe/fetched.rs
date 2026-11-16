@@ -65,7 +65,7 @@ impl RecipeTool {
 
 /// `root` as the user knows it: relative to the directory poly runs from.
 fn display_root(root: &Path) -> String {
-    let shown = std::env::current_dir()
+    let shown = poly_engine_api::run_root::current_dir()
         .ok()
         .and_then(|cwd| paths::relative(&cwd, root))
         .unwrap_or_else(|| root.to_path_buf());

@@ -58,7 +58,7 @@ pub(crate) fn lint_batch_via_shellcheck_at(
     if batch.is_empty() {
         return Ok(Vec::new());
     }
-    let anchor = std::env::current_dir().context("reading the working directory for batch linting")?;
+    let anchor = poly_engine_api::run_root::current_dir().context("reading the working directory for batch linting")?;
     let rc = nearest_config_at(&anchor, SHELLCHECK_CONFIG_FILES);
     if follows_sources(rc.as_deref(), std::env::var("SHELLCHECK_OPTS").ok().as_deref()) {
         anyhow::bail!("shellcheck is configured to follow `source`; not batching");

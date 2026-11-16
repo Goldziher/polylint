@@ -297,7 +297,7 @@ impl ConfigSet {
             .filter(|(config_dir, _)| self.relative_descent(&dir, config_dir).is_some())
             .min_by_key(|(config_dir, _)| config_dir.components().count())
             .map(|(config_dir, _)| config_dir.clone())
-            .or_else(|| std::env::current_dir().ok())
+            .or_else(|| poly_engine_api::run_root::current_dir().ok())
             .unwrap_or(dir)
     }
 
@@ -603,7 +603,7 @@ fn config_dirs_governing(
         // A relative frame's upward walk bottoms out at the working directory, so a run from a
         // subdirectory never saw the configs above it. Walk the absolute path, as for an absolute root.
         let walk = if frame.is_relative() {
-            std::env::current_dir().map_or_else(|_| frame.clone(), |cwd| cwd.join(&frame))
+            poly_engine_api::run_root::current_dir().map_or_else(|_| frame.clone(), |cwd| cwd.join(&frame))
         } else {
             frame.clone()
         };

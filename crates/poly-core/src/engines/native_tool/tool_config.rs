@@ -48,8 +48,9 @@
 //!
 //! ## Bounded scope — read this before trusting the fingerprint
 //!
-//! The fingerprint is anchored at the **process's current directory** and walks
-//! *upward* through its ancestors. It is **not** anchored per source file, even
+//! The fingerprint is anchored at the **process's current directory** (a run
+//! rooted elsewhere, ADR 0073, anchors it at that root) and walks *upward*
+//! through its ancestors. It is **not** anchored per source file, even
 //! though `rustfmt` and `swift-format` themselves search upward from the file's
 //! own directory (poly runs those two with `current_dir` set to the file's
 //! parent). Two structural facts force this:
@@ -81,7 +82,9 @@
 //! [`Engine::version`]: crate::engine::Engine::version
 //! [`Engine`]: crate::engine::Engine
 
-use std::path::Path;
+use std::collections::HashMap;
+use std::path::{Path, PathBuf};
+use std::sync::{OnceLock, PoisonError, RwLock};
 
 /// Config files `rustfmt` reads, in the order it probes them within one
 /// directory (the dot form wins on a tie). Both names are hashed when both
@@ -109,8 +112,8 @@ const NO_CONFIG: &str = "absent";
 /// states never share a cache key.
 const NO_ANCHOR: &str = "unanchored";
 
-/// Fingerprint the config files named by `names`, searching upward from the
-/// process's current directory.
+/// Fingerprint the config files named by `names`, searching upward from `root`,
+/// the run root, or else from the process's current directory.
 ///
 /// Returns [`NO_ANCHOR`] when the current directory cannot be read. See the
 /// module docs for what this does and does not cover.
@@ -118,15 +121,47 @@ const NO_ANCHOR: &str = "unanchored";
 /// # Cost
 ///
 /// One `open` attempt per (ancestor, name) pair plus a read of each file that
-/// exists — tens of microseconds, paid **once per process** because the only
-/// caller stores the result in the `OnceLock` behind
+/// exists — tens of microseconds, paid **once per process** (once per run root,
+/// see [`rooted_version`]) because the only caller stores the result behind
 /// [`Engine::version`](crate::engine::Engine::version). It must never be called
 /// on the per-file path.
-pub(crate) fn fingerprint(names: &[&str]) -> String {
-    match std::env::current_dir() {
-        Ok(anchor) => fingerprint_at(&anchor, names),
-        Err(_) => NO_ANCHOR.to_owned(),
+pub(crate) fn fingerprint(names: &[&str], root: Option<&Path>) -> String {
+    match root {
+        Some(anchor) => fingerprint_at(anchor, names),
+        None => match std::env::current_dir() {
+            Ok(anchor) => fingerprint_at(&anchor, names),
+            Err(_) => NO_ANCHOR.to_owned(),
+        },
     }
+}
+
+/// The version keys of the roles that fingerprint a config file, by run root and
+/// then by tool, for runs rooted somewhere other than the process directory (ADR 0073).
+type RootedKeys = RwLock<HashMap<PathBuf, HashMap<&'static str, &'static str>>>;
+
+/// The version key of `tool` for a run rooted at `root`, built by `build` the
+/// first time this process sees that pair.
+///
+/// The process-wide `OnceLock` an unrooted run uses would hand a staged-snapshot
+/// run the fingerprint of whichever root asked first, so a rooted run keys its own.
+/// The lookup borrows `root` and allocates nothing once the key exists; each key
+/// is leaked once per distinct (root, tool), which a process sees a handful of.
+pub(crate) fn rooted_version(tool: &'static str, root: &Path, build: impl FnOnce() -> String) -> &'static str {
+    static KEYS: OnceLock<RootedKeys> = OnceLock::new();
+    let keys = KEYS.get_or_init(RootedKeys::default);
+    let known = keys
+        .read()
+        .unwrap_or_else(PoisonError::into_inner)
+        .get(root)
+        .and_then(|by_tool| by_tool.get(tool).copied());
+    if let Some(key) = known {
+        return key;
+    }
+    let mut keys = keys.write().unwrap_or_else(PoisonError::into_inner);
+    let by_tool = keys.entry(root.to_path_buf()).or_default();
+    *by_tool
+        .entry(tool)
+        .or_insert_with(|| Box::leak(build().into_boxed_str()))
 }
 
 /// [`fingerprint`] with an explicit anchor directory, so the search is testable
@@ -314,5 +349,39 @@ mod tests {
         let dir = tempfile::tempdir().expect("tempdir");
         fs::write(dir.path().join("rustfmt.toml"), "max_width = 40\n").expect("write config");
         assert_eq!(fingerprint_at(dir.path(), &[]), NO_CONFIG);
+    }
+
+    /// Two runs rooted at different directories in one process (a staged
+    /// snapshot and its worktree, ADR 0073) each see their own root's config:
+    /// neither is handed the fingerprint the other computed first.
+    #[test]
+    fn runs_rooted_at_different_directories_do_not_share_a_fingerprint() {
+        use std::sync::Arc;
+
+        use crate::engine::Engine;
+        use crate::language::Language;
+
+        let staged = tempfile::tempdir().expect("tempdir");
+        let worktree = tempfile::tempdir().expect("tempdir");
+        fs::write(staged.path().join("rustfmt.toml"), "max_width = 40\n").expect("write config");
+        fs::write(worktree.path().join("rustfmt.toml"), "max_width = 120\n").expect("write config");
+        let engine = super::super::NativeToolEngine::for_language(Language::Rust);
+        let version_in = |root: &Path| {
+            let _entered = poly_engine_api::run_root::enter(Some(Arc::from(root)));
+            engine.version().to_owned()
+        };
+
+        let first = version_in(staged.path());
+        let second = version_in(worktree.path());
+        assert_ne!(first, second, "a second root must not reuse the first root's key");
+        assert!(
+            first.contains(&fingerprint_at(staged.path(), RUSTFMT_CONFIG_FILES)),
+            "{first}"
+        );
+        assert!(
+            second.contains(&fingerprint_at(worktree.path(), RUSTFMT_CONFIG_FILES)),
+            "{second}"
+        );
+        assert_eq!(version_in(staged.path()), first, "a root keeps its own key");
     }
 }

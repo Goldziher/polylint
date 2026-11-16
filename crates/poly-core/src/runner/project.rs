@@ -530,7 +530,7 @@ fn root_for(configs: &ConfigSet, config_id: usize) -> PathBuf {
         configs.config_dir(config_id).or_else(|| configs.root_dir())
     };
     own.map(Path::to_path_buf)
-        .or_else(|| std::env::current_dir().ok())
+        .or_else(|| poly_engine_api::run_root::current_dir().ok())
         .unwrap_or_else(|| PathBuf::from("."))
 }
 

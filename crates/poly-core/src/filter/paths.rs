@@ -16,7 +16,7 @@ use std::path::{Path, PathBuf};
 /// directory. Callers list the config directory first, so it wins over the roots.
 pub(crate) fn relative_for_match(path: &Path, bases: &[PathBuf]) -> String {
     let absolute = (path.is_relative() && !bases.is_empty())
-        .then(|| std::env::current_dir().ok().map(|cwd| cwd.join(path)))
+        .then(|| poly_engine_api::run_root::current_dir().ok().map(|cwd| cwd.join(path)))
         .flatten();
     let mut rel = path;
     'bases: for base in bases {
@@ -44,7 +44,7 @@ pub(crate) fn relative_for_match(path: &Path, bases: &[PathBuf]) -> String {
 /// resolve against whichever one prefixes a discovered file.
 pub(crate) fn match_bases(paths: &[PathBuf]) -> Vec<PathBuf> {
     let mut bases = Vec::with_capacity(paths.len() + 1);
-    match std::env::current_dir() {
+    match poly_engine_api::run_root::current_dir() {
         Ok(cwd) => bases.push(cwd),
         Err(error) => {
             tracing::warn!(%error, "cannot determine working directory; \

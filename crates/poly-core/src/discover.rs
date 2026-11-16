@@ -838,7 +838,7 @@ fn explicit_matcher(
     let base = if root.is_file() {
         frame.to_path_buf()
     } else {
-        std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."))
+        poly_engine_api::run_root::current_dir().unwrap_or_else(|_| PathBuf::from("."))
     };
     ExcludeMatcher::with_compiled(&base, exclude, compiled)
 }

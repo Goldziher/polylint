@@ -130,6 +130,12 @@ pub fn cached_package_root(dir: &Path) -> Option<PathBuf> {
 /// checkout so another worktree of the repository shares the result.
 pub fn run_package_root(path: &Path) -> String {
     let root = path.parent().and_then(cached_package_root);
+    // A rooted run keys against its own root, never against the process directory another run
+    // remembered.
+    if let Some(text) = crate::run_root::with(|run_root| run_root.map(|base| package_root_text(root.as_deref(), base)))
+    {
+        return text;
+    }
     let mut base = RUN_BASE.lock().unwrap_or_else(PoisonError::into_inner);
     let base = base.get_or_insert_with(|| std::env::current_dir().unwrap_or_default());
     package_root_text(root.as_deref(), base)
@@ -140,7 +146,7 @@ pub fn run_package_root(path: &Path) -> String {
 /// `.py`/`.pyi` path beneath them. Roots are keyed relative to the current
 /// directory so identical trees in two worktrees digest alike.
 pub fn module_tree(src_roots: &[PathBuf]) -> String {
-    let cwd = std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
+    let cwd = crate::run_root::current_dir().unwrap_or_else(|_| PathBuf::from("."));
     module_tree_at(&cwd, src_roots)
 }
 

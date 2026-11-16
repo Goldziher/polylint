@@ -171,7 +171,8 @@ impl RecipeTool {
         }
         .ok_or_else(|| format!("tool `{}` has no command for this role", tool.name))?;
 
-        let cwd = std::env::current_dir().map_err(|error| format!("reading the working directory: {error}"))?;
+        let cwd = poly_engine_api::run_root::current_dir()
+            .map_err(|error| format!("reading the working directory: {error}"))?;
         let cwd = match &config.root {
             Some(root) => cwd.join(root),
             None => cwd,

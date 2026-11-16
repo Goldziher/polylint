@@ -189,7 +189,7 @@ impl Engine for TyposEngine {
 
         let prepared = prepared_for(cfg);
         if let Some(set) = &prepared.exclude
-            && path_matches_set(&src.path, set)
+            && path_matches_set(poly_engine_api::run_root::relative(&src.path), set)
         {
             return Ok(Vec::new());
         }

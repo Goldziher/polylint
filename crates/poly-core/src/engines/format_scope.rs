@@ -31,7 +31,7 @@ impl FormatScope {
     }
 
     fn claims(&self, src: &SourceFile) -> bool {
-        self.claimed.is_match(&src.path)
+        self.claimed.is_match(poly_engine_api::run_root::relative(&src.path))
     }
 }
 

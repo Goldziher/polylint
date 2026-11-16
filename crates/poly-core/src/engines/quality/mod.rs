@@ -154,7 +154,11 @@ impl Engine for QualityEngine {
         if settings.lazy_ignore && lazy_ignore::applies_to(&src.language) {
             diagnostics.extend(lazy_ignore::scan(&src.content));
         }
-        diagnostics.extend(test_files::check(&src.path, &src.language, &settings.test_files)?);
+        diagnostics.extend(test_files::check(
+            poly_engine_api::run_root::relative(&src.path),
+            &src.language,
+            &settings.test_files,
+        )?);
 
         if settings.allows_parse(src.content.len())
             && let Some(grammar) = grammar_name(src)

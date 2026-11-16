@@ -558,7 +558,7 @@ impl Engine for CatalogToolEngine {
             return Ok(FormatOutput::Unchanged);
         }
         if let Some(ref set) = self.path_glob_set
-            && !set.is_match(&src.path)
+            && !set.is_match(poly_engine_api::run_root::relative(&src.path))
         {
             return Ok(FormatOutput::Unchanged);
         }
@@ -586,7 +586,7 @@ impl Engine for CatalogToolEngine {
             return Ok(Vec::new());
         }
         if let Some(ref set) = self.path_glob_set
-            && !set.is_match(&src.path)
+            && !set.is_match(poly_engine_api::run_root::relative(&src.path))
         {
             return Ok(Vec::new());
         }

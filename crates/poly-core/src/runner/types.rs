@@ -103,6 +103,16 @@ pub struct RunOptions {
     /// Whether a missing component may be downloaded, overriding `[components] install`. `None`
     /// leaves the config in charge. `--offline` still wins.
     pub install: Option<poly_config::v2::ComponentInstallPolicy>,
+    /// The directory the run is rooted at, standing in for the process working
+    /// directory (ADR 0073). `None` — the CLI's default — is the working directory.
+    ///
+    /// With a root, the run is what a `poly` child started there would do: relative
+    /// `paths` resolve against it, every working-directory read below the runner
+    /// (exclude and per-file-ignore bases, project roots, native and recipe tool
+    /// anchors, the cache) answers it, tools start in it, and the paths and messages
+    /// the run reports are spelled relative to it. `poly hooks` roots a `lint` or `fmt`
+    /// hook at the staged snapshot this way instead of starting a child.
+    pub root: Option<PathBuf>,
     /// A host and index standing in for the embedded ones. Test seam; not part of the supported
     /// API.
     #[doc(hidden)]

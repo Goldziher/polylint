@@ -38,7 +38,7 @@ impl Canon {
         if path.is_absolute() {
             return Some(path.to_path_buf());
         }
-        let cwd = self.cwd.get_or_init(|| std::env::current_dir().ok());
+        let cwd = self.cwd.get_or_init(|| poly_engine_api::run_root::current_dir().ok());
         cwd.as_ref().map(|cwd| cwd.join(path))
     }
 }

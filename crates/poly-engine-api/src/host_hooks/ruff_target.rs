@@ -51,7 +51,7 @@ pub fn discovered_target(path: &Path) -> Option<PyVersion> {
     let dir = if parent.is_absolute() {
         parent.to_path_buf()
     } else {
-        std::env::current_dir().ok()?.join(parent)
+        crate::run_root::current_dir().ok()?.join(parent)
     };
     if let Some(hit) = TARGETS.lock().unwrap_or_else(PoisonError::into_inner).get(&dir) {
         return *hit;
