@@ -1,8 +1,8 @@
-//! The pre-plan pass end to end: a fake component serving `.lua`, an injected host and index.
+//! The pre-plan pass end to end: a fake component serving `.scala`, an injected host and index.
 //!
 //! The compiled-in index names only components the default build links, so nothing in it is
 //! downloadable; each test injects a one-component index (`demo`, engine `demo`, language
-//! `lua`) and a host whose connector is a counting fake.
+//! `scala`) and a host whose connector is a counting fake.
 #![cfg(feature = "all-engines")]
 
 use std::path::{Path, PathBuf};
@@ -24,7 +24,7 @@ use poly_core::{Config, RunOptions, is_withdrawal_reason};
 const TARGET: &str = "test-target";
 
 fn desc() -> WireEngineDesc {
-    desc_for("lua")
+    desc_for("scala")
 }
 
 fn desc_for(language: &str) -> WireEngineDesc {
@@ -218,7 +218,7 @@ fn config(install: ComponentInstallPolicy, on_missing: OnMissing) -> Config {
 
 fn project() -> tempfile::TempDir {
     let dir = tempfile::tempdir().unwrap();
-    std::fs::write(dir.path().join("a.lua"), "print('x')\n").unwrap();
+    std::fs::write(dir.path().join("a.scala"), "print('x')\n").unwrap();
     dir
 }
 
@@ -804,7 +804,7 @@ fn needed_components_are_installed_concurrently_and_reported_in_name_order() {
     assert!(run.components.missing.is_empty(), "{:?}", run.components.missing);
 }
 
-/// Serves `demo` for `.lua` and records every request it answers: a body starting `{{` is declined
+/// Serves `demo` for `.scala` and records every request it answers: a body starting `{{` is declined
 /// from the `Format` reply, anything else is left unchanged; `BatchSupport` answers "no batching".
 struct Counting {
     desc: WireEngineDesc,
@@ -842,7 +842,7 @@ impl ComponentTransport for Counting {
         self.calls.lock().unwrap().push(request.variant_name());
         let payload = match request {
             Request::Format { .. } if body.starts_with(b"{{") => {
-                Payload::Formatted(WireFormatOutput::Declined("templated lua".into()))
+                Payload::Formatted(WireFormatOutput::Declined("templated scala".into()))
             }
             Request::BatchSupport { .. } => Payload::BatchSupport(WireBatchSupport {
                 format: false,
@@ -887,8 +887,8 @@ fn a_format_reply_that_declines_is_a_counted_skip_and_costs_no_extra_request() {
     let transport = Counting::new(declares.clone());
     let (host, _cache) = counting_host(&transport);
     let dir = tempfile::tempdir().unwrap();
-    std::fs::write(dir.path().join("a.lua"), "{{ template }}\n").unwrap();
-    std::fs::write(dir.path().join("b.lua"), "print('x')\n").unwrap();
+    std::fs::write(dir.path().join("a.scala"), "{{ template }}\n").unwrap();
+    std::fs::write(dir.path().join("b.scala"), "print('x')\n").unwrap();
     let run = format(dir.path(), &default_config(), &inject(host, index_of(declares)));
     assert!(run.errors.is_empty(), "{:?}", run.errors);
     assert_eq!(
@@ -896,9 +896,12 @@ fn a_format_reply_that_declines_is_a_counted_skip_and_costs_no_extra_request() {
             .iter()
             .map(|skip| (skip.path.file_name().and_then(|n| n.to_str()), skip.reason.as_str()))
             .collect::<Vec<_>>(),
-        [(Some("a.lua"), "templated lua")]
+        [(Some("a.scala"), "templated scala")]
     );
-    assert_eq!(run.checked, 1, "b.lua was formatted; the declined a.lua is not counted");
+    assert_eq!(
+        run.checked, 1,
+        "b.scala was formatted; the declined a.scala is not counted"
+    );
     assert!(run.results.iter().all(|result| !result.changed), "{:?}", run.results);
     assert_eq!(transport.count("Format"), 2, "{:?}", transport.calls());
     assert_eq!(
@@ -911,7 +914,7 @@ fn a_format_reply_that_declines_is_a_counted_skip_and_costs_no_extra_request() {
     assert_eq!(json["summary"]["skipped"], 1);
     assert_eq!(json["summary"]["checked"], 1);
     assert_eq!(
-        std::fs::read_to_string(dir.path().join("a.lua")).unwrap(),
+        std::fs::read_to_string(dir.path().join("a.scala")).unwrap(),
         "{{ template }}\n",
         "a declined file is never rewritten"
     );
@@ -927,7 +930,7 @@ fn batch_support_is_asked_once_per_config_not_per_file() {
     let (host, _cache) = counting_host(&transport);
     let dir = tempfile::tempdir().unwrap();
     for i in 0..12 {
-        std::fs::write(dir.path().join(format!("m{i}.lua")), format!("print({i})\n")).unwrap();
+        std::fs::write(dir.path().join(format!("m{i}.scala")), format!("print({i})\n")).unwrap();
     }
     let options = inject(host, index_of(declares));
     let run = format(dir.path(), &default_config(), &options);

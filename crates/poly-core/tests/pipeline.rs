@@ -1,6 +1,6 @@
 //! End-to-end pipeline tests for the core: discovery → routing → run → cache.
 //!
-//! The format fixtures are Lua, a language only the tree-sitter tier serves, so they need no component.
+//! The format fixtures are Scala, a language only the tree-sitter tier serves, so they need no component.
 #![cfg(feature = "all-engines")]
 
 use std::fs;
@@ -44,7 +44,7 @@ fn lint_does_not_flag_trailing_whitespace() {
 fn format_check_does_not_write_but_reports_change() {
     let dir = tempfile::tempdir().unwrap();
     let messy = "x = 1   \n\n\n";
-    let path = write(dir.path(), "a.lua", messy);
+    let path = write(dir.path(), "a.scala", messy);
     let cfg = Config::default();
     let opts = RunOptions {
         no_cache: true,
@@ -70,7 +70,7 @@ fn format_check_does_not_write_but_reports_change() {
 #[test]
 fn format_write_is_idempotent() {
     let dir = tempfile::tempdir().unwrap();
-    let path = write(dir.path(), "a.lua", "key = value   \n\n\n");
+    let path = write(dir.path(), "a.scala", "key = value   \n\n\n");
     let cfg = Config::default();
     let opts = RunOptions {
         no_cache: true,
@@ -102,7 +102,7 @@ fn format_write_preserves_the_executable_bit() {
     use std::os::unix::fs::PermissionsExt;
 
     let dir = tempfile::tempdir().unwrap();
-    let path = write(dir.path(), "script.lua", "key = value   \n\n\n");
+    let path = write(dir.path(), "script.scala", "key = value   \n\n\n");
     fs::set_permissions(&path, fs::Permissions::from_mode(0o755)).unwrap();
     let cfg = Config::default();
     let opts = RunOptions {
