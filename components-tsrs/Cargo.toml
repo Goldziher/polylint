@@ -29,12 +29,12 @@ toml = "1"
 tracing = "0.1"
 # tsrs, the Rust port of the TypeScript 7 compiler: an exact pin on every crate, like the other unsemvered
 # internals (ADR 0051). `plain-ptrs` avoids the fixed 32 GiB address-space reservation of its compressed pointers.
-tsrs_ast = { version = "=7.1.0-beta.tsrs1", default-features = false }
-tsrs_compiler = { version = "=7.1.0-beta.tsrs1", default-features = false }
-tsrs_core = { version = "=7.1.0-beta.tsrs1", default-features = false, features = ["plain-ptrs"] }
-tsrs_diagnostics = { version = "=7.1.0-beta.tsrs1", default-features = false }
-tsrs_tsoptions = { version = "=7.1.0-beta.tsrs1", default-features = false }
-tsrs_vfs = { version = "=7.1.0-beta.tsrs1", default-features = false }
+tsrs_ast = { version = "=7.1.0-beta.tsrs2", default-features = false }
+tsrs_compiler = { version = "=7.1.0-beta.tsrs2", default-features = false }
+tsrs_core = { version = "=7.1.0-beta.tsrs2", default-features = false, features = ["plain-ptrs"] }
+tsrs_diagnostics = { version = "=7.1.0-beta.tsrs2", default-features = false }
+tsrs_tsoptions = { version = "=7.1.0-beta.tsrs2", default-features = false }
+tsrs_vfs = { version = "=7.1.0-beta.tsrs2", default-features = false }
 
 [profile.release]
 lto = "fat"
