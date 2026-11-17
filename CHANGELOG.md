@@ -25,6 +25,10 @@ Each item is described in full under the section named in brackets.
 - **C-family files under a `.clang-format` are skipped by the generic formatter**, which counts toward `--deny-skips`. [Changed]
 - **A multi-ref `git push` runs the pre-push hooks over every pushed ref.** [Changed]
 - **`poly config validate` rejects a `poly.toml` that mixes v1 tables with `[engines]`.** [Changed]
+- **MCP failures are `isError` results, and unknown arguments are `usage` errors.** A missing path, a config that fails to load, an unknown `only` engine and a path outside the workspace answer `{error: {kind, message}, summary: null}` instead of a JSON-RPC error or a clean pass; an unknown or inapplicable argument is refused instead of ignored, and `check` no longer accepts `fix_generated`. [Fixed]
+- **A failing or hung native or catalog tool fails its file** (exit `2`) instead of passing it as clean, and a tool is killed past its timeout. [Fixed]
+- **A file over `[discovery] max_file_size` (default 32 MiB) is skipped**, which counts toward `--deny-skips`. [Added]
+- **A recipe tool with an invalid `files` or `exclude` glob is refused.** [Fixed]
 
 ### Added
 
@@ -66,7 +70,7 @@ Each item is described in full under the section named in brackets.
   (#125)
 - **Typst and LaTeX formatting.** `.typ` files format through `typstyle-core` and `.tex`, `.sty` and `.cls` files through
   `tex-fmt`, both in-process engines in the `misc` component. (#171, #172)
-- **`[discovery] max_file_size`.** A file larger than this many bytes (default 32 MiB, `0` for no limit) is not read and
+- **BREAKING: `[discovery] max_file_size`.** A file larger than this many bytes (default 32 MiB, `0` for no limit) is not read and
   is reported as skipped (`file too large`), which counts toward `--deny-skips`. (#207)
 - **`[engines.shellcheck] install = "auto"`.** With no `shellcheck` on `PATH`, the built-in engine downloads the catalog's pinned, checksummed release and runs it. The default stays `"never"`, and `--offline` never downloads. (#110)
 - **YAML schemas for `jsonschema`.** A schema file ending in `.yaml` or `.yml` is read as YAML, `$ref` is followed through YAML schemas for the cache key, and YAML merge keys (`<<`) are resolved before a document is validated.
@@ -110,7 +114,9 @@ Each item is described in full under the section named in brackets.
   `components_uninstall` and `version`, split along the annotation boundary so clients can still approve checks and
   prompt on writes. The old names are removed with no aliases: update client permission allowlists (`mcp__poly__lint`
   becomes `mcp__poly__check`, and so on) and saved prompts. `check` and `fix` take `kind` (`lint`|`format`) and `scope`
-  (`files`|`workspace`|`all`). Tools no longer declare an `outputSchema`; the schemas are MCP resources under
+  (`files`|`workspace`|`all`), plus the CLI's run options (`only`, `skip`, `include_excluded`, `no_cache`, `jobs`,
+  `max_skips`, `on_missing`, `debug`, and `fix_generated` on `fix`), built from the same request the CLI fills. Tools
+  no longer declare an `outputSchema`; the schemas are MCP resources under
   `poly://schema/`. `info`'s `config` topic is now exactly `poly config show --format json`, and its `cache` topic
   matches `poly cache stats --format json`. (ADR 0076)
 - **The core binary is built for speed.** `--profile core` moves from `opt-level = "s"` to `opt-level = 3` (fat LTO, stripped), and the size gate moves from 14 MiB to 22 MiB (ADR 0065). The `release` profile used by the bundled build and every component also moves to fat LTO with stripped symbols.
@@ -146,6 +152,7 @@ Each item is described in full under the section named in brackets.
 - **BREAKING: files a `.clang-format` governs are left to clang-format.** The generic formatter skips C, C++, Objective-C, Java, JavaScript and Protobuf files below a `.clang-format` or `_clang-format` it would otherwise reindent, with the reason `formatted by clang-format (.clang-format present)`, which counts toward `--deny-skips` and `--max-skips`. **Migration:** set `[tools.clang-format] enabled = true`.
 - **BREAKING: a multi-ref push is gated on every ref.** `git push origin a b`, `--all` and `--tags` ran the pre-push hooks over the first ref only; they now run over the changed files of every pushed range.
 - **BREAKING: `poly config validate` rejects a `poly.toml` that mixes v1 tables with `[engines]`.** It used to accept the file as v1 although the loader ignores the v1 tables; the error points at `poly migrate --to-v2`.
+- **Accepted advisories.** `deny.toml` ignores the chrono, chrono-tz and zip advisories published on 2026-11-17: chrono has no fixed release, and the zip fixes need 9.x while harper-core requires 8.x. The only zip reader in the tree is harper's rule-bundle loader, which poly never calls.
 - **Internal: the `Engine` trait is split into facets.** Batching, project analysis, planner policy and catalog takeover moved from `Engine` into the `Batching`, `ProjectAnalysis`, `PlanPolicy` and `CatalogTakeover` traits, which a backend implements only when it has the concern. No behaviour, wire-protocol or cache-key change. (ADR 0072)
 
 ### Performance
@@ -227,7 +234,7 @@ Each item is described in full under the section named in brackets.
   folds in an engine's `lint_cache_salt`, so jarl re-lints an R file after an edit to the package's `DESCRIPTION`,
   `jarl.toml` or a file it sources instead of replaying the verdict recorded before. The salt is asked only of an
   engine that declares it, and only in `poly lint`. (#229)
-- **A failing native or catalog tool is reported, and a hung one is stopped.** A non-zero exit from `rustfmt`, `gofmt`, `shfmt` or `shellcheck` (a bad `rustfmt.toml`, a shellcheck exit 2) used to pass as an unchanged or clean file; it now fails the file with the tool's first stderr line. A tool is killed after 60 seconds per file, 10 seconds for a version probe and 30 minutes per batch (`POLY_TOOL_TIMEOUT_SECS`, `0` for no limit), and its output is capped.
+- **BREAKING: a failing native or catalog tool is reported, and a hung one is stopped.** A non-zero exit from `rustfmt`, `gofmt`, `shfmt` or `shellcheck` (a bad `rustfmt.toml`, a shellcheck exit 2) used to pass as an unchanged or clean file; it now fails the file with the tool's first stderr line. A tool is killed after 60 seconds per file, 10 seconds for a version probe and 30 minutes per batch (`POLY_TOOL_TIMEOUT_SECS`, `0` for no limit), and its output is capped.
 - **`poly fmt --fix` writes through a symlink and refuses a lost update.** A symlinked file is rewritten at its target instead of being replaced by a regular file, and a file that changed on disk after poly read it is reported instead of overwritten. `poly migrate` keeps a `poly.toml`'s mode and symlink too.
 - **Format results are cached per language and file name.** Identical bytes in `x.json` and `package.json`, or in a `.json` and a `.js` file, shared one cache entry although oxc formats them differently.
 - **Columns count characters, not bytes.** `quality`, `uncomment`, `typos` and `dockerfile` findings on a line with a non-ASCII character before them reported a shifted column, and a multi-line Dockerfile instruction now spans all of its lines. Columns are 1-based Unicode scalar values. (#180, #183, #201)
@@ -236,7 +243,7 @@ Each item is described in full under the section named in brackets.
 - **shfmt-formatted Bash stays as shfmt wrote it.** The generic shell reindenter flattened a loop that follows assignment lines and dedented a pipeline's continuation line.
 - **Deeply nested input fails one file, not the run.** sqruff, mago, ruff, graphql and the Dockerfile parser refuse pathological nesting before parsing, and the `quality` rules and the generic formatter's case handling walk the tree without recursion, so a generated file can no longer overflow the worker stack and abort poly.
 - **A glibc-only tool is not downloaded on a musl host.** A recipe whose Linux assets are all `-gnu` builds (zizmor) installed cleanly on Alpine and then failed to start; it is now used from `PATH` or reported missing with the command that installs it. (#114)
-- **A recipe tool with an invalid `files` or `exclude` glob is refused** with a message naming the pattern, instead of running over the files the glob was meant to skip. (#217)
+- **BREAKING: a recipe tool with an invalid `files` or `exclude` glob is refused** with a message naming the pattern, instead of running over the files the glob was meant to skip. (#217)
 - **`mix format` works on a project with dependencies.** The scratch copy links `deps/`, so `import_deps` resolves; files outside the configured root no longer take its `.formatter.exs`, and a project whose dependencies are not fetched is skipped with a reason naming `mix deps.get`.
 - **Recipe reports are read more completely.** SARIF artifact URIs are percent-decoded and resolved through `uriBaseId`, Windows drive paths parse, a finding that names no file is counted in one warning instead of dropped, and a tool killed by a signal is an error. A run fails when the project's config cannot be copied for the tool.
 - **`proguard-rules.pro` and `consumer-rules.pro` are ProGuard, not Prolog.** They were reindented as Prolog; no engine touches them now.
@@ -254,41 +261,38 @@ Each item is described in full under the section named in brackets.
 - **`poly cache <subcommand> --cache-dir <dir>` is accepted**, and a large `--max-age` no longer overflows.
 - **`poly doctor` no longer warns that a mise shim shadows poly.**
 - **The installers find the installed version.** `install.sh` and `install.ps1` read the wrong token of `poly --version`, so an up-to-date install was never recognised. Linux musl aarch64 and Windows arm64, which have no release binary, are rejected with a message, and a download error names the URL.
-- **A missing path no longer reads as a clean pass over MCP.** A named path that does not exist now answers
-  `isError: true` with `{error: {kind: "paths", message}, summary: null}`. A config or `poly.lock` that fails to load
-  (`config`), an unknown `only` engine (`pipeline`) and a path outside the server's directory (`workspace`) answer the
-  same way instead of a JSON-RPC error. (ADR 0076)
-- **The MCP `rules` topic claimed to be read-only and closed-world but could download.** `info` never downloads: a core
-  build without the `astgrep` component reports it as missing. A failing `*-test.yml` rule test now sets `isError`.
-  (ADR 0076)
-- **A repository with a remote `extends` base no longer fails every MCP tool.** The server resolves the base from the
-  local source cache at the `poly.lock`-pinned revision and never fetches; a base that is not cached is a `config`
-  error telling you to run `poly lock` or a CLI `poly lint` once. (ADR 0076)
-- **The MCP server accepts the run options the CLI has.** `check` and `fix` take `only`, `skip`, `include_excluded`,
-  `no_cache`, `jobs`, `max_skips`, `fix_generated`, `on_missing` and `debug`, built from the same request the CLI
-  fills, so a new CLI run option reaches the server by construction. (ADR 0076)
-- **A long-lived `poly mcp` kept linting with the project configs of its first call.** The per-directory lookups a
-  run memoises (`.oxlintrc.json` and the oxlint services built from it, `.oxfmtrc.json`, `go.mod`, `.clang-format`,
-  `Cargo.toml` editions) were never forgotten between calls, so an edit was invisible to the next one, and its stale
-  findings were then cached under the new config's key. Every run now starts by forgetting them. On a core build the
-  engines live in components that hold their own copy, so the host announces each new run to the components it has
-  loaded (a `RunBoundary` request) before the run's first lint or format request. (ADR 0076)
-- **`poly lock` and `poly trust` take effect on a running `poly mcp`.** The server read `poly.lock` and the trust
-  store once, at startup: a moved `extends` pin kept resolving the old revision, a `poly.lock` that did not parse
-  ended the process before the handshake, and `poly trust` changed nothing until a restart. Both are now read as they
-  are on disk at each call, and a malformed `poly.lock` is that call's `config` error. (ADR 0076)
-- **MCP `check`/`fix` with `scope: workspace` reported a pass when the whole-project phase never ran.** An untrusted
-  repository, or one with no whole-project tool, answered `passed: true` with no tools. It is now an `isError` result
-  of kind `untrusted` or `no_workspace_tools`, in the same `{error: {kind, message}, summary: null}` shape as every
-  other failure; `scope: all` sets `isError` when the repository is untrusted. (ADR 0076)
-- **MCP tools ignored arguments they did not understand.** `check {path: [...]}` (a typo for `paths`) linted the whole
-  directory, and `manage {action: "cache_clean", dry_run: true}` cleaned the cache. An unknown key, an invalid value
-  and a parameter that does not apply to the chosen `scope`, `action` or `topics` are now `usage` errors naming the
-  key, on all four tools; `check` no longer accepts the fix-only `fix_generated`. (ADR 0076)
-- **The read-only MCP `info` tool could fetch and write.** Its `components` topic resolved a remote `extends` base with
-  the fetching resolver, and its `cache` topic created the cache directory, wherever `[cache] dir` pointed. Every
-  host service now resolves config from the source cache only, and reading the cache footprint creates nothing.
-  (ADR 0076)
+- **MCP server fixes, carried into the four new tools (ADR 0076).** These fix behaviour of the removed tools;
+  each now holds for `check`, `fix`, `info` and `manage`:
+  - **BREAKING: a missing path no longer reads as a clean pass over MCP.** A named path that does not exist now answers
+    `isError: true` with `{error: {kind: "paths", message}, summary: null}`. A config or `poly.lock` that fails to load
+    (`config`), an unknown `only` engine (`pipeline`) and a path outside the server's directory (`workspace`) answer the
+    same way instead of a JSON-RPC error.
+  - **The MCP `rules` topic claimed to be read-only and closed-world but could download.** `info` never downloads: a core
+    build without the `astgrep` component reports it as missing. A failing `*-test.yml` rule test now sets `isError`.
+  - **A repository with a remote `extends` base no longer fails every MCP tool.** The server resolves the base from the
+    local source cache at the `poly.lock`-pinned revision and never fetches; a base that is not cached is a `config`
+    error telling you to run `poly lock` or a CLI `poly lint` once.
+  - **A long-lived `poly mcp` kept linting with the project configs of its first call.** The per-directory lookups a
+    run memoises (`.oxlintrc.json` and the oxlint services built from it, `.oxfmtrc.json`, `go.mod`, `.clang-format`,
+    `Cargo.toml` editions) were never forgotten between calls, so an edit was invisible to the next one, and its stale
+    findings were then cached under the new config's key. Every run now starts by forgetting them. On a core build the
+    engines live in components that hold their own copy, so the host announces each new run to the components it has
+    loaded (a `RunBoundary` request) before the run's first lint or format request.
+  - **`poly lock` and `poly trust` take effect on a running `poly mcp`.** The server read `poly.lock` and the trust
+    store once, at startup: a moved `extends` pin kept resolving the old revision, a `poly.lock` that did not parse
+    ended the process before the handshake, and `poly trust` changed nothing until a restart. Both are now read as they
+    are on disk at each call, and a malformed `poly.lock` is that call's `config` error.
+  - **MCP `check`/`fix` with `scope: workspace` reported a pass when the whole-project phase never ran.** An untrusted
+    repository, or one with no whole-project tool, answered `passed: true` with no tools. It is now an `isError` result
+    of kind `untrusted` or `no_workspace_tools`, in the same `{error: {kind, message}, summary: null}` shape as every
+    other failure; `scope: all` sets `isError` when the repository is untrusted.
+  - **BREAKING: MCP tools ignored arguments they did not understand.** `check {path: [...]}` (a typo for `paths`) linted the whole
+    directory, and `manage {action: "cache_clean", dry_run: true}` cleaned the cache. An unknown key, an invalid value
+    and a parameter that does not apply to the chosen `scope`, `action` or `topics` are now `usage` errors naming the
+    key, on all four tools; `check` no longer accepts the fix-only `fix_generated`.
+  - **The read-only MCP `info` tool could fetch and write.** Its `components` topic resolved a remote `extends` base with
+    the fetching resolver, and its `cache` topic created the cache directory, wherever `[cache] dir` pointed. Every
+    host service now resolves config from the source cache only, and reading the cache footprint creates nothing.
 
 ### Security
 
@@ -299,7 +303,6 @@ Each item is described in full under the section named in brackets.
 - **Pinned tool downloads are bound to the catalog.** A URL in `poly.lock` must be https on the origin and release path the tool's catalog entry names, redirects are followed only to GitHub's release hosts or the same origin, and the GitHub token is sent to `api.github.com` only. The install stamp records the binary's size and mtime, and a tool cache that is not private to the current user is tightened or refused.
 - **Staged symlinks are resolved before a hook reads them.** A chain of in-tree links that escapes the staged snapshot once resolved is removed from it.
 - **The installers and the Action validate the requested version** as `X.Y.Z[-pre]` against the whole string before using it.
-- **Accepted advisories.** `deny.toml` ignores the chrono, chrono-tz and zip advisories published on 2026-11-17: chrono has no fixed release, and the zip fixes need 9.x while harper-core requires 8.x. The only zip reader in the tree is harper's rule-bundle loader, which poly never calls.
 - **BREAKING: a repository's config keys that run programs need `poly trust`.** A cloned `poly.toml` could make
   `poly lint`, `poly fmt` and the MCP `check` and `fix` tools run any program with no prompt. Now
   `[tools.<name>] bin` (a path), `url`/`sha256`, `env`, `args`, `extra_args`, `format_extra_args`,
