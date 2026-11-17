@@ -5,7 +5,11 @@
 //! reports that it skipped and passes.
 
 use poly_component_host::{ComponentHost, HostOptions, SlotStatus};
-use poly_component_protocol::{PolyComponent, decode_describe};
+use poly_component_protocol::{
+    PROTOCOL_VERSION, Payload, PolyComponent, Request, WireFileSlice, WireLogLevel, decode_describe, decode_response,
+    encode_request,
+};
+use poly_engine_api::component_wire::engine_config_to_wire;
 use poly_engine_api::config::{EngineConfig, GlobalDefaults};
 use poly_engine_api::engine::{ProjectAnalysis, ProjectEnvironment, ProjectFile, ProjectRequest};
 use poly_engine_api::language::Language;
@@ -26,6 +30,61 @@ fn the_tsrs_component_describes_the_tsrs_engine() {
     let inputs = &engine.project_inputs;
     assert_eq!(inputs.gate_key.as_deref(), Some("enabled"));
     assert!(inputs.dirs.as_ref().is_some_and(|dirs| dirs.whole_tree));
+}
+
+/// The component answers a project without a `tsconfig.json` with a decline, not an empty finding list, so the
+/// host reports a skip.
+#[test]
+fn the_tsrs_component_declines_a_project_without_a_tsconfig() {
+    let component = TsrsComponent::default();
+    let send = |request: &Request, body: &[u8]| {
+        let bytes = component
+            .call(&encode_request(request).unwrap(), body)
+            .expect("the component answers");
+        decode_response(&bytes).expect("the answer decodes").result
+    };
+    let init = send(
+        &Request::Init {
+            protocol: PROTOCOL_VERSION,
+            host_version: "0.0.1".into(),
+            threads: 1,
+            stack_size: 16 << 20,
+            max_log_level: WireLogLevel::Info,
+        },
+        b"",
+    );
+    assert!(init.is_ok(), "{init:?}");
+    let cfg = EngineConfig {
+        globals: GlobalDefaults::default(),
+        indent_width: 2,
+        options: toml::from_str("enabled = true").unwrap(),
+    };
+    let registered = send(
+        &Request::RegisterConfig {
+            id: 1,
+            config: engine_config_to_wire(&cfg),
+        },
+        b"",
+    );
+    assert_eq!(registered, Ok(Payload::Ok));
+    let answer = send(
+        &Request::ProjectCheck {
+            engine: "tsrs".into(),
+            root: std::env::temp_dir().join("poly-tsrs-no-tsconfig").display().to_string(),
+            files: vec![WireFileSlice {
+                path: "src/app.ts".into(),
+                language: "typescript".into(),
+                offset: 0,
+                len: KNOWN_BAD.len() as u64,
+            }],
+            config: 1,
+            environment: Vec::new(),
+            threads: Some(1),
+            targets: None,
+        },
+        KNOWN_BAD.as_bytes(),
+    );
+    assert_eq!(answer, Ok(Payload::ProjectDeclined("no tsconfig.json".into())));
 }
 
 #[test]

@@ -14,7 +14,10 @@
 
 use std::path::PathBuf;
 
-use super::{BatchSupport, Diagnostic, Engine, FormatOutput, ProjectInputs, ProjectRequest, SourceFile, WireSelection};
+use super::{
+    BatchSupport, Diagnostic, Engine, FormatOutput, ProjectInputs, ProjectReport, ProjectRequest, SourceFile,
+    WireSelection,
+};
 use crate::config::EngineConfig;
 use crate::language::Language;
 
@@ -127,6 +130,16 @@ pub trait ProjectAnalysis: Engine {
     /// a process, so the result can be cached on the request's inputs.
     fn project_check(&self, _req: &ProjectRequest<'_>) -> anyhow::Result<Vec<(PathBuf, Vec<Diagnostic>)>> {
         Ok(Vec::new())
+    }
+
+    /// [`ProjectAnalysis::project_check`] with a channel for declining the project (ADR 0079); this is what the
+    /// host calls. Defaults to the findings of [`ProjectAnalysis::project_check`].
+    ///
+    /// An engine that can find nothing to check in a project (tsrs without a `tsconfig.json`) overrides this to
+    /// answer [`ProjectReport::Declined`], and answers [`ProjectAnalysis::project_check`] with
+    /// [`ProjectReport::into_findings`]. The same purity rules apply.
+    fn project_report(&self, req: &ProjectRequest<'_>) -> anyhow::Result<ProjectReport> {
+        self.project_check(req).map(ProjectReport::Checked)
     }
 
     /// What [`ProjectAnalysis::project_check`] needs from the host besides the files it serves: a
@@ -308,6 +321,18 @@ impl dyn Engine + '_ {
         match self.project_analysis() {
             Some(facet) => facet.project_check(req),
             None => Ok(Vec::new()),
+        }
+    }
+
+    /// [`ProjectAnalysis::project_report`], or a clean report for an engine without the facet.
+    ///
+    /// # Errors
+    ///
+    /// When the engine's analysis fails.
+    pub fn project_report(&self, req: &ProjectRequest<'_>) -> anyhow::Result<ProjectReport> {
+        match self.project_analysis() {
+            Some(facet) => facet.project_report(req),
+            None => Ok(ProjectReport::Checked(Vec::new())),
         }
     }
 

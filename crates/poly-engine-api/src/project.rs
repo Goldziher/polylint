@@ -5,6 +5,7 @@ use std::path::PathBuf;
 use std::sync::Arc;
 
 use crate::config::EngineConfig;
+use crate::engine::Diagnostic;
 use crate::language::Language;
 
 /// One file handed to [`ProjectAnalysis::project_check`](crate::engine::ProjectAnalysis::project_check).
@@ -149,6 +150,29 @@ impl EngineCache {
             dir: PathBuf::from(get(Self::DIR_KEY)?),
             salt: get(Self::SALT_KEY).unwrap_or_default().to_owned(),
         })
+    }
+}
+
+/// What [`ProjectAnalysis::project_report`](crate::engine::ProjectAnalysis::project_report) answers: the findings
+/// of a check that ran, or the reason the engine checked nothing in this project (ADR 0079).
+#[derive(Debug, Clone)]
+pub enum ProjectReport {
+    /// The check ran; findings grouped by the file they belong to. Empty is a clean pass.
+    Checked(Vec<(PathBuf, Vec<Diagnostic>)>),
+    /// The engine found nothing in the project it can check (tsrs without a `tsconfig.json`), so it checked
+    /// nothing. The host reports the project root as skipped with this reason, charged to the skip budget,
+    /// never as a clean pass.
+    Declined(String),
+}
+
+impl ProjectReport {
+    /// The findings, for a caller that has no channel for a decline: none for a declined project.
+    #[must_use]
+    pub fn into_findings(self) -> Vec<(PathBuf, Vec<Diagnostic>)> {
+        match self {
+            Self::Checked(findings) => findings,
+            Self::Declined(_) => Vec::new(),
+        }
     }
 }
 

@@ -210,6 +210,17 @@ jobs:
       - run: cargo test --workspace --exclude conformance --no-fail-fast
         env:
           POLY_REQUIRE_NATIVE_TOOLS: ${{ runner.os == 'Linux' && 'gofmt,rustfmt,shfmt,shellcheck' || '' }}
+      # The CLI <-> MCP parity tests are gated on unix and `bundled-mcp`, and a gated-off test binary
+      # passes with zero tests. Require that the unix legs collected them.
+      - name: Require the MCP parity tests
+        if: runner.os != 'Windows'
+        shell: bash
+        run: |
+          set -euo pipefail
+          cargo test -p poly-cli --test mcp_parity --test mcp_flag_coverage -- --list > mcp-parity-tests.txt
+          count="$(grep -c ': test$' mcp-parity-tests.txt || true)"
+          echo "MCP parity tests collected: $count (at least 9 required)"
+          test "$count" -ge 9
       - name: test (components workspace)
         run: cargo test --locked --manifest-path components/Cargo.toml --workspace --no-fail-fast
       - name: test (pyrefly workspace)
@@ -562,6 +573,18 @@ jobs:
             if grep -q "test result: FAILED" polylint-tsrs-test.log; then echo "::error::a polylint-tsrs test binary failed"; exit 1; fi
             passed="$(grep -Eo "test result: ok\. [0-9]+ passed" polylint-tsrs-test.log | awk '{ n += $4 } END { print n + 0 }')"
             echo "polylint-tsrs tests passed ($features): $passed"
+            test "$passed" -gt 0
+          done
+      # The second published crate (ADR 0081), for the same reason.
+      - name: polylint-js-types tests, without and with plain-ptrs
+        run: |
+          set -euo pipefail
+          for features in "" "--features plain-ptrs"; do
+            # shellcheck disable=SC2086 # the empty feature set must expand to no argument
+            cargo test --locked --manifest-path components-tsrs/Cargo.toml -p polylint-js-types $features --no-fail-fast 2>&1 | tee polylint-js-types-test.log
+            if grep -q "test result: FAILED" polylint-js-types-test.log; then echo "::error::a polylint-js-types test binary failed"; exit 1; fi
+            passed="$(grep -Eo "test result: ok\. [0-9]+ passed" polylint-js-types-test.log | awk '{ n += $4 } END { print n + 0 }')"
+            echo "polylint-js-types tests passed ($features): $passed"
             test "$passed" -gt 0
           done
       - name: Build the component cdylib

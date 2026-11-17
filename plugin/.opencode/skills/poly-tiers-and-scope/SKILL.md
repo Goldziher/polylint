@@ -9,8 +9,8 @@ metadata:
 
 <!--
 AI-RULEZ :: GENERATED FILE — DO NOT EDIT
-Content-Hash: blake3:6b1742939e2984eb47fd020d03af8df87e4ce9d618a355acb327c5436c320acf
-Source-Hash: blake3:92d73e3d088ef76a10ede1c0e15e8d76188d3829a5ad453f60eb55359f169514
+Content-Hash: blake3:054f4a662510b1aa768eacbb21f71a313eb94752d14a586d951600408bfd3106
+Source-Hash: blake3:f60abe81ffa53c7bfcfe0e481f708fc4b973b82c737833378c665357ef68bff1
 Schema-Version: v1
 -->
 
@@ -23,7 +23,9 @@ Five mechanisms decide what actually inspects a file (`crates/poly-core/src/regi
 1. **Tier-1 engines** — linked into the bundled build, or loaded from a signed component a core
    build downloads on first use; registered for specific languages, by engine id: `ruff`, `oxc`, `taplo`, `rumdl`, `sqruff`, `yaml`, `malva`
    (+ `biome` for CSS/SCSS), `markup_fmt`, `mago`, `rubyfmt`, `graphql` (+ `biome`),
-   `alejandra` (Nix), `hcl`, `dockerfile`, `dotenv`, `ini`.
+   `alejandra` (Nix), `stylua` + `selene` (Lua), `typstyle`, `tex-fmt`, `hcl`, `dockerfile`, `dotenv`,
+   `ini`; opt-in, `jsonschema` (JSON/JSONC/YAML/TOML against a configured schema) and the `tsrs`
+   TypeScript type check (a project check; a path-scoped run checks only the named files, ADR 0074).
 2. **Tier-2 tree-sitter generic tier** (ADR 0004) — the catch-all for every language with no
    native backend. Structural reindent for brace-family grammars, whitespace normalization
    otherwise, and a leave-untouched list where whitespace is significant. This is the
@@ -48,13 +50,13 @@ Five mechanisms decide what actually inspects a file (`crates/poly-core/src/regi
    per-language deferral table keeps it from duplicating
    a tier-1 rule (ruff's `C901`/`PLR0913`, oxlint's `max-depth`/`max-params`).
 5. **The built-in ast-grep rule pack** (ADR 0029) — 42 rules across 9 languages (C#, Elixir,
-   Go, Java, Kotlin, Python, Ruby, Rust, Swift) embedded in the binary and on by default; 13
+   Go, Java, Kotlin, Python, Ruby, Rust, Swift) embedded in the binary and on by default; 26
    of them ship `severity: off`. It sits *beneath* `[engines.astgrep] rule_dirs` (default
    `.poly/rules`), so a user rule with the same `id` replaces a pack rule. `builtin_pack = false`
    in the same table disables the pack wholesale.
 
-the opt-in `typos` (spelling; `[engines.typos] enabled = true`) and `uncomment` engines are the other two cross-cutting
-backends appended to every language. On top of these, any **catalog or recipe tool** a config
+The opt-in `typos` (spelling; `[engines.typos] enabled = true`), `uncomment`, `secrets` (secret scanning) and
+`harper` (prose and comment grammar) engines are the other four cross-cutting backends appended to every language. On top of these, any **catalog or recipe tool** a config
 enables with `[tools.<name>] enabled = true` (`golangci-lint`, `helm`, `hadolint`, `buf`, …)
 joins the per-file tier. Recipe tools batch their files into as few spawns as possible, and
 one that works on a project (a Go module, a Helm chart) runs once per project root. A tool is

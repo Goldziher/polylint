@@ -7,7 +7,7 @@ use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
-use crate::dto::ComponentSummary;
+use crate::dto::{ComponentSummary, Failure};
 
 /// Names of the services a host answers.
 pub mod service {
@@ -18,9 +18,9 @@ pub mod service {
     /// The whole-project lint phase ([`super::WorkspaceRequest`] -> [`super::RunReply`] whose document is a
     /// `WorkspaceReport`, or a failure document when the phase did not run).
     pub const WORKSPACE_LINT: &str = "workspace.lint";
-    /// Result-cache footprint (no request -> `CacheStatsReport`).
+    /// Result-cache footprint ([`super::CacheRequest`] -> `CacheStatsReport`).
     pub const CACHE_STATS: &str = "cache.stats";
-    /// Empty the result cache (no request -> `CacheFreedReport`).
+    /// Empty the result cache ([`super::CacheRequest`] -> `CacheFreedReport`).
     pub const CACHE_CLEAN: &str = "cache.clean";
     /// Evict stale or oversized cache entries ([`super::CacheGcRequest`] -> `CacheFreedReport`).
     pub const CACHE_GC: &str = "cache.gc";
@@ -194,9 +194,20 @@ pub struct ConfigRequest {
     pub config: Option<String>,
 }
 
+/// Request body of `cache.stats` and `cache.clean`.
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct CacheRequest {
+    /// Config file whose `[cache] dir` locates the cache, instead of discovery.
+    #[serde(default)]
+    pub config: Option<String>,
+}
+
 /// Request body of `cache.gc`.
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct CacheGcRequest {
+    /// Config file whose `[cache] dir` locates the cache, instead of discovery.
+    #[serde(default)]
+    pub config: Option<String>,
     /// Evict entries older than this many days.
     #[serde(default)]
     pub max_age_days: Option<u64>,
@@ -303,11 +314,44 @@ pub trait ServiceCaller: Send + Sync + 'static {
     fn call(&self, service: &str, request: &[u8]) -> Result<Vec<u8>, String>;
 }
 
+/// A host service failure that carries its class.
+///
+/// The service table's error is a string, so a host sends a classified failure as the JSON of a
+/// [`Failure`] (see [`encode_failure`]) and [`call`] decodes it into this error. A frontend then
+/// reports the kind a run would for the same cause rather than a generic one.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ServiceFailure {
+    /// The service that failed.
+    pub service: String,
+    /// Its class and message.
+    pub failure: Failure,
+}
+
+impl std::fmt::Display for ServiceFailure {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            formatter,
+            "host service `{}` failed: {}",
+            self.service, self.failure.message
+        )
+    }
+}
+
+impl std::error::Error for ServiceFailure {}
+
+/// The service-table error string for a classified failure, which [`call`] decodes into a
+/// [`ServiceFailure`].
+#[must_use]
+pub fn encode_failure(failure: &Failure) -> String {
+    serde_json::to_string(failure).unwrap_or_else(|_| failure.message.clone())
+}
+
 /// Encode `request`, call `service` and decode the reply.
 ///
 /// # Errors
 ///
-/// When a body does not encode or decode, or the host reports a failure.
+/// When a body does not encode or decode, or the host reports a failure: a [`ServiceFailure`] when
+/// the host classified it.
 pub fn call<Req: Serialize, Rep: DeserializeOwned>(
     caller: &dyn ServiceCaller,
     service: &str,
@@ -316,6 +360,46 @@ pub fn call<Req: Serialize, Rep: DeserializeOwned>(
     let bytes = serde_json::to_vec(request).with_context(|| format!("cannot encode the `{service}` request"))?;
     let reply = caller
         .call(service, &bytes)
-        .map_err(|message| anyhow::anyhow!("host service `{service}` failed: {message}"))?;
+        .map_err(|message| match serde_json::from_str::<Failure>(&message) {
+            Ok(failure) => anyhow::Error::new(ServiceFailure {
+                service: service.to_owned(),
+                failure,
+            }),
+            Err(_) => anyhow::anyhow!("host service `{service}` failed: {message}"),
+        })?;
     serde_json::from_slice(&reply).with_context(|| format!("cannot decode the `{service}` reply"))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::dto::FailureKind;
+
+    /// A host whose every service fails with `message`.
+    struct Failing(String);
+
+    impl ServiceCaller for Failing {
+        fn call(&self, _: &str, _: &[u8]) -> Result<Vec<u8>, String> {
+            Err(self.0.clone())
+        }
+    }
+
+    #[test]
+    fn a_classified_failure_keeps_its_kind_across_the_service_table() {
+        let failure = Failure {
+            kind: FailureKind::Config,
+            message: "bad toml".to_owned(),
+        };
+        let error = call::<_, Value>(&Failing(encode_failure(&failure)), service::CONFIG_SHOW, &()).unwrap_err();
+        let decoded = error.downcast_ref::<ServiceFailure>().expect("a classified failure");
+        assert_eq!(decoded.failure, failure);
+        assert_eq!(format!("{error:#}"), "host service `config.show` failed: bad toml");
+    }
+
+    #[test]
+    fn a_plain_failure_message_stays_unclassified() {
+        let error = call::<_, Value>(&Failing("boom".to_owned()), service::CONFIG_SHOW, &()).unwrap_err();
+        assert!(error.downcast_ref::<ServiceFailure>().is_none());
+        assert_eq!(format!("{error:#}"), "host service `config.show` failed: boom");
+    }
 }

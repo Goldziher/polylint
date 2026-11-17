@@ -10,7 +10,7 @@ Set Theme "Catppuccin Mocha"
 Set TypingSpeed 40ms
 
 Hide
-Type "export PATH=/Users/naamanhirschfeld/workspace/poly/target/release:$PATH POLY_NO_SHADOW_WARN=1" Enter
+Type "export PATH=/Users/naamanhirschfeld/workspace/polylint/polylint/target/release:$PATH POLY_NO_SHADOW_WARN=1" Enter
 Type "cd /tmp/poly-demo/django && clear" Enter
 Sleep 1s
 Show

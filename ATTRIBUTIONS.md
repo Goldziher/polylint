@@ -205,6 +205,45 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
+## skif-js-types — type-aware member facts (imported as `polylint-js-types`)
+
+- Project: <https://github.com/polylint/skif> (`crates/skif-js-types`, commit `75500e05`)
+- License: MIT
+- Copyright (c) 2026 Na'aman Hirschfeld
+
+`components-tsrs/crates/polylint-js-types` is skif's `skif-js-types` crate, renamed and published to crates.io from
+this repository (ADR 0081) when skif 0.9.0 dropped its type-aware analysis: program planning per `tsconfig.json`, the
+checker queries that find which class, enum and namespace members are read, member crediting, package coverage, its
+tests and `KNOWN-DEFECTS.md`. Changes made on import: the names, `polylint-tsrs` in place of `skif-tsrs`, and the
+crate's own `FileSystem` trait (with `DirEntry`, `PathKind`, `MemoryFs` and `OsFs`), `FxHash` maps and
+`enable_timings` switch in place of the four `skif-core` items it used; `session.rs` is split into submodules under
+the 1000-line cap. skif is a project of the same organization, by the same author and under the same license; the
+notice is kept for provenance.
+
+```text
+MIT License
+
+Copyright (c) 2026 Na'aman Hirschfeld
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+```
+
 ---
 
 ## tsrs (and TypeScript) — TypeScript type checker (dependency, notices ship with poly)

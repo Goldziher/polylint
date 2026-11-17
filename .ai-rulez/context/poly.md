@@ -68,13 +68,12 @@ whole-workspace tools a `pre-commit` hook would — `cargo clippy`/`cargo-sort`/
 `cargo-deny` and any configured whole-project type checkers — on the live worktree, folding
 their pass/fail into the report and exit code. It reuses the `[hooks.builtin.cargo]` + inline
 `workspace = true` config and is on by default. Turn it off with
-`--workspace never` or `[workspace] run = "never"`; a repo with no `[hooks]` section runs only the
-per-file tier. With `--format json`/`toon` the whole-project section is written to stderr (stdout
+`--workspace never` or `[workspace] run = "never"`; with no `[hooks]` section only the per-file tier runs. With `--format json`/`toon` the whole-project section is written to stderr (stdout
 stays a single valid document), so a machine consumer must check the **exit code** — not just the
 JSON payload — to detect a whole-project tool failure.
 
-**Plain `poly lint` is therefore not read-only.** poly applies no fixes without `--fix` — the
-per-file tier only writes under `--fix`, and the phase is asked for check mode — but the phase
+**Plain `poly lint` is therefore not read-only.** poly applies no fixes without `--fix` (the phase
+is asked for check mode), but the phase
 *executes* the configured tools against the live worktree, and their own side effects are not
 poly's to control (`cargo clippy` populates `target/` and can refresh `Cargo.lock`; a `go`
 invocation can append to `go.work.sum`; a type checker writes its cache). A run that must leave
@@ -82,7 +81,7 @@ the tree untouched needs `--workspace never` or `[workspace] run = "never"`.
 
 The phase is also **not path-scoped**: `poly lint <paths>` skips it for that reason, and
 `--workspace always` opts back in with the tools still covering the whole repository — regardless of the
-named paths and of `[discovery] exclude`. poly prints a note on both branches. Naming the
+named paths and of `[discovery] exclude`. poly notes both branches. Naming the
 workspace root is *not* path scoping: `poly lint .` runs the phase.
 
 Under `--fix`, this phase runs the tools in **fix mode**: `cargo sort` sorts in place,
@@ -93,7 +92,7 @@ is what skips it. `poly fmt` never runs the whole-project phase, and the git-hoo
 requests fix mode.
 
 The orchestration lives in `crates/poly-workspace` (`run_workspace_lint`), shared by `poly-cli`
-and `poly mcp`.
+and the `poly mcp` `check`/`fix` tools (`scope: workspace`).
 
 ## Agent distribution
 

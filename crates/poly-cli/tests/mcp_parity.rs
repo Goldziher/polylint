@@ -8,6 +8,7 @@
 
 mod mcp_child;
 
+use std::ffi::OsStr;
 use std::path::Path;
 use std::process::Command;
 
@@ -59,11 +60,16 @@ impl Fixture {
 }
 
 fn cli_in(dir: &Path, cache: &Path, args: &[&str]) -> (Value, Class, i32) {
+    cli_in_env(dir, cache, args, &[])
+}
+
+fn cli_in_env(dir: &Path, cache: &Path, args: &[&str], env: &[(&str, &OsStr)]) -> (Value, Class, i32) {
     let output = Command::new(POLY)
         .args(args)
         .current_dir(dir)
         .env("POLY_OFFLINE", "1")
         .env("POLY_CACHE_HOME", cache)
+        .envs(env.iter().copied())
         .output()
         .expect("run poly");
     let code = output.status.code().expect("exit code");
@@ -426,4 +432,45 @@ fn info_topics_are_the_cli_documents() {
     );
     assert_eq!(info["cache"], cache, "info cache is `poly cache stats --format json`");
     assert_eq!(info["rules"], rules, "info rules is `poly rules list --format json`");
+}
+
+/// A default-on native tool missing from `PATH` (ADR 0075): both surfaces name it in `degraded`,
+/// count its files as checked and do not call the run unverified.
+#[test]
+fn a_missing_native_tool_is_reported_degraded_on_both_surfaces() {
+    let fixture = Fixture::new(&[(
+        "src/lib.rs",
+        b"pub fn add(left: u64, right: u64) -> u64 {\n    left + right\n}\n",
+    )]);
+    let empty_path = tempfile::tempdir().expect("an empty PATH directory");
+    let env = [("PATH", empty_path.path().as_os_str())];
+    let (cli_document, cli_class, code) = cli_in_env(
+        fixture.path(),
+        fixture.cache.path(),
+        &["fmt", "--format", "json", "src/lib.rs"],
+        &env,
+    );
+    let mut server = McpChild::start_with(
+        fixture.path(),
+        fixture.cache.path(),
+        &[("POLY_OFFLINE", "1".as_ref()), env[0]],
+    );
+    let (mcp_document, mcp_class) = mcp(&server.call("check", json!({ "kind": "format", "paths": ["src/lib.rs"] })));
+    assert_eq!(
+        (cli_class, mcp_class),
+        (Class::Verified, Class::Verified),
+        "exit {code}: {mcp_document}"
+    );
+    assert_eq!(
+        mcp_document["degraded"],
+        json!([{
+            "tool": "rustfmt",
+            "language": "rust",
+            "reason": "not found on PATH",
+            "files": ["src/lib.rs"],
+        }]),
+        "{mcp_document}"
+    );
+    assert_eq!(mcp_document["summary"]["checked"], 1, "{mcp_document}");
+    assert_eq!(cli_document, mcp_document);
 }

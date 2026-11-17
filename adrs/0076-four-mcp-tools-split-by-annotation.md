@@ -52,8 +52,9 @@ auto-approve checks while prompting on writes: the tool would have to carry the 
 - **Errors are results.** A run that cannot start (a missing path, a path outside the workspace, a config that does
   not load, an unknown engine) answers `isError: true` with `{error: {kind, message}, summary: null}`, never a
   JSON-RPC error, so the model reads the message and can correct its call. So does a whole-project phase that was
-  asked for and did not run (`untrusted`, `no_workspace_tools`), in every scope: a report with no tools would read
-  as a pass.
+  asked for and did not run, since a report with no tools would read as a pass: `untrusted` in every scope
+  (`scope: all` attaches the report under `workspace` and sets `isError`), `no_workspace_tools` with `scope:
+  workspace` only, as plain `poly lint` notes a repository without whole-project tools rather than failing.
 
 - **Invalid arguments are results too.** An unknown key, a wrong value and a parameter that does not apply to the
   chosen `scope`, `action` or `topics` answer `kind: usage`, naming the key. A tool's published input schema is the

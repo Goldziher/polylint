@@ -9,8 +9,8 @@ metadata:
 
 <!--
 AI-RULEZ :: GENERATED FILE — DO NOT EDIT
-Content-Hash: blake3:794898f3dd99a18f4f456c8839d65bc6679cd2b18446efc6438ec44958fb323a
-Source-Hash: blake3:92d73e3d088ef76a10ede1c0e15e8d76188d3829a5ad453f60eb55359f169514
+Content-Hash: blake3:a678ac7379e2dd5314b12a7fb3189ba9829c1e6ed39f7480a7820459ee4f97d1
+Source-Hash: blake3:f60abe81ffa53c7bfcfe0e481f708fc4b973b82c737833378c665357ef68bff1
 Schema-Version: v1
 -->
 
@@ -36,7 +36,11 @@ bundled with every engine linked in.
   (JS/TS/JSX/TSX/JSON/JSONC), `taplo` (TOML), `rumdl` (Markdown/MDX), `sqruff` (SQL), `yaml`,
   `malva` (CSS/SCSS/Less) + `biome` (CSS/SCSS), `markup_fmt` (HTML/Vue/Svelte/Astro/Angular/
   Jinja/Vento/Mustache/XML), `mago` (PHP), `rubyfmt` (Ruby), `graphql` + `biome` (GraphQL),
-  `alejandra` (Nix), `hcl`, `dockerfile`, `dotenv`, and `ini`. YAML, TOML, Markdown and CSS
+  `alejandra` (Nix), `stylua` + `selene` (Lua), `typstyle` (Typst), `tex-fmt` (LaTeX), `hcl`,
+  `dockerfile`, `dotenv`, and `ini`. Two are opt-in (`[engines.<id>] enabled = true`): `jsonschema`
+  validates JSON/JSONC/YAML/TOML against a configured schema, and `tsrs` type-checks TypeScript and
+  JavaScript against the project's `tsconfig.json` (a project check; a path-scoped run checks only the
+  named files, ADR 0074). YAML, TOML, Markdown and CSS
   format with the same crates oxfmt uses, and `oxc` honours an existing `.oxfmtrc.json[c]` /
   `.oxlintrc.json[c]`; `hcl` output matches `terraform fmt`.
 - **Tier 2 — tree-sitter generic tier.** The catch-all for the long tail (Elixir, C/C++,
@@ -63,7 +67,8 @@ bundled with every engine linked in.
 
 ## Cross-cutting engines (every language)
 
-Four engines apply to every language regardless of tier (`typos` only when enabled):
+Six engines apply to every language regardless of tier (`typos`, `uncomment`, `secrets` and
+`harper` only when enabled):
 
 - **`typos`** — spelling in identifiers, comments, and strings. Opt-in: `[engines.typos] enabled = true`.
 - **`quality`** — structural code-quality metrics off the tree-sitter parse: file/function/
@@ -76,10 +81,14 @@ Four engines apply to every language regardless of tier (`typos` only when enabl
   `[engines.quality]` / `[engines.quality.lang.<lang>]`.
 - **`astgrep`** — ast-grep pattern rules. poly embeds a **built-in rule pack** of 42 rules
   across 9 languages (C#, Elixir, Go, Java, Kotlin, Python, Ruby, Rust, Swift), on by
-  default; 13 of them ship `severity: off`. User rules under `[engines.astgrep] rule_dirs`
+  default; 26 of them ship `severity: off`. User rules under `[engines.astgrep] rule_dirs`
   (default `.poly/rules`) layer on top and replace a pack rule sharing its `id`. Disable the
   pack wholesale with `builtin_pack = false` in the same table.
 - **`uncomment`** — opt-in comment removal, off unless `[engines.uncomment] enabled = true`.
+- **`secrets`** — opt-in secret scanning (kingfisher), served by the `secrets` component:
+  `[engines.secrets] enabled = true`.
+- **`harper`** — opt-in prose and grammar checks over Markdown and every language's comments:
+  `[engines.harper] enabled = true`.
 
 ## When to use it
 

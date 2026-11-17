@@ -30,14 +30,16 @@ published crates ship 2024 code under today's version numbers; the crates.io `ru
 time, not a permanent property — re-check the pins when touching dependencies. We do **not**
 vendor, with one exception: the archived upstream `dockerfile-parser` is maintained in-tree as the
 `crates/dockerfile-parser` workspace crate (ADR 0003 amendment, `ATTRIBUTIONS.md`). We do **not**
-publish our own crates to crates.io — the binary is distributed as prebuilt release artifacts plus
-an installer (see release-versioning).
+publish poly's crates to crates.io — the binary is distributed as prebuilt release artifacts plus
+an installer (see release-versioning); the exception is the `components-tsrs/crates/polylint-*` libraries
+(ADR 0078/0081), versioned on their own.
 
 ## Workspace root
 
 - `Cargo.toml` — `[workspace]` (resolver 3, edition 2024, `rust-version = "1.100"`). Forty-two
   members (plus five excluded workspaces: `components/`, `components-pyrefly/`, `components-r/`,
-  `components-secrets/`, `components-tsrs/`): `poly-core` (the engine library), `poly-cli` (builds the `poly` binary),
+  `components-secrets/`, `components-tsrs/` — the last holds `poly-engines-tsrs`, its `-component` build and the
+  published `polylint-*` libraries): `poly-core` (the engine library), `poly-cli` (builds the `poly` binary),
   `poly-config`, `poly-cache`, `poly-catalog`, `poly-hooks`, `poly-workspace`, `poly-mcp`,
   `poly-buildinfo`, the engine split (`poly-engine-api`, `poly-engines`, the
   `poly-engines-*` family crates and their `-component` builds, `poly-grammar` and the three `poly-component-*` crates, below),
@@ -64,7 +66,8 @@ an installer (see release-versioning).
 - `deny.toml` — `cargo deny` license / source allow-list (no GPL/AGPL), applied across the full
   dependency tree including git deps and their transitive dependencies.
 - `crates/poly-workspace/` — the whole-project (workspace) lint orchestration shared by
-  `poly-cli` and `poly-mcp`: lowers `[hooks]` config into the `poly-hooks` model, reduces it to
+  `poly-cli` and `poly-host-services`, which runs it for the `poly mcp` `check`/`fix` tools
+  (`scope: workspace`): lowers `[hooks]` config into the `poly-hooks` model, reduces it to
   the whole-project tool set (`cargo clippy`/`cargo-sort`/`cargo-machete`/`cargo-deny`), and runs
   it against the live worktree. Public API is narrow —
   `run_workspace_lint(&PolyConfig, &WorkspaceLintOptions) -> WorkspaceLintOutcome` plus

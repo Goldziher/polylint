@@ -838,6 +838,11 @@ pub enum Payload {
     Rules(WireRulesReport),
     /// Answer to `Adr`.
     Adr(WireAdrPlan),
+    /// Answer to `ProjectCheck` when the engine declined the project (`ProjectReport::Declined`, ADR 0079): it
+    /// checked nothing, for the reason given, which the host reports as a skip. Appended after protocol 3
+    /// shipped: a host that predates it fails to decode the answer and reports the check as failed, never as
+    /// a clean pass.
+    ProjectDeclined(String),
 }
 
 /// The answer to every call.

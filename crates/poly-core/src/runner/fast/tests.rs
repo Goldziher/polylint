@@ -401,9 +401,22 @@ mod narrowed_lint {
         runs: Arc<AtomicUsize>,
     }
 
+    /// What one run reported, and whether the stat index answered for the file rather than
+    /// handing it to the slow path.
+    struct Ran {
+        result: LintResult,
+        answered: bool,
+    }
+
     impl Run<'_> {
         /// One `poly lint` by the `quiet` engine, the `finder`, or both in that order.
         fn lint(&self, quiet: bool, finder: bool, fix: bool) -> LintResult {
+            self.narrowed(quiet, finder, false, fix).result
+        }
+
+        /// [`lint`](Self::lint), as a run whose `--only`/`--skip` withdrew engines from the plan
+        /// when `selected`.
+        fn narrowed(&self, quiet: bool, finder: bool, selected: bool, fix: bool) -> Ran {
             let cache = ResultCache::open(self.tree.cache_root.clone(), true).expect("open the cache");
             let engine = |name: &'static str, finds: bool| {
                 plan_of(Box::new(Linter {
@@ -419,7 +432,10 @@ mod narrowed_lint {
             if finder {
                 engines.push(engine("finder", true));
             }
-            let plan = RunPlan::serving(0, Language::Python, engines);
+            let mut plan = RunPlan::serving(0, Language::Python, engines);
+            if selected {
+                plan = plan.withdrawn(0, Language::Python, Withdrawal::Selection);
+            }
             let setup = LintSetup {
                 ignores: vec![PerFileIgnores::compile(&BTreeMap::new())],
                 ignore_bases: vec![Vec::new()],
@@ -447,7 +463,13 @@ mod narrowed_lint {
             };
             let result = lint_one(&ctx, &self.tree.file, resolution).expect("lint");
             flush_stat_indexes(&cache);
-            result
+            // A file this young is recorded with an untrusted stat, so the index answers by content.
+            let answered = fast.is_some_and(|fast| fast.tally.misses.load(Ordering::SeqCst) == 0);
+            Ran { result, answered }
+        }
+
+        fn engine_runs(&self) -> usize {
+            self.runs.load(Ordering::SeqCst)
         }
     }
 
@@ -470,5 +492,102 @@ mod narrowed_lint {
 
         assert_eq!(run.lint(true, true, true).fixed, 1);
         assert_eq!(std::fs::read_to_string(&tree.file.path).expect("read"), "y = 1\n");
+    }
+
+    /// `--only finder` withdraws `quiet` (with nothing left, as a selection that empties the plan
+    /// does too): the first narrowed run reads the file, the second is answered by the index, and the
+    /// full run's own record still answers for the full run.
+    #[test]
+    fn a_repeated_narrowed_run_is_answered_from_the_index() {
+        for finder in [true, false] {
+            let tree = Tree::new("x = 1\n");
+            let run = Run {
+                tree: &tree,
+                runs: Arc::new(AtomicUsize::new(0)),
+            };
+            assert_eq!(run.lint(true, true, false).diagnostics.len(), 1);
+            let after_full = run.engine_runs();
+
+            let first = run.narrowed(false, finder, true, false);
+            assert!(!first.answered, "nothing has recorded the narrowed plan yet");
+            let second = run.narrowed(false, finder, true, false);
+            assert!(
+                second.answered,
+                "the second identical narrowed run must not take the slow path"
+            );
+            assert_eq!(second.result.diagnostics.len(), usize::from(finder));
+
+            let full = run.narrowed(true, true, false, false);
+            assert!(full.answered, "the narrowed runs must not cost the full run its record");
+            assert_eq!(full.result.diagnostics.len(), 1);
+            assert!(run.narrowed(false, finder, true, false).answered);
+            assert_eq!(run.engine_runs(), after_full, "every engine's output was recorded");
+        }
+    }
+
+    /// A narrowed run's record does not answer for the full plan: the engines it left out still run.
+    #[test]
+    fn a_narrowed_record_does_not_answer_for_the_full_run() {
+        let tree = Tree::new("x = 1\n");
+        let run = Run {
+            tree: &tree,
+            runs: Arc::new(AtomicUsize::new(0)),
+        };
+        assert_eq!(run.narrowed(true, false, true, false).result.diagnostics.len(), 0);
+        assert!(run.narrowed(true, false, true, false).answered);
+        assert_eq!(run.engine_runs(), 1);
+
+        let full = run.narrowed(true, true, false, false);
+        assert!(!full.answered);
+        assert_eq!(
+            full.result.diagnostics.len(),
+            1,
+            "the finder the narrowed run left out must run"
+        );
+        assert_eq!(run.engine_runs(), 2, "only the engine the narrowed run left out runs");
+        assert!(run.narrowed(true, true, false, false).answered);
+        assert!(run.narrowed(true, false, true, false).answered);
+    }
+
+    /// A segment whose payload no longer decodes is re-run once, and the fresh output replaces it.
+    #[test]
+    fn an_undecodable_segment_is_replaced_by_the_fresh_output() {
+        let tree = Tree::new("x = 1\n");
+        let run = Run {
+            tree: &tree,
+            runs: Arc::new(AtomicUsize::new(0)),
+        };
+        assert_eq!(run.lint(true, true, false).diagnostics.len(), 1);
+        {
+            let cache = ResultCache::open(tree.cache_root.clone(), true).expect("open the cache");
+            let index = cache.stat_index(Namespace::Lint);
+            let path = cache.path_key(&tree.file.path);
+            let mut record = index.get(&path).expect("the full run's record").clone();
+            let finder = record
+                .segments
+                .iter_mut()
+                .find(|segment| !segment.payload.is_empty())
+                .expect("the finder's segment");
+            finder.payload = b"not json".to_vec();
+            index.put(path, record);
+            flush_stat_indexes(&cache);
+        }
+        let before = run.engine_runs();
+        let repaired = run.narrowed(true, true, false, false);
+        assert_eq!(repaired.result.diagnostics.len(), 1);
+        assert_eq!(
+            run.engine_runs(),
+            before + 1,
+            "only the engine whose segment broke re-runs"
+        );
+
+        let next = run.narrowed(true, true, false, false);
+        assert!(next.answered);
+        assert_eq!(next.result.diagnostics.len(), 1);
+        assert_eq!(
+            run.engine_runs(),
+            before + 1,
+            "the fresh payload must have replaced the undecodable one"
+        );
     }
 }

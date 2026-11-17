@@ -54,7 +54,7 @@ use std::sync::Arc;
 use anyhow::{Context, bail};
 use poly_engine_api::engine::{
     Capabilities, Diagnostic, Engine, OptionKeys, OptionTable, OptionType, ProjectAnalysis, ProjectDirs, ProjectInputs,
-    ProjectRequest, ProjectSideFile, Severity,
+    ProjectReport, ProjectRequest, ProjectSideFile, Severity,
 };
 use poly_engine_api::language::Language;
 use poly_engine_api::options::OptionsExt;
@@ -70,7 +70,7 @@ pub const ENGINE_NAME: &str = "skif";
 /// Cache-key identity: the wrapped crate version plus a marker for this backend's own mapping.
 ///
 /// Bump the suffix whenever the diagnostic or fix mapping changes, and the version whenever `skif` is upgraded.
-const VERSION: &str = "skif-0.9.0+poly5";
+const VERSION: &str = "skif-0.9.0+poly6";
 
 /// The directory skif is run on, relative to the project root.
 const DEFAULT_DIR: &str = ".";
@@ -127,6 +127,9 @@ static LANGUAGES: &[Language] = &[
     Language::Toml,
 ];
 
+/// Why an enabled skif declines a project: no `package.json` and no workspace declaration at or above its `dir`.
+const NO_WORKSPACE: &str = "no package.json or JavaScript workspace";
+
 /// What one run produced, and what it read to produce it.
 #[derive(Debug)]
 pub struct Analysis {
@@ -139,6 +142,9 @@ pub struct Analysis {
     pub note: Option<(PathBuf, Diagnostic)>,
     /// What skif did with the cache store, per namespace (`modules`): empty when the request carried no cache.
     pub cache: BTreeMap<String, CacheCounters>,
+    /// Why nothing was checked, when the enabled engine found no JavaScript workspace to check: the host reports
+    /// the project as skipped (ADR 0079).
+    pub declined: Option<String>,
 }
 
 /// skif dependency and monorepo linter. See the module docs.
@@ -226,20 +232,33 @@ impl ProjectAnalysis for SkifEngine {
     }
 
     fn project_check(&self, req: &ProjectRequest<'_>) -> anyhow::Result<Vec<(PathBuf, Vec<Diagnostic>)>> {
-        let Analysis { mut findings, note, .. } = analyze(req)?;
+        self.project_report(req).map(ProjectReport::into_findings)
+    }
+
+    fn project_report(&self, req: &ProjectRequest<'_>) -> anyhow::Result<ProjectReport> {
+        let Analysis {
+            mut findings,
+            note,
+            declined,
+            ..
+        } = analyze(req)?;
+        if let Some(reason) = declined {
+            return Ok(ProjectReport::Declined(reason));
+        }
         if let Some((path, note)) = note {
             match findings.iter_mut().find(|(found, _)| *found == path) {
                 Some((_, diagnostics)) => diagnostics.push(note),
                 None => findings.push((path, vec![note])),
             }
         }
-        Ok(findings)
+        Ok(ProjectReport::Checked(findings))
     }
 }
 
 /// Runs skif over the files in `req` and returns its findings together with the log of what it read.
 ///
-/// An engine that is not enabled, and a project with no JavaScript workspace in it, produce nothing.
+/// An engine that is not enabled produces nothing; a project with no JavaScript workspace in it produces nothing
+/// and says so in [`Analysis::declined`].
 ///
 /// # Errors
 /// An option of the wrong type, an invalid `skif.toml`, a rule named in `select` that skif does not have, or a
@@ -250,6 +269,7 @@ pub fn analyze(req: &ProjectRequest<'_>) -> anyhow::Result<Analysis> {
         log: ReadLog::default(),
         note: None,
         cache: BTreeMap::new(),
+        declined: None,
     };
     if req.config.options.opt_bool("enabled") != Some(true) {
         return Ok(nothing());
@@ -265,7 +285,12 @@ pub fn analyze(req: &ProjectRequest<'_>) -> anyhow::Result<Analysis> {
     let start = project.join(&settings.dir);
     let root = match skif::find_workspace_root(&start, &fs) {
         Ok(root) => root,
-        Err(skif::Error::NoWorkspace(_)) => return Ok(nothing()),
+        Err(skif::Error::NoWorkspace(_)) => {
+            return Ok(Analysis {
+                declined: Some(NO_WORKSPACE.to_owned()),
+                ..nothing()
+            });
+        }
         Err(error) => return Err(error).context("locating the JavaScript workspace"),
     };
     let mut config = skif::load_config(&root, &fs, &settings.overrides).context("loading the skif configuration")?;
@@ -311,6 +336,7 @@ pub fn analyze(req: &ProjectRequest<'_>) -> anyhow::Result<Analysis> {
         log: fs.log(),
         note,
         cache: report.cache.clone(),
+        declined: None,
     })
 }
 

@@ -172,6 +172,67 @@ fn a_component_served_project_check_reports_its_findings() {
     );
 }
 
+/// Declines every project check, as the tsrs component declines a project without a `tsconfig.json`.
+struct Declining;
+
+impl ComponentTransport for Declining {
+    fn describe(&self) -> anyhow::Result<Vec<u8>> {
+        Checker.describe()
+    }
+
+    fn call(&self, header: &[u8], body: &[u8]) -> anyhow::Result<Vec<u8>> {
+        if !matches!(decode_request(header)?, Request::ProjectCheck { .. }) {
+            return Checker.call(header, body);
+        }
+        Ok(encode_response(&Response {
+            result: Ok(Payload::ProjectDeclined("no tsconfig.json".into())),
+            logs: Vec::new(),
+        })?)
+    }
+}
+
+struct DecliningConnector;
+
+impl TransportConnector for DecliningConnector {
+    fn connect(&self, _: &ComponentManager, _: &str) -> anyhow::Result<Arc<dyn ComponentTransport>> {
+        Ok(Arc::new(Declining))
+    }
+}
+
+/// A decline crosses the wire and reaches the report as a counted skip of the project root, not a clean pass.
+#[test]
+fn a_component_that_declines_the_project_is_a_counted_skip() {
+    let cache = tempfile::tempdir().unwrap();
+    let mut host_options = HostOptions::new(lock(), PathBuf::from(cache.path()));
+    host_options.allow_unsigned = true;
+    host_options.target = Some(TARGET.into());
+    host_options.gate_loads = true;
+    let host = ComponentHost::new(host_options)
+        .unwrap()
+        .with_connector(Arc::new(DecliningConnector));
+    let options = RunOptions {
+        component_injection: Some(ComponentInjection::new(host, index())),
+        no_cache: true,
+        jobs: Some(1),
+        explicit_config: true,
+        ..RunOptions::default()
+    };
+
+    let dir = tempfile::tempdir().unwrap();
+    std::fs::write(dir.path().join("app.py"), "x: int = 'a'\n").unwrap();
+    let run = poly_core::lint_run(&[dir.path().to_path_buf()], &Config::default(), &options, false, false).unwrap();
+
+    assert!(run.errors.is_empty(), "{:?}", run.errors);
+    let declined: Vec<&str> = run
+        .skipped
+        .iter()
+        .filter(|skip| skip.reason.starts_with("checker:"))
+        .map(|skip| skip.reason.as_str())
+        .collect();
+    assert_eq!(declined, ["checker: no tsconfig.json"], "skipped: {:?}", run.skipped);
+    assert!(!poly_core::is_withdrawal_reason(declined[0]));
+}
+
 /// The file names of every `ProjectCheck` the recording component received.
 static SEEN_CALLS: Mutex<Vec<Vec<String>>> = Mutex::new(Vec::new());
 

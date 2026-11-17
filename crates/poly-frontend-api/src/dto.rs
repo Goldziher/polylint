@@ -30,6 +30,9 @@ pub enum FailureKind {
     /// The whole-project phase was asked for and did not run: the config plans no whole-project
     /// tool, or the phase is disabled.
     NoWorkspaceTools,
+    /// The server's executable was replaced or deleted since it started, so it would answer with
+    /// superseded behaviour. Restarting the server clears it.
+    Stale,
 }
 
 /// A run's failure: its class and the message the CLI prints.

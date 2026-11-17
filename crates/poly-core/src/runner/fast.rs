@@ -1,8 +1,8 @@
 //! The stat-validated fast path and the per-file record that backs it.
 //!
 //! [`FastPath::resolve`] runs before a file is opened. It answers from the
-//! [`StatIndex`] when the file's `stat`, the run's scope and every engine's key
-//! equal what was recorded, and falls back to a content digest when only the
+//! [`StatIndex`] when the file's `stat` and every engine's key equal what was
+//! recorded and the record answers for the run's scope, and falls back to a content digest when only the
 //! `stat` moved (a `touch`, a checkout that rewrote identical bytes). Anything
 //! else is a [`Resolution::Miss`] carrying a [`Probe`]: the slow path reads the
 //! file, reuses whichever recorded engine segments are still valid for its
@@ -12,7 +12,10 @@
 //! folds in the cache format, the build identity, the run switches that change
 //! a verdict without changing an engine (`[discovery] generated`,
 //! `--fix-generated`) and the withdrawal reason if an instruction emptied the
-//! plan. An **engine** key folds in the engine's name, `version()` and
+//! plan; a record answers for its writer's scope and for each scope whose run
+//! found it right for the same bytes ([`Record::answers`]), so a narrowed run
+//! (`--only`) is answered from the full run's record without taking it over. An
+//! **engine** key folds in the engine's name, `version()` and
 //! serialized args — which already carry the config's options and the engine's
 //! [`run_context`] — and, per file, its [`file_context`] and, for a lint run of an
 //! engine that declares the hook, its [`lint_cache_salt`]. The salt is computed
@@ -336,7 +339,7 @@ impl<'a> FastPath<'a> {
         }
         let path = self.cache.path_key(&file.path);
         let raw = self.index.get(&path);
-        let prior = raw.filter(|record| record.scope == slot.scope);
+        let prior = raw.filter(|record| record.answers(&slot.scope));
         let content = FileContent::new(file);
         let vouched = KEY_SCRATCH.with_borrow_mut(|keys| {
             Self::engine_keys(slot, file, &content, keys);
@@ -440,8 +443,10 @@ impl<'a> FastPath<'a> {
     ///
     /// When the path's record already holds every segment this run produced for these bytes, with
     /// the same output (a narrowed run over a file a full run recorded), it stays as it is,
-    /// re-stamped with the new `stat`: replacing it would evict the engines this run left out. Otherwise the new record keeps
-    /// the old one's other segments for the same bytes ([`Record::merged`]).
+    /// re-stamped with the new `stat` and confirmed for this run's scope, so the next identical
+    /// run is answered from it: replacing it would evict the engines this run left out. Otherwise
+    /// the new record keeps the old one's other segments, and the scopes it answered for, for the
+    /// same bytes ([`Record::merged`]).
     pub(super) fn record(&self, probe: &Probe, bytes: &[u8], outcome: Outcome) {
         let digest = ContentDigest::of(bytes);
         if !self.whole_plan
@@ -461,7 +466,15 @@ impl<'a> FastPath<'a> {
                 )
                 .all(|(key, payload)| prior.segment(key).is_some_and(|segment| segment.payload == payload))
         {
-            self.index.vouch(probe.path, probe.stat, digest);
+            if prior.answers(&probe.scope) {
+                self.index.vouch(probe.path, probe.stat, digest);
+            } else {
+                let confirmed = Record {
+                    stat: probe.stat,
+                    ..prior.clone()
+                };
+                self.index.put(probe.path, confirmed.confirmed_for(probe.scope));
+            }
             return;
         }
         let segments = probe
@@ -473,6 +486,7 @@ impl<'a> FastPath<'a> {
         let record = Record {
             stat: probe.stat,
             scope: probe.scope,
+            confirmed: Vec::new(),
             digest,
             verdict: outcome.verdict,
             replayable: outcome.replayable,

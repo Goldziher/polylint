@@ -10,7 +10,7 @@ Set Theme "Catppuccin Mocha"
 Set TypingSpeed 40ms
 
 Hide
-Type "export PATH=/Users/naamanhirschfeld/workspace/poly/target/release:$PATH POLY_NO_SHADOW_WARN=1" Enter
+Type "export PATH=/Users/naamanhirschfeld/workspace/polylint/polylint/target/release:$PATH POLY_NO_SHADOW_WARN=1" Enter
 Type "cd /tmp/poly-demo/django && clear" Enter
 Sleep 1s
 Show
@@ -19,5 +19,5 @@ Type "# poly ships a Claude/Codex plugin and a stdio MCP server: poly mcp" Enter
 Sleep 1800ms
 Type "# An agent speaks MCP to it and gets structured results, not terminal text." Enter
 Sleep 1800ms
-Type "bash ~/workspace/poly/docs/media/tapes/mcp-tools.sh" Enter
+Type "bash ~/workspace/polylint/polylint/docs/media/tapes/mcp-tools.sh" Enter
 Sleep 8s

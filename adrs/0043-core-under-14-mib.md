@@ -4,6 +4,7 @@
 - Date: 2026-11-06
 - Amends: ADR 0039
 - Related: ADR 0040
+- Amended by: ADR 0065 (the core ships at `opt-level = 3` under a 22 MiB ceiling)
 
 ## Context
 

@@ -191,7 +191,7 @@ fn every_request_covered_method_reaches_the_component() {
             "batch_support" => drop(engine.batch_support(&cfg)),
             "format_batch" => drop(engine.format_batch(std::slice::from_ref(&src), &cfg)),
             "lint_batch" => drop(engine.lint_batch(std::slice::from_ref(&src), &cfg)),
-            "project_check" => {
+            "project_check" | "project_report" => {
                 let files = [poly_engine_api::project::ProjectFile {
                     path: path.to_path_buf(),
                     language: src.language.clone(),
@@ -207,7 +207,11 @@ fn every_request_covered_method_reaches_the_component() {
                     targets: None,
                     cache: None,
                 };
-                drop(engine.project_check(&request));
+                if *method == "project_check" {
+                    drop(engine.project_check(&request));
+                } else {
+                    drop(engine.project_report(&request));
+                }
             }
             other => panic!("no exercise for `{other}`, which coverage.rs says is carried by {request}"),
         }

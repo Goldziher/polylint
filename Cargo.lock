@@ -1337,7 +1337,7 @@ version = "3.1.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "faf9468729b8cbcea668e36183cb69d317348c2e08e994829fb56ebfdfbaac34"
 dependencies = [
- "windows-sys 0.61.2",
+ "windows-sys 0.48.0",
 ]
 
 [[package]]
@@ -1401,7 +1401,7 @@ checksum = "031ad3d167622974ed636505ae4556267ed4aa2aea0464122fa6bc9698a32825"
 
 [[package]]
 name = "conformance"
-version = "0.35.0"
+version = "0.36.0"
 dependencies = [
  "anyhow",
  "clap 4.6.8",
@@ -2441,7 +2441,7 @@ dependencies = [
  "libc",
  "option-ext",
  "redox_users 0.5.3",
- "windows-sys 0.61.2",
+ "windows-sys 0.59.0",
 ]
 
 [[package]]
@@ -2818,7 +2818,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e35d6e78f4cebb90e51d543db8fe41528851d6deeef6ef21ebd4bfdc1e784776"
 dependencies = [
  "libc",
- "windows-sys 0.61.2",
+ "windows-sys 0.52.0",
 ]
 
 [[package]]
@@ -3556,9 +3556,9 @@ dependencies = [
 
 [[package]]
 name = "granit-parser"
-version = "2.1.0"
+version = "2.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "05f05586d4d4df3d47123207826c40b252728b438a1a07bad3c01ee6bea401df"
+checksum = "9bd04d0d9c7079b416b458d2317aea4aa964c81938cb7c20f559758c4f422dc8"
 dependencies = [
  "arraydeque",
  "smallvec",
@@ -3944,7 +3944,7 @@ dependencies = [
  "js-sys",
  "log",
  "wasm-bindgen",
- "windows-core 0.62.2",
+ "windows-core 0.58.0",
 ]
 
 [[package]]
@@ -4299,7 +4299,7 @@ checksum = "3640c1c38b8e4e43584d8df18be5fc6b0aa314ce6ebf51b53313d4306cca8e46"
 dependencies = [
  "hermit-abi 0.5.3",
  "libc",
- "windows-sys 0.61.2",
+ "windows-sys 0.52.0",
 ]
 
 [[package]]
@@ -5422,7 +5422,7 @@ version = "0.50.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7957b9740744892f114936ab4a57b3f487491bbeafaf8083688b16841a4240e5"
 dependencies = [
- "windows-sys 0.61.2",
+ "windows-sys 0.59.0",
 ]
 
 [[package]]
@@ -6036,11 +6036,11 @@ dependencies = [
 
 [[package]]
 name = "poly-buildinfo"
-version = "0.35.0"
+version = "0.36.0"
 
 [[package]]
 name = "poly-cache"
-version = "0.35.0"
+version = "0.36.0"
 dependencies = [
  "anyhow",
  "blake3",
@@ -6056,7 +6056,7 @@ dependencies = [
 
 [[package]]
 name = "poly-catalog"
-version = "0.35.0"
+version = "0.36.0"
 dependencies = [
  "anyhow",
  "serde",
@@ -6065,7 +6065,7 @@ dependencies = [
 
 [[package]]
 name = "poly-cli"
-version = "0.35.0"
+version = "0.36.0"
 dependencies = [
  "aho-corasick",
  "alef-component-runtime",
@@ -6108,7 +6108,7 @@ dependencies = [
 
 [[package]]
 name = "poly-component-host"
-version = "0.35.0"
+version = "0.36.0"
 dependencies = [
  "alef-component-abi",
  "alef-component-runtime",
@@ -6134,7 +6134,7 @@ dependencies = [
 
 [[package]]
 name = "poly-component-index"
-version = "0.35.0"
+version = "0.36.0"
 dependencies = [
  "poly-component-protocol",
  "serde",
@@ -6144,7 +6144,7 @@ dependencies = [
 
 [[package]]
 name = "poly-component-protocol"
-version = "0.35.0"
+version = "0.36.0"
 dependencies = [
  "criterion",
  "poly-component-protocol",
@@ -6159,7 +6159,7 @@ dependencies = [
 
 [[package]]
 name = "poly-config"
-version = "0.35.0"
+version = "0.36.0"
 dependencies = [
  "anyhow",
  "blake3",
@@ -6179,7 +6179,7 @@ dependencies = [
 
 [[package]]
 name = "poly-core"
-version = "0.35.0"
+version = "0.36.0"
 dependencies = [
  "alef-component-runtime",
  "anyhow",
@@ -6237,7 +6237,7 @@ dependencies = [
 
 [[package]]
 name = "poly-engine-api"
-version = "0.35.0"
+version = "0.36.0"
 dependencies = [
  "anyhow",
  "blake3",
@@ -6258,7 +6258,7 @@ dependencies = [
 
 [[package]]
 name = "poly-engines"
-version = "0.35.0"
+version = "0.36.0"
 dependencies = [
  "alef-component-abi",
  "anyhow",
@@ -6286,7 +6286,7 @@ dependencies = [
 
 [[package]]
 name = "poly-engines-astgrep"
-version = "0.35.0"
+version = "0.36.0"
 dependencies = [
  "anyhow",
  "ast-grep-config",
@@ -6306,7 +6306,7 @@ dependencies = [
 
 [[package]]
 name = "poly-engines-astgrep-component"
-version = "0.35.0"
+version = "0.36.0"
 dependencies = [
  "alef-component-abi",
  "poly-engines",
@@ -6314,7 +6314,7 @@ dependencies = [
 
 [[package]]
 name = "poly-engines-jsonschema"
-version = "0.35.0"
+version = "0.36.0"
 dependencies = [
  "anyhow",
  "granit-parser",
@@ -6327,7 +6327,7 @@ dependencies = [
 
 [[package]]
 name = "poly-engines-jsonschema-component"
-version = "0.35.0"
+version = "0.36.0"
 dependencies = [
  "alef-component-abi",
  "poly-engines",
@@ -6335,7 +6335,7 @@ dependencies = [
 
 [[package]]
 name = "poly-engines-lua"
-version = "0.35.0"
+version = "0.36.0"
 dependencies = [
  "anyhow",
  "full_moon 2.2.0",
@@ -6351,7 +6351,7 @@ dependencies = [
 
 [[package]]
 name = "poly-engines-lua-component"
-version = "0.35.0"
+version = "0.36.0"
 dependencies = [
  "alef-component-abi",
  "poly-engines",
@@ -6359,7 +6359,7 @@ dependencies = [
 
 [[package]]
 name = "poly-engines-mcp-component"
-version = "0.35.0"
+version = "0.36.0"
 dependencies = [
  "alef-component-abi",
  "poly-engines",
@@ -6367,7 +6367,7 @@ dependencies = [
 
 [[package]]
 name = "poly-engines-misc"
-version = "0.35.0"
+version = "0.36.0"
 dependencies = [
  "anyhow",
  "dockerfile-parser",
@@ -6387,7 +6387,7 @@ dependencies = [
 
 [[package]]
 name = "poly-engines-misc-component"
-version = "0.35.0"
+version = "0.36.0"
 dependencies = [
  "alef-component-abi",
  "poly-engines",
@@ -6395,7 +6395,7 @@ dependencies = [
 
 [[package]]
 name = "poly-engines-nix"
-version = "0.35.0"
+version = "0.36.0"
 dependencies = [
  "alejandra",
  "anyhow",
@@ -6406,7 +6406,7 @@ dependencies = [
 
 [[package]]
 name = "poly-engines-nix-component"
-version = "0.35.0"
+version = "0.36.0"
 dependencies = [
  "alef-component-abi",
  "poly-engines",
@@ -6414,7 +6414,7 @@ dependencies = [
 
 [[package]]
 name = "poly-engines-php"
-version = "0.35.0"
+version = "0.36.0"
 dependencies = [
  "anyhow",
  "insta",
@@ -6435,7 +6435,7 @@ dependencies = [
 
 [[package]]
 name = "poly-engines-php-component"
-version = "0.35.0"
+version = "0.36.0"
 dependencies = [
  "alef-component-abi",
  "poly-engines",
@@ -6443,7 +6443,7 @@ dependencies = [
 
 [[package]]
 name = "poly-engines-prose"
-version = "0.35.0"
+version = "0.36.0"
 dependencies = [
  "anyhow",
  "harper-core",
@@ -6457,7 +6457,7 @@ dependencies = [
 
 [[package]]
 name = "poly-engines-prose-component"
-version = "0.35.0"
+version = "0.36.0"
 dependencies = [
  "alef-component-abi",
  "poly-engines",
@@ -6465,7 +6465,7 @@ dependencies = [
 
 [[package]]
 name = "poly-engines-python"
-version = "0.35.0"
+version = "0.36.0"
 dependencies = [
  "anyhow",
  "globset",
@@ -6495,7 +6495,7 @@ dependencies = [
 
 [[package]]
 name = "poly-engines-python-component"
-version = "0.35.0"
+version = "0.36.0"
 dependencies = [
  "alef-component-abi",
  "poly-engines",
@@ -6503,7 +6503,7 @@ dependencies = [
 
 [[package]]
 name = "poly-engines-sql"
-version = "0.35.0"
+version = "0.36.0"
 dependencies = [
  "anyhow",
  "insta",
@@ -6516,7 +6516,7 @@ dependencies = [
 
 [[package]]
 name = "poly-engines-sql-component"
-version = "0.35.0"
+version = "0.36.0"
 dependencies = [
  "alef-component-abi",
  "poly-engines",
@@ -6524,7 +6524,7 @@ dependencies = [
 
 [[package]]
 name = "poly-engines-typos"
-version = "0.35.0"
+version = "0.36.0"
 dependencies = [
  "anyhow",
  "globset",
@@ -6540,7 +6540,7 @@ dependencies = [
 
 [[package]]
 name = "poly-engines-typos-component"
-version = "0.35.0"
+version = "0.36.0"
 dependencies = [
  "alef-component-abi",
  "poly-engines",
@@ -6548,7 +6548,7 @@ dependencies = [
 
 [[package]]
 name = "poly-engines-uncomment"
-version = "0.35.0"
+version = "0.36.0"
 dependencies = [
  "anyhow",
  "insta",
@@ -6561,7 +6561,7 @@ dependencies = [
 
 [[package]]
 name = "poly-engines-uncomment-component"
-version = "0.35.0"
+version = "0.36.0"
 dependencies = [
  "alef-component-abi",
  "poly-engines",
@@ -6569,7 +6569,7 @@ dependencies = [
 
 [[package]]
 name = "poly-frontend-api"
-version = "0.35.0"
+version = "0.36.0"
 dependencies = [
  "anyhow",
  "schemars 1.2.3",
@@ -6579,7 +6579,7 @@ dependencies = [
 
 [[package]]
 name = "poly-grammar"
-version = "0.35.0"
+version = "0.36.0"
 dependencies = [
  "poly-config",
  "thiserror 2.0.21",
@@ -6588,7 +6588,7 @@ dependencies = [
 
 [[package]]
 name = "poly-hooks"
-version = "0.35.0"
+version = "0.36.0"
 dependencies = [
  "anstyle-query",
  "anyhow",
@@ -6623,7 +6623,7 @@ dependencies = [
 
 [[package]]
 name = "poly-host-services"
-version = "0.35.0"
+version = "0.36.0"
 dependencies = [
  "alef-component-runtime",
  "anyhow",
@@ -6647,12 +6647,13 @@ dependencies = [
 
 [[package]]
 name = "poly-mcp"
-version = "0.35.0"
+version = "0.36.0"
 dependencies = [
  "anyhow",
  "blake3",
  "insta",
  "poly-buildinfo",
+ "poly-cache",
  "poly-core",
  "poly-frontend-api",
  "poly-host-services",
@@ -6667,7 +6668,7 @@ dependencies = [
 
 [[package]]
 name = "poly-workspace"
-version = "0.35.0"
+version = "0.36.0"
 dependencies = [
  "anyhow",
  "blake3",
@@ -7053,7 +7054,7 @@ dependencies = [
  "once_cell",
  "socket2",
  "tracing",
- "windows-sys 0.61.2",
+ "windows-sys 0.52.0",
 ]
 
 [[package]]
@@ -7410,9 +7411,9 @@ dependencies = [
 
 [[package]]
 name = "rmcp"
-version = "3.10.0"
+version = "3.11.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b5949e504d5ab9944a168259afc0c39ac0230627b6ec5367ace194c59bcbe163"
+checksum = "391f153431ab68664d946513ea0cb3edbca78eaf99c5a983036cacab6220d85b"
 dependencies = [
  "base64 0.23.1",
  "chrono",
@@ -7420,6 +7421,7 @@ dependencies = [
  "indexmap 2.14.2",
  "libc",
  "pastey",
+ "percent-encoding",
  "pin-project-lite",
  "rmcp-macros",
  "schemars 1.2.3",
@@ -7431,14 +7433,16 @@ dependencies = [
  "tokio-stream",
  "tokio-util",
  "tracing",
+ "unicode-general-category",
+ "unicode-normalization",
  "uuid",
 ]
 
 [[package]]
 name = "rmcp-macros"
-version = "3.10.0"
+version = "3.11.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b98a686693ee91b665c6f89f182fca6e141c8a63dc113b11b38c1bf3491606b7"
+checksum = "3598e3f36f4af2b5219b133baf7d97a2197039225adc3d4acf3dd8805b5a2aef"
 dependencies = [
  "darling 0.24.1",
  "proc-macro2",
@@ -8030,7 +8034,7 @@ dependencies = [
  "errno",
  "libc",
  "linux-raw-sys",
- "windows-sys 0.61.2",
+ "windows-sys 0.52.0",
 ]
 
 [[package]]
@@ -8088,7 +8092,7 @@ dependencies = [
  "security-framework",
  "security-framework-sys",
  "webpki-root-certs",
- "windows-sys 0.61.2",
+ "windows-sys 0.52.0",
 ]
 
 [[package]]
@@ -8351,7 +8355,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d43fb82d550b07e6f929a58d7d0935182602f48ddead875f5ee313c41c8f07fe"
 dependencies = [
  "annotate-snippets 0.12.18",
- "base64 0.23.1",
+ "base64 0.22.1",
  "encoding_rs_io",
  "granit-parser",
  "nohash-hasher",
@@ -9063,10 +9067,10 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "32497e9a4c7b38532efcdebeef879707aa9f794296a4f0244f6f69e9bc8574bd"
 dependencies = [
  "fastrand",
- "getrandom 0.4.3",
+ "getrandom 0.3.4",
  "once_cell",
  "rustix",
- "windows-sys 0.61.2",
+ "windows-sys 0.52.0",
 ]
 
 [[package]]
@@ -9094,7 +9098,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "230a1b821ccbd75b185820a1f1ff7b14d21da1e442e22c0863ea5f08771a8874"
 dependencies = [
  "rustix",
- "windows-sys 0.61.2",
+ "windows-sys 0.59.0",
 ]
 
 [[package]]
@@ -10658,7 +10662,7 @@ version = "0.1.11"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c2a7b1c03c876122aa43f3020e6c3c3ee5c05081c9a00739faf7503aeba10d22"
 dependencies = [
- "windows-sys 0.61.2",
+ "windows-sys 0.48.0",
 ]
 
 [[package]]
@@ -10723,19 +10727,6 @@ dependencies = [
  "windows-link 0.1.3",
  "windows-result 0.3.4",
  "windows-strings 0.4.2",
-]
-
-[[package]]
-name = "windows-core"
-version = "0.62.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b8e83a14d34d0623b51dce9581199302a221863196a1dde71a7663a4c2be9deb"
-dependencies = [
- "windows-implement 0.60.2",
- "windows-interface 0.59.3",
- "windows-link 0.2.1",
- "windows-result 0.4.1",
- "windows-strings 0.5.1",
 ]
 
 [[package]]
@@ -10834,15 +10825,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "windows-result"
-version = "0.4.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "7781fa89eaf60850ac3d2da7af8e5242a5ea78d1a11c49bf2910bb5a73853eb5"
-dependencies = [
- "windows-link 0.2.1",
-]
-
-[[package]]
 name = "windows-strings"
 version = "0.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -10859,15 +10841,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "56e6c93f3a0c3b36176cb1327a4958a0353d5d166c2a35cb268ace15e91d3b57"
 dependencies = [
  "windows-link 0.1.3",
-]
-
-[[package]]
-name = "windows-strings"
-version = "0.5.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "7837d08f69c77cf6b07689544538e017c1bfcf57e34b4c0ff58e6c2cd3b37091"
-dependencies = [
- "windows-link 0.2.1",
 ]
 
 [[package]]

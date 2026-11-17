@@ -45,7 +45,8 @@ use crate::components::ResolvedComponents;
 use crate::config::{EngineConfig, Kind};
 use crate::discover::DiscoveredFile;
 use crate::engine::{
-    Diagnostic, ENABLED_OPTION_KEY, Engine, EngineCache, ProjectEnvironment, ProjectFile, ProjectRequest, WireSelection,
+    Diagnostic, ENABLED_OPTION_KEY, Engine, EngineCache, ProjectEnvironment, ProjectFile, ProjectReport,
+    ProjectRequest, WireSelection,
 };
 use crate::engine_guard::guard_engine_panic;
 use crate::filter::{PerFileIgnores, is_binary, is_generated_source};
@@ -123,7 +124,8 @@ pub(super) struct ProjectOutcome {
     pub(super) errors: Vec<LintError>,
     /// Per engine that ran, the files it was handed.
     pub(super) reads: Vec<(&'static str, Vec<PathBuf>)>,
-    /// Selections the run asked for that left nothing to run, charged to the skip budget.
+    /// Selections the run asked for that left nothing to run, and projects an engine declined (ADR 0079), charged
+    /// to the skip budget.
     pub(super) skips: Vec<SkippedFile>,
 }
 
@@ -658,8 +660,11 @@ impl<'a> RunInputs<'a> {
     }
 }
 
-/// An engine's findings for `loaded` (for `targets` when set), from the cache when it holds them, else by
+/// An engine's report for `loaded` (for `targets` when set), from the cache when it holds findings, else by
 /// running the check.
+///
+/// A decline is not cached: the cache holds findings, and an engine decides to decline before it checks
+/// anything, so asking again costs little and keeps the skip in every run's report.
 fn report_for(
     plan: &ProjectPlan,
     root: &Path,
@@ -667,7 +672,7 @@ fn report_for(
     targets: Option<&[PathBuf]>,
     environment: &ProjectEnvironment,
     cache: &ResultCache,
-) -> Result<Vec<(PathBuf, Vec<Diagnostic>)>, LintError> {
+) -> Result<ProjectReport, LintError> {
     let key = cache
         .enabled()
         .then(|| cache_key(plan, root, loaded, targets, environment));
@@ -680,7 +685,7 @@ fn report_for(
         .and_then(|bytes| serde_json::from_slice::<Vec<(PathBuf, Vec<Diagnostic>)>>(&bytes).ok())
         .map(|stored| key_inputs::from_stored(root, loaded, stored));
     if let Some(reported) = cached {
-        return Ok(reported);
+        return Ok(ProjectReport::Checked(reported));
     }
     // The engine's own cache lives in this run's cache, so `--no-cache` and `[cache] dir` reach it too (ADR 0080).
     let engine_cache = cache.enabled().then(|| EngineCache {
@@ -696,20 +701,23 @@ fn report_for(
         targets,
         cache: engine_cache.as_ref(),
     };
-    let reported =
-        guard_engine_panic(plan.engine.name(), root, || plan.engine.project_check(&request)).map_err(|error| {
+    let report =
+        guard_engine_panic(plan.engine.name(), root, || plan.engine.project_report(&request)).map_err(|error| {
             LintError {
                 path: root.to_path_buf(),
                 message: format!("project check '{}' failed: {error:#}", plan.engine.name()),
             }
         })?;
+    let ProjectReport::Checked(reported) = report else {
+        return Ok(report);
+    };
     if let Some(key) = &key
         && let Ok(bytes) = serde_json::to_vec(&key_inputs::to_stored(root, &reported))
         && let Err(error) = cache.put(Namespace::Lint, key, &bytes)
     {
         tracing::debug!(%error, "project check: result not cached");
     }
-    Ok(reported)
+    Ok(ProjectReport::Checked(reported))
 }
 
 /// Which config governs each file a whole-tree plan reports on, and how that config remaps severities.

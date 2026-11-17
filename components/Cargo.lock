@@ -7614,11 +7614,11 @@ checksum = "f6b464fbc74e149a392436b17d523f769e057cb6877f6a5c4618bc6f11800548"
 
 [[package]]
 name = "poly-buildinfo"
-version = "0.35.0"
+version = "0.36.0"
 
 [[package]]
 name = "poly-bundled"
-version = "0.35.0"
+version = "0.36.0"
 dependencies = [
  "adrlint",
  "poly-cli",
@@ -7632,7 +7632,7 @@ dependencies = [
 
 [[package]]
 name = "poly-cache"
-version = "0.35.0"
+version = "0.36.0"
 dependencies = [
  "anyhow",
  "blake3",
@@ -7647,7 +7647,7 @@ dependencies = [
 
 [[package]]
 name = "poly-catalog"
-version = "0.35.0"
+version = "0.36.0"
 dependencies = [
  "anyhow",
  "serde",
@@ -7656,7 +7656,7 @@ dependencies = [
 
 [[package]]
 name = "poly-cli"
-version = "0.35.0"
+version = "0.36.0"
 dependencies = [
  "aho-corasick",
  "alef-component-runtime",
@@ -7696,7 +7696,7 @@ dependencies = [
 
 [[package]]
 name = "poly-component-host"
-version = "0.35.0"
+version = "0.36.0"
 dependencies = [
  "alef-component-abi",
  "alef-component-runtime",
@@ -7711,7 +7711,7 @@ dependencies = [
 
 [[package]]
 name = "poly-component-index"
-version = "0.35.0"
+version = "0.36.0"
 dependencies = [
  "poly-component-protocol",
  "serde",
@@ -7721,7 +7721,7 @@ dependencies = [
 
 [[package]]
 name = "poly-component-protocol"
-version = "0.35.0"
+version = "0.36.0"
 dependencies = [
  "rmp-serde",
  "serde",
@@ -7732,7 +7732,7 @@ dependencies = [
 
 [[package]]
 name = "poly-config"
-version = "0.35.0"
+version = "0.36.0"
 dependencies = [
  "anyhow",
  "blake3",
@@ -7750,7 +7750,7 @@ dependencies = [
 
 [[package]]
 name = "poly-core"
-version = "0.35.0"
+version = "0.36.0"
 dependencies = [
  "anyhow",
  "blake3",
@@ -7802,7 +7802,7 @@ dependencies = [
 
 [[package]]
 name = "poly-engine-api"
-version = "0.35.0"
+version = "0.36.0"
 dependencies = [
  "anyhow",
  "blake3",
@@ -7822,7 +7822,7 @@ dependencies = [
 
 [[package]]
 name = "poly-engines"
-version = "0.35.0"
+version = "0.36.0"
 dependencies = [
  "anyhow",
  "poly-component-protocol",
@@ -7834,7 +7834,7 @@ dependencies = [
 
 [[package]]
 name = "poly-engines-astgrep"
-version = "0.35.0"
+version = "0.36.0"
 dependencies = [
  "anyhow",
  "ast-grep-config",
@@ -7852,7 +7852,7 @@ dependencies = [
 
 [[package]]
 name = "poly-engines-biome"
-version = "0.35.0"
+version = "0.36.0"
 dependencies = [
  "anyhow",
  "biome_analyze",
@@ -7879,7 +7879,7 @@ dependencies = [
 
 [[package]]
 name = "poly-engines-biome-component"
-version = "0.35.0"
+version = "0.36.0"
 dependencies = [
  "alef-component-abi",
  "poly-engines",
@@ -7888,7 +7888,7 @@ dependencies = [
 
 [[package]]
 name = "poly-engines-jsonschema"
-version = "0.35.0"
+version = "0.36.0"
 dependencies = [
  "anyhow",
  "granit-parser",
@@ -7900,7 +7900,7 @@ dependencies = [
 
 [[package]]
 name = "poly-engines-lua"
-version = "0.35.0"
+version = "0.36.0"
 dependencies = [
  "anyhow",
  "full_moon 2.2.0",
@@ -7914,7 +7914,7 @@ dependencies = [
 
 [[package]]
 name = "poly-engines-misc"
-version = "0.35.0"
+version = "0.36.0"
 dependencies = [
  "anyhow",
  "dockerfile-parser",
@@ -7933,7 +7933,7 @@ dependencies = [
 
 [[package]]
 name = "poly-engines-nix"
-version = "0.35.0"
+version = "0.36.0"
 dependencies = [
  "alejandra",
  "anyhow",
@@ -7943,7 +7943,7 @@ dependencies = [
 
 [[package]]
 name = "poly-engines-php"
-version = "0.35.0"
+version = "0.36.0"
 dependencies = [
  "anyhow",
  "mago-allocator",
@@ -7963,7 +7963,7 @@ dependencies = [
 
 [[package]]
 name = "poly-engines-prose"
-version = "0.35.0"
+version = "0.36.0"
 dependencies = [
  "anyhow",
  "harper-core",
@@ -7976,7 +7976,7 @@ dependencies = [
 
 [[package]]
 name = "poly-engines-python"
-version = "0.35.0"
+version = "0.36.0"
 dependencies = [
  "anyhow",
  "globset",
@@ -8004,7 +8004,7 @@ dependencies = [
 
 [[package]]
 name = "poly-engines-ruby"
-version = "0.35.0"
+version = "0.36.0"
 dependencies = [
  "anyhow",
  "insta",
@@ -8021,7 +8021,7 @@ dependencies = [
 
 [[package]]
 name = "poly-engines-ruby-component"
-version = "0.35.0"
+version = "0.36.0"
 dependencies = [
  "alef-component-abi",
  "poly-engines",
@@ -8030,7 +8030,7 @@ dependencies = [
 
 [[package]]
 name = "poly-engines-sql"
-version = "0.35.0"
+version = "0.36.0"
 dependencies = [
  "anyhow",
  "poly-engine-api",
@@ -8042,7 +8042,7 @@ dependencies = [
 
 [[package]]
 name = "poly-engines-typos"
-version = "0.35.0"
+version = "0.36.0"
 dependencies = [
  "anyhow",
  "globset",
@@ -8057,7 +8057,7 @@ dependencies = [
 
 [[package]]
 name = "poly-engines-uncomment"
-version = "0.35.0"
+version = "0.36.0"
 dependencies = [
  "anyhow",
  "poly-engine-api",
@@ -8069,7 +8069,7 @@ dependencies = [
 
 [[package]]
 name = "poly-engines-web"
-version = "0.35.0"
+version = "0.36.0"
 dependencies = [
  "adrlint",
  "anyhow",
@@ -8111,7 +8111,7 @@ dependencies = [
 
 [[package]]
 name = "poly-engines-web-component"
-version = "0.35.0"
+version = "0.36.0"
 dependencies = [
  "alef-component-abi",
  "poly-engines",
@@ -8120,7 +8120,7 @@ dependencies = [
 
 [[package]]
 name = "poly-frontend-api"
-version = "0.35.0"
+version = "0.36.0"
 dependencies = [
  "anyhow",
  "schemars 1.2.3",
@@ -8130,7 +8130,7 @@ dependencies = [
 
 [[package]]
 name = "poly-grammar"
-version = "0.35.0"
+version = "0.36.0"
 dependencies = [
  "poly-config",
  "thiserror 2.0.21",
@@ -8139,7 +8139,7 @@ dependencies = [
 
 [[package]]
 name = "poly-hooks"
-version = "0.35.0"
+version = "0.36.0"
 dependencies = [
  "anstyle-query",
  "anyhow",
@@ -8172,7 +8172,7 @@ dependencies = [
 
 [[package]]
 name = "poly-host-services"
-version = "0.35.0"
+version = "0.36.0"
 dependencies = [
  "anyhow",
  "poly-cache",
@@ -8190,7 +8190,7 @@ dependencies = [
 
 [[package]]
 name = "poly-mcp"
-version = "0.35.0"
+version = "0.36.0"
 dependencies = [
  "anyhow",
  "blake3",
@@ -8206,7 +8206,7 @@ dependencies = [
 
 [[package]]
 name = "poly-workspace"
-version = "0.35.0"
+version = "0.36.0"
 dependencies = [
  "anyhow",
  "blake3",

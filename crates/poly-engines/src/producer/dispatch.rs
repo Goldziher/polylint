@@ -10,7 +10,7 @@ use poly_engine_api::component_wire::wire_diagnostic;
 use poly_engine_api::config::EngineConfig;
 use poly_engine_api::declined::Declined;
 use poly_engine_api::engine::{
-    Engine, EngineCache, FormatOutput, ProjectEnvironment, ProjectFile, ProjectRequest, SourceFile,
+    Engine, EngineCache, FormatOutput, ProjectEnvironment, ProjectFile, ProjectReport, ProjectRequest, SourceFile,
 };
 
 use super::describe::TABLES;
@@ -210,7 +210,10 @@ impl Producer {
                     targets: targets.as_deref(),
                     cache: cache.as_ref(),
                 };
-                let per_file = guarded(engine.name(), || engine.project_check(&request))?;
+                let per_file = match guarded(engine.name(), || engine.project_report(&request))? {
+                    ProjectReport::Checked(per_file) => per_file,
+                    ProjectReport::Declined(reason) => return Ok(Payload::ProjectDeclined(reason)),
+                };
                 Ok(Payload::Project(
                     per_file
                         .iter()

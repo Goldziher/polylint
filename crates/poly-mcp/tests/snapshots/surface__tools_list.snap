@@ -333,7 +333,7 @@ expression: projection
           }
         },
         "config": {
-          "description": "`components_install`: config file used to judge `paths`.",
+          "description": "Config file: `components_install` judges `paths` by it; the cache actions use its `[cache] dir`.",
           "type": "string"
         },
         "dry_run": {

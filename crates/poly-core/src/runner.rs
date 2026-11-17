@@ -131,7 +131,7 @@ fn lint_run_here(
 ) -> anyhow::Result<LintRun> {
     start_timings(opts);
     configure_pool(opts);
-    let cache = open_cache(!opts.no_cache)?;
+    let cache = open_cache(config, !opts.no_cache)?;
     let phase = timings::phase("config resolve");
     let configs = build_config_set(paths, config, opts)?;
     let selection = EngineSelection::new(&opts.only, &opts.skip);
@@ -525,7 +525,7 @@ fn format_run_here(
 ) -> anyhow::Result<FormatRun> {
     start_timings(opts);
     configure_pool(opts);
-    let cache = open_cache(!opts.no_cache)?;
+    let cache = open_cache(config, !opts.no_cache)?;
     let explicit: FxHashSet<&std::path::Path> = paths.iter().map(PathBuf::as_path).collect();
     let phase = timings::phase("config resolve");
     let configs = build_config_set(paths, config, opts)?;
@@ -738,13 +738,15 @@ const WORKER_STACK_SIZE: usize = 16 * 1024 * 1024;
 
 static POOL_JOBS: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
 
-/// The result cache of the run's root: the process working directory, or the root
-/// [`rooted`] entered (a child started there would have opened that one).
-fn open_cache(enabled: bool) -> anyhow::Result<ResultCache> {
-    match poly_engine_api::run_root::get() {
-        Some(root) => ResultCache::open_from(&root, enabled),
-        None => ResultCache::open_default(enabled),
-    }
+/// The result cache of the run: `[cache] dir` when the config names one, else the cache of the run's
+/// root, the process working directory or the root [`rooted`] entered (a child started there would
+/// have opened that one).
+fn open_cache(config: &Config, enabled: bool) -> anyhow::Result<ResultCache> {
+    let start = match poly_engine_api::run_root::get() {
+        Some(root) => root.to_path_buf(),
+        None => std::env::current_dir().map_err(|e| anyhow::anyhow!("could not read current directory: {e}"))?,
+    };
+    ResultCache::open_for_run(config.cache_dir.as_deref(), &start, enabled && config.cache_enabled)
 }
 
 /// Size the global pool once. A rooted run brings a pool of its own ([`rooted`]).

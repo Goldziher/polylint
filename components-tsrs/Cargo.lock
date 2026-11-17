@@ -816,7 +816,7 @@ dependencies = [
 
 [[package]]
 name = "poly-catalog"
-version = "0.35.0"
+version = "0.36.0"
 dependencies = [
  "anyhow",
  "serde",
@@ -825,7 +825,7 @@ dependencies = [
 
 [[package]]
 name = "poly-component-host"
-version = "0.35.0"
+version = "0.36.0"
 dependencies = [
  "alef-component-abi",
  "alef-component-runtime",
@@ -840,7 +840,7 @@ dependencies = [
 
 [[package]]
 name = "poly-component-index"
-version = "0.35.0"
+version = "0.36.0"
 dependencies = [
  "poly-component-protocol",
  "serde",
@@ -850,7 +850,7 @@ dependencies = [
 
 [[package]]
 name = "poly-component-protocol"
-version = "0.35.0"
+version = "0.36.0"
 dependencies = [
  "rmp-serde",
  "serde",
@@ -861,7 +861,7 @@ dependencies = [
 
 [[package]]
 name = "poly-config"
-version = "0.35.0"
+version = "0.36.0"
 dependencies = [
  "anyhow",
  "blake3",
@@ -879,7 +879,7 @@ dependencies = [
 
 [[package]]
 name = "poly-engine-api"
-version = "0.35.0"
+version = "0.36.0"
 dependencies = [
  "anyhow",
  "blake3",
@@ -898,7 +898,7 @@ dependencies = [
 
 [[package]]
 name = "poly-engines"
-version = "0.35.0"
+version = "0.36.0"
 dependencies = [
  "anyhow",
  "poly-component-protocol",
@@ -910,7 +910,7 @@ dependencies = [
 
 [[package]]
 name = "poly-engines-tsrs"
-version = "0.35.0"
+version = "0.36.0"
 dependencies = [
  "anyhow",
  "poly-component-host",
@@ -932,11 +932,29 @@ dependencies = [
 
 [[package]]
 name = "poly-engines-tsrs-component"
-version = "0.35.0"
+version = "0.36.0"
 dependencies = [
  "alef-component-abi",
  "poly-engines",
  "poly-engines-tsrs",
+]
+
+[[package]]
+name = "polylint-js-types"
+version = "0.1.0"
+dependencies = [
+ "polylint-tsrs",
+ "rayon",
+ "rustc-hash",
+ "tempfile",
+ "thiserror",
+ "tsrs_ast",
+ "tsrs_checker",
+ "tsrs_compiler",
+ "tsrs_core",
+ "tsrs_scanner",
+ "tsrs_tsoptions",
+ "tsrs_vfs",
 ]
 
 [[package]]

@@ -18,10 +18,12 @@ same `install.sh`), Homebrew (`brew install polylint/tap/polylint`), Scoop
 (`polylint/scoop-bucket`, `scoop install poly`), **npm (`@polylint/polylint`)** and **PyPI
 (`polylint`)**. The release artifacts are named `poly-<version>-<triple>.tar.gz` (`.zip` on
 Windows), five targets, plus a `sha256sums.txt`; every other channel serves those same archives.
-We do **NOT publish to crates.io** — our crates depend on pinned git dependencies (**oxc, biome,
+poly itself is **NOT published to crates.io** — its crates depend on pinned git dependencies (**oxc, biome,
 rubyfmt** — see the `allow-git` lists in `deny.toml` and `components/deny.toml`), which crates.io forbids in published crates, and we
-have no need for a source-distribution channel. Ruff is **not** a git pin: since 2026-08-29 the
-ruff crates come from crates.io at exact `=` versions (ADR 0003's "Amendment — 2026-08-29"); the
+have no need for a source-distribution channel. The one exception is the library crates under
+`components-tsrs/crates/polylint-*` (ADR 0078/0081): their only dependencies are registry `tsrs_*` crates, they are
+published to crates.io, and each carries its own `0.x` version outside the lock-step release.
+Ruff is **not** a git pin: since 2026-08-29 the ruff crates come from crates.io at exact `=` versions (ADR 0003's "Amendment — 2026-08-29"); the
 `=` is deliberate, since those are unsemvered internals.
 
 **The command is `poly` on every channel.** The npm and PyPI packages are named `polylint`
@@ -94,7 +96,10 @@ lock-step surface, not a separately tracked version. So do the wrapper packages:
   The workflow checks the rendered hash against `sha256sums.txt` and fails the job if a manifest
   lost its two-entry `bin` array — losing `bin` is silent, since `scoop install` still succeeds
   and produces no command. Only `x86_64-pc-windows-msvc` exists; do not invent an `arm64` block.
-- We do not publish to crates.io; the prebuilt binary is the only thing any channel ships.
+- poly is not published to crates.io; the prebuilt binary is the only thing any channel ships. The
+  `components-tsrs/crates/polylint-*` libraries (ADR 0078/0081) are published by hand or by trusted publishing,
+  outside `publish.yaml`, when their API or the tsrs pin moves. `release:bump` never touches their versions: it
+  rewrites only the `[workspace.package]` line of `components-tsrs/Cargo.toml`, which they do not inherit.
 - Commit `Cargo.lock` and pin git-dependency `rev`s (all crates from one monorepo share a `rev`)
   so a tagged build is reproducible.
 - `mise run release:bump <version>` bumps `Cargo.toml`, the npm and PyPI manifests, and
