@@ -129,12 +129,9 @@ Per-language resolution order:
    maintenance sink. Strict discipline keeps the exception honest:
 
    - **`rustfmt`, `gofmt`, `shellcheck` and `shfmt` are default-on when present; everything
-     else is opt-in.** `rustfmt`/`gofmt` per ADR 0014's 2026-06-28 amendment, the shell pair per
-     the 2026-08-29 / 2026-09-15 ones (shell has no first-party tool); the rest stay opt-in via
-     `[engines.<tool>] enabled = true`. Output then depends on the host tool's presence and
-     version, which is at odds with reproducibility — so CI must pin the toolchain. Either way,
-     when the tool is absent the language falls through to tier-2, so the zero-dependency promise
-     is intact for anyone without the toolchain installed.
+     else is opt-in.** Per ADR 0014's amendments; the rest are enabled with
+     `[engines.<tool>] enabled = true`. Output depends on the host tool's presence and version,
+     so CI must pin the toolchain. When the tool is absent the language falls through to tier-2.
    - **Capability-gated, graceful degradation.** Probe for the tool once (cached); declare the
      `format`/`lint` capability only when it is found *and* enabled; otherwise the language
      falls through to tier-2. A missing toolchain is never an error — just lower fidelity, which
@@ -163,35 +160,20 @@ warning, opt-in via `[engines.typos] enabled = true`), `astgrep`, `uncomment` (o
 Two of them carry poly's lint coverage for languages no tier-1 backend reaches:
 
 - **`quality/` — the code-quality tier (ADR 0027).** Tree-sitter metric rules at *warning*
-  severity, on by default: `file-too-long` (1000), `function-too-long` (80), `type-too-long`
-  (300), `too-many-parameters` (6), `nesting-too-deep` (4), `cyclomatic-complexity` (20),
-  `lazy-ignore`; `magic-number` and `law-of-demeter` ship opt-in; path-only
-  `uncollected-test-file` (ADR 0036) is on for Python, Go and Ruby. A **per-language deferral
-  table** (`quality/family.rs`) keeps the tier from ever duplicating a tier-1 rule (ruff's
-  `C901`/`PLR0913`, oxlint's `max-depth`/`max-params`). It claims no lint coverage (ADR 0053).
-  Where poly has both a definition query (`definitions::has_query`) **and** a construct table
-  (`kinds::has_table`) — Python, Rust, Go, JavaScript, TypeScript, TSX, Java, Kotlin, C, C++,
-  C#, Ruby Other grammars (Zig, Swift, Dart, Gleam, Elixir, PHP, Nix, Scala, Lua, R) still *report* the line-count
-  floor and get the plain `no lint rules for <language>` skip.
-- **`poly-engines-astgrep/src/builtin/` — the built-in ast-grep rule pack (ADR 0029).** 42 rules across 9
-  languages (C#, Elixir, Go, Java, Kotlin, Python, Ruby, Rust, Swift), each a YAML file embedded
-  with `include_str!` and compiled once into a `OnceLock`. Pack rules go through the same
-  `ast_grep_config::from_yaml_string` path as user rules and sit **beneath** them — a user rule
-  with the same `id` replaces the pack's outright. Each rule authors its own default `severity:`,
-  including `off`; 26 of the 42 ship `off`. `[engines.astgrep]` `select`/`extend_select`/`ignore`
-  and `[engines.astgrep.rules.<id>] level` move any of them; `builtin_pack = false` in the same
-  table disables the pack wholesale, and `rule_dirs` names the user rule directories. A
-  rule whose findings concentrate in generated or test code declares its own default path
-  exclusions with the standard ast-grep `ignores:` key in its YAML (four rules do today);
-  `crates/poly-engines-astgrep/src/exclusions.rs` collects them per config and the runner merges them into
-  `PerFileIgnores` as **defaults** — a `[per_file_ignores]` entry naming the rule replaces them
-  outright. Every finding they drop appears in the run's `suppressed` list.
+  severity (rules and thresholds: the `poly` context). A **per-language deferral table**
+  (`quality/family.rs`) keeps the tier from duplicating a tier-1 rule (ruff's `C901`/`PLR0913`,
+  oxlint's `max-depth`/`max-params`). It claims no lint coverage (ADR 0053). The structural rules
+  run where poly has both a definition query (`definitions::has_query`) and a construct table
+  (`kinds::has_table`); other grammars report only the line-count floor and get the plain
+  `no lint rules for <language>` skip.
+- **`poly-engines-astgrep/src/builtin/` — the built-in ast-grep rule pack (ADR 0029).** Each rule
+  is a YAML file embedded with `include_str!` and compiled once into a `OnceLock`, through the
+  same `ast_grep_config::from_yaml_string` path as user rules, which sit above it (counts and
+  config keys: the `poly` context). A rule may declare default path exclusions with the ast-grep
+  `ignores:` key; `crates/poly-engines-astgrep/src/exclusions.rs` collects them and the runner
+  merges them into `PerFileIgnores` as **defaults** that a `[per_file_ignores]` entry naming the
+  rule replaces. Every finding they drop appears in the run's `suppressed` list.
 
 Both answer `provides_language_lint` from the same lookup their `lint` performs, never from "the
 engine is switched on".
 
-## Tests
-
-- `crates/poly-core/tests/pipeline.rs` — end-to-end pipeline contract.
-- Per-backend `insta` fixtures: a known-bad file (expected `Diagnostic`s) and a
-  known-unformatted file (exact formatted output).

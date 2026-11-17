@@ -130,8 +130,5 @@ x-ai-rulez:
 Result caching is **not** in this crate: it lives in `crates/poly-cache` (`ResultCache`), a
 blake3 content-hash cache whose key is `blake3(cache format version \0 build identity \0
 namespace \0 engine name \0 engine version \0 toml(resolved engine config) \0 input digest)`.
-The cache lives in the
-per-user OS cache dir (`~/.cache/poly/<repo-key>`, `~/Library/Caches/poly/…`,
-`%LOCALAPPDATA%\poly\…`) resolved via `etcetera`, overridable with `POLY_CACHE_HOME` or pinned
-via `[cache] dir`; `--no-cache` bypasses.
+Its location and overrides: the `poly` context.
 

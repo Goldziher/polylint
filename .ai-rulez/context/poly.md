@@ -58,9 +58,8 @@ found clean produces no `results` entry at all, and a file can appear in both `r
 synthetic entry with empty diagnostics) and in the top-level `skipped`/`errors` arrays (redundant on
 purpose). `configs` holds one `ConfigFingerprint` per directory-scoped
 config that governed the run, indexed by each result's `config` field. `degraded` (omitted when
-empty) lists `{tool, language, reason, files}` for each configured or default-on native tool that
-was not on `PATH`: its files were formatted by the generic tier or linted without it, so they count
-as checked and not as skipped (ADR 0075); the pretty summary prints one line per tool.
+empty) lists `{tool, language, reason, files}` for each wanted native tool missing from `PATH`: its
+files were handled without it and count as checked, not skipped (ADR 0075).
 
 ## Whole-project lint phase
 
@@ -98,10 +97,8 @@ and the `poly mcp` `workspace_lint` tools.
 
 ## Agent distribution
 
-Public plugin content lives in `plugin/.ai-rulez/`, contributor content in the root `.ai-rulez/`.
-`ai-rulez generate --plugin` emits the runtime profiles under `plugin/`;
-`mise run plugin:sync-skills` mirrors the public skills to `skills/`; versions follow
-`mise run release:bump`.
+Public plugin content lives in `plugin/.ai-rulez/` (layout and regeneration: the `crate-layout`
+context); `mise run plugin:sync-skills` mirrors the public skills to `skills/`.
 
 ## Configuration
 
@@ -137,12 +134,11 @@ Beyond the per-language backends, two cross-cutting lint mechanisms run on by de
   `C901`/`PLR0913`, oxlint `max-depth`/`max-params`). It never claims lint *coverage* (ADR 0053): a file
   only `quality` covers (today C and C++) is skipped as `no lint rules for <language> (quality metrics only)`,
   not counted `checked` and charged to `--deny-skips`; its warnings still report.
-- **The built-in ast-grep rule pack** (ADR 0029) — 42 rules across C#, Elixir, Go, Java, Kotlin,
-  Python, Ruby, Rust and Swift, embedded in the binary and loaded through the same parse path as
-  user rules. It sits *beneath* `[engines.astgrep] rule_dirs` (default `[".poly/rules"]`; a user
-  rule with the same `id` replaces a pack rule); `builtin_pack = false` disables the pack
-  wholesale. Each rule carries its own `severity:`, 26 of the 42 `off`; `select`/`extend_select`/
-  `ignore` and `[engines.astgrep.rules.<id>] level` move individual rules.
+- **The built-in ast-grep rule pack** (ADR 0029) — 42 rules across 9 languages, embedded in the
+  binary. It sits *beneath* `[engines.astgrep] rule_dirs` (default `[".poly/rules"]`; a user
+  rule with the same `id` replaces a pack rule); `builtin_pack = false` disables it. Each rule
+  carries its own `severity:`, 26 of the 42 `off`; `select`/`extend_select`/`ignore` and
+  `[engines.astgrep.rules.<id>] level` move individual rules.
 
 ## Inline suppression
 
@@ -152,7 +148,7 @@ An `allow` on a comment-only line covers the next non-blank line; trailing after
 that line; `allow-file` covers the whole file, and is the only form that can suppress a
 span-less diagnostic. `RULE` may be a list, or `*` for every rule. **A reason is mandatory**: a
 directive with no alphanumeric text after `]` does not suppress at all and reports `lazy-ignore`
-instead. The filter is applied centrally in the runner, so every engine inherits it. The file-glob
+instead. The file-glob
 mechanism `[per_file_ignores]` (ADR 0017) still exists for whole-file exemptions.
 
 ## Exit codes
