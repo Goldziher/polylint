@@ -11,7 +11,6 @@
 //! `embedded_language_formatting` (`"off"` keeps fences and front matter as written) and the
 //! `embedded` option overlays.
 
-
 use oxc_allocator::Allocator;
 use oxc_formatter_core::{FormatOptions, FormatSession, InputKind, SessionServices};
 use oxc_formatter_markdown::{MarkdownFormatOptions, ProseWrap};
