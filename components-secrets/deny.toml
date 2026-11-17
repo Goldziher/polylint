@@ -37,8 +37,16 @@ wildcards = "allow"
 version = 2
 # Maintenance notices, not vulnerabilities, on dependencies of kingfisher that this workspace cannot change:
 # `anymap2` (via liquid-core of kingfisher-rules), `term_size` (via tokei of kingfisher-core) and
-# `serde_yaml` -> `unsafe-libyaml` (kingfisher-rules).
-ignore = ["RUSTSEC-2026-0319", "RUSTSEC-2020-0163", "RUSTSEC-2024-0449"]
+# `serde_yaml` -> `unsafe-libyaml` (kingfisher-rules); and `chrono`, `chrono-tz` and `chrono-tz-build` (0543, 0555,
+# 0559), a build dependency of kingfisher through `tera`, with no fixed release.
+ignore = [
+  "RUSTSEC-2026-0319",
+  "RUSTSEC-2020-0163",
+  "RUSTSEC-2024-0449",
+  "RUSTSEC-2026-0543",
+  "RUSTSEC-2026-0555",
+  "RUSTSEC-2026-0559",
+]
 
 [sources]
 unknown-registry = "deny"

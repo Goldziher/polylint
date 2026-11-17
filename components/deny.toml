@@ -61,6 +61,17 @@ ignore = [
   "RUSTSEC-2026-0368",
   "RUSTSEC-2026-0369",
   "RUSTSEC-2026-0429",
+  # Four more zip advisories fixed only in 9.x, same dependency and same reasoning: AES entry authentication (0545),
+  # `ZipArchive::extract` symlink targets (0546), preallocation in the legacy Shrink/Reduce/Implode decoders (0547)
+  # and `ZipStreamReader` entry names (0548). They need an attacker-supplied archive; the only zip reader is
+  # harper's weirpack loader, which poly never calls.
+  "RUSTSEC-2026-0545",
+  "RUSTSEC-2026-0546",
+  "RUSTSEC-2026-0547",
+  "RUSTSEC-2026-0548",
+  # `chrono` is unmaintained (RUSTSEC-2026-0543), reached through `quick-junit` (ruff), `schemars` and `rmcp`; a
+  # maintenance notice with no fixed release, not a vulnerability.
+  "RUSTSEC-2026-0543",
   # `bincode` is unmaintained (RUSTSEC-2025-0141), reached through harper's `burn` model runtime; a maintenance notice
   # with no successor release, not a vulnerability.
   "RUSTSEC-2025-0141",
