@@ -259,6 +259,38 @@ fn flush_merges_records_written_by_a_concurrent_run() {
     assert!(warm.get(&path("b.py")).is_some());
 }
 
+/// Two narrowed runs (`--only ruff`, `--only oxc`) judging the same bytes at once: the second flush
+/// finds the file replaced and must merge its record into the one on disk, not drop the first run's
+/// scope and segments.
+#[test]
+fn concurrent_narrowed_runs_keep_each_others_scope() {
+    let dir = tempfile::tempdir().unwrap();
+    let first = index_in(&dir);
+    let second = index_in(&dir);
+    let ruff_only = Record {
+        scope: key("only ruff"),
+        ..record(old_stat(), b"x")
+    };
+    let oxc_only = Record {
+        scope: key("only oxc"),
+        segments: vec![Segment {
+            key: key("oxc"),
+            payload: b"finding".to_vec(),
+        }],
+        ..record(old_stat(), b"x")
+    };
+    put(&first, "a.py", ruff_only);
+    put(&second, "a.py", oxc_only);
+    first.flush().unwrap();
+    second.flush().unwrap();
+
+    let warm = index_in(&dir);
+    let stored = warm.get(&path("a.py")).expect("recorded");
+    assert!(stored.answers(&key("only oxc")), "the later run's own scope");
+    assert!(stored.answers(&key("only ruff")), "the concurrent run's scope survives");
+    assert!(stored.segment(&key("ruff")).is_some() && stored.segment(&key("oxc")).is_some());
+}
+
 #[test]
 fn a_newer_record_replaces_the_loaded_one_for_the_same_path() {
     let dir = tempfile::tempdir().unwrap();
