@@ -135,7 +135,7 @@ pub fn engines_for(_language: &Language) -> Vec<Box<dyn Engine>> {
 /// `engine-5` marks a seventh: the configurable Go architecture rules
 /// (`go-forbidden-call`, `go-forbidden-import`, `go-layer-violation`, see [`go_arch`]) run
 /// after the scan, and a Go file's findings now depend on its `go.mod`.
-const ENGINE_VERSION: &str = "ast-grep-core-0.51.2-engine-5+tslp1.25.2+builtin-pack-4";
+const ENGINE_VERSION: &str = "ast-grep-core-0.51.3-engine-5+tslp1.25.2+builtin-pack-4";
 
 /// Cross-cutting custom-rule engine backed by ast-grep + TSLP grammars.
 ///
