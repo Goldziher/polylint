@@ -1,4 +1,4 @@
-//! Typed class-member reads (skif ADR 0010): a read credits the member the checker resolves it to, through unions,
+//! Typed class-member reads: a read credits the member the checker resolves it to, through unions,
 //! overrides and implemented interfaces, and a read the checker cannot settle is credited by name.
 
 #![allow(clippy::unwrap_used, clippy::expect_used)]

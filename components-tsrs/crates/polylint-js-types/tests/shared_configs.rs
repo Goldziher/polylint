@@ -1,4 +1,4 @@
-//! The plannings and programs of a run share the configs they read (skif ADR 0010): each config a planning searches or a
+//! The plannings and programs of a run share the configs they read: each config a planning searches or a
 //! program's project references reach, and each config those extend, is parsed once for the run, and the facts are
 //! those of analyses that parse every config for themselves.
 

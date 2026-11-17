@@ -103,7 +103,7 @@ fn roots_nested_under_the_outer_roots_config_walk_its_one_build_and_keep_their_f
     let expected = expected(&workspace, &analyses);
     let programs = programs_of(&analyses);
     let budget = TypeBudget::new(Some(threads()));
-    // The outer root first, then the nested ones, as `skif -r` lints roots by nesting depth.
+    // The outer root first, then the nested ones, as a host linting several roots in nesting order does.
     let facts: Vec<TypeFacts> = analyses
         .iter()
         .map(|analysis| sharing(&workspace, analysis, &programs, &budget))

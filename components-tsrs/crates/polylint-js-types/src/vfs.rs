@@ -38,7 +38,7 @@ fn read_only(path: &str) -> String {
 impl FS for HostVfs {
     fn use_case_sensitive_file_names(&self) -> bool {
         // The platform's default, decided when the crate is built: a [`FileSystem`] has no case-sensitivity query, and
-        // probing the disk would make the answer depend on the machine (skif ADR 0002).
+        // probing the disk would make the answer depend on the machine.
         !cfg!(any(target_os = "macos", target_os = "windows"))
     }
 

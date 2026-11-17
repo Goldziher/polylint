@@ -1,4 +1,4 @@
-//! The programs of a run share the files they read (skif ADR 0010): each is parsed and bound once for the run,
+//! The programs of a run share the files they read: each is parsed and bound once for the run,
 //! whichever program reads it first, and the facts are those of programs that parse every file for themselves. The
 //! bundled lib files and the declaration files below `node_modules` stay for the run, so every later program reads
 //! that parse, also after the program that parsed it is freed. A project's own files, declaration files included,

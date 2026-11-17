@@ -1,9 +1,10 @@
 # Known defects of the typed run
 
 False findings of `unused-class-members` with type-aware analysis on: a live class member is reported although it is
-read. Measured on the seeded workspace of the dead-code benchmark, where the typed run has a precision of 81% against
-100% for the untyped run. The figures and cases are those reported when the type-aware code was moved out of skif;
-no test of this crate reproduces them yet, so each needs a failing test before it is fixed.
+read. The figures and cases were measured in skif and reported at skif commit `75500e05`, when the type-aware code
+was moved out of it: on the seeded workspace of skif's dead-code benchmark, the typed run had a precision of 81%
+against 100% for the untyped run. Neither the benchmark nor the figures are reproduced in this repository, and no
+test of this crate reproduces the cases yet, so each needs a failing test before it is fixed.
 
 The member is read, and reported unused, when the read goes:
 

@@ -1,4 +1,4 @@
-//! The programs the analyses of a run over several roots share ([`TypePrograms`], skif ADR 0010): the registry of
+//! The programs the analyses of a run over several roots share ([`TypePrograms`]): the registry of
 //! `polylint-tsrs` under this crate's name and count types.
 
 use std::path::{Path, PathBuf};

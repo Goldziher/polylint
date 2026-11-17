@@ -1,4 +1,4 @@
-//! The walk of one covered file on its checker: the member reads of skif ADR 0010, sent to the checker only for names some
+//! The walk of one covered file on its checker: the member reads, sent to the checker only for names some
 //! asked declaration has as a member, the uses of a declaration as a whole, and the reads the checker cannot settle.
 
 use std::collections::BTreeSet;

@@ -98,7 +98,7 @@ pub enum CoverageState {
 pub enum CoverageReason {
     /// Type awareness is turned off.
     Disabled,
-    /// The host has the type-aware analysis off (skif without its `type-aware` feature).
+    /// The host was built without the type-aware analysis, so it never ran.
     NotBuilt,
     /// No `tsconfig.json` or `jsconfig.json` applies to the package.
     NoTsconfig,
@@ -117,7 +117,7 @@ pub enum CoverageReason {
 }
 
 impl CoverageReason {
-    /// The reason as skif's report spells it, a stable label: `no-tsconfig`, `unresolved-modules: 3`.
+    /// The reason as a stable label, for a host's report: `no-tsconfig`, `unresolved-modules: 3`.
     #[must_use]
     pub fn label(&self) -> String {
         match self {
@@ -221,7 +221,7 @@ impl From<polylint_tsrs::ParseCounts> for SharedFileCounts {
     }
 }
 
-/// How the plannings and programs of an analysis got the configs they read (skif ADR 0010), one count per request: each
+/// How the plannings and programs of an analysis got the configs they read, one count per request: each
 /// config is read and parsed once for the run, the first time a planning or a program asks for it, and reused by every
 /// later request. A program still parses the config it is built from, with the configs that one extends from the run.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]

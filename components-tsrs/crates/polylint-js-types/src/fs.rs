@@ -1,6 +1,7 @@
 //! The read-only file system the analysis reads every config and source through: the host's own view, so an
-//! embedder's unsaved buffers are what the checker sees. The trait is the part of skif's `skif_core::FileSystem` the
-//! analysis uses, with the same signatures, so a host that implemented that trait implements this one by forwarding.
+//! embedder's unsaved buffers are what the checker sees. The trait holds only what the analysis reads, with the
+//! signatures of the trait it was taken from (polylint ADR 0081), so a host of that trait implements this one by
+//! forwarding.
 
 use std::collections::BTreeMap;
 use std::io;
