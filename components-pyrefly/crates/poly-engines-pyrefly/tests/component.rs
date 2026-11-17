@@ -7,7 +7,7 @@
 use poly_component_host::{ComponentHost, HostOptions, SlotStatus};
 use poly_component_protocol::{PolyComponent, decode_describe};
 use poly_engine_api::config::{EngineConfig, GlobalDefaults};
-use poly_engine_api::engine::{ProjectAnalysis, ProjectEnvironment, ProjectFile, ProjectRequest};
+use poly_engine_api::engine::{ProjectAnalysis, ProjectEnvironment, ProjectFile, ProjectReport, ProjectRequest};
 use poly_engine_api::language::Language;
 use poly_engines_pyrefly::{PyreflyComponent, PyreflyEngine};
 
@@ -63,9 +63,14 @@ fn the_pyrefly_component_checks_like_the_in_process_engine() {
         threads: Some(2),
         targets: None,
     };
-    let expected = PyreflyEngine.project_check(&request).expect("in-process check");
-    let actual = engine.project_check(&request).expect("component check");
+    // `project_report`, not `project_check`: the latter flattens a decline into no findings (ADR 0079), so a
+    // component that declined where the in-process engine checked would compare equal to a clean pass.
+    let expected = PyreflyEngine.project_report(&request).expect("in-process check");
+    let actual = engine.project_report(&request).expect("component check");
     assert_eq!(format!("{actual:?}"), format!("{expected:?}"));
-    assert_eq!(actual[0].1[0].code.as_deref(), Some("bad-assignment"));
+    let ProjectReport::Checked(findings) = actual else {
+        panic!("the component declined the project: {actual:?}");
+    };
+    assert_eq!(findings[0].1[0].code.as_deref(), Some("bad-assignment"));
     assert_eq!(engine.slot().status(), SlotStatus::Ready);
 }

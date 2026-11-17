@@ -11,7 +11,7 @@ use poly_component_protocol::{
 };
 use poly_engine_api::component_wire::engine_config_to_wire;
 use poly_engine_api::config::{EngineConfig, GlobalDefaults};
-use poly_engine_api::engine::{ProjectAnalysis, ProjectEnvironment, ProjectFile, ProjectRequest};
+use poly_engine_api::engine::{ProjectAnalysis, ProjectEnvironment, ProjectFile, ProjectReport, ProjectRequest};
 use poly_engine_api::language::Language;
 use poly_engines_tsrs::{TsrsComponent, TsrsEngine};
 
@@ -137,9 +137,12 @@ fn the_tsrs_component_checks_like_the_in_process_engine() {
         threads: Some(2),
         targets: None,
     };
-    let expected = TsrsEngine.project_check(&request).expect("in-process check");
-    let actual = engine.project_check(&request).expect("component check");
+    // `project_report`, not `project_check`: the latter flattens a decline into no findings (ADR 0079), so a
+    // component that declined where the in-process engine checked would compare equal to a clean pass.
+    let expected = TsrsEngine.project_report(&request).expect("in-process check");
+    let actual = engine.project_report(&request).expect("component check");
     assert_eq!(format!("{actual:?}"), format!("{expected:?}"));
+    let actual = checked(actual);
     assert_eq!(
         actual.len(),
         3,
@@ -155,9 +158,18 @@ fn the_tsrs_component_checks_like_the_in_process_engine() {
         targets: Some(&targets),
         ..request
     };
-    let expected = TsrsEngine.project_check(&narrowed).expect("in-process check");
-    let actual = engine.project_check(&narrowed).expect("component check");
+    let expected = TsrsEngine.project_report(&narrowed).expect("in-process check");
+    let actual = engine.project_report(&narrowed).expect("component check");
     assert_eq!(format!("{actual:?}"), format!("{expected:?}"));
+    let actual = checked(actual);
     let paths: Vec<_> = actual.iter().map(|(path, _)| path.clone()).collect();
     assert_eq!(paths, targets, "only the target was checked");
+}
+
+/// The findings of a check that ran; a decline fails the test, naming its reason.
+fn checked(report: ProjectReport) -> Vec<(std::path::PathBuf, Vec<poly_engine_api::engine::Diagnostic>)> {
+    match report {
+        ProjectReport::Checked(findings) => findings,
+        ProjectReport::Declined(reason) => panic!("the project was declined: {reason}"),
+    }
 }
