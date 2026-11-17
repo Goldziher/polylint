@@ -39,7 +39,18 @@ const PRUNED: &[&str] = &[
     ".mypy_cache",
     ".pytest_cache",
     ".ruff_cache",
+    ".eggs",
+    ".hg",
+    ".svn",
 ];
+
+/// Whether the directory `dir` is a tree of its own that no import of the project resolves into: a
+/// virtual environment (`pyvenv.cfg`), a conda environment (`conda-meta`), or another checkout (a
+/// `.git` entry: a nested repository, a submodule, or a worktree under `.worktrees/`, whose edits
+/// must not invalidate this project's check).
+fn is_foreign_tree(dir: &Path) -> bool {
+    dir.join("pyvenv.cfg").is_file() || dir.join("conda-meta").is_dir() || dir.join(".git").exists()
+}
 
 /// A file in `site-packages` larger than this is keyed by its size alone. Top-level modules and `.pth`
 /// files are small; the cap only bounds the cost of an odd large file.
@@ -162,7 +173,7 @@ fn hash_file(hasher: &mut blake3::Hasher, path: &Path) {
 
 /// A digest of every `.py` / `.pyi` file under `root` that is not in `served`, by root-relative path
 /// and content, ignored files included: the checker resolves an import to it whether or not git
-/// tracks it. Virtual environments (a directory holding `pyvenv.cfg`) and [`PRUNED`] trees are not
+/// tracks it. Environments, nested checkouts ([`is_foreign_tree`]) and [`PRUNED`] trees are not
 /// searched.
 pub(super) fn unserved_python(root: &Path, served: &[ProjectFile]) -> String {
     let root = absolute(root);
@@ -175,7 +186,7 @@ pub(super) fn unserved_python(root: &Path, served: &[ProjectFile]) -> String {
             !is_dir
                 || entry.depth() == 0
                 || (entry.file_name().to_str().is_none_or(|name| !PRUNED.contains(&name))
-                    && !entry.path().join("pyvenv.cfg").is_file())
+                    && !is_foreign_tree(entry.path()))
         })
         .build()
         .filter_map(Result::ok)
@@ -316,6 +327,16 @@ mod tests {
             with_module,
             unserved_python(dir.path(), &served),
             "a venv is not walked"
+        );
+        std::fs::create_dir_all(dir.path().join(".worktrees/other")).expect("worktree");
+        std::fs::write(dir.path().join(".worktrees/other/.git"), "gitdir: elsewhere\n").expect("git file");
+        std::fs::write(dir.path().join(".worktrees/other/w.py"), "").expect("worktree module");
+        std::fs::create_dir_all(dir.path().join("env/conda-meta")).expect("conda");
+        std::fs::write(dir.path().join("env/c.py"), "").expect("conda module");
+        assert_eq!(
+            with_module,
+            unserved_python(dir.path(), &served),
+            "a nested checkout and a conda environment are not walked"
         );
     }
 
