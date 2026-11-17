@@ -44,6 +44,8 @@ pub(super) struct ResolvedDirs {
     pub(super) whole_tree: bool,
     /// See [`ProjectDirs::file_names`].
     file_names: Vec<String>,
+    /// See [`ProjectDirs::narrows_to_targets`].
+    pub(super) narrows_to_targets: bool,
 }
 
 /// Where a path stands against the project root.
@@ -137,6 +139,7 @@ pub(super) fn resolve_dirs(declared: &ProjectDirs, options: &toml::Table) -> Res
         list_unserved: declared.list_unserved,
         whole_tree: declared.whole_tree,
         file_names: declared.file_names.clone(),
+        narrows_to_targets: declared.narrows_to_targets,
     })
 }
 
@@ -396,6 +399,7 @@ mod tests {
             whole_tree: false,
             file_names: Vec::new(),
             list_unserved: true,
+            narrows_to_targets: false,
         }
     }
 

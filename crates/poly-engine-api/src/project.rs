@@ -99,8 +99,9 @@ pub struct ProjectRequest<'a> {
     pub threads: Option<usize>,
     /// The files whose findings the run reports, spelled as in [`files`](Self::files); `None` means every file.
     ///
-    /// The host sets it when the run named paths that leave some of the files out, as a pre-commit hook naming the
-    /// staged files does, and discards the findings on every other file. An engine MAY restrict its work to these
+    /// The host sets it, for an engine that declares [`ProjectDirs::narrows_to_targets`], when the run named paths
+    /// that leave some of the files out, as a pre-commit hook naming the staged files does, and discards the
+    /// findings on every other file. An engine MAY restrict its work to these
     /// files, but its findings for each of them must equal those of the same request with `None`: the other files
     /// are still inputs (an import into one resolves as before), only their own findings may go uncomputed.
     /// Findings an engine still returns for other files are harmless.
@@ -147,6 +148,11 @@ pub struct ProjectDirs {
     /// Whether the host also lists the files in these directories that the engine does not serve
     /// (every file type, names only, empty content, language `Other("listing")`).
     pub list_unserved: bool,
+    /// Whether the check computes findings only for the request's
+    /// [`targets`](ProjectRequest::targets). The host sends targets, and keeps a result per set of
+    /// targets, only for an engine that says so: a check that judges the whole tree whatever it is
+    /// asked for gets `None` and its one result answers every run.
+    pub narrows_to_targets: bool,
 }
 
 /// What a project-check engine needs from the host beyond the files of the languages it serves.

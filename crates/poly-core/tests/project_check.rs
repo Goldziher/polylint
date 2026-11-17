@@ -7,8 +7,8 @@
 use std::collections::BTreeMap;
 use std::fs;
 use std::path::{Path, PathBuf};
-use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::{Arc, Mutex};
 
 use poly_core::engine::{ProjectAnalysis, ProjectRequest, Severity, Span};
 use poly_core::runner::{SuppressionReason, with_extra_project_engines};
@@ -456,6 +456,10 @@ mod tree {
 
     struct Tree {
         calls: Arc<AtomicUsize>,
+        /// Whether the engine declares that it narrows to the request's targets.
+        narrows: bool,
+        /// The targets of every check, as file names.
+        targets: Arc<Mutex<Vec<Option<Vec<String>>>>>,
     }
 
     impl Engine for Tree {
@@ -500,12 +504,19 @@ mod tree {
                     whole_tree: false,
                     file_names: Vec::new(),
                     list_unserved: true,
+                    narrows_to_targets: self.narrows,
                 }),
             }
         }
 
         fn project_check(&self, req: &ProjectRequest<'_>) -> anyhow::Result<Vec<(PathBuf, Vec<Diagnostic>)>> {
             self.calls.fetch_add(1, Ordering::SeqCst);
+            self.targets.lock().unwrap().push(req.targets.map(|targets| {
+                targets
+                    .iter()
+                    .map(|path| path.file_name().unwrap().to_string_lossy().into_owned())
+                    .collect()
+            }));
             let is_listing =
                 |file: &poly_core::engine::ProjectFile| matches!(&file.language, Language::Other(n) if n == "listing");
             let served: Vec<_> = req.files.iter().filter(|f| f.language == Language::Markdown).collect();
@@ -564,15 +575,25 @@ mod tree {
     }
 
     fn engine_run<R>(body: impl FnOnce(&Arc<AtomicUsize>) -> R) -> R {
+        tree_run(false, |calls, _| body(calls))
+    }
+
+    /// Runs `body` with the tree engine registered, handing it the check count and each check's targets.
+    fn tree_run<R>(narrows: bool, body: impl FnOnce(&Arc<AtomicUsize>, &Mutex<Vec<Option<Vec<String>>>>) -> R) -> R {
         let calls = Arc::new(AtomicUsize::new(0));
-        let engine: Arc<dyn Engine> = Arc::new(Tree { calls: calls.clone() });
+        let targets = Arc::new(Mutex::new(Vec::new()));
+        let engine: Arc<dyn Engine> = Arc::new(Tree {
+            calls: calls.clone(),
+            narrows,
+            targets: targets.clone(),
+        });
         with_extra_project_engines(vec![engine], || {
             let cache_home = tempfile::tempdir().unwrap();
             // SAFETY: `with_extra_project_engines` serialises every caller in this process.
             unsafe {
                 std::env::set_var("POLY_CACHE_HOME", cache_home.path());
             }
-            body(&calls)
+            body(&calls, &targets)
         })
     }
 
@@ -666,9 +687,23 @@ mod tree {
     }
 
     #[test]
-    fn a_full_run_is_not_answered_by_a_path_scoped_one() {
+    fn a_check_that_does_not_narrow_runs_once_whatever_the_runs_name() {
         let dir = project("");
-        engine_run(|calls| {
+        tree_run(false, |calls, targets| {
+            let named = run(&[dir.path().join("log/0002.md")]);
+            assert_eq!(found(&named), [pair("0002.md", CODE)]);
+            run(&[dir.path().join("log/0001.md")]);
+            let full = run(&[dir.path().to_path_buf()]);
+            assert_eq!(found(&full), [pair("0002.md", CODE), pair("notes.txt", STRAY)]);
+            assert_eq!(*targets.lock().unwrap(), [None], "asked for the whole tree");
+            assert_eq!(calls.load(Ordering::SeqCst), 1, "one result answers every run");
+        });
+    }
+
+    #[test]
+    fn a_full_run_is_not_answered_by_a_narrowed_one() {
+        let dir = project("");
+        tree_run(true, |calls, targets| {
             run(&[dir.path().join("log/0002.md")]);
             run(&[dir.path().join("log/0002.md")]);
             assert_eq!(calls.load(Ordering::SeqCst), 1, "same targets, same key");
@@ -679,6 +714,26 @@ mod tree {
                 calls.load(Ordering::SeqCst),
                 3,
                 "a narrowed result must not answer a full run"
+            );
+            assert_eq!(
+                *targets.lock().unwrap(),
+                [Some(vec!["0002.md".to_owned()]), Some(vec!["0001.md".to_owned()]), None]
+            );
+        });
+    }
+
+    #[test]
+    fn a_cached_full_result_answers_a_narrowed_run() {
+        let dir = project("");
+        tree_run(true, |calls, targets| {
+            run(&[dir.path().to_path_buf()]);
+            let named = run(&[dir.path().join("log/0002.md")]);
+            assert_eq!(found(&named), [pair("0002.md", CODE)]);
+            assert_eq!(*targets.lock().unwrap(), [None]);
+            assert_eq!(
+                calls.load(Ordering::SeqCst),
+                1,
+                "the full result holds the target's findings"
             );
         });
     }
@@ -1356,6 +1411,7 @@ mod whole_tree {
                     whole_tree: self.whole_tree,
                     file_names: self.file_names.clone(),
                     list_unserved: false,
+                    narrows_to_targets: false,
                 }),
             }
         }

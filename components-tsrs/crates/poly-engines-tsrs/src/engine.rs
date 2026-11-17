@@ -103,6 +103,7 @@ impl ProjectAnalysis for TsrsEngine {
                 whole_tree: true,
                 file_names: INPUT_FILE_NAMES.iter().map(|name| (*name).to_owned()).collect(),
                 list_unserved: false,
+                narrows_to_targets: true,
             }),
         }
     }

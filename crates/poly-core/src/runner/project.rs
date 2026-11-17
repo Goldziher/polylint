@@ -589,7 +589,8 @@ fn cache_key(
         .collect();
     args.insert("__environment".to_string(), toml::Value::String(env_pairs.join("\0")));
     // A narrowed check computes findings only for its targets, so it never answers another set of targets or a
-    // full run; a full run's key has no entry, as before targets existed.
+    // full run; a full run's key has no entry, as before targets existed. Only an engine that narrows is given
+    // targets (`ProjectDirs::narrows_to_targets`).
     if let Some(targets) = targets {
         let names: Vec<std::borrow::Cow<'_, str>> = targets.iter().map(|path| path.to_string_lossy()).collect();
         args.insert("__targets".to_string(), toml::Value::String(names.join("\0")));

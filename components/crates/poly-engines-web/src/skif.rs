@@ -209,6 +209,7 @@ impl ProjectAnalysis for SkifEngine {
                 whole_tree: true,
                 file_names: IGNORE_FILES.iter().map(|name| (*name).to_owned()).collect(),
                 list_unserved: false,
+                narrows_to_targets: false,
             }),
         }
     }

@@ -1836,6 +1836,11 @@
         "list_unserved": {
           "description": "Whether the host also lists the files the engine does not serve (names only).",
           "type": "boolean"
+        },
+        "narrows_to_targets": {
+          "description": "Whether the check computes findings only for the request's `targets`, which the host then sends. Absent\nreads as `false`: the host sends no targets.",
+          "type": "boolean",
+          "default": false
         }
       },
       "required": ["dir_key", "dir_default", "list_unserved"]

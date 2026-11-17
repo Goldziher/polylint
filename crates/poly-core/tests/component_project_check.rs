@@ -178,7 +178,10 @@ static SEEN_CALLS: Mutex<Vec<Vec<String>>> = Mutex::new(Vec::new());
 /// The `targets` of every `ProjectCheck` the recording component received.
 static SEEN_TARGETS: Mutex<Vec<Option<Vec<String>>>> = Mutex::new(Vec::new());
 
-/// Serializes the tests that record into [`SEEN_CALLS`] and [`SEEN_TARGETS`].
+/// Whether the engine [`Recorder`] describes declares that it narrows; a component must describe what the index holds.
+static RECORDER_NARROWS: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(true);
+
+/// Serializes the tests that record into [`SEEN_CALLS`] and [`SEEN_TARGETS`], or set [`RECORDER_NARROWS`].
 static RECORDING: Mutex<()> = Mutex::new(());
 
 fn whole_tree_desc() -> WireEngineDesc {
@@ -195,10 +198,20 @@ fn whole_tree_desc() -> WireEngineDesc {
                 whole_tree: true,
                 file_names: Vec::new(),
                 list_unserved: false,
+                narrows_to_targets: true,
             }),
         },
         ..desc()
     }
+}
+
+/// [`whole_tree_desc`] declaring whether it narrows to the request's targets.
+fn narrowing(narrows: bool) -> WireEngineDesc {
+    let mut desc = whole_tree_desc();
+    if let Some(dirs) = desc.project_inputs.dirs.as_mut() {
+        dirs.narrows_to_targets = narrows;
+    }
+    desc
 }
 
 /// Records the files of each project check and reports nothing.
@@ -209,7 +222,7 @@ impl ComponentTransport for Recorder {
         Ok(encode_describe(&Describe {
             protocol: PROTOCOL_VERSION,
             component_version: "1.0.0".into(),
-            engines: vec![whole_tree_desc()],
+            engines: vec![narrowing(RECORDER_NARROWS.load(std::sync::atomic::Ordering::SeqCst))],
         })?)
     }
 
@@ -414,10 +427,66 @@ fn an_ancestor_config_that_owns_a_file_of_the_run_fetches_no_component_for_other
 }
 
 #[test]
-fn a_run_naming_files_asks_a_whole_tree_check_for_their_findings_only() {
+fn a_run_naming_files_asks_a_whole_tree_check_that_narrows_for_their_findings_only() {
     let _recording = RECORDING.lock().unwrap_or_else(|e| e.into_inner());
+    let targets_of = targets_seen_by(whole_tree_desc());
+    let dir = targets_of.dir.path();
+    assert_eq!(targets_of.run(&[dir.to_path_buf()]), None, "the whole tree");
+    assert_eq!(targets_of.run(&[dir.join("a.py")]), Some(vec!["a.py".to_owned()]));
+    assert_eq!(
+        targets_of.run(&[dir.join("pkg/b.py"), dir.join("a.py")]),
+        Some(vec!["a.py".to_owned(), "pkg/b.py".to_owned()])
+    );
+    assert_eq!(
+        targets_of.run(&[dir.join("pkg")]),
+        Some(vec!["pkg/b.py".to_owned(), "pkg/c.py".to_owned()])
+    );
+}
+
+/// A component built before targets existed describes no `narrows_to_targets`, and decodes a `ProjectCheck` of the
+/// length it knows: it must never be sent one.
+#[test]
+fn a_whole_tree_check_that_does_not_narrow_is_never_sent_targets() {
+    let _recording = RECORDING.lock().unwrap_or_else(|e| e.into_inner());
+    struct Restore;
+    impl Drop for Restore {
+        fn drop(&mut self) {
+            RECORDER_NARROWS.store(true, std::sync::atomic::Ordering::SeqCst);
+        }
+    }
+    RECORDER_NARROWS.store(false, std::sync::atomic::Ordering::SeqCst);
+    let _restore = Restore;
+    let targets_of = targets_seen_by(narrowing(false));
+    let dir = targets_of.dir.path();
+    assert_eq!(targets_of.run(&[dir.join("a.py")]), None);
+    assert_eq!(targets_of.run(&[dir.join("pkg")]), None);
+}
+
+/// A project of three Python files and a host whose one component engine is `desc`.
+struct TargetsSeen {
+    dir: tempfile::TempDir,
+    options: RunOptions,
+    _cache: tempfile::TempDir,
+}
+
+impl TargetsSeen {
+    /// The targets of the one check a run over `paths` makes, sorted.
+    fn run(&self, paths: &[PathBuf]) -> Option<Vec<String>> {
+        SEEN_TARGETS.lock().unwrap().clear();
+        let run = poly_core::lint_run(paths, &Config::default(), &self.options, false, false).unwrap();
+        assert!(run.errors.is_empty(), "{:?}", run.errors);
+        let seen = SEEN_TARGETS.lock().unwrap().clone();
+        assert_eq!(seen.len(), 1, "one check per run: {seen:?}");
+        seen.into_iter().next().unwrap().map(|mut targets| {
+            targets.sort();
+            targets
+        })
+    }
+}
+
+fn targets_seen_by(desc: WireEngineDesc) -> TargetsSeen {
     let mut component_index = index();
-    component_index.components[0].engines = vec![whole_tree_desc()];
+    component_index.components[0].engines = vec![desc];
     let cache = tempfile::tempdir().unwrap();
     let mut host_options = HostOptions::new(lock(), PathBuf::from(cache.path()));
     host_options.allow_unsigned = true;
@@ -445,25 +514,9 @@ fn a_run_naming_files_asks_a_whole_tree_check_for_their_findings_only() {
     std::fs::write(dir.path().join("poly.toml"), "[workspace]\nroot = true\n").unwrap();
     std::fs::create_dir_all(dir.path().join(".git")).unwrap();
 
-    let targets_of = |paths: &[PathBuf]| {
-        SEEN_TARGETS.lock().unwrap().clear();
-        let run = poly_core::lint_run(paths, &Config::default(), &options, false, false).unwrap();
-        assert!(run.errors.is_empty(), "{:?}", run.errors);
-        let seen = SEEN_TARGETS.lock().unwrap().clone();
-        assert_eq!(seen.len(), 1, "one check per run: {seen:?}");
-        seen.into_iter().next().unwrap().map(|mut targets| {
-            targets.sort();
-            targets
-        })
-    };
-    assert_eq!(targets_of(&[dir.path().to_path_buf()]), None, "the whole tree");
-    assert_eq!(targets_of(&[dir.path().join("a.py")]), Some(vec!["a.py".to_owned()]));
-    assert_eq!(
-        targets_of(&[dir.path().join("pkg/b.py"), dir.path().join("a.py")]),
-        Some(vec!["a.py".to_owned(), "pkg/b.py".to_owned()])
-    );
-    assert_eq!(
-        targets_of(&[dir.path().join("pkg")]),
-        Some(vec!["pkg/b.py".to_owned(), "pkg/c.py".to_owned()])
-    );
+    TargetsSeen {
+        dir,
+        options,
+        _cache: cache,
+    }
 }

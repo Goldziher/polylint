@@ -138,6 +138,7 @@ fn project_inputs(wire: &WireProjectInputs) -> ProjectInputs {
             whole_tree: dirs.whole_tree,
             file_names: dirs.file_names.clone(),
             list_unserved: dirs.list_unserved,
+            narrows_to_targets: dirs.narrows_to_targets,
         }),
     }
 }

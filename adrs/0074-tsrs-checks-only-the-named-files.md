@@ -25,18 +25,21 @@ serves.
 
 - **`ProjectRequest::targets`.** The project-check request carries the files whose findings the run reports, spelled as
   in `files`; `None` means every file. An engine may restrict its work to them, but its findings for each target must
-  equal those of the same request with `None`. Other files stay inputs. Engines that ignore the field are unaffected.
-- **The host's rule.** Only a check that reads a tree of its own (`ProjectDirs`) is narrowed, as its findings already
-  were. The targets are the loaded files the run's `RunScope` admits: the named files, and the files under a named
+  equal those of the same request with `None`. Other files stay inputs.
+- **The host's rule.** Only a check that reads a tree of its own (`ProjectDirs`) and declares
+  `ProjectDirs::narrows_to_targets` is sent targets. A check that judges the tree whatever it is asked (skif, adrlint,
+  the rumdl link check) declares nothing, is asked for every file, and its one cached result answers every run. The
+  targets are the loaded files the run's `RunScope` admits: the named files, and the files under a named
   directory. They are `None` when every directory of the check lies under a named directory (`poly lint .`, or a
   directory that contains the project) and when the run named every loaded file, so such a run is the full check it
   was. A file-only run (the hook) resolves only loaded files sharing a name with a named file.
-- **Cache.** The targets join the project check's cache key; a full run's key is unchanged. A narrowed result never
+- **Cache.** The targets, when sent, join the project check's cache key; a full run's key is unchanged. A narrowed result never
   answers a full run or a run over other targets, while a cached full result answers a narrowed run, as it did.
 - **Wire.** `ProjectCheck` gains `targets: Option<Vec<String>>` as its last field, paths relative to `root` like
   `files`, with `#[serde(default)]` so a request one element shorter decodes as `None`. `PROTOCOL_VERSION` stays 3, as
-  it did for `threads`: host and component ship together, and the committed schema is regenerated. A component built
-  before this field rejects the longer request, which a release never pairs with this host.
+  it did for `threads`, and the committed schema is regenerated. A component built before this field rejects a longer
+  request, so the field is left off the wire when `None`, and targets reach only an engine whose description declares
+  `narrows_to_targets` (`WireProjectDirs`, default `false`), which no such component does.
 - **tsrs.** With targets, the program is built from every file and config as before, and
   `get_diagnostics_of_any_program` gets the program's source files among the targets. A target the program does not
   hold (a JSON file it does not import, an excluded file, `package.json`) is not checked; no target at all builds no

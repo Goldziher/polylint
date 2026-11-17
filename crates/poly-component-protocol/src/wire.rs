@@ -231,6 +231,10 @@ pub struct WireProjectDirs {
     pub file_names: Vec<String>,
     /// Whether the host also lists the files the engine does not serve (names only).
     pub list_unserved: bool,
+    /// Whether the check computes findings only for the request's `targets`, which the host then sends. Absent
+    /// reads as `false`: the host sends no targets.
+    #[serde(default)]
+    pub narrows_to_targets: bool,
 }
 
 /// `Engine::project_inputs`: what a project check needs from the host besides its own files.

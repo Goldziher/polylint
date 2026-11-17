@@ -66,6 +66,7 @@ fn project_inputs_desc(engine: &dyn Engine) -> WireProjectInputs {
             whole_tree: dirs.whole_tree,
             file_names: dirs.file_names,
             list_unserved: dirs.list_unserved,
+            narrows_to_targets: dirs.narrows_to_targets,
         }),
     }
 }
