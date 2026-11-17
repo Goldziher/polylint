@@ -142,11 +142,42 @@ pub(super) struct Probe<'a> {
     stat: FileStat,
     scope: PlanKey,
     keys: Vec<PlanKey>,
+    /// The path's record whatever plan wrote it: its segments are reused by engine key, and kept
+    /// beside this run's when it is recorded, so a narrowed run (`--only`) evicts nothing.
     prior: Option<&'a Record>,
 }
 
+/// A record that answers for a file, and where each planned engine's segment sits in it.
+pub(super) struct Hit<'a> {
+    record: &'a Record,
+    /// Per planned engine, the index of its segment, when the record was written by another plan
+    /// (a narrowed run's record holding the full run's segments, or the reverse); `None` when the
+    /// record's own plan was this one, so its leading segments are this plan's in order.
+    order: Option<Vec<usize>>,
+}
+
+impl std::ops::Deref for Hit<'_> {
+    type Target = Record;
+
+    fn deref(&self) -> &Record {
+        self.record
+    }
+}
+
+impl Hit<'_> {
+    /// The planned engines' segments, in plan order.
+    fn segments(&self) -> impl Iterator<Item = &Segment> {
+        let positional = self.order.is_none().then(|| self.record.segments.iter());
+        let mapped = self
+            .order
+            .iter()
+            .flat_map(|order| order.iter().map(|&index| &self.record.segments[index]));
+        positional.into_iter().flatten().chain(mapped)
+    }
+}
+
 pub(super) enum Resolution<'a> {
-    Hit(&'a Record),
+    Hit(Hit<'a>),
     Miss(Probe<'a>),
     /// The file could not be stat-ed; the slow path will report why.
     Unavailable,
@@ -186,7 +217,10 @@ impl<'a> FastPath<'a> {
                 Slot {
                     scope: scope.finish(),
                     engines: engines.as_slice(),
-                    bases: engines.iter().map(|engine| base_key(namespace, engine)).collect(),
+                    bases: engines
+                        .iter()
+                        .map(|engine| base_key(namespace, language, engine))
+                        .collect(),
                     salted: engines.iter().map(|engine| salted(namespace, engine)).collect(),
                 },
             );
@@ -241,7 +275,7 @@ impl<'a> FastPath<'a> {
         let mut keys = Vec::with_capacity(slot.bases.len());
         Self::engine_keys(slot, file, &FileContent::new(file), &mut keys);
         let path = self.cache.path_key(&file.path);
-        let prior = self.index.get(&path).filter(|record| record.scope == slot.scope);
+        let prior = self.index.get(&path);
         Some(Probe {
             path,
             stat,
@@ -251,12 +285,24 @@ impl<'a> FastPath<'a> {
         })
     }
 
-    fn may_replay(&self, record: &Record) -> bool {
+    /// Whether `hit` may stand in for a lint pass. A record written by another plan carries that
+    /// plan's verdict, so this plan's is read from its own segments.
+    fn may_replay(&self, hit: &Hit) -> bool {
+        let verdict = match (&hit.order, hit.verdict) {
+            (Some(_), Verdict::Clean | Verdict::Diagnostics) => {
+                if hit.segments().all(|segment| segment.payload.is_empty()) {
+                    Verdict::Clean
+                } else {
+                    Verdict::Diagnostics
+                }
+            }
+            (_, verdict) => verdict,
+        };
         self.replay.verdicts
-            && match record.verdict {
+            && match verdict {
                 Verdict::Binary => true,
-                Verdict::Clean => record.replayable,
-                Verdict::Diagnostics => record.replayable && self.replay.diagnostics,
+                Verdict::Clean => hit.replayable,
+                Verdict::Diagnostics => hit.replayable && self.replay.diagnostics,
             }
     }
 
@@ -276,7 +322,8 @@ impl<'a> FastPath<'a> {
             return Resolution::Unavailable;
         }
         let path = self.cache.path_key(&file.path);
-        let prior = self.index.get(&path).filter(|record| record.scope == slot.scope);
+        let raw = self.index.get(&path);
+        let prior = raw.filter(|record| record.scope == slot.scope);
         let content = FileContent::new(file);
         let vouched = KEY_SCRATCH.with_borrow_mut(|keys| {
             Self::engine_keys(slot, file, &content, keys);
@@ -284,13 +331,13 @@ impl<'a> FastPath<'a> {
                 .ok_or_else(|| keys.clone())
         });
         match vouched {
-            Ok((record, how)) => {
+            Ok((hit, how)) => {
                 let counter = match how {
                     VouchedBy::Stat => &self.tally.stat_hits,
                     VouchedBy::Content => &self.tally.content_hits,
                 };
                 counter.fetch_add(1, Ordering::Relaxed);
-                Resolution::Hit(record)
+                Resolution::Hit(hit)
             }
             Err(keys) => {
                 self.tally.misses.fetch_add(1, Ordering::Relaxed);
@@ -299,7 +346,7 @@ impl<'a> FastPath<'a> {
                     stat,
                     scope: slot.scope,
                     keys,
-                    prior,
+                    prior: raw,
                 })
             }
         }
@@ -314,19 +361,29 @@ impl<'a> FastPath<'a> {
         stat: &FileStat,
         prior: Option<&'a Record>,
         keys: &[PlanKey],
-    ) -> Option<(&'a Record, VouchedBy)> {
+    ) -> Option<(Hit<'a>, VouchedBy)> {
         let record = prior?;
-        if !record.has_keys(keys) || !self.may_replay(record) {
+        let order = if record.has_keys(keys) {
+            None
+        } else {
+            Some(
+                keys.iter()
+                    .map(|key| record.segments.iter().position(|segment| segment.key == *key))
+                    .collect::<Option<Vec<usize>>>()?,
+            )
+        };
+        let hit = Hit { record, order };
+        if !self.may_replay(&hit) {
             return None;
         }
         if record.trusts(stat) {
-            return Some((record, VouchedBy::Stat));
+            return Some((hit, VouchedBy::Stat));
         }
         if record.digest != ContentDigest::of(content.bytes()?) {
             return None;
         }
         self.index.vouch(path, *stat, record.digest);
-        Some((record, VouchedBy::Content))
+        Some((hit, VouchedBy::Content))
     }
 
     /// Report how the run's files were resolved.
@@ -342,10 +399,10 @@ impl<'a> FastPath<'a> {
 
     /// The diagnostics a recorded file produced, severity overrides applied, or
     /// `None` if a payload no longer decodes.
-    pub(super) fn decode(&self, file: &DiscoveredFile, record: &Record) -> Option<Vec<Diagnostic>> {
+    pub(super) fn decode(&self, file: &DiscoveredFile, hit: &Hit) -> Option<Vec<Diagnostic>> {
         let engines = self.slot(file).map_or(&[][..], |slot| slot.engines);
         let mut all = Vec::new();
-        for (engine, segment) in engines.iter().zip(&record.segments) {
+        for (engine, segment) in engines.iter().zip(hit.segments()) {
             let mut diagnostics = decode_payload(&segment.payload)?;
             if !engine.severity_remap.is_empty() {
                 engine.severity_remap.apply(&mut diagnostics);
@@ -356,24 +413,36 @@ impl<'a> FastPath<'a> {
     }
 
     /// Remember how `probe`'s file, whose bytes are `bytes`, was judged.
+    ///
+    /// When the path's record already holds every segment this run produced for these bytes (a
+    /// narrowed run over a file a full run recorded), it stays as it is, re-stamped with the new
+    /// `stat`: replacing it would evict the engines this run left out. Otherwise the new record keeps
+    /// the old one's other segments for the same bytes ([`Record::merged`]).
     pub(super) fn record(&self, probe: &Probe, bytes: &[u8], outcome: Outcome) {
+        let digest = ContentDigest::of(bytes);
+        if let Some(prior) = probe.prior
+            && prior.digest == digest
+            && (prior.verdict == Verdict::Binary) == (outcome.verdict == Verdict::Binary)
+            && probe.keys.iter().all(|key| prior.segment(key).is_some())
+        {
+            self.index.vouch(probe.path, probe.stat, digest);
+            return;
+        }
         let segments = probe
             .keys
             .iter()
             .zip(outcome.payloads.into_iter().chain(std::iter::repeat_with(Vec::new)))
             .map(|(key, payload)| Segment { key: *key, payload })
             .collect();
-        self.index.put(
-            probe.path,
-            Record {
-                stat: probe.stat,
-                scope: probe.scope,
-                digest: ContentDigest::of(bytes),
-                verdict: outcome.verdict,
-                replayable: outcome.replayable,
-                segments,
-            },
-        );
+        let record = Record {
+            stat: probe.stat,
+            scope: probe.scope,
+            digest,
+            verdict: outcome.verdict,
+            replayable: outcome.replayable,
+            segments,
+        };
+        self.index.put(probe.path, record.merged(probe.prior));
     }
 }
 
@@ -403,7 +472,7 @@ impl Probe<'_> {
     }
 
     /// The recorded output of each engine that is still valid for `bytes`:
-    /// the same bytes, produced under the same engine key.
+    /// the same bytes, produced under the same engine key, by whichever plan recorded it.
     pub(super) fn reusable(&self, bytes: &[u8]) -> Vec<Option<&[u8]>> {
         let Some(prior) = self.prior else {
             return Vec::new();
@@ -413,8 +482,7 @@ impl Probe<'_> {
         }
         self.keys
             .iter()
-            .zip(&prior.segments)
-            .map(|(key, segment)| (segment.key == *key).then_some(segment.payload.as_slice()))
+            .map(|key| prior.segment(key).map(|segment| segment.payload.as_slice()))
             .collect()
     }
 }
@@ -425,9 +493,13 @@ fn salted(namespace: Namespace, engine: &EnginePlan) -> bool {
     namespace == Namespace::Lint && engine.engine.overridden_hooks() & hooks::LINT_CACHE_SALT != 0
 }
 
-fn base_key(namespace: Namespace, engine: &EnginePlan) -> PlanKey {
+/// The engine's key for files of `language`. The language is part of it because a segment is reused
+/// by key across plans and scopes (see [`Probe::reusable`]), and one engine with one config can judge
+/// the same bytes differently as another language.
+fn base_key(namespace: Namespace, language: &Language, engine: &EnginePlan) -> PlanKey {
     let mut builder = PlanKey::builder(namespace);
     builder
+        .part(language.id())
         .part(engine.engine.name())
         .part(engine.engine.version())
         .part(engine.serialized_args.as_str());

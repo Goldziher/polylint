@@ -57,7 +57,7 @@ fn engine_plan(stub: Stub, args: &toml::Table) -> EnginePlan {
 }
 
 fn key(stub: Stub, args: &toml::Table) -> PlanKey {
-    base_key(Namespace::Lint, &engine_plan(stub, args))
+    base_key(Namespace::Lint, &Language::Python, &engine_plan(stub, args))
 }
 
 const BASE: Stub = Stub {
@@ -97,7 +97,20 @@ fn a_change_in_the_engines_run_context_changes_the_key() {
 #[test]
 fn the_namespace_is_part_of_the_key() {
     let plan = engine_plan(BASE, &toml::Table::new());
-    assert_ne!(base_key(Namespace::Lint, &plan), base_key(Namespace::Fmt, &plan));
+    assert_ne!(
+        base_key(Namespace::Lint, &Language::Python, &plan),
+        base_key(Namespace::Fmt, &Language::Python, &plan)
+    );
+}
+
+/// Segments are reused across plans by key, so the language they judged is part of it.
+#[test]
+fn the_language_is_part_of_the_key() {
+    let plan = engine_plan(BASE, &toml::Table::new());
+    assert_ne!(
+        base_key(Namespace::Lint, &Language::C, &plan),
+        base_key(Namespace::Lint, &Language::Cpp, &plan)
+    );
 }
 
 #[test]

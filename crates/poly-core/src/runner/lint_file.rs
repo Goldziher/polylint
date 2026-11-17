@@ -172,7 +172,7 @@ fn probe_cache<'f>(
             ControlFlow::Break(lint_skip_result(f, BINARY_SKIP))
         }
         Resolution::Hit(record) => {
-            if let Some(mut diagnostics) = fast.decode(f, record) {
+            if let Some(mut diagnostics) = fast.decode(f, &record) {
                 let mut suppressed = Vec::new();
                 filter.apply(&Suppressions::default(), &mut diagnostics, &mut suppressed);
                 return ControlFlow::Break(replayed_lint_result(

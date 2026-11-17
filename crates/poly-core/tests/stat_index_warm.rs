@@ -67,7 +67,8 @@ impl Project {
             explicit_config: true,
             // The taplo and skif engines live in the `web` component; skipping both keeps `poly.toml` from
             // planning a component a core build has no lock for. The core config check still answers it.
-            skip: vec!["taplo".to_owned(), "skif".to_owned()],
+            // `yaml` likewise: the located fixtures hold an ast-grep rule file.
+            skip: vec!["taplo".to_owned(), "skif".to_owned(), "yaml".to_owned()],
             ..RunOptions::default()
         }
     }
@@ -77,35 +78,36 @@ impl Project {
     }
 
     fn lint(&self) -> LintOutcome {
-        let (run, log) = capture(|| {
-            poly_core::lint_run(
-                &[self.dir.path().to_path_buf()],
-                &self.config(),
-                &Self::opts(),
-                false,
-                false,
-            )
-            .unwrap()
-        });
-        let mut findings: Vec<String> = run
-            .results
-            .iter()
-            .flat_map(|result| {
-                let name = relative(self.dir.path(), &result.path);
-                result
-                    .diagnostics
-                    .iter()
-                    .map(move |d| format!("{name}:{}", d.code.clone().unwrap_or_default()))
-            })
-            .collect();
-        findings.sort();
-        LintOutcome {
-            findings,
-            errors: run.errors.iter().map(|e| e.message.clone()).collect(),
-            resolution: Resolution::parse(&log),
-        }
+        lint_at(self.dir.path(), self.dir.path(), &self.config(), &Self::opts())
     }
+}
 
+/// Lint `paths_root` under `config`, reporting findings relative to `base`.
+fn lint_at(base: &Path, paths_root: &Path, config: &Config, opts: &RunOptions) -> LintOutcome {
+    let (run, log) = capture(|| poly_core::lint_run(&[paths_root.to_path_buf()], config, opts, false, false).unwrap());
+    let mut findings: Vec<String> = run
+        .results
+        .iter()
+        .flat_map(|result| {
+            let name = relative(
+                &std::path::absolute(base).unwrap(),
+                &std::path::absolute(&result.path).unwrap(),
+            );
+            result
+                .diagnostics
+                .iter()
+                .map(move |d| format!("{name}:{}", d.code.clone().unwrap_or_default()))
+        })
+        .collect();
+    findings.sort();
+    LintOutcome {
+        findings,
+        errors: run.errors.iter().map(|e| e.message.clone()).collect(),
+        resolution: Resolution::parse(&log),
+    }
+}
+
+impl Project {
     fn fmt_changed(&self) -> FmtOutcome {
         let (run, log) = capture(|| {
             poly_core::format_run(
@@ -486,4 +488,129 @@ fn batched_lint_results_are_recorded_and_a_warm_file_is_never_batched_again() {
         "one changed file is below the batch size and the rest are indexed"
     );
     assert_eq!(findings(&changed).len(), expected.len());
+}
+
+/// A project with a user ast-grep rule (whose rule directory the config resolves to a path) and a
+/// Go module (whose root the ast-grep Go salt reads), committed to a git repository.
+fn located_project() -> Project {
+    let project = Project::new("INP001");
+    project.write(
+        ".poly/rules/no-print.yml",
+        "id: no-print\nlanguage: python\nseverity: warning\nmessage: no print\nrule:\n  pattern: print($$$A)\n",
+    );
+    project.write("pkg/__init__.py", "");
+    project.write("pkg/a.py", "print(1)\n");
+    project.write("go/go.mod", "module example.com/m\n\ngo 1.22\n");
+    project.write("go/a.go", "package m\n\nfunc A() int { return 1 }\n");
+    git(project.dir.path(), &["init", "-q"]);
+    git(project.dir.path(), &["add", "."]);
+    git(project.dir.path(), &["commit", "-q", "-m", "seed"]);
+    project
+}
+
+fn git(dir: &Path, args: &[&str]) {
+    let status = std::process::Command::new("git")
+        .args([
+            "-c",
+            "user.email=t@t",
+            "-c",
+            "user.name=t",
+            "-c",
+            "commit.gpgsign=false",
+        ])
+        .args(args)
+        .current_dir(dir)
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .status()
+        .unwrap();
+    assert!(status.success(), "git {args:?}");
+}
+
+/// Run `run` with the process directory set to `dir`, as a `poly` started there has it: the result
+/// cache is located from it. Callers hold `ENV_LOCK` through their [`Project`].
+fn in_dir<T>(dir: &Path, run: impl FnOnce(&Path) -> T) -> T {
+    let previous = std::env::current_dir().unwrap();
+    std::env::set_current_dir(dir).unwrap();
+    let here = std::env::current_dir().unwrap();
+    let value = run(&here);
+    std::env::set_current_dir(previous).unwrap();
+    value
+}
+
+fn lint_here(here: &Path) -> LintOutcome {
+    let config = Config::load_file(&here.join("poly.toml")).unwrap();
+    lint_at(here, here, &config, &Project::opts())
+}
+
+/// M2-M4: no cache key carries the checkout's location, so a second worktree of the repository
+/// answers every file from the first one's records (by content), with nothing re-linted.
+#[test]
+fn a_second_worktree_reuses_every_record_of_the_first() {
+    let project = located_project();
+    settle();
+    let first = in_dir(project.dir.path(), lint_here);
+    assert!(
+        first.findings.contains(&"pkg/a.py:no-print".to_owned()),
+        "{:?}",
+        first.findings
+    );
+    let worktrees = tempfile::tempdir().unwrap();
+    let second = worktrees.path().join("second");
+    git(project.dir.path(), &["worktree", "add", "-q", second.to_str().unwrap()]);
+
+    let other = in_dir(&second, lint_here);
+
+    assert_eq!(other.findings, first.findings);
+    assert_eq!(other.resolution.misses, 0, "{:?}", other.resolution);
+    assert!(other.resolution.content_hits > 0, "{:?}", other.resolution);
+}
+
+/// M4: a relative and an absolute invocation of the same tree key alike, so alternating them (a
+/// manual run and a hook run) re-lints nothing.
+#[test]
+fn an_absolute_and_a_relative_invocation_share_records() {
+    let project = located_project();
+    settle();
+    let (cold, relative_warm, absolute) = in_dir(project.dir.path(), |here| {
+        let relative = || {
+            let config = Config::load_file(Path::new("poly.toml")).unwrap();
+            lint_at(Path::new("."), Path::new("."), &config, &Project::opts())
+        };
+        (relative(), relative(), lint_here(here))
+    });
+
+    assert_eq!(
+        relative_warm.resolution.misses, 0,
+        "the premise: the relative run is warm"
+    );
+    assert_eq!(absolute.findings, cold.findings);
+    assert_eq!(absolute.resolution.misses, 0, "{:?}", absolute.resolution);
+}
+
+/// M5: a run narrowed with `--only` keeps the other engines' records, so the next full run is
+/// answered from the index instead of re-running every other engine.
+#[test]
+fn a_narrowed_run_does_not_evict_the_other_engines_records() {
+    let project = located_project();
+    settle();
+    project.lint();
+    let full = project.lint();
+    assert_eq!(full.resolution.misses, 0, "the premise: a full warm run");
+
+    let narrowed = lint_at(
+        project.dir.path(),
+        project.dir.path(),
+        &project.config(),
+        &RunOptions {
+            only: vec!["ruff".to_owned()],
+            skip: Vec::new(),
+            ..Project::opts()
+        },
+    );
+    assert!(narrowed.errors.is_empty(), "{:?}", narrowed.errors);
+    let again = project.lint();
+
+    assert_eq!(again.findings, full.findings);
+    assert_eq!(again.resolution.misses, 0, "{:?}", again.resolution);
 }
