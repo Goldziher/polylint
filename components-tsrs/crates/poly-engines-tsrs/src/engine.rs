@@ -21,7 +21,7 @@ pub const ENGINE_NAME: &str = "tsrs";
 ///
 /// Bump the suffix whenever the mapping or the filtering of findings changes, and the version whenever the tsrs
 /// crates are upgraded.
-const VERSION: &str = "tsrs-7.1.0-beta.tsrs2+proj3";
+const VERSION: &str = "tsrs-7.1.0-beta.tsrs2+proj4";
 
 /// The stack of the thread tsrs checks on: checking recurses deeply, and tsrs's own binaries give their program
 /// threads the same.
@@ -111,11 +111,15 @@ impl ProjectAnalysis for TsrsEngine {
         if !Settings::is_enabled(&req.config.options) {
             return Ok(Vec::new());
         }
+        if req.targets.is_some_and(<[PathBuf]>::is_empty) {
+            return Ok(Vec::new());
+        }
         let settings = Settings::from_options(&req.config.options, req.threads)?;
         let declared = Declared::from_files(req.files);
         let request = Request {
             root: req.root,
             files: req.files,
+            targets: req.targets,
             settings: &settings,
             declared: &declared,
         };

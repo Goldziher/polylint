@@ -316,6 +316,13 @@ Because it is an engine, `poly lint` runs it when enabled, and so does the built
 JavaScript, TypeScript and JSON file under `dir` (`.gitignore` and the pruned directories apply; `[discovery] exclude`
 and nested `poly.toml` scopes do not cut the program) and the result is cached on all of them.
 
+A run that names files, or a directory below the project, reports findings only for those files, and the check
+computes only theirs (ADR 0074): the pre-commit hook, which names the staged files, builds the whole program so imports
+resolve, but type-checks only the staged sources. Naming the `tsconfig.json`, or a program with a syntax error in any
+file, checks every file, as `tsc` would. Because the other files are not checked, a change can break a file that
+imports it without the hook seeing it: a staged `util.ts` that changes a signature passes while the unstaged `main.ts`
+calling it no longer type-checks. `poly lint .` (and CI) checks every file and catches that.
+
 The check is hermetic: tsrs reads those files through an in-memory file system, never the disk, and poly hands over no
 `node_modules`. An import of an installed package therefore cannot resolve. `TS2307`, `TS2792`, `TS7016` and
 `TS2688`, and the `Cannot find name ... install type definitions` codes, are dropped when a `package.json` of the

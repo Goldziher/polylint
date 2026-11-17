@@ -451,6 +451,11 @@ pub enum Request {
         environment: Vec<(String, String)>,
         /// The worker threads the host's run budgets for the check; `None` is the component's choice.
         threads: Option<u32>,
+        /// The files whose findings the host reports, spelled as in `files`; `None` is every file (see
+        /// `ProjectRequest::targets`). The last field, so a request one element shorter, from a host that
+        /// predates it, decodes as `None`.
+        #[serde(default)]
+        targets: Option<Vec<String>>,
     },
     /// `Engine::lint_cache_salt` for one file (content in `body`).
     LintCacheSalt {

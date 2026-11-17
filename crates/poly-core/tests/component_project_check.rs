@@ -175,7 +175,10 @@ fn a_component_served_project_check_reports_its_findings() {
 /// The file names of every `ProjectCheck` the recording component received.
 static SEEN_CALLS: Mutex<Vec<Vec<String>>> = Mutex::new(Vec::new());
 
-/// Serializes the tests that record into [`SEEN_CALLS`].
+/// The `targets` of every `ProjectCheck` the recording component received.
+static SEEN_TARGETS: Mutex<Vec<Option<Vec<String>>>> = Mutex::new(Vec::new());
+
+/// Serializes the tests that record into [`SEEN_CALLS`] and [`SEEN_TARGETS`].
 static RECORDING: Mutex<()> = Mutex::new(());
 
 fn whole_tree_desc() -> WireEngineDesc {
@@ -216,7 +219,8 @@ impl ComponentTransport for Recorder {
                 protocol: PROTOCOL_VERSION,
                 component_version: "1.0.0".into(),
             },
-            Request::ProjectCheck { files, .. } => {
+            Request::ProjectCheck { files, targets, .. } => {
+                SEEN_TARGETS.lock().unwrap().push(targets);
                 SEEN_CALLS
                     .lock()
                     .unwrap()
@@ -407,4 +411,59 @@ fn an_ancestor_config_that_owns_a_file_of_the_run_fetches_no_component_for_other
     assert!(run.errors.is_empty(), "{:?}", run.errors);
     assert!(run.components.used.is_empty(), "{:?}", run.components);
     assert!(run.components.missing.is_empty(), "{:?}", run.components);
+}
+
+#[test]
+fn a_run_naming_files_asks_a_whole_tree_check_for_their_findings_only() {
+    let _recording = RECORDING.lock().unwrap_or_else(|e| e.into_inner());
+    let mut component_index = index();
+    component_index.components[0].engines = vec![whole_tree_desc()];
+    let cache = tempfile::tempdir().unwrap();
+    let mut host_options = HostOptions::new(lock(), PathBuf::from(cache.path()));
+    host_options.allow_unsigned = true;
+    host_options.target = Some(TARGET.into());
+    host_options.gate_loads = true;
+    let host = ComponentHost::new(host_options)
+        .unwrap()
+        .with_connector(Arc::new(RecorderConnector));
+    let options = RunOptions {
+        component_injection: Some(ComponentInjection::new(host, component_index)),
+        no_cache: true,
+        jobs: Some(1),
+        ..RunOptions::default()
+    };
+
+    let dir = tempfile::tempdir().unwrap();
+    let write = |name: &str| {
+        let path = dir.path().join(name);
+        std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+        std::fs::write(path, "x = 1\n").unwrap();
+    };
+    write("a.py");
+    write("pkg/b.py");
+    write("pkg/c.py");
+    std::fs::write(dir.path().join("poly.toml"), "[workspace]\nroot = true\n").unwrap();
+    std::fs::create_dir_all(dir.path().join(".git")).unwrap();
+
+    let targets_of = |paths: &[PathBuf]| {
+        SEEN_TARGETS.lock().unwrap().clear();
+        let run = poly_core::lint_run(paths, &Config::default(), &options, false, false).unwrap();
+        assert!(run.errors.is_empty(), "{:?}", run.errors);
+        let seen = SEEN_TARGETS.lock().unwrap().clone();
+        assert_eq!(seen.len(), 1, "one check per run: {seen:?}");
+        seen.into_iter().next().unwrap().map(|mut targets| {
+            targets.sort();
+            targets
+        })
+    };
+    assert_eq!(targets_of(&[dir.path().to_path_buf()]), None, "the whole tree");
+    assert_eq!(targets_of(&[dir.path().join("a.py")]), Some(vec!["a.py".to_owned()]));
+    assert_eq!(
+        targets_of(&[dir.path().join("pkg/b.py"), dir.path().join("a.py")]),
+        Some(vec!["a.py".to_owned(), "pkg/b.py".to_owned()])
+    );
+    assert_eq!(
+        targets_of(&[dir.path().join("pkg")]),
+        Some(vec!["pkg/b.py".to_owned(), "pkg/c.py".to_owned()])
+    );
 }

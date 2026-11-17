@@ -58,6 +58,7 @@ fn run(
         config,
         environment,
         threads: None,
+        targets: None,
     })
 }
 
@@ -254,6 +255,7 @@ fn parallel_check_reports_exactly_as_the_serial_one() {
                 config: &config,
                 environment: &ProjectEnvironment::default(),
                 threads: Some(threads),
+                targets: None,
             })
             .unwrap()
     };

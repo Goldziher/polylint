@@ -567,6 +567,7 @@ fn cache_key(
     plan: &ProjectPlan,
     root: &Path,
     files: &[ProjectFile],
+    targets: Option<&[PathBuf]>,
     environment: &ProjectEnvironment,
 ) -> poly_cache::CacheKey {
     let mut args = toml::Table::new();
@@ -587,6 +588,12 @@ fn cache_key(
         .map(|(k, v)| format!("{k}={v}"))
         .collect();
     args.insert("__environment".to_string(), toml::Value::String(env_pairs.join("\0")));
+    // A narrowed check computes findings only for its targets, so it never answers another set of targets or a
+    // full run; a full run's key has no entry, as before targets existed.
+    if let Some(targets) = targets {
+        let names: Vec<std::borrow::Cow<'_, str>> = targets.iter().map(|path| path.to_string_lossy()).collect();
+        args.insert("__targets".to_string(), toml::Value::String(names.join("\0")));
+    }
     let names: Vec<std::borrow::Cow<'_, str>> = files.iter().map(|f| f.path.to_string_lossy()).collect();
     let digest = ResultCache::file_set_digest(
         names
@@ -638,18 +645,25 @@ impl<'a> RunInputs<'a> {
     }
 }
 
-/// An engine's findings for `loaded`, from the cache when it holds them, else by running the check.
+/// An engine's findings for `loaded` (for `targets` when set), from the cache when it holds them, else by
+/// running the check.
 fn report_for(
     plan: &ProjectPlan,
     root: &Path,
     loaded: &[ProjectFile],
+    targets: Option<&[PathBuf]>,
     environment: &ProjectEnvironment,
     cache: &ResultCache,
 ) -> Result<Vec<(PathBuf, Vec<Diagnostic>)>, LintError> {
-    let key = cache.enabled().then(|| cache_key(plan, root, loaded, environment));
-    let cached = key
-        .as_ref()
-        .and_then(|key| cache.get(Namespace::Lint, key))
+    let key = cache
+        .enabled()
+        .then(|| cache_key(plan, root, loaded, targets, environment));
+    // A full run's result holds every target's findings, so it answers a narrowed run too; never the reverse.
+    let full = (cache.enabled() && targets.is_some()).then(|| cache_key(plan, root, loaded, None, environment));
+    let cached = [&full, &key]
+        .into_iter()
+        .flatten()
+        .find_map(|key| cache.get(Namespace::Lint, key))
         .and_then(|bytes| serde_json::from_slice::<Vec<(PathBuf, Vec<Diagnostic>)>>(&bytes).ok());
     if let Some(reported) = cached {
         return Ok(reported);
@@ -660,6 +674,7 @@ fn report_for(
         config: &plan.config,
         environment,
         threads: Some(rayon::current_num_threads()),
+        targets,
     };
     let reported =
         guard_engine_panic(plan.engine.name(), root, || plan.engine.project_check(&request)).map_err(|error| {

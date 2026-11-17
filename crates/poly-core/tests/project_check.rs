@@ -666,6 +666,24 @@ mod tree {
     }
 
     #[test]
+    fn a_full_run_is_not_answered_by_a_path_scoped_one() {
+        let dir = project("");
+        engine_run(|calls| {
+            run(&[dir.path().join("log/0002.md")]);
+            run(&[dir.path().join("log/0002.md")]);
+            assert_eq!(calls.load(Ordering::SeqCst), 1, "same targets, same key");
+            run(&[dir.path().join("log/0001.md")]);
+            assert_eq!(calls.load(Ordering::SeqCst), 2, "other targets are another check");
+            run(&[dir.path().to_path_buf()]);
+            assert_eq!(
+                calls.load(Ordering::SeqCst),
+                3,
+                "a narrowed result must not answer a full run"
+            );
+        });
+    }
+
+    #[test]
     fn no_served_file_in_the_directory_and_no_side_file_means_no_run() {
         let dir = project("");
         fs::remove_file(dir.path().join("log/0001.md")).unwrap();

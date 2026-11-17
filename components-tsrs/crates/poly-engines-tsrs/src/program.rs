@@ -1,6 +1,6 @@
 //! Builds the program of one `tsconfig.json` over the request's files and collects the compiler's diagnostics,
 //! in the order `tsc --noEmit` reports them: the config's, the syntax errors', then the program's, global and
-//! semantic ones, stopping at the first group that has any.
+//! semantic ones, stopping at the first group that has any. With targets, the diagnostics of the targets alone.
 //!
 //! The program is built from the request alone: tsrs reads through an in-memory file system, so nothing comes from
 //! the disk and nothing is written. Everything that leaves this module is owned data; the program is freed first.
@@ -16,9 +16,9 @@ use std::sync::Arc;
 use anyhow::{anyhow, bail, ensure};
 use poly_engine_api::engine::ProjectFile;
 use poly_engine_api::line_index::LineIndex;
-use tsrs_ast::Diagnostic;
+use tsrs_ast::{Diagnostic, SourceFile};
 use tsrs_compiler::{
-    Context, ProgramOptions, ProgramRegions, get_diagnostics_of_any_program, sort_and_deduplicate_diagnostics,
+    Context, Program, ProgramOptions, ProgramRegions, get_diagnostics_of_any_program, sort_and_deduplicate_diagnostics,
 };
 use tsrs_core::arena::Region;
 use tsrs_core::{CompilerOptions, P, Tristate, tspath};
@@ -44,6 +44,8 @@ const FILE_NOT_FOUND: i32 = 6053;
 pub(crate) struct Request<'a> {
     pub root: &'a Path,
     pub files: &'a [ProjectFile],
+    /// The files whose findings are wanted; `None` for every file.
+    pub targets: Option<&'a [PathBuf]>,
     pub settings: &'a Settings,
     pub declared: &'a Declared,
 }
@@ -89,12 +91,18 @@ pub(crate) fn diagnose(request: &Request<'_>) -> anyhow::Result<Option<Outcome>>
     };
     let cwd = tsrs_path(&request.root.join(&request.settings.dir));
     let host_config = host_path_of(request.files, &config);
+    let targets: Option<Vec<String>> = request
+        .targets
+        .map(|targets| targets.iter().map(|path| tsrs_path(path)).collect());
     let region = Region::new_scratch(SCRATCH_CHUNK);
     let entered = region.enter();
     let result = panic::catch_unwind(AssertUnwindSafe(|| {
         check(
-            &config,
-            &host_config,
+            &Subject {
+                config: &config,
+                host_config: &host_config,
+                targets: targets.as_deref(),
+            },
             memory.into_tsrs(),
             request.settings,
             request.declared,
@@ -263,14 +271,26 @@ fn forgive_declared_extends(
     warnings
 }
 
+/// What a check is about: the `tsconfig` (as tsrs names it), its host path, and the files whose diagnostics are
+/// wanted (tsrs names; `None` for every file).
+struct Subject<'a> {
+    config: &'a str,
+    host_config: &'a Path,
+    targets: Option<&'a [String]>,
+}
+
 fn check(
-    config_path: &str,
-    host_config: &Path,
+    subject: &Subject<'_>,
     fs: Arc<dyn FS>,
     settings: &Settings,
     declared: &Declared,
     cwd: String,
 ) -> anyhow::Result<Outcome> {
+    let &Subject {
+        config: config_path,
+        host_config,
+        targets,
+    } = subject;
     let host = ConfigHost {
         fs: Arc::clone(&fs),
         cwd,
@@ -312,10 +332,12 @@ fn check(
 
     let owner = ProgramOwner::new(options);
     let program = owner.program();
+    let ctx = Context::default();
+    let narrowed = narrowed(&ctx, program, config_path, targets);
     let found = get_diagnostics_of_any_program(
-        &Context::default(),
+        &ctx,
         program,
-        None,
+        narrowed.as_deref(),
         false,
         &mut |ctx, file| program.get_bind_diagnostics(ctx, file),
         &mut |ctx, file| program.get_semantic_diagnostics(ctx, file),
@@ -338,6 +360,32 @@ fn check(
         jsx,
         diagnostics: raw,
     })
+}
+
+/// The program's source files among `targets` (tsrs names), the files whose diagnostics are computed; `None` for
+/// every file.
+///
+/// Every file it is when no targets are given, when the config is a target (it carries the program's file-less
+/// diagnostics), and when any file of the program has a syntax error: `tsc` then reports the syntax errors alone, and
+/// a check of the targets would go on to their semantic errors. A target the program does not hold (a JSON file it
+/// does not import, an excluded file) is not checked. The program itself is the same either way, so a target's
+/// imports resolve, and its findings are those of the full check.
+fn narrowed(
+    ctx: &Context,
+    program: &'static Program,
+    config_path: &str,
+    targets: Option<&[String]>,
+) -> Option<Vec<P<SourceFile>>> {
+    let targets = targets?;
+    if targets.iter().any(|target| target == config_path) || !program.get_syntactic_diagnostics(ctx, None).is_empty() {
+        return None;
+    }
+    Some(
+        targets
+            .iter()
+            .filter_map(|target| program.get_source_file(target))
+            .collect(),
+    )
 }
 
 impl Raw {

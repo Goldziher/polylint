@@ -108,6 +108,11 @@ Each item is described in full under the section named in brackets.
 
 ### Performance
 
+- **The tsrs type check checks only the named files on a path-scoped run.** The pre-commit hook names the staged files;
+  tsrs now builds the whole program but computes diagnostics for those files only, instead of type-checking the whole
+  project and discarding the rest. A change that breaks an unstaged importer is caught by `poly lint .` and CI, not by
+  the hook. The host passes the reported files to every project check (`ProjectRequest::targets`, a trailing
+  `ProjectCheck` field on the component wire) and keys the cache on them (ADR 0074).
 - **Fewer component round trips per file.** An engine's decline of a file now arrives in its `Format` reply, so a
   component no longer receives every file twice (a `SkipReason` request, then `Format`), and a component is not loaded
   just to ask. `BatchSupport` is asked once per engine and config instead of once per file. The `uncomment`, `ini`,

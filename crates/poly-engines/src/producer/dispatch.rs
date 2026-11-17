@@ -182,6 +182,7 @@ impl Producer {
                 config,
                 environment,
                 threads,
+                targets,
             } => {
                 let engine = self.engine(&engine, None)?;
                 let cfg = self.config(config)?;
@@ -195,12 +196,15 @@ impl Producer {
                     .collect();
                 let environment = ProjectEnvironment::from_wire_pairs(&environment);
                 let root = PathBuf::from(root);
+                let targets: Option<Vec<PathBuf>> =
+                    targets.map(|targets| targets.into_iter().map(PathBuf::from).collect());
                 let request = ProjectRequest {
                     root: &root,
                     files: &members,
                     config: &cfg,
                     environment: &environment,
                     threads: threads.map(|n| n as usize),
+                    targets: targets.as_deref(),
                 };
                 let per_file = guarded(engine.name(), || engine.project_check(&request))?;
                 Ok(Payload::Project(

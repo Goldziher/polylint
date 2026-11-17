@@ -203,6 +203,7 @@ fn sample_requests() -> Vec<Request> {
             config: 3,
             environment: vec![("K".into(), "V".into())],
             threads: Some(4),
+            targets: Some(vec!["src/a.ts".into(), "src/b.ts".into()]),
         },
         Request::ProjectCheck {
             engine: "ty".into(),
@@ -211,6 +212,7 @@ fn sample_requests() -> Vec<Request> {
             config: 3,
             environment: vec![],
             threads: None,
+            targets: None,
         },
         Request::LintCacheSalt {
             engine: "helm".into(),
@@ -525,6 +527,36 @@ fn describe_carries_the_selection_an_engine_declares() {
         default: false,
     }));
     assert_eq!(decode_describe(&encode_describe(&chosen).unwrap()).unwrap(), chosen);
+}
+
+/// `targets` is the last field of `ProjectCheck`, so a request from a host that predates it (one element shorter)
+/// still decodes, as a check of every file.
+#[test]
+fn a_project_check_without_targets_decodes_as_every_file() {
+    #[derive(serde::Serialize)]
+    enum Older {
+        ProjectCheck {
+            engine: String,
+            root: String,
+            files: Vec<WireFileSlice>,
+            config: ConfigId,
+            environment: Vec<(String, String)>,
+            threads: Option<u32>,
+        },
+    }
+    let bytes = rmp_serde::to_vec(&Older::ProjectCheck {
+        engine: "tsrs".into(),
+        root: "/r".into(),
+        files: vec![slice(0)],
+        config: 2,
+        environment: vec![],
+        threads: Some(1),
+    })
+    .unwrap();
+    let Request::ProjectCheck { targets, threads, .. } = decode_request(&bytes).unwrap() else {
+        panic!("not a ProjectCheck");
+    };
+    assert_eq!((targets, threads), (None, Some(1)));
 }
 
 /// v3 encodes requests and responses positionally: no field name is on the wire, only the variant

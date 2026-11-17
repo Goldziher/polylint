@@ -564,6 +564,7 @@ mod tests {
                     config: &cfg,
                     environment: &environment,
                     threads: None,
+                    targets: None,
                 };
                 let _ = engine.project_check(&request);
             }

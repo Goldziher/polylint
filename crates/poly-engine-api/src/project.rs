@@ -97,6 +97,14 @@ pub struct ProjectRequest<'a> {
     /// The worker threads the host's run budgets for this check (`-j`, else every core). `None` leaves the
     /// engine to choose, as a caller that has no budget does.
     pub threads: Option<usize>,
+    /// The files whose findings the run reports, spelled as in [`files`](Self::files); `None` means every file.
+    ///
+    /// The host sets it when the run named paths that leave some of the files out, as a pre-commit hook naming the
+    /// staged files does, and discards the findings on every other file. An engine MAY restrict its work to these
+    /// files, but its findings for each of them must equal those of the same request with `None`: the other files
+    /// are still inputs (an import into one resolves as before), only their own findings may go uncomputed.
+    /// Findings an engine still returns for other files are harmless.
+    pub targets: Option<&'a [PathBuf]>,
 }
 
 /// The language id of a listing entry: a file under a declared directory that the engine does not

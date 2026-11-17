@@ -175,7 +175,11 @@ impl Schedule<'_, '_> {
         if !inputs::has_substance(&loaded) {
             return Settled::Skip;
         }
-        match report_for(plan, &root, &loaded, &environment, cache) {
+        // A check over a tree of its own reports only what the run named, so it is asked for no more.
+        let targets = dirs
+            .as_ref()
+            .and_then(|dirs| run_scope.targets(dirs.absolute(&root), &loaded));
+        match report_for(plan, &root, &loaded, targets.as_deref(), &environment, cache) {
             Ok(reported) => Settled::Ran(Box::new(Ran { dirs, loaded, reported })),
             Err(error) => Settled::Failed(error),
         }

@@ -59,6 +59,7 @@ fn run(
         config,
         environment,
         threads: None,
+        targets: None,
     })
 }
 

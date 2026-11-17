@@ -626,6 +626,12 @@ impl ProjectAnalysis for ComponentEngine {
             config: 0,
             environment: req.environment.to_wire_pairs(),
             threads: req.threads.map(|n| u32::try_from(n).unwrap_or(u32::MAX)),
+            targets: req.targets.map(|targets| {
+                targets
+                    .iter()
+                    .map(|path| path_string(&relative(path)).replace(std::path::MAIN_SEPARATOR, "/"))
+                    .collect()
+            }),
         };
         let payload = connection.call(self.name, req.config, request, &body)?;
         let Payload::Project(per_file) = payload else {
