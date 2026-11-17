@@ -184,8 +184,8 @@ key (`path` for `paths`), an invalid value, arguments that do not go together (`
 
 Read-only: it never downloads, never fetches, never writes (the `cache` topic does not create the
 cache it measures) and never runs repository tools. `topics` is an array of `version`,
-`config`, `validate`, `rules`, `components` and `cache` (default `["version"]`); the result has one key
-per topic.
+`config`, `validate`, `rules`, `components` and `cache` (default `["version"]`; an empty list is a
+`usage` error); the result has one key per topic.
 
 | Topic | Mirrors | Returns |
 | --- | --- | --- |
@@ -196,14 +196,17 @@ per topic.
 | `components` | `poly components status` | The downloadable engine components and where each stands; with `paths`, which ones they need, which are missing and which a run would download. |
 | `cache` | `poly cache stats --format json` | `{format_version, on_disk_version, namespaces[], total_entries, total_bytes}`. |
 
-Besides `topics`, `info` takes `config`, `paths` (for `components`, the paths to judge; for
+Besides `topics`, `info` takes `config` (for `config`, `rules`, `components` and `cache`, whose
+`[cache] dir` it measures), `paths` (for `components`, the paths to judge; for
 `validate`, config files or directories), `install` (the policy `would_download` assumes), `dirs` and
 `test` (for `rules`) and `format`.
 
 `info {topics: ["version"]}` still answers when the server's executable was replaced or deleted;
-every other call fails until the server restarts. The `rules` topic never downloads: a core build
-without the `astgrep` component reports it as missing. A topic the host cannot answer carries
-`{error: {kind, message}}` under its key and sets `isError`.
+every other call returns a `stale` error until the server restarts, and other topics asked beside
+`version` carry one under their key. The `rules` topic never downloads: a core build without the
+`astgrep` component reports it as missing. A topic the host cannot answer carries `{error: {kind,
+message}}` under its key and sets `isError`, with the kind `check` reports for the same cause
+(`workspace`, `config`), else `pipeline`.
 
 Remote git `extends` bases are resolved from the local source cache at the `poly.lock`-pinned
 revision and never fetched, by every tool, so the server stays network-free for config. A base that is
@@ -222,7 +225,8 @@ read on each call, so a `poly lock` run beside the server takes effect on the ne
 | `components_uninstall` | `poly components uninstall` | `names`. Refuses a component loaded in this process (`isError`). |
 | `components_prune` | `poly components prune` | None. Removes cached archives nothing references or used recently. |
 
-The cache actions return `{command, freed_bytes}`, like `poly cache clean|gc --format json`.
+The cache actions take `config` (default: the server's `--config`, else discovery), whose `[cache] dir`
+is the cache they act on, and return `{command, freed_bytes}`, like `poly cache clean|gc --format json`.
 
 There is no `hooks` tool: `poly hooks` is CLI-only.
 
@@ -263,7 +267,7 @@ null — and `engines`, a blake3 digest of every engine linked into the binary a
 The `info` `version` topic returns the full engine→version map the digest summarizes.
 The server fingerprints its own executable at startup and re-checks it per request: if the binary is
 replaced or deleted underneath a long-lived server, every call but `info {topics: ["version"]}`
-fails rather than answering with superseded behaviour.
+returns an `isError` result of kind `stale` rather than answering with superseded behaviour.
 
 ## Three per-file outcomes, not two
 
@@ -339,6 +343,7 @@ A run that could not start, or whose requested phase did not run, returns
 | `usage` | Invalid arguments: an unknown key, a wrong value, arguments that do not go together, or a parameter that does not apply to the chosen `scope`, `action` or `topics`. |
 | `untrusted` | `scope: workspace` in a repository whose `[hooks]` are not trusted (`poly trust`). |
 | `no_workspace_tools` | `scope: workspace` with no whole-project tool configured, or the phase disabled. |
+| `stale` | The server's executable was replaced or deleted since it started; restart the server. |
 
 Only an unknown tool name is a JSON-RPC error; everything wrong with a call to a tool that exists is a
 result.

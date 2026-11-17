@@ -11,8 +11,8 @@ use poly_frontend_api::dto::{
     ValidateReport,
 };
 use poly_frontend_api::wire::{
-    CacheGcRequest, ComponentsInstallRequest, ComponentsStatusRequest, ComponentsUninstallRequest, ConfigRequest,
-    Engines, RulesRequest, RunCall, RunReply, Schemas, ValidateRequest, WorkspaceRequest, service,
+    CacheGcRequest, CacheRequest, ComponentsInstallRequest, ComponentsStatusRequest, ComponentsUninstallRequest,
+    ConfigRequest, Engines, RulesRequest, RunCall, RunReply, Schemas, ValidateRequest, WorkspaceRequest, service,
 };
 use poly_frontend_api::{ServiceCaller, call};
 
@@ -63,8 +63,8 @@ impl Backend {
     /// # Errors
     ///
     /// As [`Backend::lint`].
-    pub fn cache_stats(&self) -> anyhow::Result<CacheStatsReport> {
-        call(&*self.caller, service::CACHE_STATS, &())
+    pub fn cache_stats(&self, request: &CacheRequest) -> anyhow::Result<CacheStatsReport> {
+        call(&*self.caller, service::CACHE_STATS, request)
     }
 
     /// Empty the result cache.
@@ -72,8 +72,8 @@ impl Backend {
     /// # Errors
     ///
     /// As [`Backend::lint`].
-    pub fn cache_clean(&self) -> anyhow::Result<CacheFreedReport> {
-        call(&*self.caller, service::CACHE_CLEAN, &())
+    pub fn cache_clean(&self, request: &CacheRequest) -> anyhow::Result<CacheFreedReport> {
+        call(&*self.caller, service::CACHE_CLEAN, request)
     }
 
     /// Evict stale or oversized cache entries.

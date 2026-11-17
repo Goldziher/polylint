@@ -298,6 +298,18 @@ Each item is described in full under the section named in brackets.
   - **The read-only MCP `info` tool could fetch and write.** Its `components` topic resolved a remote `extends` base with
     the fetching resolver, and its `cache` topic created the cache directory, wherever `[cache] dir` pointed. Every
     host service now resolves config from the source cache only, and reading the cache footprint creates nothing.
+- **A replaced `poly mcp` executable answered with a JSON-RPC error.** Every tool but `info`'s `version` topic now
+  returns an `isError` result of kind `stale` naming the restart, and `info {topics: ["version", …]}` answers
+  `version` beside the refused topics instead of failing outright. (ADR 0076)
+- **The MCP `cache` topic and `cache_clean` / `cache_gc` ignored the config.** They read `[cache] dir` from the
+  discovered `poly.toml` whatever `config` or the server's `--config` named, so a run's cache was measured or
+  cleaned in the wrong place. They now take `config`, falling back to the server's `--config`.
+- **MCP `fix {scope: all}` could write fixes and then fail.** The whole-project phase is now planned, and the
+  repository's `poly.lock` pinned, before the per-file tier rewrites anything; a `poly.lock` that does not load is a
+  `config` error.
+- **`info` topic failures were always `pipeline`.** A refused path or config is now `workspace` and a config that does
+  not load is `config`, the kinds `check` reports for the same cause. `info {topics: []}` is a `usage` error rather
+  than an empty answer.
 
 ### Security
 

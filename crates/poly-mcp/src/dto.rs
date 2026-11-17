@@ -46,7 +46,7 @@ pub use poly_frontend_api::dto::{
     WorkspaceToolReport,
 };
 use poly_frontend_api::dto::{Failure, FailureDocument, FailureKind};
-use poly_frontend_api::wire::RunReply;
+use poly_frontend_api::wire::{RunReply, ServiceFailure};
 use rmcp::ErrorData;
 use rmcp::model::{CallToolResult, ContentBlock, MetaObject};
 use schemars::JsonSchema;
@@ -186,23 +186,39 @@ pub fn failure_reply(kind: FailureKind, message: &str) -> RunReply {
     }
 }
 
-/// An `isError` result for arguments that do not go together.
-pub fn usage_result(message: &str, repr: TextRepr) -> CallToolResult {
-    run_result(failure_reply(FailureKind::Usage, message), repr)
+/// An `isError` failure document of `kind` as the tool's whole result.
+pub fn failure_result(kind: FailureKind, message: &str, repr: TextRepr) -> CallToolResult {
+    run_result(failure_reply(kind, message), repr)
 }
 
-/// `{"error": {"kind": "pipeline", "message": …}}` for a host lookup that failed: the body of an
-/// `info` topic the host could not answer. The host's services report these as plain messages,
-/// so the class is the generic one.
+/// An `isError` result for arguments that do not go together.
+pub fn usage_result(message: &str, repr: TextRepr) -> CallToolResult {
+    failure_result(FailureKind::Usage, message, repr)
+}
+
+/// The class of a host failure: the one the host gave it (a refused path is `workspace`, a config
+/// that does not load is `config`, as on a run), else the generic `pipeline`.
+fn failure_kind(error: &anyhow::Error) -> FailureKind {
+    error
+        .downcast_ref::<ServiceFailure>()
+        .map_or(FailureKind::Pipeline, |failure| failure.failure.kind)
+}
+
+/// `{"error": {"kind", "message"}}`: the body of an `info` topic that was not answered.
+pub fn failure_value_of(kind: FailureKind, message: &str) -> Value {
+    serde_json::json!({ "error": Failure { kind, message: message.to_owned() } })
+}
+
+/// [`failure_value_of`] for a host lookup that failed, classified as the host classified it.
 pub fn failure_value(error: &anyhow::Error) -> Value {
-    serde_json::json!({ "error": Failure { kind: FailureKind::Pipeline, message: format!("{error:#}") } })
+    failure_value_of(failure_kind(error), &format!("{error:#}"))
 }
 
 /// An `isError` result for a `manage` action the host failed: the same failure document a run
 /// that could not start returns. A host failure is a result, not a JSON-RPC error, so the model
 /// reads the message and can correct its call.
 pub fn error_result(error: &anyhow::Error, repr: TextRepr) -> CallToolResult {
-    run_result(failure_reply(FailureKind::Pipeline, &format!("{error:#}")), repr)
+    failure_result(failure_kind(error), &format!("{error:#}"), repr)
 }
 
 /// Health of the binary serving this MCP session (the `info` tool's `version` topic).

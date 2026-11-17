@@ -6653,6 +6653,7 @@ dependencies = [
  "blake3",
  "insta",
  "poly-buildinfo",
+ "poly-cache",
  "poly-core",
  "poly-frontend-api",
  "poly-host-services",

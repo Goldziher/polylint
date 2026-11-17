@@ -241,7 +241,7 @@ fn explicit_missing_config_is_an_error() {
 
 #[test]
 fn cache_stats_report_has_format_version() {
-    let report = ops::cache_stats(None).unwrap();
+    let report = ops::cache_stats(None, None).unwrap();
     assert!(!report.format_version.is_empty(), "format version is populated");
 }
 
@@ -796,13 +796,20 @@ async fn a_server_whose_binary_was_replaced_refuses_to_answer() {
     std::fs::remove_file(&executable).unwrap();
     std::fs::write(&executable, b"a newer build installed underneath us").unwrap();
 
-    let error = client
-        .call_tool(
-            CallToolRequestParams::new("info").with_arguments(arguments(&[("topics", serde_json::json!(["cache"]))])),
-        )
+    // A tool result the model reads, not a JSON-RPC error a client reports as a transport failure.
+    let result = client
+        .call_tool(CallToolRequestParams::new("check"))
         .await
-        .expect_err("a replaced executable must fail, not answer");
-    let message = error.to_string();
+        .expect("a replaced executable answers with a tool result, not a protocol error");
+    assert_eq!(
+        result.is_error,
+        Some(true),
+        "a replaced executable must fail, not answer"
+    );
+    let structured = result.structured_content.as_ref().expect("structured content");
+    assert_eq!(structured["error"]["kind"], "stale", "{structured}");
+    assert_eq!(structured["summary"], Value::Null, "{structured}");
+    let message = structured["error"]["message"].as_str().unwrap();
     assert!(
         message.contains("replaced on disk"),
         "the error says what happened: {message}"
@@ -811,6 +818,24 @@ async fn a_server_whose_binary_was_replaced_refuses_to_answer() {
         message.contains("Restart the MCP server"),
         "the error says what to do: {message}"
     );
+
+    // `info` still answers `version` beside a refused topic, so the call that explains the
+    // refusal works whatever else it asks for.
+    let result = client
+        .call_tool(
+            CallToolRequestParams::new("info")
+                .with_arguments(arguments(&[("topics", serde_json::json!(["version", "cache"]))])),
+        )
+        .await
+        .expect("info answers with a tool result");
+    assert_eq!(result.is_error, Some(true), "the refused topic marks the result");
+    let structured = result.structured_content.as_ref().expect("structured content");
+    assert_eq!(
+        structured["version"]["executable_current"],
+        Value::Bool(false),
+        "{structured}"
+    );
+    assert_eq!(structured["cache"]["error"]["kind"], "stale", "{structured}");
 
     client.cancel().await.unwrap();
     let _ = server_task.await;
@@ -827,9 +852,15 @@ async fn the_version_tool_still_answers_after_the_binary_is_deleted() {
 
     // Everything else is refused, but `version` must still diagnose the cause —
     // an error with no explanation leaves the caller exactly where they started.
-    assert!(
-        client.call_tool(CallToolRequestParams::new("check")).await.is_err(),
-        "lint is refused once the binary is gone"
+    let refused = client
+        .call_tool(CallToolRequestParams::new("check"))
+        .await
+        .expect("a tool result");
+    assert_eq!(refused.is_error, Some(true), "lint is refused once the binary is gone");
+    assert_eq!(
+        refused.structured_content.as_ref().unwrap()["error"]["kind"],
+        "stale",
+        "{refused:?}"
     );
     let result = client
         .call_tool(CallToolRequestParams::new("info"))
@@ -974,6 +1005,17 @@ fn the_instructions_warn_about_untrusted_repositories() {
     let instructions = common::server(None).get_info().instructions.unwrap_or_default();
     assert!(
         instructions.contains("only on repositories you trust"),
+        "{instructions}"
+    );
+}
+
+/// A pass at reduced fidelity is still a pass (ADR 0075), so the instructions that tell a model
+/// to gate on `summary.checked` also name `degraded`, the one place it would learn of it.
+#[test]
+fn the_instructions_name_degraded_beside_the_checked_gate() {
+    let instructions = common::server(None).get_info().instructions.unwrap_or_default();
+    assert!(
+        instructions.contains("summary.checked") && instructions.contains("`degraded`"),
         "{instructions}"
     );
 }
