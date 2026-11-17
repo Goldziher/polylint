@@ -5,7 +5,7 @@
 //! call, so the host has no way to report mid-call.
 
 use poly_frontend_api::dto::ComponentActions;
-use poly_frontend_api::wire::{CacheGcRequest, ComponentsInstallRequest, ComponentsUninstallRequest};
+use poly_frontend_api::wire::{CacheGcRequest, CacheRequest, ComponentsInstallRequest, ComponentsUninstallRequest};
 use rmcp::model::{CallToolResponse, CallToolResult, JsonObject};
 use rmcp::service::RequestContext;
 use rmcp::{ErrorData, RoleServer};
@@ -34,13 +34,18 @@ impl PolyMcpServer {
             return Ok(CallToolResponse::Complete(usage_result(&message, repr)));
         }
         let backend = self.backend.clone();
+        let config = effective_config(args.config, &self.config_override);
         let result = match args.action {
-            Action::CacheClean => match run_blocking(move || Ok(backend.cache_clean())).await? {
-                Ok(report) => dto_result(&report, repr)?,
-                Err(error) => error_result(&error, repr),
-            },
+            Action::CacheClean => {
+                let request = CacheRequest { config };
+                match run_blocking(move || Ok(backend.cache_clean(&request))).await? {
+                    Ok(report) => dto_result(&report, repr)?,
+                    Err(error) => error_result(&error, repr),
+                }
+            }
             Action::CacheGc => {
                 let request = CacheGcRequest {
+                    config,
                     max_age_days: args.max_age_days,
                     max_size: args.max_size,
                 };
@@ -64,7 +69,7 @@ impl PolyMcpServer {
                     names: args.names,
                     languages: args.languages,
                     paths: args.paths,
-                    config: effective_config(args.config, &self.config_override),
+                    config,
                     dry_run: args.dry_run,
                 };
                 return self.install_components(install, repr, context).await;

@@ -30,8 +30,8 @@
 //! Every result carries the serving binary's identity (see [`crate::identity`]) under a `poly`
 //! key in `structured_content` and in `_meta`. The server fingerprints its own executable at
 //! startup and re-checks it per request: if the binary is replaced or deleted underneath a
-//! long-lived server, every call but `info {topics: ["version"]}` fails rather than answering
-//! with superseded behaviour.
+//! long-lived server, every call but `info {topics: ["version"]}` answers with a `stale` failure
+//! rather than with superseded behaviour.
 //!
 //! ## Tasks
 //!
@@ -54,6 +54,7 @@ use rmcp::task_manager::{TaskExit, TaskManager, TaskOptions};
 use rmcp::{ErrorData, RoleServer, ServerHandler};
 
 use poly_frontend_api::ServiceCaller;
+use poly_frontend_api::dto::FailureKind;
 
 mod arguments;
 mod info;
@@ -63,20 +64,20 @@ pub mod resources;
 mod run;
 
 use crate::backend::Backend;
-use crate::dto::usage_result;
+use crate::dto::{failure_result, usage_result};
 use crate::identity::{self, ExecutableWatch};
-use params::{CHECK, FIX, INFO, InfoParams, ManageParams, RunParams, Topic};
+use params::{CHECK, FIX, INFO, InfoParams, ManageParams, RunParams};
 
 /// What every tool's result means, said once instead of in every description.
 const INSTRUCTIONS: &str = "poly lints and formats every language with one config. Tools: `check` (no \
-    writes), `fix` (writes), `info` (read-only state), `manage` (cache and components). `check`/`fix` run the \
-    tools the repository's poly.toml configures: use them only on repositories you trust. Results are the \
-    CLI's `--format json` document plus a `poly` block naming the binary that answered. `isError` means the \
-    run did not verify what was asked: a file failed, a requested phase did not run, or nothing ran at all, \
-    which is `{error: {kind, message}, summary: null}` (invalid or inapplicable arguments are `kind: usage`). \
-    Findings and drift are not errors. Gate on `summary.checked`, not on an empty `results`: a clean file has \
-    no record. Whole-project scopes and component downloads return a Task when the client supports them; poll \
-    tasks/get. Output schemas: resources under poly://schema/.";
+    writes), `fix` (writes), `info` (read-only), `manage` (cache, components). `check`/`fix` run the tools the \
+    repository's poly.toml configures: use them only on repositories you trust. Results are the CLI's \
+    `--format json` document plus a `poly` identity block. `isError` means the run did not verify what was \
+    asked: a file failed, a requested phase did not run, or nothing ran, which is `{error: {kind, message}, \
+    summary: null}` (invalid or inapplicable arguments are `kind: usage`). Findings and drift are not errors. \
+    Gate on `summary.checked`, not on an empty `results`: a clean file has no record. `degraded` names native \
+    tools not on PATH; their files still count as checked. Whole-project scopes and component downloads \
+    return a Task if the client supports it; poll tasks/get. Output schemas: poly://schema/ resources.";
 
 /// MCP server exposing poly's checks, fixes, state and maintenance as four tools.
 #[derive(Clone)]
@@ -213,24 +214,35 @@ impl PolyMcpServer {
         CallToolResponse::Task(rmcp::model::CreateTaskResult::new(task))
     }
 
-    /// Refuse the request when the executable this server runs from is no longer
-    /// the file on disk.
+    /// Why the server must not answer, when the executable it runs from is no
+    /// longer the file on disk.
     ///
     /// An MCP server is long-lived **by design** and has no expiry: on macOS the
     /// kernel keeps a deleted inode alive for as long as a process holds it, so
     /// a server started before an upgrade keeps serving the pre-upgrade build
     /// indefinitely — answering, plausibly, with behaviour that was fixed hours
-    /// ago. Erroring is the only outcome a caller cannot mistake for a result.
-    fn reject_if_stale(&self) -> Result<(), ErrorData> {
-        let Some(staleness) = self.executable.check() else {
-            return Ok(());
-        };
+    /// ago. Refusing is the only outcome a caller cannot mistake for a result.
+    fn stale(&self) -> Option<String> {
+        let staleness = self.executable.check()?;
         let message = self.executable.stale_message(staleness);
         // Also surface it on stderr, once, for whoever is reading the server's
         // log rather than the tool result.
         static ANNOUNCED: std::sync::Once = std::sync::Once::new();
         ANNOUNCED.call_once(|| eprintln!("poly mcp: {message}"));
-        Err(ErrorData::internal_error(message, None))
+        Some(message)
+    }
+
+    /// The `stale` failure as the tool's answer when the server must not answer (see
+    /// [`Self::stale`]): an `isError` result the model reads, not a JSON-RPC error a client
+    /// surfaces as a transport failure.
+    fn refuse_if_stale(&self, arguments: &JsonObject) -> Option<CallToolResponse> {
+        self.stale().map(|message| {
+            CallToolResponse::Complete(failure_result(
+                FailureKind::Stale,
+                &message,
+                arguments::text_repr(arguments),
+            ))
+        })
     }
 }
 
@@ -267,22 +279,23 @@ impl ServerHandler for PolyMcpServer {
                     Ok(args) => args,
                     Err(message) => return Ok(usage(&message, &raw)),
                 };
-                // `version` is exempt: it is the topic that *explains* a stale server, and
-                // refusing it would leave a caller with an error and no diagnosis.
-                if args.topics.iter().any(|topic| *topic != Topic::Version) {
-                    self.reject_if_stale()?;
-                }
+                // Staleness is answered per topic: `version` is the topic that *explains* a
+                // stale server, and refusing it would leave a caller with no diagnosis.
                 self.run_info(args, &raw).await.map(CallToolResponse::Complete)
             }
             CHECK | FIX => {
-                self.reject_if_stale()?;
+                if let Some(refusal) = self.refuse_if_stale(&raw) {
+                    return Ok(refusal);
+                }
                 match arguments::parse::<RunParams>(tool, &raw) {
                     Ok(args) => self.run_tool(args, &raw, &context, tool.name == FIX).await,
                     Err(message) => Ok(usage(&message, &raw)),
                 }
             }
             _ => {
-                self.reject_if_stale()?;
+                if let Some(refusal) = self.refuse_if_stale(&raw) {
+                    return Ok(refusal);
+                }
                 match arguments::parse::<ManageParams>(tool, &raw) {
                     Ok(args) => self.run_manage(args, &raw, &context).await,
                     Err(message) => Ok(usage(&message, &raw)),

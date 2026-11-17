@@ -8,8 +8,9 @@ use poly_core::{FormatRun, LintRun};
 use poly_frontend_api::ServiceCaller;
 use poly_frontend_api::dto::{ComponentActions, ComponentSummary, ComponentsStatus, FailureKind};
 use poly_frontend_api::wire::{
-    CacheGcRequest, ComponentsInstallRequest, ComponentsStatusRequest, ComponentsUninstallRequest, ConfigRequest,
-    Engines, RulesRequest, RunCall, RunReply, RunRequest, Schemas, ValidateRequest, WorkspaceRequest, service,
+    CacheGcRequest, CacheRequest, ComponentsInstallRequest, ComponentsStatusRequest, ComponentsUninstallRequest,
+    ConfigRequest, Engines, RulesRequest, RunCall, RunReply, RunRequest, Schemas, ValidateRequest, WorkspaceRequest,
+    encode_failure, service,
 };
 use schemars::generate::SchemaSettings;
 use serde::Serialize;
@@ -109,10 +110,15 @@ impl Services {
         }
     }
 
-    /// [`Services::confine`] for a run, classifying a refusal as a workspace failure.
-    fn confine_run(&self, request: &RunRequest) -> anyhow::Result<()> {
-        self.confine(&request.paths, request.config.as_deref())
+    /// [`Services::confine`], classifying a refusal as a workspace failure.
+    fn confine_classified(&self, paths: &[String], config: Option<&str>) -> anyhow::Result<()> {
+        self.confine(paths, config)
             .map_err(|error| RunFailure::from_anyhow(FailureKind::Workspace, &error))
+    }
+
+    /// [`Services::confine_classified`] for a run.
+    fn confine_run(&self, request: &RunRequest) -> anyhow::Result<()> {
+        self.confine_classified(&request.paths, request.config.as_deref())
     }
 
     /// Run `service` on `request` and return the encoded reply.
@@ -146,8 +152,7 @@ impl Services {
             service::WORKSPACE_LINT => {
                 let req: WorkspaceRequest = decode(request)?;
                 let reply = self
-                    .confine(&[], req.config.as_deref())
-                    .map_err(|error| RunFailure::from_anyhow(FailureKind::Workspace, &error))
+                    .confine_classified(&[], req.config.as_deref())
                     .and_then(|()| {
                         ops::workspace_lint(
                             req.config.as_deref(),
@@ -160,29 +165,39 @@ impl Services {
                     .and_then(|report| workspace_reply(&report));
                 encode(&reply.unwrap_or_else(|error| failure_reply(&error)))
             }
-            service::CACHE_STATS => encode(&ops::cache_stats(self.resolver.as_ref())?),
-            service::CACHE_CLEAN => encode(&ops::cache_clean(self.resolver.as_ref())?),
+            service::CACHE_STATS => {
+                let req: CacheRequest = decode(request)?;
+                self.confine_classified(&[], req.config.as_deref())?;
+                encode(&ops::cache_stats(req.config.as_deref(), self.resolver.as_ref())?)
+            }
+            service::CACHE_CLEAN => {
+                let req: CacheRequest = decode(request)?;
+                self.confine_classified(&[], req.config.as_deref())?;
+                encode(&ops::cache_clean(req.config.as_deref(), self.resolver.as_ref())?)
+            }
             service::CACHE_GC => {
                 let req: CacheGcRequest = decode(request)?;
+                self.confine_classified(&[], req.config.as_deref())?;
                 encode(&ops::cache_gc(
                     req.max_age_days,
                     req.max_size.as_deref(),
+                    req.config.as_deref(),
                     self.resolver.as_ref(),
                 )?)
             }
             service::CONFIG_SHOW => {
                 let req: ConfigRequest = decode(request)?;
-                self.confine(&[], req.config.as_deref())?;
+                self.confine_classified(&[], req.config.as_deref())?;
                 encode(&ops::config_show(req.config.as_deref(), self.resolver.as_ref())?)
             }
             service::CONFIG_VALIDATE => {
                 let req: ValidateRequest = decode(request)?;
-                self.confine(&req.paths, None)?;
+                self.confine_classified(&req.paths, None)?;
                 encode(&ops::config_validate(&req.paths)?)
             }
             service::RULES => {
                 let req: RulesRequest = decode(request)?;
-                self.confine(&req.dirs, req.config.as_deref())?;
+                self.confine_classified(&req.dirs, req.config.as_deref())?;
                 encode(&ops::rules_report(
                     &req.dirs,
                     req.config.as_deref(),
@@ -199,7 +214,7 @@ impl Services {
             }
             service::COMPONENTS_STATUS => {
                 let req: ComponentsStatusRequest = decode(request)?;
-                self.confine(&req.paths, req.config.as_deref())?;
+                self.confine_classified(&req.paths, req.config.as_deref())?;
                 match &self.components {
                     Some(provider) => encode(&provider.status(&req)?),
                     None => encode(&empty_status()),
@@ -207,7 +222,7 @@ impl Services {
             }
             service::COMPONENTS_INSTALL => {
                 let req: ComponentsInstallRequest = decode(request)?;
-                self.confine(&req.paths, req.config.as_deref())?;
+                self.confine_classified(&req.paths, req.config.as_deref())?;
                 match &self.components {
                     Some(provider) => encode(&provider.install(&req)?),
                     None => no_manager(),
@@ -245,8 +260,18 @@ impl Services {
 }
 
 impl ServiceCaller for Services {
+    /// A classified failure (a [`RunFailure`]) goes out as the JSON of its [`Failure`], which the
+    /// frontend's `call` decodes back into its kind; anything else is the plain message.
+    ///
+    /// [`Failure`]: poly_frontend_api::dto::Failure
     fn call(&self, service: &str, request: &[u8]) -> Result<Vec<u8>, String> {
-        self.dispatch(service, request).map_err(|error| format!("{error:#}"))
+        self.dispatch(service, request).map_err(|error| {
+            if error.downcast_ref::<RunFailure>().is_some() {
+                encode_failure(&failure_document(&error).error)
+            } else {
+                format!("{error:#}")
+            }
+        })
     }
 }
 
@@ -401,6 +426,33 @@ mod tests {
             .dispatch(service::CONFIG_SHOW, request.as_bytes())
             .unwrap_err();
         assert!(format!("{error:#}").contains("outside the workspace"), "{error:#}");
+    }
+
+    #[test]
+    fn a_refusal_crosses_the_service_table_with_its_kind() {
+        let root = tempfile::tempdir().unwrap();
+        let outside = tempfile::tempdir().unwrap();
+        let evil = outside.path().join("poly.toml");
+        std::fs::write(&evil, "").unwrap();
+        let guard = WorkspaceGuard::new(root.path(), None, false).unwrap();
+        let services = Services::new().with_workspace_guard(guard);
+        let error = poly_frontend_api::call::<_, Value>(
+            &services,
+            service::CONFIG_SHOW,
+            &ConfigRequest {
+                config: Some(evil.display().to_string()),
+            },
+        )
+        .unwrap_err();
+        let failure = error
+            .downcast_ref::<poly_frontend_api::wire::ServiceFailure>()
+            .expect("a classified failure");
+        assert_eq!(failure.failure.kind, FailureKind::Workspace, "{error:#}");
+        let message = ServiceCaller::call(&services, "nope.run", b"null").unwrap_err();
+        assert!(
+            message.starts_with("unknown host service"),
+            "unclassified stays plain: {message}"
+        );
     }
 
     #[test]

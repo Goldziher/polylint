@@ -129,7 +129,7 @@ async fn a_parameter_that_does_not_apply_is_refused() {
             "max_size",
         ),
         ("info", json!({ "topics": ["version"], "dirs": ["rules"] }), "dirs"),
-        ("info", json!({ "topics": ["cache"], "config": "poly.toml" }), "config"),
+        ("info", json!({ "topics": ["cache"], "paths": ["a.py"] }), "paths"),
         (
             "check",
             json!({ "scope": "workspace", "exclude": ["e2e/**"] }),

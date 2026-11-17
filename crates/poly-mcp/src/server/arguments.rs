@@ -22,13 +22,13 @@ pub(super) const INFO_TOPICS: Applies = &[
     ("validate", &["paths"]),
     ("rules", &["config", "dirs", "test"]),
     ("components", &["config", "paths", "install"]),
-    ("cache", &[]),
+    ("cache", &["config"]),
 ];
 
 /// The parameters each `manage` action reads.
 pub(super) const MANAGE_ACTIONS: Applies = &[
-    ("cache_clean", &[]),
-    ("cache_gc", &["max_age_days", "max_size"]),
+    ("cache_clean", &["config"]),
+    ("cache_gc", &["max_age_days", "max_size", "config"]),
     (
         "components_install",
         &["names", "languages", "paths", "config", "dry_run"],

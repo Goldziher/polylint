@@ -114,13 +114,18 @@ fn existing_paths(paths: &[String]) -> anyhow::Result<Vec<PathBuf>> {
     }
 }
 
+/// `error` classified as a config failure: the config, its `extends` bases or its `poly.lock` did
+/// not load.
+fn config_failure(error: anyhow::Error) -> anyhow::Error {
+    RunFailure::from_anyhow(FailureKind::Config, &error)
+}
+
 /// Pin the repository's tool lock and load the run's config, classifying a failure of either as
 /// a config failure.
 fn load_for_run(config: Option<&str>, resolver: Option<&Resolver>) -> anyhow::Result<(ToolLockGuard, Arc<Config>)> {
     let explicit = config.map(Path::new);
-    let guard = tool_lock_scope(explicit).map_err(|error| RunFailure::from_anyhow(FailureKind::Config, &error))?;
-    let config = resolve_config_with(explicit, resolver)
-        .map_err(|error| RunFailure::from_anyhow(FailureKind::Config, &error))?;
+    let guard = tool_lock_scope(explicit).map_err(config_failure)?;
+    let config = resolve_config_with(explicit, resolver).map_err(config_failure)?;
     Ok((guard, config))
 }
 
@@ -224,34 +229,40 @@ pub fn format_run(
     format(&call_for(paths, exclude, config, write), None)
 }
 
+/// The `[cache] dir` of `config` (an explicit file, else the one discovered from the working
+/// directory), classifying a config that does not load as a config failure.
+fn cache_dir(config: Option<&str>, resolver: Option<&Resolver>) -> anyhow::Result<Option<String>> {
+    let resolved = resolve_poly_config_with(config.map(Path::new), resolver).map_err(config_failure)?;
+    Ok(resolved.cache.dir.clone())
+}
+
 /// Open the result cache the way `poly cache` does: honor `[cache] dir` from the
 /// resolved config, else fall back to the default per-repo anchor walk (which
 /// respects `POLY_CACHE_HOME`).
-fn open_result_cache(resolver: Option<&Resolver>) -> anyhow::Result<ResultCache> {
-    let config = resolve_poly_config_with(None, resolver)?;
-    cache::open(cache::root(None, config.cache.dir.as_deref())?)
+fn open_result_cache(config: Option<&str>, resolver: Option<&Resolver>) -> anyhow::Result<ResultCache> {
+    cache::open(cache::root(None, cache_dir(config, resolver)?.as_deref())?)
 }
 
-/// Report cache footprint: the `poly cache stats --format json` document. Read-only: unlike the
-/// maintenance operations it creates no cache directory (the frontend serves it from a
-/// read-only tool, and `[cache] dir` is the repository's to choose).
-pub fn cache_stats(resolver: Option<&Resolver>) -> anyhow::Result<CacheStatsReport> {
-    let config = resolve_poly_config_with(None, resolver)?;
-    cache::stats(&cache::open_for_stats(config.cache.dir.as_deref())?)
+/// Report cache footprint: the `poly cache stats --format json` document, for the cache `config`
+/// locates. Read-only: unlike the maintenance operations it creates no cache directory (the
+/// frontend serves it from a read-only tool, and `[cache] dir` is the repository's to choose).
+pub fn cache_stats(config: Option<&str>, resolver: Option<&Resolver>) -> anyhow::Result<CacheStatsReport> {
+    cache::stats(&cache::open_for_stats(cache_dir(config, resolver)?.as_deref())?)
 }
 
 /// Remove every cached entry: the `poly cache clean --format json` document.
-pub fn cache_clean(resolver: Option<&Resolver>) -> anyhow::Result<CacheFreedReport> {
-    cache::clean(&open_result_cache(resolver)?)
+pub fn cache_clean(config: Option<&str>, resolver: Option<&Resolver>) -> anyhow::Result<CacheFreedReport> {
+    cache::clean(&open_result_cache(config, resolver)?)
 }
 
 /// Evict stale or oversized entries: the `poly cache gc --format json` document.
 pub fn cache_gc(
     max_age_days: Option<u64>,
     max_size: Option<&str>,
+    config: Option<&str>,
     resolver: Option<&Resolver>,
 ) -> anyhow::Result<CacheFreedReport> {
-    cache::gc(&open_result_cache(resolver)?, max_age_days, max_size)
+    cache::gc(&open_result_cache(config, resolver)?, max_age_days, max_size)
 }
 
 /// List (and optionally test) the ast-grep rules a run would apply (mirrors
@@ -287,7 +298,7 @@ pub fn rules_report_with(
     resolver: Option<&Resolver>,
     injection: Option<&poly_core::components::ComponentInjection>,
 ) -> anyhow::Result<RulesReport> {
-    let mut resolved = (*resolve_config_with(config.map(Path::new), resolver)?).clone();
+    let mut resolved = (*resolve_config_with(config.map(Path::new), resolver).map_err(config_failure)?).clone();
     resolved.components.install = ComponentInstallPolicy::Never;
     rules_report_for(&resolved, dirs, test, injection)
 }
@@ -414,7 +425,7 @@ pub fn rules_report_from_wire(dirs: Vec<String>, wire: poly_component_protocol::
 pub fn config_show(config: Option<&str>, resolver: Option<&Resolver>) -> anyhow::Result<EffectiveConfig> {
     let local = LocalPathResolver;
     let resolver: &dyn BaseConfigResolver = resolver.map_or(&local, |resolver| resolver.as_ref());
-    EffectiveConfig::resolve(config.map(Path::new), resolver)
+    EffectiveConfig::resolve(config.map(Path::new), resolver).map_err(config_failure)
 }
 
 /// Check config files against poly's static knowledge of every engine, as `poly config validate`
@@ -424,7 +435,11 @@ pub fn config_validate(paths: &[String]) -> anyhow::Result<ValidateReport> {
     use anyhow::Context as _;
     let files: Vec<PathBuf> = if paths.is_empty() {
         let cwd = std::env::current_dir().context("reading the current directory")?;
-        vec![poly_config::find_config(&cwd).context("no poly.toml found")?]
+        vec![
+            poly_config::find_config(&cwd)
+                .context("no poly.toml found")
+                .map_err(config_failure)?,
+        ]
     } else {
         paths
             .iter()
@@ -445,7 +460,9 @@ pub fn config_validate(paths: &[String]) -> anyhow::Result<ValidateReport> {
     };
     let mut partial: std::collections::BTreeMap<String, std::collections::BTreeSet<String>> = Default::default();
     for file in files {
-        let source = std::fs::read_to_string(&file).with_context(|| format!("reading {}", file.display()))?;
+        let source = std::fs::read_to_string(&file)
+            .with_context(|| format!("reading {}", file.display()))
+            .map_err(config_failure)?;
         let checked = poly_core::config_validate::validate_source(&source);
         report.valid &= checked.is_valid();
         report.files.push(ValidatedFile {
@@ -577,14 +594,17 @@ pub fn lint_all(call: &RunCall, resolver: Option<&Resolver>) -> anyhow::Result<(
         };
         return Ok((run, report));
     }
-    let explicit = request.config.as_deref().map(Path::new);
-    let poly_config = resolve_poly_config_with(explicit, resolver)
-        .map_err(|error| RunFailure::from_anyhow(FailureKind::Config, &error))?;
+    // Everything that can refuse the run comes before the per-file tier, which writes its fixes
+    // under `apply`: a phase that cannot be planned must not leave them behind. The one tool lock
+    // taken here covers both tiers.
+    let (_tool_lock, paths, config, mut options) = prepare(request, resolver)?;
+    let poly_config =
+        resolve_poly_config_with(request.config.as_deref().map(Path::new), resolver).map_err(config_failure)?;
     let plan = poly_workspace::plan_workspace_lint(&poly_config);
-    let languages = crate::workspace_coverage::workspace_lint_languages(&plan);
-    let run = lint_with(call, resolver, languages)?;
-    let _tool_lock = tool_lock_scope(explicit)?;
-    let mut report = run_planned(&poly_config, plan?, call.apply, request.jobs, request.no_cache)?;
+    options.externally_linted_languages = crate::workspace_coverage::workspace_lint_languages(&plan);
+    let plan = plan?;
+    let run = poly_core::lint_run(&paths, &config, &options, call.apply, request.debug)?;
+    let mut report = run_planned(&poly_config, plan, call.apply, request.jobs, request.no_cache)?;
     if !request.paths.is_empty() {
         report.notes.push(
             "whole-project phase covers the entire repository, not just the named paths \
@@ -604,7 +624,7 @@ mod tests {
         let _serial = crate::CONFIG_LOADING
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner);
-        let report = cache_stats(None).unwrap();
+        let report = cache_stats(None, None).unwrap();
         // The stats always carry the current format version.
         assert!(!report.format_version.is_empty(), "format version is populated");
     }

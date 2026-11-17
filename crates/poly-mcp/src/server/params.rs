@@ -170,7 +170,7 @@ pub struct ManageParams {
     /// `components_install`: install every component these paths need.
     #[serde(default)]
     pub paths: Vec<String>,
-    /// `components_install`: config file used to judge `paths`.
+    /// Config file: `components_install` judges `paths` by it; the cache actions use its `[cache] dir`.
     #[serde(default)]
     pub config: Option<String>,
     /// `components_install`: report what would be downloaded, download nothing. No other action has a dry run.
