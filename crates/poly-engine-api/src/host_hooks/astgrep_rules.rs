@@ -16,18 +16,26 @@ pub fn rules_hash(dirs: &[String]) -> String {
     // Utils files are inputs to the parse, so an edit to one must invalidate
     // the cache exactly as a rule edit does — hash the rule files *and* the
     // `utils.yml` they resolve against, not just the former.
-    let mut paths: Vec<PathBuf> = dirs
+    // Each file is named by its rule directory's position and its path within it, never its
+    // absolute path: a rule directory resolves absolute under an absolute invocation or the hook
+    // snapshot, and the key must not flip with that.
+    let mut paths: Vec<(usize, PathBuf, PathBuf)> = dirs
         .iter()
-        .flat_map(|d| {
+        .enumerate()
+        .flat_map(|(index, d)| {
             let dir = Path::new(d);
-            collect_rule_paths(dir).into_iter().chain(collect_utils_paths(dir))
+            collect_rule_paths(dir)
+                .into_iter()
+                .chain(collect_utils_paths(dir))
+                .map(move |path| (index, path.strip_prefix(dir).unwrap_or(&path).to_path_buf(), path))
         })
         .collect();
     paths.sort();
 
-    for path in paths {
+    for (index, relative, path) in paths {
         if let Ok(bytes) = fs::read(&path) {
-            hasher.update(path.to_string_lossy().as_bytes());
+            hasher.update(&(index as u64).to_le_bytes());
+            hasher.update(relative.to_string_lossy().as_bytes());
             hasher.update(&bytes);
             had_any = true;
         }
@@ -210,4 +218,23 @@ fn build_globs(rule_id: &str, entries: &[IgnoreGlob]) -> Vec<globset::Glob> {
                 .ok()
         })
         .collect()
+}
+
+#[cfg(test)]
+mod location_tests {
+    /// M4: the rules hash names files within their rule directory, so the same rules in another checkout, or
+    /// reached through an absolute path, hash alike.
+    #[test]
+    fn the_rules_hash_does_not_depend_on_where_the_rules_live() {
+        let hash = || {
+            let dir = tempfile::tempdir().unwrap();
+            let rules = dir.path().join(".poly/rules");
+            std::fs::create_dir_all(&rules).unwrap();
+            std::fs::write(rules.join("no-x.yml"), "id: no-x\nlanguage: go\nrule:\n  pattern: x\n").unwrap();
+            super::rules_hash(&[rules.to_string_lossy().into_owned()])
+        };
+        let first = hash();
+        assert!(!first.is_empty());
+        assert_eq!(first, hash());
+    }
 }

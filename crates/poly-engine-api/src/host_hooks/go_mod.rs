@@ -86,9 +86,13 @@ pub fn lint_salt(path: &Path) -> Option<String> {
         return None;
     }
     let (root, module) = nearest_root(path)?;
+    // The file's path within its module, not the module's absolute root: what the rules resolve
+    // against, and the same in every checkout of the tree.
+    let absolute = std::path::absolute(path).ok()?;
+    let within = absolute.strip_prefix(&root).unwrap_or(&absolute);
     Some(format!(
         "go-mod-lint:{}:{}",
-        root.display(),
+        within.to_string_lossy().replace('\\', "/"),
         module.module.as_deref().unwrap_or_default()
     ))
 }
@@ -155,6 +159,24 @@ mod tests {
 
     fn option<'a>(cfg: &'a EngineConfig, key: &str) -> Option<&'a str> {
         cfg.options.get(key).and_then(toml::Value::as_str)
+    }
+
+    /// M4: the lint salt names the file within its module, so two checkouts of a module salt alike.
+    #[test]
+    fn the_lint_salt_does_not_depend_on_the_checkout_location() {
+        let salt = || {
+            let dir = repo(&[
+                ("go.mod", "module example.com/m\n\ngo 1.22\n"),
+                ("pkg/a.go", "package pkg\n"),
+            ]);
+            lint_salt(&dir.path().join("pkg/a.go"))
+        };
+        let first = salt();
+        assert!(
+            first.as_deref().is_some_and(|salt| salt.contains("pkg/a.go")),
+            "{first:?}"
+        );
+        assert_eq!(first, salt());
     }
 
     #[test]

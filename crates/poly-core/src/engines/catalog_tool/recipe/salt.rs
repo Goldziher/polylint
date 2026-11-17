@@ -76,16 +76,22 @@ pub(super) fn config_flag_files(tokens: &[String], flags: &[String]) -> Vec<Path
 
 /// Fingerprint the config the tool will read: the files named by its flags and
 /// the files it discovers (`names`) in `cwd` or an ancestor.
+///
+/// Every file is named relative to `cwd` (`../.hadolint.yaml` for a parent's), so two checkouts of one repository
+/// fingerprint alike.
 pub(super) fn config_fingerprint(cwd: &Path, flagged: &[PathBuf], names: &[String]) -> String {
     let mut hasher = blake3::Hasher::new();
     for file in flagged {
-        hash_file(&mut hasher, file);
+        hash_file(&mut hasher, file.strip_prefix(cwd).unwrap_or(file), file);
     }
-    for directory in cwd.ancestors() {
+    for (depth, directory) in cwd.ancestors().enumerate() {
         for name in names {
             let candidate = directory.join(name);
             if candidate.is_file() {
-                hash_file(&mut hasher, &candidate);
+                let label: PathBuf = std::iter::repeat_n(Path::new(".."), depth)
+                    .collect::<PathBuf>()
+                    .join(name);
+                hash_file(&mut hasher, &label, &candidate);
             }
         }
         if directory.join(".git").exists() {
@@ -95,8 +101,10 @@ pub(super) fn config_fingerprint(cwd: &Path, flagged: &[PathBuf], names: &[Strin
     hasher.finalize().to_hex().to_string()
 }
 
-fn hash_file(hasher: &mut blake3::Hasher, path: &Path) {
-    hasher.update(path.as_os_str().as_encoded_bytes());
+/// Fold `path`'s bytes into `hasher` under `label`, the name the key knows it by.
+fn hash_file(hasher: &mut blake3::Hasher, label: &Path, path: &Path) {
+    hasher.update(label.as_os_str().as_encoded_bytes());
+    hasher.update(b"\0");
     match std::fs::read(path) {
         Ok(bytes) => hasher.update(&bytes),
         Err(_) => hasher.update(b"<unreadable>"),
@@ -144,7 +152,7 @@ fn compute_digest(root: &Path, globs: &[String]) -> String {
     files.sort();
     let mut hasher = blake3::Hasher::new();
     for file in &files {
-        hash_file(&mut hasher, file);
+        hash_file(&mut hasher, file.strip_prefix(root).unwrap_or(file), file);
     }
     hasher.finalize().to_hex().to_string()
 }
@@ -197,6 +205,25 @@ mod tests {
         let before = config_fingerprint(&dir.path().join("sub"), &[], &names);
         std::fs::write(dir.path().join(".hadolint.yaml"), "ignored: [DL3008]\n").expect("write");
         assert_ne!(before, config_fingerprint(&dir.path().join("sub"), &[], &names));
+    }
+
+    /// M4: the same project in two checkouts fingerprints alike, so a second worktree reuses the first one's results.
+    #[test]
+    fn digests_do_not_depend_on_the_checkout_location() {
+        let digests = || {
+            let dir = tempfile::tempdir().expect("dir");
+            std::fs::create_dir(dir.path().join(".git")).expect("git");
+            std::fs::create_dir(dir.path().join("sub")).expect("sub");
+            std::fs::write(dir.path().join(".hadolint.yaml"), "ignored: [DL3008]\n").expect("config");
+            std::fs::write(dir.path().join("sub/checkstyle.xml"), "<module/>").expect("flagged");
+            std::fs::write(dir.path().join("sub/a.proto"), "message A {}").expect("a");
+            let sub = dir.path().join("sub");
+            (
+                config_fingerprint(&sub, &[sub.join("checkstyle.xml")], &strings(&[".hadolint.yaml"])),
+                compute_digest(&sub, &strings(&["**/*.proto"])),
+            )
+        };
+        assert_eq!(digests(), digests());
     }
 
     #[test]

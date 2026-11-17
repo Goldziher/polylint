@@ -64,11 +64,24 @@ fn is_virtualenv(dir: &Path) -> bool {
 /// `path` as the text folded into a cache key: relative to `base` (the checkout the run started
 /// in) when it lies beneath it, so two worktrees of one repository key alike; the full path
 /// otherwise, which can never collide with a relative one since it starts at the filesystem root.
+///
+/// A relative `path` is already relative to `base`; its `.` components are dropped, so `./pkg` (a
+/// run that named `.`) and `pkg` (the same file reached by its absolute path) key alike.
 fn checkout_relative(path: &Path, base: &Path) -> String {
-    match path.strip_prefix(base) {
-        Ok(rest) if rest.as_os_str().is_empty() => ".".to_owned(),
-        Ok(rest) => rest.to_string_lossy().into_owned(),
-        Err(_) => path.to_string_lossy().into_owned(),
+    let beneath = if path.is_relative() {
+        path.components()
+            .filter(|part| !matches!(part, std::path::Component::CurDir))
+            .collect::<PathBuf>()
+    } else {
+        match path.strip_prefix(base) {
+            Ok(rest) => rest.to_path_buf(),
+            Err(_) => return path.to_string_lossy().into_owned(),
+        }
+    };
+    if beneath.as_os_str().is_empty() {
+        ".".to_owned()
+    } else {
+        beneath.to_string_lossy().into_owned()
     }
 }
 
