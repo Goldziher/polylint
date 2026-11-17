@@ -62,6 +62,8 @@ fn the_tsrs_component_checks_like_the_in_process_engine() {
     let files = [
         file("tsconfig.json", Language::Other("tsconfig.json".into()), TSCONFIG),
         file("src/app.ts", Language::TypeScript, KNOWN_BAD),
+        file("src/other.ts", Language::TypeScript, KNOWN_BAD),
+        file("src/third.ts", Language::TypeScript, KNOWN_BAD),
     ];
     let cfg = EngineConfig {
         globals: GlobalDefaults::default(),
@@ -79,6 +81,24 @@ fn the_tsrs_component_checks_like_the_in_process_engine() {
     let expected = TsrsEngine.project_check(&request).expect("in-process check");
     let actual = engine.project_check(&request).expect("component check");
     assert_eq!(format!("{actual:?}"), format!("{expected:?}"));
+    assert_eq!(
+        actual.len(),
+        3,
+        "the project root is not the working directory: {actual:?}"
+    );
     assert_eq!(actual[0].1[0].code.as_deref(), Some("TS2322"));
     assert_eq!(engine.slot().status(), SlotStatus::Ready);
+
+    // One target of three sources on one checker narrows: the targets cross the wire, relative to the root.
+    let targets = [project.path().join("src/other.ts")];
+    let narrowed = ProjectRequest {
+        threads: Some(1),
+        targets: Some(&targets),
+        ..request
+    };
+    let expected = TsrsEngine.project_check(&narrowed).expect("in-process check");
+    let actual = engine.project_check(&narrowed).expect("component check");
+    assert_eq!(format!("{actual:?}"), format!("{expected:?}"));
+    let paths: Vec<_> = actual.iter().map(|(path, _)| path.clone()).collect();
+    assert_eq!(paths, targets, "only the target was checked");
 }
