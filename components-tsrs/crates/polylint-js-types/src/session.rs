@@ -296,7 +296,7 @@ fn types_pool(threads: Option<NonZeroUsize>) -> Option<Arc<rayon::ThreadPool>> {
     rayon::ThreadPoolBuilder::new()
         .num_threads(cores_of(threads))
         .stack_size(PROGRAM_STACK_SIZE)
-        .thread_name(|index| format!("js-types-{index}"))
+        .thread_name(|index| format!("js-types-check-{index}"))
         .build()
         .ok()
         .map(Arc::new)
