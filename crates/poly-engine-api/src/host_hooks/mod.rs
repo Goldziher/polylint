@@ -34,6 +34,7 @@ pub mod file_bytes;
 pub mod go_mod;
 pub mod jsonschema_source;
 pub mod native_config;
+pub mod oxc_external;
 pub mod oxfmt_native;
 pub mod oxfmt_scope;
 pub mod oxlintrc;
@@ -136,7 +137,10 @@ pub fn file_context(hook: HostHook, path: &Path, cfg: &EngineConfig) -> Option<S
 #[must_use]
 pub fn lint_input_salt(hook: HostHook, path: &Path, cfg: &EngineConfig) -> Option<String> {
     match hook {
-        HostHook::Oxc => oxlintrc::governing_for(cfg, path).map(|governing| governing.digest.clone()),
+        HostHook::Oxc => join_salts(
+            oxlintrc::governing_for(cfg, path).map(|governing| governing.digest.clone()),
+            oxc_external::lint_salt(cfg, path),
+        ),
         HostHook::JsonSchema => jsonschema_source::salt(cfg, path),
         HostHook::GoModLint => go_mod::lint_salt(path),
         HostHook::SeleneConfig => selene_config::salt(path),
@@ -154,7 +158,8 @@ pub fn lint_input_salt(hook: HostHook, path: &Path, cfg: &EngineConfig) -> Optio
 #[must_use]
 pub fn format_input_salt(hook: HostHook, path: &Path, cfg: &EngineConfig) -> Option<String> {
     match hook {
-        HostHook::OxfmtScope | HostHook::Oxc => oxfmt_scope::input_salt(cfg, path),
+        HostHook::OxfmtScope => oxfmt_scope::input_salt(cfg, path),
+        HostHook::Oxc => join_salts(oxfmt_scope::input_salt(cfg, path), oxc_external::format_salt(cfg, path)),
         HostHook::Editorconfig => {
             let dialect = shell_dialect::salt(path);
             Some(match editorconfig::salt(cfg, path) {
@@ -169,6 +174,15 @@ pub fn format_input_salt(hook: HostHook, path: &Path, cfg: &EngineConfig) -> Opt
         | HostHook::JsonSchema
         | HostHook::GoModLint
         | HostHook::SeleneConfig => None,
+    }
+}
+
+/// Two optional salts as one: `None` only when both are.
+fn join_salts(first: Option<String>, second: Option<String>) -> Option<String> {
+    match (first, second) {
+        (None, None) => None,
+        (first, None) => first,
+        (first, Some(second)) => Some(format!("{}|{second}", first.unwrap_or_default())),
     }
 }
 
