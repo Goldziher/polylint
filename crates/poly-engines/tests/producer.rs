@@ -774,3 +774,24 @@ fn adr_reaches_the_handler_with_the_sliced_files() {
         "a slice past the body is refused"
     );
 }
+
+/// A component holds its own copy of the run memos; the host's run boundary is what clears it.
+#[test]
+fn a_run_boundary_forgets_the_registered_run_memos() {
+    use std::sync::atomic::{AtomicUsize, Ordering};
+
+    static FORGOTTEN: AtomicUsize = AtomicUsize::new(0);
+    fn forget() {
+        FORGOTTEN.fetch_add(1, Ordering::SeqCst);
+    }
+
+    poly_engine_api::host_hooks::register_run_memo(forget);
+    let producer = ready();
+    let before = FORGOTTEN.load(Ordering::SeqCst);
+    let answer = send(&producer, &Request::RunBoundary { run: 2 }, b"");
+    assert_eq!(answer.result, Ok(Payload::Ok));
+    assert!(
+        FORGOTTEN.load(Ordering::SeqCst) > before,
+        "the boundary must clear what engines registered"
+    );
+}

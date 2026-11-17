@@ -67,9 +67,11 @@ pub use poly_engines_uncomment::uncomment;
 /// rustfmt's `Cargo.toml` editions.
 ///
 /// Within a run they are the point: a tree of files costs one lookup per directory. A long-lived
-/// process (`poly mcp`) starts many runs, and each must see the configs as they are now.
+/// process (`poly mcp`) starts many runs, and each must see the configs as they are now. An
+/// engine component holds its own copy of the host hooks' memos; starting the run here is what
+/// makes its host announce the run to it before the next request.
 pub(crate) fn forget_run_memos() {
-    poly_engine_api::host_hooks::forget_run_memos();
+    poly_engine_api::host_hooks::begin_run();
     treesitter::clang_format::forget();
     native_tool::edition::forget();
 }

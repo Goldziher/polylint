@@ -531,6 +531,26 @@
           },
           "required": ["Adr"],
           "additionalProperties": false
+        },
+        {
+          "description": "The host started a new run: forget what the component memoised from project files (the\nlookups of `poly_engine_api::host_hooks` and whatever its engines registered there), so\na long-lived host's next run reads them as they are on disk now. Sent once per run, before\nthe run's first request to a component an earlier run loaded; answered with\n[`Payload::Ok`].",
+          "type": "object",
+          "properties": {
+            "RunBoundary": {
+              "type": "object",
+              "properties": {
+                "run": {
+                  "description": "The host's run counter, for logs: it only ever grows within one host process.",
+                  "type": "integer",
+                  "format": "uint64",
+                  "minimum": 0
+                }
+              },
+              "required": ["run"]
+            }
+          },
+          "required": ["RunBoundary"],
+          "additionalProperties": false
         }
       ]
     },

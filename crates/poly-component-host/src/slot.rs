@@ -1,6 +1,7 @@
 //! One component's lazily established connection: load once, remember failure, register configs.
 
 use std::collections::HashMap;
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex, PoisonError, RwLock};
 
 use anyhow::Context;
@@ -10,6 +11,7 @@ use poly_component_protocol::{
 };
 use poly_engine_api::component_wire::engine_config_to_wire;
 use poly_engine_api::config::EngineConfig;
+use poly_engine_api::host_hooks::run_epoch;
 
 use crate::transport::ComponentTransport;
 
@@ -213,6 +215,10 @@ pub struct Connection {
     configs: RwLock<Configs>,
     /// `BatchSupport` answers per engine and config fingerprint (see [`Connection::batch_support`]).
     batch_support: RwLock<HashMap<(&'static str, [u8; 32]), WireBatchSupport>>,
+    /// The host run ([`run_epoch`]) the component last heard of (see [`Connection::enter_run`]).
+    announced_run: AtomicU64,
+    /// Serialises the announcement, so no request of a run overtakes it.
+    announcing: Mutex<()>,
 }
 
 struct Configs {
@@ -234,7 +240,44 @@ impl Connection {
                 ids: HashMap::new(),
             }),
             batch_support: RwLock::new(HashMap::new()),
+            // A component loaded in this run has memoised nothing from an earlier one.
+            announced_run: AtomicU64::new(run_epoch()),
+            announcing: Mutex::new(()),
         }
+    }
+
+    /// Announce the host's current run to the component, once, before the run's first request.
+    ///
+    /// A component memoises what it reads from project files (`.oxlintrc.json`, …) for the
+    /// length of a run, in statics of its own that the host cannot clear. A long-lived host
+    /// (`poly mcp`) starts many runs over one loaded component, and without the announcement the
+    /// second run would lint with the first one's configs and cache the result under the new
+    /// config's key. Costs one atomic load per request once announced, and nothing at all in a
+    /// one-run process.
+    ///
+    /// A component that does not know the request is left alone: it has no run memos this host
+    /// could reach, and that is no reason to fail the run.
+    fn enter_run(&self) -> anyhow::Result<()> {
+        let current = run_epoch();
+        if self.announced_run.load(Ordering::Acquire) == current {
+            return Ok(());
+        }
+        let _serial = self.announcing.lock().unwrap_or_else(PoisonError::into_inner);
+        if self.announced_run.load(Ordering::Acquire) == current {
+            return Ok(());
+        }
+        match self.send(&Request::RunBoundary { run: current }, &[]) {
+            Ok(_) => {}
+            Err(CallFailure::Wire(error))
+                if matches!(error.kind, WireErrorKind::Protocol | WireErrorKind::Unsupported) =>
+            {
+                tracing::debug!("component does not take RunBoundary: {}", error.message);
+            }
+            Err(CallFailure::Wire(error)) => return Err(wire_error_to_anyhow("component", error)),
+            Err(CallFailure::Transport(error)) => return Err(error),
+        }
+        self.announced_run.store(current, Ordering::Release);
+        Ok(())
     }
 
     fn send(&self, request: &Request, body: &[u8]) -> Result<Payload, CallFailure> {
@@ -314,6 +357,7 @@ impl Connection {
             "{} names no registered config",
             request.variant_name()
         );
+        self.enter_run()?;
         let fingerprint = cfg.fingerprint();
         let mut retried = false;
         loop {
@@ -374,6 +418,7 @@ impl Connection {
     ///
     /// The component's error with `engine`'s panic wording, or the transport failure.
     pub fn call_plain(&self, engine: &str, request: &Request, body: &[u8]) -> anyhow::Result<Payload> {
+        self.enter_run()?;
         self.send(request, body).map_err(|failure| match failure {
             CallFailure::Wire(error) => wire_error_to_anyhow(engine, error),
             CallFailure::Transport(error) => error,

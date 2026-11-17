@@ -85,9 +85,9 @@ pub enum HostHook {
 
 /// Inputs shared by every file of a run (see [`Engine::run_context`](crate::engine::Engine::run_context)).
 ///
-/// Also the run boundary inside an engine component: a component holds its own copy of these
-/// memos, and this is the call every lint run makes into it, so it forgets them
-/// ([`forget_run_memos`]) before the run reads any config.
+/// Forgets the memos first ([`forget_run_memos`]), so a context computed for a new run never
+/// reads a lookup an earlier one cached. The memos an engine component holds are a separate
+/// copy, cleared when the host announces the run to it ([`begin_run`]).
 #[must_use]
 pub fn run_context(hook: HostHook, cfg: &EngineConfig) -> String {
     forget_run_memos();
@@ -99,6 +99,24 @@ pub fn run_context(hook: HostHook, cfg: &EngineConfig) -> String {
         }
         _ => String::new(),
     }
+}
+
+/// How many runs this process has started ([`begin_run`]).
+static RUN_EPOCH: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+
+/// Start a run: forget every memo ([`forget_run_memos`]) and advance [`run_epoch`], which is
+/// how a component host learns that the components it loaded in an earlier run hold memos of
+/// their own to forget.
+pub fn begin_run() {
+    RUN_EPOCH.fetch_add(1, std::sync::atomic::Ordering::AcqRel);
+    forget_run_memos();
+}
+
+/// The number of runs this process has started. A component host compares it with the run it
+/// last announced to a component and announces the new one before the next request.
+#[must_use]
+pub fn run_epoch() -> u64 {
+    RUN_EPOCH.load(std::sync::atomic::Ordering::Acquire)
 }
 
 /// A function that clears one memo.
