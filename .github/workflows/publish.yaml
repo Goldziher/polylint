@@ -154,7 +154,8 @@ jobs:
             "secrets / manylinux aarch64 (source build)"
             "alef verify"
             "core links no oxc"
-            "core under 14 MiB"
+            "core under 22 MiB"
+            "component release (manylinux plan)"
             "cargo-deny"
           )
 
