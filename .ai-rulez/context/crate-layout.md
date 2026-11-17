@@ -66,7 +66,8 @@ an installer (see release-versioning); the exception is the `components-tsrs/cra
 - `deny.toml` — `cargo deny` license / source allow-list (no GPL/AGPL), applied across the full
   dependency tree including git deps and their transitive dependencies.
 - `crates/poly-workspace/` — the whole-project (workspace) lint orchestration shared by
-  `poly-cli` and `poly-mcp`: lowers `[hooks]` config into the `poly-hooks` model, reduces it to
+  `poly-cli` and `poly-host-services`, which runs it for the `poly mcp` `check`/`fix` tools
+  (`scope: workspace`): lowers `[hooks]` config into the `poly-hooks` model, reduces it to
   the whole-project tool set (`cargo clippy`/`cargo-sort`/`cargo-machete`/`cargo-deny`), and runs
   it against the live worktree. Public API is narrow —
   `run_workspace_lint(&PolyConfig, &WorkspaceLintOptions) -> WorkspaceLintOutcome` plus
