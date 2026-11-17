@@ -578,6 +578,9 @@ impl Checked {
             &self.cache,
         )
         .unwrap_or_else(|error| panic!("{}", error.message));
+        let poly_engine_api::project::ProjectReport::Checked(reported) = reported else {
+            panic!("the counting engine never declines a project");
+        };
         let mut paths: Vec<_> = reported.into_iter().map(|(path, _)| path.into_os_string()).collect();
         paths.sort();
         paths
