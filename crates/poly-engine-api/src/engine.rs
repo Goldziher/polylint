@@ -437,7 +437,8 @@ pub struct SourceFile {
 }
 
 pub use crate::project::{
-    ProjectDirs, ProjectEnvironment, ProjectFile, ProjectInputs, ProjectRequest, ProjectSideFile, PythonEnvironment,
+    ProjectDirs, ProjectEnvironment, ProjectFile, ProjectInputs, ProjectReport, ProjectRequest, ProjectSideFile,
+    PythonEnvironment,
 };
 
 /// What a backend is able to do for its language(s).

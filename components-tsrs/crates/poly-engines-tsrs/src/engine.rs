@@ -5,7 +5,7 @@ use std::path::PathBuf;
 use anyhow::Context;
 use poly_engine_api::engine::{
     Capabilities, Diagnostic, Engine, OptionKeys, OptionTable, ProjectAnalysis, ProjectDirs, ProjectInputs,
-    ProjectRequest,
+    ProjectReport, ProjectRequest,
 };
 use poly_engine_api::language::Language;
 
@@ -21,7 +21,11 @@ pub const ENGINE_NAME: &str = "tsrs";
 ///
 /// Bump the suffix whenever the mapping or the filtering of findings changes, and the version whenever the tsrs
 /// crates are upgraded.
-const VERSION: &str = "tsrs-7.1.0-beta.tsrs2+proj6";
+const VERSION: &str = "tsrs-7.1.0-beta.tsrs2+proj7";
+
+/// Why a project with no `tsconfig.json` at or above the checked directory is declined: tsrs builds its program
+/// from one, so without it nothing is checked (ADR 0079).
+const NO_TSCONFIG: &str = "no tsconfig.json";
 
 /// The stack of the thread tsrs checks on: checking recurses deeply, and tsrs's own binaries give their program
 /// threads the same.
@@ -109,11 +113,15 @@ impl ProjectAnalysis for TsrsEngine {
     }
 
     fn project_check(&self, req: &ProjectRequest<'_>) -> anyhow::Result<Vec<(PathBuf, Vec<Diagnostic>)>> {
+        self.project_report(req).map(ProjectReport::into_findings)
+    }
+
+    fn project_report(&self, req: &ProjectRequest<'_>) -> anyhow::Result<ProjectReport> {
         if !Settings::is_enabled(&req.config.options) {
-            return Ok(Vec::new());
+            return Ok(ProjectReport::Checked(Vec::new()));
         }
         if req.targets.is_some_and(<[PathBuf]>::is_empty) {
-            return Ok(Vec::new());
+            return Ok(ProjectReport::Checked(Vec::new()));
         }
         let settings = Settings::from_options(&req.config.options, req.threads)?;
         let declared = Declared::from_files(req.files);
@@ -133,15 +141,14 @@ impl ProjectAnalysis for TsrsEngine {
                 .map(std::thread::ScopedJoinHandle::join)
         })?;
         let Some(outcome) = outcome.unwrap_or_else(|payload| std::panic::resume_unwind(payload))? else {
-            tracing::debug!("tsrs: no tsconfig.json among the project files, nothing to check");
-            return Ok(Vec::new());
+            return Ok(ProjectReport::Declined(NO_TSCONFIG.to_owned()));
         };
-        Ok(findings(
+        Ok(ProjectReport::Checked(findings(
             outcome,
             req.root,
             req.files,
             &declared,
             settings.report_unresolved_modules,
-        ))
+        )))
     }
 }

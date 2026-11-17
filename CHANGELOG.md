@@ -179,6 +179,11 @@ Each item is described in full under the section named in brackets.
 
 ### Fixed
 
+- **A type check that found nothing to check is a skip, not a clean pass.** `tsrs` on a project with no
+  `tsconfig.json`, and `skif` on one with no `package.json` or JavaScript workspace, used to report no findings, so the
+  run read as a passing check. The project root is now in `skipped` with the reason (`tsrs: no tsconfig.json`),
+  counted by `summary.skipped` and charged to `--deny-skips` / `--max-skips`. Component protocol v3 gains the
+  `ProjectDeclined` answer; a host built before it reports such a check as failed. (ADR 0079)
 - **A missing native tool shows in the report.** When `rustfmt`, `gofmt`, `shfmt` or `shellcheck` (or an opt-in
   native tool that is switched on) is not on `PATH`, the summary prints one line per tool (`rustfmt not found on PATH:
   3 Rust files formatted by the generic tier`) and the `json`/`toon` document and MCP results carry
