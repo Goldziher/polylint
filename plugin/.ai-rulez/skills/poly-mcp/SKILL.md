@@ -69,7 +69,7 @@ trust. Gate `fix` and `manage` behind explicit intent.
   always JSON.
 
 The result is the CLI's `--format json` document — `{results, errors, skipped, summary, configs}`,
-plus optional `suppressed`, `components` and `discovery` — with a `poly` identity block.
+plus optional `suppressed`, `components`, `degraded` and `discovery` — with a `poly` identity block.
 `scope: workspace` returns the whole-project report (`passed`, `fixed`, `tools[]`); a failing tool
 is a finding (`passed: false`), not an error. When the phase did not run it is an `isError`
 failure instead: `untrusted` (the repository's `[hooks]` are not trusted) or `no_workspace_tools`

@@ -15,7 +15,8 @@ Each item is described in full under the section named in brackets.
 - **Remote `extends` bases and hook sources are fetched over https and ssh only.** `POLY_GIT_ALLOW_PROTOCOLS` allows other transports. [Security]
 - **`poly hooks install` refuses a shared `core.hooksPath`** without `--force` or `POLY_HOOKS_ALLOW_SHARED_PATH=1`. [Security]
 - **Component cache and lock checks.** A component cache root owned by another user is refused, and a component lock without signing keys is rejected. [Security]
-- **`poly mcp` confines paths to its workspace** and refuses to start in `/` or the home directory without `--allow-outside-workspace`; `lint` and `format_check` are no longer annotated read-only. [Security]
+- **`poly mcp` confines paths to its workspace** and refuses to start in `/` or the home directory without `--allow-outside-workspace`. [Security]
+- **`poly mcp` exposes four tools (`check`, `fix`, `info`, `manage`) instead of fourteen.** The old tool names are removed with no aliases, and `check` is not annotated read-only. [Changed]
 - **Component protocol v3.** Components and sidecars built for protocol 2 are rejected. [Changed]
 - **The repository and the Action moved to the `polylint` organization.** The old names redirect. [Changed]
 - **`poly commit` exits `2`, not `1`, when it could not verify the message**, and reads the global `--config`. [Changed]
@@ -94,7 +95,7 @@ Each item is described in full under the section named in brackets.
 
 ### Changed
 
-- **Breaking: `poly mcp` exposes four tools instead of fourteen.** `check` (lint or check formatting, writes nothing),
+- **BREAKING: `poly mcp` exposes four tools instead of fourteen.** `check` (lint or check formatting, writes nothing),
   `fix`, `info` (read-only: `version`, `config`, `validate`, `rules`, `components`, `cache`) and `manage` (cache and
   component maintenance) replace `lint`, `lint_fix`, `format_check`, `format_write`, `workspace_lint`,
   `workspace_lint_fix`, `cache_stats`, `cache_clean`, `rules`, `config_show`, `components`, `components_install`,
@@ -243,13 +244,13 @@ Each item is described in full under the section named in brackets.
 - **BREAKING: remote `extends` bases and hook sources are fetched over https and ssh only.** A config could point git at `git://`, `http://`, `file://` or an `ext::` helper. Other schemes are now rejected before git runs; plain local paths still work. **Migration:** `POLY_GIT_ALLOW_PROTOCOLS` (a `:`-separated list) replaces the allowed set, and a leading `+` adds to it, as in `+http`.
 - **BREAKING: `poly hooks install` refuses a shared `core.hooksPath`.** With a global or shared hooks directory, the shims were written where every repository runs them and the stale-shim prune could delete another tool's. **Migration:** unset `core.hooksPath` for the repository, or pass `--force` or set `POLY_HOOKS_ALLOW_SHARED_PATH=1`; poly never prunes outside the repository.
 - **BREAKING: the component cache must be private, and a component lock must name its keys.** A component cache root owned by another user is refused; one of your own that is group- or world-writable is tightened to `0700` (and refused if that fails). A lock that lists components without signing keys, or an entry whose key is not among them, is rejected instead of loaded unverified.
-- **BREAKING: `poly mcp` confines tool calls to its workspace.** `paths`, `dirs` and `config` arguments are resolved (symlinks and `..` included) and refused outside the directory `poly mcp` started in, and the server refuses to start in `/` or the home directory. The `--config` given on the server's own command line is always accepted. `lint` and `format_check` are no longer annotated read-only, since they run the repository's configured tools. **Migration:** start the server in the project directory, or pass `--allow-outside-workspace`.
+- **BREAKING: `poly mcp` confines tool calls to its workspace.** `paths`, `dirs` and `config` arguments are resolved (symlinks and `..` included) and refused outside the directory `poly mcp` started in, and the server refuses to start in `/` or the home directory. The `--config` given on the server's own command line is always accepted. `check`, which replaces `lint` and `format_check`, is not annotated read-only, since it runs the repository's configured tools. **Migration:** start the server in the project directory, or pass `--allow-outside-workspace`.
 - **Pinned tool downloads are bound to the catalog.** A URL in `poly.lock` must be https on the origin and release path the tool's catalog entry names, redirects are followed only to GitHub's release hosts or the same origin, and the GitHub token is sent to `api.github.com` only. The install stamp records the binary's size and mtime, and a tool cache that is not private to the current user is tightened or refused.
 - **Staged symlinks are resolved before a hook reads them.** A chain of in-tree links that escapes the staged snapshot once resolved is removed from it.
 - **The installers and the Action validate the requested version** as `X.Y.Z[-pre]` against the whole string before using it.
 - **Accepted advisories.** `deny.toml` ignores the chrono, chrono-tz and zip advisories published on 2026-11-17: chrono has no fixed release, and the zip fixes need 9.x while harper-core requires 8.x. The only zip reader in the tree is harper's rule-bundle loader, which poly never calls.
 - **BREAKING: a repository's config keys that run programs need `poly trust`.** A cloned `poly.toml` could make
-  `poly lint`, `poly fmt` and the MCP `lint`/`workspace_lint` tools run any program with no prompt. Now
+  `poly lint`, `poly fmt` and the MCP `check` and `fix` tools run any program with no prompt. Now
   `[tools.<name>] bin` (a path), `url`/`sha256`, `env`, `args`, `extra_args`, `format_extra_args`,
   `lint_extra_args`, `new_from_rev` and `root`; `[hooks]` whole-project jobs and their `skip`/`only` guards;
   `[cache] dir` and `[cache.sccache] dir`/`bin`; oxc `js_plugins = "external"` and `external = true`; and local
