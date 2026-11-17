@@ -96,7 +96,7 @@ impl Engine for MagoEngine {
     }
 
     fn version(&self) -> &str {
-        "mago-1.59.0+advisory-sev1+filename+fmt-fields"
+        "mago-1.60.2+advisory-sev1+filename+fmt-fields"
     }
 
     fn lint(&self, src: &SourceFile, cfg: &EngineConfig) -> anyhow::Result<Vec<Diagnostic>> {

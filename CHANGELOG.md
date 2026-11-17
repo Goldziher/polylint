@@ -92,8 +92,24 @@ Each item is described in full under the section named in brackets.
 - **BREAKING: component protocol v3 (ADR 0058); every engine component and sidecar must be rebuilt.** Requests and responses are
   encoded positionally instead of with a field name per struct field, and a diagnostic no longer repeats the engine
   id of the request. Components built for protocol 2 are rejected as incompatible.
-- **One oxc copy in the `web` component.** rumdl comes from `polylint-rumdl` 0.3.5, polylint's fork on Oxc 0.158, and
+- **One oxc copy in the `web` component.** rumdl comes from `polylint-rumdl` 0.3.6, polylint's fork on Oxc 0.159, and
   adrlint 0.5.2 builds on it, so the component no longer links a second, older oxc through rumdl. (#192)
+- **oxc 0.159.** The oxc git pin moves to `7053128` on oxc `main`: oxc 0.159.0, `oxc_formatter` 0.79 and `oxc_linter`
+  1.94, so oxlint's rules and the JS/TS, JSON, CSS, Markdown, TOML and YAML formatters are the ones of that revision.
+- **skif 0.8.0** (was 0.5.0), which changes the `skif` engine's findings:
+  - `unused-class-members`, a new rule on by default at warning, reports the methods, fields and accessors of a used
+    exported class that no module reads. A read counts by property name. Decorated members and classes, implemented
+    interface members, classes an entry file exports and members of a class whose base lies outside the project are
+    not judged; the last covers a class extending one from a package, which poly's run never sees installed.
+  - `unused-dev-dependencies` also reports a `devDependencies` entry the same manifest lists in `dependencies`.
+  - A `.d.ts` file is an entry only when it applies without an import (a script, `declare global`, a module
+    augmentation) or is published or listed; once imported, `unused-types` and `unused-exports` judge its exports.
+  - An import that `tsconfig.json` `paths` or a bundler alias leads into the project's own sources no longer uses the
+    dependency its specifier is named like, so `unused-dependencies` can report that dependency; `paths` targets in a
+    workspace package's build output stand for its sources whether or not the output exists.
+- **Engine crates refreshed.** mago 1.60.2, markup_fmt 0.28.0, ast-grep 0.51.3 and uncomment 3.12.1, with
+  clap_complete 4.6.12, rand 0.10.4 and zip 9.6. Cached results from the engines whose crates moved (oxc, rumdl,
+  markup_fmt, malva, taplo, yaml, skif, mago, ast-grep, uncomment) are recomputed once.
 - **Markdown lists with mixed item spacing format as loose lists.** The rumdl update carries upstream's MD076 fix: when
   any items of a list are separated by a blank line, `poly fmt` separates all of them, so such lists reformat once.
 - **The `file_safety`, `commit`, `lint` and `fmt` hooks run inside `poly hooks`.** `file_safety` no longer starts a `poly hooks check` process per commit: the runner calls the same checks over the staged snapshot and reports the same lines (ADR 0067). `commit`, `lint` and `fmt` run in process too, the default staged pre-commit run included, which is rooted at the staged snapshot (ADR 0073) and stays in process only when no engine it needs is a downloaded component; the output and exit code are the child's. Every in-process hook now runs under the hook timeout and is reported as killed past it. (ADR 0071, #215)
@@ -141,6 +157,10 @@ Each item is described in full under the section named in brackets.
   recipe's new `unsplittable_exits`, a signal, poly's deadline, a missing program) fails the invocation's files once
   instead of being retried on halves of its packages or once per package by the per-file loop, and findings printed
   before such an exit are not taken as a verdict. A `serial` tool now runs one invocation at a time across the whole process, not only within one batch.
+- **A Markdown file with an empty footnote definition is formatted.** `[^1]:` with no content made
+  `oxc_formatter_markdown` panic, so `poly fmt` failed the file (exit 2), also when the definition sat in a
+  ```` ```markdown ```` fence. The pinned oxc revision carries the upstream fix (oxc-project/oxc#29735): the
+  definition is printed as written and the rest of the file is formatted.
 - **Dockerfiles, `.env` and INI files format the same in every build.** The bundled build left them with no formatter,
   while the core build normalised them through the generic tier; both now use the generic tier.
 - **Log lines no longer land on the progress spinner.** `tracing` output and still-running notices erase the spinner frame
@@ -163,7 +183,7 @@ Each item is described in full under the section named in brackets.
 - **Format results are cached per language and file name.** Identical bytes in `x.json` and `package.json`, or in a `.json` and a `.js` file, shared one cache entry although oxc formats them differently.
 - **Columns count characters, not bytes.** `quality`, `uncomment`, `typos` and `dockerfile` findings on a line with a non-ASCII character before them reported a shifted column, and a multi-line Dockerfile instruction now spans all of its lines. Columns are 1-based Unicode scalar values. (#180, #183, #201)
 - **oxc reads `single_quote`, and JSON `trailing_commas` takes the JavaScript names.** `single_quote = true` was declared for JS/TS but ignored; it now selects single quotes unless `quote_style` is set. JSON accepts `all`, `es5` and `none` beside `always` and `never`; `none` used to mean `always`.
-- **Formatters decline what they cannot format stably.** `markup_fmt` formats `<script type="module">` bodies in HTML, which never converged, and declines a file whose multi-line template literals it would re-indent on every pass. A Markdown file with an empty footnote definition (`[^1]:`) is skipped with a reason instead of failing with exit 2, and inside a `markdown` fence only that fence is left as written.
+- **Formatters decline what they cannot format stably.** `markup_fmt` formats `<script type="module">` bodies in HTML, which never converged, and declines a file whose multi-line template literals it would re-indent on every pass.
 - **shfmt-formatted Bash stays as shfmt wrote it.** The generic shell reindenter flattened a loop that follows assignment lines and dedented a pipeline's continuation line.
 - **Deeply nested input fails one file, not the run.** sqruff, mago, ruff, graphql and the Dockerfile parser refuse pathological nesting before parsing, and the `quality` rules and the generic formatter's case handling walk the tree without recursion, so a generated file can no longer overflow the worker stack and abort poly.
 - **A glibc-only tool is not downloaded on a musl host.** A recipe whose Linux assets are all `-gnu` builds (zizmor) installed cleanly on Alpine and then failed to start; it is now used from `PATH` or reported missing with the command that installs it. (#114)
