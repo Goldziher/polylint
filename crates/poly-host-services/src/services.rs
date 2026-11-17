@@ -166,12 +166,12 @@ impl Services {
                 encode(&reply.unwrap_or_else(|error| failure_reply(&error)))
             }
             service::CACHE_STATS => {
-                let req: CacheRequest = decode(request)?;
+                let req: CacheRequest = decode_or_default(request)?;
                 self.confine_classified(&[], req.config.as_deref())?;
                 encode(&ops::cache_stats(req.config.as_deref(), self.resolver.as_ref())?)
             }
             service::CACHE_CLEAN => {
-                let req: CacheRequest = decode(request)?;
+                let req: CacheRequest = decode_or_default(request)?;
                 self.confine_classified(&[], req.config.as_deref())?;
                 encode(&ops::cache_clean(req.config.as_deref(), self.resolver.as_ref())?)
             }
@@ -293,6 +293,13 @@ fn decode<T: DeserializeOwned>(request: &[u8]) -> anyhow::Result<T> {
     serde_json::from_slice(request).context("the request does not decode")
 }
 
+/// [`decode`] for a service that once took no request: a frontend of a release before the request
+/// existed sends `null`, which reads as the default request, so a host/component version mismatch
+/// loses only the newer fields, never the call.
+fn decode_or_default<T: DeserializeOwned + Default>(request: &[u8]) -> anyhow::Result<T> {
+    Ok(decode::<Option<T>>(request)?.unwrap_or_default())
+}
+
 fn encode<T: Serialize>(reply: &T) -> anyhow::Result<Vec<u8>> {
     serde_json::to_vec(reply).context("the reply does not encode")
 }
@@ -392,6 +399,27 @@ mod tests {
     fn a_malformed_request_is_an_error_not_a_default() {
         let error = Services::new().dispatch(service::LINT, b"{\"paths\": 3}").unwrap_err();
         assert!(format!("{error:#}").contains("does not decode"), "{error:#}");
+    }
+
+    /// Before `CacheRequest` existed a frontend sent `cache.stats` and `cache.clean` with no
+    /// request, encoded as `null` (commit e366526e added it); such a component must keep working.
+    #[test]
+    fn a_cache_call_without_a_request_body_reads_as_the_default_request() {
+        let request: CacheRequest = decode_or_default(b"null").unwrap();
+        assert_eq!(request.config, None);
+        let request: CacheRequest = decode_or_default(br#"{"config":"poly.toml"}"#).unwrap();
+        assert_eq!(request.config.as_deref(), Some("poly.toml"));
+        assert!(decode_or_default::<CacheRequest>(br#"{"config":3}"#).is_err());
+        let reply = Services::new().dispatch(service::CACHE_STATS, b"null").unwrap();
+        let stats: Value = serde_json::from_slice(&reply).unwrap();
+        assert!(stats.is_object(), "{stats}");
+    }
+
+    /// Before e366526e a frontend sent `cache.gc` without `config`.
+    #[test]
+    fn a_cache_gc_request_without_config_still_decodes() {
+        let request: CacheGcRequest = decode(br#"{"max_age_days":7,"max_size":null}"#).unwrap();
+        assert_eq!((request.config, request.max_age_days), (None, Some(7)));
     }
 
     #[test]
