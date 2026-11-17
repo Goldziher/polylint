@@ -4,7 +4,7 @@
 version = 1
 ai_rulez_version = '5.13.4'
 scope = 'all'
-tree = 'sha256:b805c5a820c54aeceb09b8f4bafc260ceba8790c915afa908ef0039aa505b3ed'
+tree = 'sha256:399424cc3cb60a925f5619ab81970d883d2a9e22aebee0ce5baef1f4350bc6c9'
 
 [[item]]
 kind = 'command'
@@ -34,7 +34,7 @@ digest = 'sha256:09d50831181e85e8ec39d88b5c29724a2fcde288704c6f774e1f638fbaf3c58
 kind = 'skill'
 id = 'poly-orchestrator'
 path = 'skills/poly-orchestrator'
-digest = 'sha256:3154e7430f0b02c5b8e07cabeb1b8999d233f5f51df7ba56596486e28fb8bc3e'
+digest = 'sha256:90af84a116012f373aebb880bc6ba5850cac15101df3008c282d15fe82bf1b13'
 
 [[item]]
 kind = 'skill'

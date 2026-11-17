@@ -22,7 +22,7 @@ tag-triggered flow below and nothing waits for it, so a release does not check t
 
 The release archives, npm platform packages and wheels carry `ATTRIBUTIONS.md` and `THIRD-PARTY-LICENSES.md` next
 to the binary. `mise run release:third-party-licenses [out]` generates the latter (crate table from
-`cargo metadata --locked` over the five workspaces, then `ATTRIBUTIONS.md` verbatim, which holds the tsrs NOTICE).
+`cargo metadata --locked` over the six workspaces (the root and the five `components*` ones), then `ATTRIBUTIONS.md` verbatim, which holds the tsrs NOTICE).
 
 ## When verify_ci finds no CI run
 

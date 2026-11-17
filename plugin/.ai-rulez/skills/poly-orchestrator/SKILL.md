@@ -44,6 +44,13 @@ ast-grep rule pack, behind one binary, one config, and one report.
   (`--replace-lefthook` discards it), and `--overwrite` discards any preserved hook.
   `poly hooks uninstall` restores what was there before; `poly hooks run [stage]` runs a stage
   by hand (`--all-files` for the whole tree, `-v` to show passing jobs' output).
+- **`poly trust`** — a cloned `poly.toml` cannot run programs until the repository is trusted. Until
+  then poly ignores `[tools.<name>]` `bin` paths, `url`/`sha256`, `env`, `args` and the
+  `*_extra_args` keys, whole-project `[hooks]` jobs (`poly lint` reports that phase as `skipped
+  (untrusted)`), `[cache] dir` and local `extends` bases outside the repository, and prints one
+  note naming them; `poly hooks run` and the git hooks refuse to run. `poly trust --show` lists
+  the gated keys, `poly trust` records them, and changing one untrusts the repository again.
+  `poly hooks install` records trust itself. `poly mcp` honours only recorded trust.
 - **External tools** — enable any catalog tool with `[tools.<name>] enabled = true`
   (`golangci-lint`, `actionlint`, `hadolint`, `helm`, `tflint`, `buf`, …). Pin `version` and set
   `install = "auto"` to have poly download a checksum-verified release when it is missing; by
@@ -77,6 +84,11 @@ in following steps.
 
 `--deny-skips` makes a file poly could not check an exit-2 failure, so CI cannot pass while
 covering nothing.
+
+A CI checkout is untrusted, so a repository whose `poly.toml` sets gated keys (`[hooks]` jobs,
+`[tools.<name>]` arguments, `env` or `bin` paths) needs `POLY_TRUST=1` in the job's environment,
+or `--trust` on each command; without it those keys are ignored and the whole-project phase is
+skipped. Neither writes a trust record.
 
 Engines and components are pinned to the poly version, so local, hook, and CI runs agree —
 with one caveat: `rustfmt` and `gofmt` (and `shellcheck` for lint) are host tools used

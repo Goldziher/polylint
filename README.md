@@ -54,7 +54,8 @@ flowchart LR
 
 Files are discovered once (respecting `.gitignore`) and processed in parallel. The result cache is keyed by file
 bytes, engine, engine version and resolved config, so an upgrade or a config change invalidates exactly what it
-affects. `--debug` prints per-file engine timing and cache hits.
+affects. `--debug` prints per-file engine timing and cache hits, and `--timings` prints per-phase wall time and a
+per-engine table.
 
 ---
 
@@ -139,6 +140,7 @@ built-in ast-grep rules.
 | Elixir | AG | tree-sitter | ts |
 | 300+ other grammars | — | tree-sitter, best effort | ts |
 | Any text | typos (opt-in) | — | component `typos` |
+| Markdown prose, code comments | harper (opt-in, grammar and style) | — | component `prose` |
 | Any language | uncomment (opt-in) | — | component `uncomment` |
 
 <!-- markdownlint-enable MD013 -->
@@ -243,7 +245,9 @@ poly --offline lint .              # forbid every download (also POLY_OFFLINE=1)
 - run: poly lint --deny-skips .
 ```
 
-See [`ACTION_USAGE.md`](ACTION_USAGE.md) for every input.
+A fresh CI checkout is untrusted: add `env: POLY_TRUST: "1"` to the job when `poly.toml` sets
+[gated keys](https://polylint.github.io/polylint/guides/trust/) such as `[hooks]` jobs or `[tools.<name>]`
+arguments. See [`ACTION_USAGE.md`](ACTION_USAGE.md) for every input.
 
 ---
 
@@ -276,6 +280,10 @@ commit = { stages = ["commit-msg"] }
 - Nested `poly.toml` files cascade in a monorepo; `poly.local.toml` layers local overrides; `extends` shares a
   baseline across repositories; `poly config show` prints the effective result.
 - Unknown keys, sections and wrongly typed values are reported as warnings, never silently ignored.
+- Keys that make poly run a program — `[tools.<name>]` `bin` paths, `env`, extra arguments and download URLs,
+  whole-project `[hooks]` jobs, `[cache] dir` — are ignored in a repository you have not trusted, with one note
+  naming them. Run `poly trust` once per clone (`poly trust --show` lists what it would allow), or set
+  `POLY_TRUST=1` in CI. See [Repository trust](https://polylint.github.io/polylint/guides/trust/).
 
 ---
 
@@ -283,8 +291,10 @@ commit = { stages = ["commit-msg"] }
 
 `poly hooks install` wires lint, format, file-safety and Conventional Commits checks into git from `[hooks]` in
 `poly.toml`. Hooks run against a snapshot of the staged index, so unstaged edits neither hide nor cause failures.
-`poly commit` lints and cleans commit messages. See
-[Git hooks](https://polylint.github.io/polylint/guides/hooks/).
+`poly commit` lints and cleans commit messages. `poly hooks install` also records the repository as
+[trusted](https://polylint.github.io/polylint/guides/trust/); `poly hooks run` and the git hooks refuse to run in
+an untrusted repository, and after a pull that changes a gated key the next commit stops until you run `poly trust`
+again. See [Git hooks](https://polylint.github.io/polylint/guides/hooks/).
 
 ---
 
@@ -321,7 +331,7 @@ see [plugin/README.md](plugin/README.md) and
 
 <!-- markdownlint-enable MD013 -->
 
-Two cross-cutting lint tiers are on by default for every language, and two more are opt-in:
+Two cross-cutting lint tiers are on by default for every language, and three more are opt-in:
 
 - **The code-quality engine** (on) — tree-sitter metric rules, listed below.
 - **The built-in ast-grep pack** (on) — 42 rules across C#, Elixir, Go, Java, Kotlin, Python, Ruby, Rust and Swift.
@@ -329,6 +339,8 @@ Two cross-cutting lint tiers are on by default for every language, and two more 
   `[engines.astgrep] rule_dirs` sit above the pack — a rule with the same `id` replaces the built-in one.
 - **`typos`** (opt-in) — spell-checks identifiers, comments and strings: `[engines.typos] enabled = true`.
 - **`uncomment`** (opt-in) — comment removal, built on [uncomment](https://github.com/polylint/uncomment).
+- **`harper`** (opt-in) — grammar and style checks on Markdown and on the comments of every language with a
+  loaded grammar: `[engines.harper] enabled = true`. Spell-checking stays off unless selected.
 
 | Quality rule | Default |
 |---|---|
@@ -351,6 +363,8 @@ warnings alone do not fail a run, so turning polylint on does not redden an unco
 [adrlint](https://github.com/polylint/adrlint) is an opt-in MADR engine for numbered ADR files (`NNNN-*.md`),
 enabled with `[engines.adrlint] enabled = true`; see
 [ADR 0037](adrs/0037-adrlint-madr-linting.md) and [ADR 0041](adrs/0041-adrlint-tree-wide-rules-as-project-check.md).
+`poly adr new <title>` creates the next numbered record, and `poly adr lock` and
+`poly adr unlock <file> --reason <text>` maintain `adrlint.lock`, with no standalone adrlint install.
 
 </details>
 
@@ -396,6 +410,8 @@ engine entirely, and everything else is split across cores.
   `[components]`, mirrors, air-gapped hosts.
 - [Git hooks](https://polylint.github.io/polylint/guides/hooks/) — `poly hooks install`, builtin hooks, staged
   isolation, timeouts, concurrency, caching.
+- [Repository trust](https://polylint.github.io/polylint/guides/trust/) — which config keys run programs, what
+  `poly trust` records, CI and MCP.
 - [Migrating to the v2 config schema](https://polylint.github.io/polylint/guides/migrating-to-v2/) — the
   `poly.toml` v2 schema and the removed CLI flags.
 - [CLI reference](https://polylint.github.io/polylint/reference/cli/) — every subcommand and flag, and the

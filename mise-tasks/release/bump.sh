@@ -11,7 +11,11 @@
 #   pip-package/polylint/__init__.py      __version__
 #   plugin/.ai-rulez/config.plugins.toml                 [plugin] version
 #   .claude-plugin/*.json                 generated — asserted to match
-#   plugin/.hermes/package/               generated Hermes wheel (pyproject.toml version, __version__) — asserted to match
+#   plugin/.hermes/                       generated Hermes wheel and plugin (pyproject.toml version, __version__,
+#                                         both plugin.yaml files) — asserted to match
+#   README.md, website/.../installation.mdx, website/.../cli.mdx
+#                                         the pinned-release examples (POLY_VERSION=, the Action's version:, the
+#                                         `poly --version` output); left alone for a pre-release
 #   components/Cargo.toml                 [workspace.package] version (poly-bundled and the poly-engines-* crates
 #                                         inherit it); components/Cargo.lock is refreshed with the root lock.
 #   components-pyrefly/Cargo.toml         the same for the pyrefly workspace and its lock.
@@ -133,6 +137,25 @@ rm pip-package/pyproject.toml.bak
 sed -i.bak -E "s/^__version__ = \"[^\"]+\"$/__version__ = \"$VERSION\"/" pip-package/polylint/__init__.py
 rm pip-package/polylint/__init__.py.bak
 
+# Documentation examples that show a pinned release. A pre-release is never the documented pin, so an
+# rc bump leaves them alone. The assertions below fail when an example changes shape and stops matching.
+DOC_INSTALL="website/src/content/docs/start/installation.mdx"
+DOC_CLI="website/src/content/docs/reference/cli.mdx"
+if [[ "$VERSION" == *-* ]]; then
+  echo "→ documentation examples: left alone for a pre-release"
+else
+  echo "→ documentation examples → $VERSION"
+  semver='[0-9]+\.[0-9]+\.[0-9]+'
+  for doc in README.md "$DOC_INSTALL" "$DOC_CLI"; do
+    sed -i.bak -E \
+      -e "s/POLY_VERSION=${semver}/POLY_VERSION=${VERSION}/g" \
+      -e "s/version: v${semver} # omit for the latest release/version: v${VERSION} # omit for the latest release/" \
+      -e "s/poly ${semver} \\((release|dev) build v${semver}/poly ${VERSION} (\\1 build v${VERSION}/g" \
+      "$doc"
+    rm "$doc.bak"
+  done
+fi
+
 echo "→ plugin/.ai-rulez/config.plugins.toml [plugin] → $VERSION"
 VERSION="$VERSION" perl -0pi -e \
   's/(\[plugin\][^\[]*?\nversion\s*=\s*")[^"]+(")/$1$ENV{VERSION}$2/s' plugin/.ai-rulez/config.plugins.toml
@@ -199,6 +222,27 @@ if [[ $validation_failed -eq 0 ]]; then
   echo "✓ npm + PyPI wrapper packages are consistent: $VERSION"
 fi
 
+if [[ "$VERSION" != *-* ]]; then
+  DOC_PINS=(
+    "README.md:set \`POLY_VERSION=${VERSION}\` to pin a release"
+    "$DOC_INSTALL:POLY_VERSION=${VERSION} curl "
+    "$DOC_INSTALL:version: v${VERSION} # omit for the latest release"
+    "$DOC_INSTALL:poly ${VERSION} (release build v${VERSION}, release)"
+    "$DOC_INSTALL:poly ${VERSION} (dev build v${VERSION}-"
+    "$DOC_CLI:poly ${VERSION} (release build v${VERSION}, release)"
+    "$DOC_CLI:poly ${VERSION} (dev build v${VERSION}-"
+  )
+  for entry in "${DOC_PINS[@]}"; do
+    file="${entry%%:*}"
+    pin="${entry#*:}"
+    grep -qF -- "$pin" "$file" 2>/dev/null ||
+      fail "$file: pinned-release example not found: $pin"
+  done
+  if [[ $validation_failed -eq 0 ]]; then
+    echo "✓ Documentation examples pin $VERSION"
+  fi
+fi
+
 echo
 echo "Validating plugin manifest versions..."
 
@@ -237,10 +281,22 @@ done
 # carries it in a pyproject and a module, not JSON. Assert both, scoped to the version key.
 hermes_pyproject="plugin/.hermes/package/pyproject.toml"
 hermes_init="plugin/.hermes/package/src/poly_hermes_plugin/__init__.py"
-grep -qE "^version = ['\"]${VERSION}['\"]$" "$hermes_pyproject" 2>/dev/null ||
-  fail "$hermes_pyproject [project] version: expected $VERSION"
-grep -qxF "__version__ = \"$VERSION\"" "$hermes_init" 2>/dev/null ||
-  fail "$hermes_init __version__: expected $VERSION"
+# The Python files carry the PEP 440 spelling of a pre-release (0.36.0-rc.1 is 0.36.0rc1).
+hermes_version="${VERSION/-rc./rc}"
+grep -qE "^version = ['\"]${hermes_version}['\"]$" "$hermes_pyproject" 2>/dev/null ||
+  fail "$hermes_pyproject [project] version: expected $hermes_version"
+grep -qxF "__version__ = \"$hermes_version\"" "$hermes_init" 2>/dev/null ||
+  fail "$hermes_init __version__: expected $hermes_version"
+# The same generator emits a second copy of the plugin and a plugin.yaml beside each.
+hermes_plugin_init="plugin/.hermes/plugins/poly/__init__.py"
+grep -qxF "__version__ = \"$hermes_version\"" "$hermes_plugin_init" 2>/dev/null ||
+  fail "$hermes_plugin_init __version__: expected $hermes_version"
+for hermes_yaml in \
+  plugin/.hermes/package/src/poly_hermes_plugin/plugin.yaml \
+  plugin/.hermes/plugins/poly/plugin.yaml; do
+  grep -qxF "version: \"$VERSION\"" "$hermes_yaml" 2>/dev/null ||
+    fail "$hermes_yaml version: expected $VERSION"
+done
 
 if ! jq -e '.plugins | map(select(.name == "poly" and .source == "./plugin")) | length == 1' \
   .claude-plugin/marketplace.json >/dev/null; then
@@ -288,4 +344,4 @@ fi
 
 echo
 echo "Done. Review with: git diff"
-echo "Next: cargo test --workspace && git commit -am 'chore(release): v$VERSION'"
+echo "Next: cargo test --workspace --no-fail-fast && git commit -am 'chore(release): v$VERSION'"

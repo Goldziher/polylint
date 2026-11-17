@@ -1,6 +1,6 @@
 minimumReleaseAgeExclude:
-  - "@polylint/polylint-darwin-arm64@0.29.0"
-  - "@polylint/polylint-linux-arm64-gnu@0.29.0"
-  - "@polylint/polylint-linux-x64-gnu@0.29.0"
-  - "@polylint/polylint-linux-x64-musl@0.29.0"
-  - "@polylint/polylint-win32-x64@0.29.0"
+  - "@polylint/polylint-darwin-arm64"
+  - "@polylint/polylint-linux-arm64-gnu"
+  - "@polylint/polylint-linux-x64-gnu"
+  - "@polylint/polylint-linux-x64-musl"
+  - "@polylint/polylint-win32-x64"

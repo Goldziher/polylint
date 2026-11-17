@@ -9,6 +9,11 @@ import tomllib
 import unittest
 from pathlib import Path
 
+DOC_EXAMPLES = [
+    "website/src/content/docs/start/installation.mdx",
+    "website/src/content/docs/reference/cli.mdx",
+]
+
 
 class ReleaseBumpTests(unittest.TestCase):
     """Exercise isolated copied sources without modifying the checkout."""
@@ -25,7 +30,8 @@ class ReleaseBumpTests(unittest.TestCase):
                 self.root / directory,
                 ignore=shutil.ignore_patterns("node_modules", "bin", "dist", "*.tgz", "__pycache__"),
             )
-        for filename in ["Cargo.toml", "poly.toml", "package.json", "mise.toml"]:
+        for filename in ["Cargo.toml", "poly.toml", "package.json", "mise.toml", "README.md", *DOC_EXAMPLES]:
+            (self.root / filename).parent.mkdir(parents=True, exist_ok=True)
             shutil.copy2(source / filename, self.root / filename)
         (self.root / "components").mkdir()
         shutil.copy2(source / "components/Cargo.toml", self.root / "components/Cargo.toml")
@@ -70,11 +76,33 @@ class ReleaseBumpTests(unittest.TestCase):
         self.assertEqual(hermes["project"]["version"], "0.29.1")
         hermes_init = (self.root / "plugin/.hermes/package/src/poly_hermes_plugin/__init__.py").read_text()
         self.assertIn('__version__ = "0.29.1"', hermes_init)
+        for manifest in ["package/src/poly_hermes_plugin/plugin.yaml", "plugins/poly/plugin.yaml"]:
+            self.assertIn('version: "0.29.1"', (self.root / "plugin/.hermes" / manifest).read_text(), manifest)
+        self.assertIn("POLY_VERSION=0.29.1", (self.root / "README.md").read_text())
+        installation, cli = ((self.root / doc).read_text() for doc in DOC_EXAMPLES)
+        self.assertIn("version: v0.29.1 # omit for the latest release", installation)
+        self.assertIn("poly 0.29.1 (dev build v0.29.1-", installation)
+        self.assertIn("poly 0.29.1 (release build v0.29.1, release)", cli)
         self.assertEqual(len(package["pi"]["skills"]), 5)
         self.assertEqual(len(package["pi"]["prompts"]), 2)
         marketplace = json.loads((self.root / ".claude-plugin/marketplace.json").read_text())
         self.assertEqual(marketplace["plugins"][0]["source"], "./plugin")
         self.assertNotIn("version", marketplace["plugins"][0])
+
+    def test_should_leave_documentation_examples_alone_for_a_pre_release(self) -> None:
+        """A release candidate is never the pin the documentation shows."""
+        before = [(self.root / doc).read_bytes() for doc in ["README.md", *DOC_EXAMPLES]]
+        result = self.run_bump("0.29.1-rc.1")
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertEqual([(self.root / doc).read_bytes() for doc in ["README.md", *DOC_EXAMPLES]], before)
+
+    def test_should_fail_when_a_documentation_example_no_longer_matches(self) -> None:
+        """An example that changed shape must fail the bump instead of keeping the old version."""
+        readme = self.root / "README.md"
+        readme.write_text(readme.read_text().replace("POLY_VERSION=", "POLY_RELEASE="))
+        result = self.run_bump("0.29.1")
+        self.assertEqual(result.returncode, 1, result.stdout + result.stderr)
+        self.assertIn("README.md: pinned-release example not found", result.stdout)
 
     def test_should_reject_malformed_versions_before_mutating_inputs(self) -> None:
         """A rejected argument must preserve the authoritative core version source."""

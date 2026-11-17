@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-#MISE description="Write THIRD-PARTY-LICENSES.md: every crate in the five workspaces plus ATTRIBUTIONS.md"
+#MISE description="Write THIRD-PARTY-LICENSES.md: every crate in the six workspaces plus ATTRIBUTIONS.md"
 #USAGE arg "[out]" help="Output file (default: THIRD-PARTY-LICENSES.md)"
 set -euo pipefail
 
@@ -8,7 +8,7 @@ set -euo pipefail
 # The release archives, npm platform packages and wheels ship the binary; the binary statically links
 # MIT/Apache/BSD crates and data under other licences, whose terms ask for their notices to travel with
 # it. This lists every non-workspace crate resolved by `cargo metadata --locked` in the root workspace and
-# the four components workspaces (name, version, licence expression, repository), sorted and de-duplicated
+# the five components workspaces (name, version, licence expression, repository), sorted and de-duplicated
 # so two runs on one lockfile are byte-identical, then appends ATTRIBUTIONS.md verbatim: it carries the
 # vendored-code credits and the tsrs NOTICE, which must accompany the binary.
 #

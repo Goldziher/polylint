@@ -57,6 +57,9 @@ no_prune = ["build", "dist"]
 # Whether poly lints and formats machine-generated files. Defaults to true.
 generated = true
 
+# Largest file poly reads, in bytes. Defaults to 33554432 (32 MiB); 0 is no limit.
+max_file_size = 33554432
+
 [components]
 install = "auto"       # "never" forbids downloads; see the components guide
 on_missing = "fail"    # or "skip"
@@ -368,6 +371,8 @@ Charged (a limit of poly — poly does not know what to do with this file):
   rules for its language.
 - `machine-generated file ([discovery] generated = false)` — the config opted the file out.
 - `binary file` — poly never opened it as text.
+- `file too large (<size> bytes > <limit> bytes)` — the file is above `[discovery] max_file_size`
+  and was not read.
 
 Not charged (a caller instruction — the run is doing exactly what it was told):
 
@@ -577,6 +582,28 @@ Nothing was linted. (0 file(s) linted, 1 skipped (machine-generated file ([disco
 The key is read from the config nearest each file, so a nested `poly.toml` can opt out one subtree
 without touching the rest. `--set discovery.generated=false` and `--set discovery.generated=true` override it in either
 direction for a single run, and beat every config in the tree.
+
+## Large files
+
+A file larger than `[discovery] max_file_size` bytes is not opened. The default is 33554432
+(32 MiB): a machine-written bundle or data dump beyond that costs more to read and parse than its
+result is worth. Only a file strictly larger than the limit is skipped, and `0` removes the limit.
+
+```toml
+[discovery]
+max_file_size = 4194304 # 4 MiB
+```
+
+Such a file is **reported as skipped** with its size and the limit, stays out of the checked
+count, and counts against `--deny-skips` / `--max-skips`:
+
+```console
+$ poly lint --verbose .
+  skipped data/dump.json: file too large (41943040 bytes > 33554432 bytes)
+```
+
+The key is read from the config nearest each file, so a nested `poly.toml` can set its own limit
+for one subtree, and `--set discovery.max_file_size=0` lifts it for a single run.
 
 ## Sharing configuration
 
