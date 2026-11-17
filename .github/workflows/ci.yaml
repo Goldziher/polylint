@@ -587,6 +587,20 @@ jobs:
             echo "polylint-js-types tests passed ($features): $passed"
             test "$passed" -gt 0
           done
+      # Both published crates must package: `--list` fails on a manifest crates.io would refuse, and the archive must hold
+      # what the crate builds and tests from. Their docs are gated by `rustdoc lint (tsrs workspace)` (-D missing-docs).
+      - name: polylint-tsrs and polylint-js-types package contents
+        # The archive does not vary by host, and `--list` spells paths with the host's separator.
+        if: runner.os == 'Linux'
+        run: |
+          set -euo pipefail
+          for crate in polylint-tsrs polylint-js-types; do
+            cargo package --locked --manifest-path components-tsrs/Cargo.toml -p "$crate" --list > "$crate-package.txt"
+            echo "$crate packages $(wc -l < "$crate-package.txt") files"
+            for file in Cargo.toml README.md LICENSE src/lib.rs; do
+              grep -qx "$file" "$crate-package.txt" || { echo "::error::$crate does not package $file"; exit 1; }
+            done
+          done
       - name: Build the component cdylib
         run: cargo build --locked --release --manifest-path components-tsrs/Cargo.toml -p poly-engines-tsrs-component
 
