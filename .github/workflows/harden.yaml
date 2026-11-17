@@ -77,6 +77,20 @@ jobs:
           "$bin" --version
           echo "bin=$bin" >> "$GITHUB_OUTPUT"
 
+      # The harness drives poly_core in-process from a root-workspace test build, which cannot link the engine
+      # families kept in the components workspaces (web, biome, ruby, r). Build them as unsigned dev components
+      # and point the dev-lock harness at them, so corpora B and C load the engines a release loads. Only the
+      # packaged archives under dist/ are read afterwards, so the build tree is removed to save disk.
+      - name: Build the component dev lock
+        id: components
+        if: ${{ steps.build.outcome == 'success' }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          mise run components:dev web biome ruby r
+          rm -rf target/components/build
+          echo "POLY_COMPONENT_DEV_LOCK=$PWD/target/components/components.lock.json" >> "$GITHUB_ENV"
+
       - name: Prepare report directory
         shell: bash
         run: mkdir -p "$RUNNER_TEMP/harden-reports"
@@ -97,7 +111,7 @@ jobs:
 
       - name: Corpus B (pinned third-party trees)
         id: corpus_b
-        if: ${{ !cancelled() && steps.build.outcome == 'success' }}
+        if: ${{ !cancelled() && steps.components.outcome == 'success' }}
         shell: bash
         env:
           CORPUS: b
@@ -119,7 +133,7 @@ jobs:
 
       - name: Corpus C (generated code)
         id: corpus_c
-        if: ${{ !cancelled() && steps.build.outcome == 'success' }}
+        if: ${{ !cancelled() && steps.components.outcome == 'success' }}
         shell: bash
         env:
           CORPUS: c
@@ -159,6 +173,7 @@ jobs:
         shell: bash
         env:
           BUILD: ${{ steps.build.outcome }}
+          COMPONENTS: ${{ steps.components.outcome }}
           CORPUS_B: ${{ steps.corpus_b.outcome }}
           CORPUS_C: ${{ steps.corpus_c.outcome }}
           REPOS: ${{ steps.repos.outcome }}
@@ -172,6 +187,7 @@ jobs:
             echo "| Stage | Result |"
             echo "| --- | --- |"
             echo "| build (bundled release) | ${BUILD} |"
+            echo "| component dev lock | ${COMPONENTS} |"
             echo "| corpus B (pinned OSS) | ${CORPUS_B} |"
             echo "| corpus C (generated) | ${CORPUS_C} |"
             echo "| release-gate pass (harden:repos) | ${REPOS} |"

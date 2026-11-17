@@ -11,6 +11,11 @@
 #   mise run harden --tier extended
 #   mise run harden django ripgrep           # named roots only
 #
+# Builds the component dev lock first (components:dev). POLY_HARDEN_COMPONENTS
+# overrides which components; POLY_COMPONENT_DEV_LOCK reuses an existing lock;
+# POLY_HARDEN_NO_COMPONENTS=1 skips components entirely, which fails every
+# component-served file.
+#
 # One process per root, so a panic in one repository cannot take the rest of the
 # run with it, and each root's timing is its own.
 #
@@ -62,9 +67,37 @@ licence_allowed() {
 # count measured against one is not reproducible.
 is_pinned() { [[ "$1" =~ ^[0-9a-f]{40}$ ]]; }
 
+# The harness runs poly_core in-process, and the root workspace links every
+# engine family but the ones kept in the separate components workspaces. Those
+# are downloadable components, and a dev build embeds no lock to fetch them
+# from, so without one every markdown, YAML, JS, CSS, Ruby or R file errors and
+# the run measures nothing. Build them as components:dev does for CI's component
+# tests and run the harness with `dev-lock`, so it loads the engines a release
+# loads. The default list is every default-on family the root cannot link;
+# opt-in ones (pyrefly, tsrs, secrets) are only fetched when a config enables
+# them, and the harden config does not.
+FEATURES=""
+if [ -n "${POLY_HARDEN_NO_COMPONENTS:-}" ]; then
+  echo "==> POLY_HARDEN_NO_COMPONENTS is set: no component lock, so files served by a component will error"
+else
+  DEFAULT_LOCK="${ROOT_DIR}/target/components/components.lock.json"
+  if [ -z "${POLY_COMPONENT_DEV_LOCK:-}" ] && [ -z "${POLY_HARDEN_NO_BUILD:-}" ]; then
+    COMPONENTS="${POLY_HARDEN_COMPONENTS:-web biome ruby r}"
+    echo "==> building the components: ${COMPONENTS}"
+    # shellcheck disable=SC2086 # a space-separated list of component names
+    mise run components:dev ${COMPONENTS}
+  fi
+  export POLY_COMPONENT_DEV_LOCK="${POLY_COMPONENT_DEV_LOCK:-${DEFAULT_LOCK}}"
+  [ -f "${POLY_COMPONENT_DEV_LOCK}" ] || {
+    echo "no component dev lock at ${POLY_COMPONENT_DEV_LOCK}; build one with mise run components:dev" >&2
+    exit 2
+  }
+  FEATURES="dev-lock"
+fi
+
 if [ -z "${POLY_HARDEN_NO_BUILD:-}" ]; then
   echo "==> building the harness"
-  cargo test -p poly-cli --test harden --no-run --quiet
+  cargo test -p poly-cli ${FEATURES:+--features "${FEATURES}"} --test harden --no-run --quiet
 fi
 
 declare -a passed=() failed=() unacquired=()
@@ -79,7 +112,7 @@ run_root() {
     POLY_HARDEN_ROOT_NAME="${name}" \
     POLY_HARDEN_CORPUS="${CORPUS}" \
     POLY_HARDEN_RESULTS="${RESULTS}" \
-    cargo test -p poly-cli --test harden -- --ignored --nocapture --test-threads=1 --exact harden_root; then
+    cargo test -p poly-cli ${FEATURES:+--features "${FEATURES}"} --test harden -- --ignored --nocapture --test-threads=1 --exact harden_root; then
     passed+=("${name}")
   else
     failed+=("${name}")

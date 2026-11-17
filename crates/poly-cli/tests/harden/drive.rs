@@ -138,7 +138,13 @@ pub fn idempotence(copy: &Path, ceiling_ms: u128) -> (PhaseRecord, IdempotenceRe
 /// not change. The `--no-cache` comparison catches the dangerous direction: a
 /// cache serving results computed under inputs that have since moved.
 pub fn cache_behaviour(root: &Path, cold: &LintRun, cold_ms: u128) -> CacheRecord {
-    let render = |run: &LintRun| serde_json::to_string(&LintDocument::from_run(run)).unwrap_or_default();
+    // `installed_now` names what this run downloaded, so the cold run that installs the
+    // components always differs from the runs after it; it is not part of the result.
+    let render = |run: &LintRun| {
+        let mut document = LintDocument::from_run(run);
+        document.components.installed_now.clear();
+        serde_json::to_string(&document).unwrap_or_default()
+    };
     let cold_output = render(cold);
 
     let started = Instant::now();
