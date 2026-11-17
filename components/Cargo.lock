@@ -1885,6 +1885,33 @@ dependencies = [
 ]
 
 [[package]]
+name = "ciborium"
+version = "0.2.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "42e69ffd6f0917f5c029256a24d0161db17cea3997d185db0d35926308770f0e"
+dependencies = [
+ "ciborium-io",
+ "ciborium-ll",
+ "serde",
+]
+
+[[package]]
+name = "ciborium-io"
+version = "0.2.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "05afea1e0a06c9be33d539b876f1ce3692f4afea2cb41f740e7743225ed1c757"
+
+[[package]]
+name = "ciborium-ll"
+version = "0.2.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "57663b653d948a338bfb3eeba9bb2fd5fcfaecb9e199e87e1eda4d9e8b240fd9"
+dependencies = [
+ "ciborium-io",
+ "half",
+]
+
+[[package]]
 name = "clang-sys"
 version = "1.9.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2030,7 +2057,7 @@ checksum = "fe6d2e5af09e8c8ad56c969f2157a3d4238cebc7c55f0a517728c38f7b200f81"
 dependencies = [
  "serde",
  "termcolor",
- "unicode-width 0.1.14",
+ "unicode-width 0.2.3",
 ]
 
 [[package]]
@@ -2041,7 +2068,7 @@ checksum = "af491d569909a7e4dee0ad7db7f5341fef5c614d5b8ec8cf765732aba3cff681"
 dependencies = [
  "serde",
  "termcolor",
- "unicode-width 0.1.14",
+ "unicode-width 0.2.3",
 ]
 
 [[package]]
@@ -2072,7 +2099,7 @@ version = "3.1.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "faf9468729b8cbcea668e36183cb69d317348c2e08e994829fb56ebfdfbaac34"
 dependencies = [
- "windows-sys 0.48.0",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -3156,7 +3183,7 @@ dependencies = [
  "libc",
  "option-ext",
  "redox_users 0.5.3",
- "windows-sys 0.59.0",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -3563,7 +3590,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e35d6e78f4cebb90e51d543db8fe41528851d6deeef6ef21ebd4bfdc1e784776"
 dependencies = [
  "libc",
- "windows-sys 0.52.0",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -4722,7 +4749,7 @@ dependencies = [
  "js-sys",
  "log",
  "wasm-bindgen",
- "windows-core 0.61.2",
+ "windows-core 0.62.2",
 ]
 
 [[package]]
@@ -5077,7 +5104,7 @@ checksum = "3640c1c38b8e4e43584d8df18be5fc6b0aa314ce6ebf51b53313d4306cca8e46"
 dependencies = [
  "hermit-abi 0.5.3",
  "libc",
- "windows-sys 0.52.0",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -6335,7 +6362,7 @@ version = "0.50.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7957b9740744892f114936ab4a57b3f487491bbeafaf8083688b16841a4240e5"
 dependencies = [
- "windows-sys 0.59.0",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -8089,6 +8116,7 @@ dependencies = [
  "oxc_parser",
  "oxc_semantic",
  "oxc_span",
+ "poly-cache",
  "poly-component-host",
  "poly-component-index",
  "poly-component-protocol",
@@ -8635,7 +8663,7 @@ dependencies = [
  "once_cell",
  "socket2",
  "tracing",
- "windows-sys 0.52.0",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -9686,7 +9714,7 @@ dependencies = [
  "errno",
  "libc",
  "linux-raw-sys",
- "windows-sys 0.52.0",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -9744,7 +9772,7 @@ dependencies = [
  "security-framework",
  "security-framework-sys",
  "webpki-root-certs",
- "windows-sys 0.52.0",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -9971,7 +9999,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "5b55fb86dfd3a2f5f76ea78310a88f96c4ea21a3031f8d212443d56123fd0521"
 dependencies = [
  "libc",
- "windows-sys 0.52.0",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -10034,7 +10062,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d43fb82d550b07e6f929a58d7d0935182602f48ddead875f5ee313c41c8f07fe"
 dependencies = [
  "annotate-snippets 0.12.18",
- "base64 0.22.1",
+ "base64 0.23.1",
  "encoding_rs_io",
  "granit-parser",
  "nohash-hasher",
@@ -10344,9 +10372,9 @@ checksum = "33f4fe9184a62d842c9ef383018f3306d8ba224fd9d836f56d7288308847c256"
 
 [[package]]
 name = "skif"
-version = "0.8.0"
+version = "0.9.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ab029349063015c61b2c410ff3f05f297db2d61995744139232834373184663d"
+checksum = "f3dac04d1909f17beba9b921f696e9e9f5e33cf048c883374aefe156422b0902"
 dependencies = [
  "rayon",
  "skif-config",
@@ -10361,9 +10389,9 @@ dependencies = [
 
 [[package]]
 name = "skif-config"
-version = "0.8.0"
+version = "0.9.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "64dcd17b0c1bcd147a32679f5e0bc5108af58f54ba0b411d33364a96a26814d2"
+checksum = "80a33a640030ef3a56d9ddc00b64073dbf5f1d99c6ddf08f20f7a70aa161c709"
 dependencies = [
  "globset",
  "ignore",
@@ -10380,11 +10408,12 @@ dependencies = [
 
 [[package]]
 name = "skif-core"
-version = "0.8.0"
+version = "0.9.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "576b880b2b68e1bd9cb523c388013b89d408cca51c3061fc942d6d9c17a670e8"
+checksum = "366ba03c0a751bc121163992b0f0934408b3d0a9c3285ddd391a9f6bcc212034"
 dependencies = [
  "ahash",
+ "blake3",
  "memchr",
  "serde",
  "serde_json",
@@ -10394,9 +10423,9 @@ dependencies = [
 
 [[package]]
 name = "skif-edit"
-version = "0.8.0"
+version = "0.9.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "181deb94abe311a9ddb4ac44166b18e109b5e49a69a67f285334af897d02da7a"
+checksum = "9cf260bf24e29f52c0ef9bee8756197435fbbf7b23267562126c83fabfe851a1"
 dependencies = [
  "jsonc-parser",
  "serde_json",
@@ -10406,9 +10435,9 @@ dependencies = [
 
 [[package]]
 name = "skif-js"
-version = "0.8.0"
+version = "0.9.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e23bd4b29cd3378ff17d8aab838a613281dcf5564d21647b659ef41a12f04c1f"
+checksum = "3b276ccdc58198183ac06404c858ea6f94bea84dc6720d775e0dde4090f941fc"
 dependencies = [
  "globset",
  "ignore",
@@ -10430,9 +10459,9 @@ dependencies = [
 
 [[package]]
 name = "skif-js-plugins"
-version = "0.8.0"
+version = "0.9.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "6616d24ce6c829cf65c4c8504cc3ccf2dc07609149a1ded7157ab89b1138a61b"
+checksum = "2b8634c8b448310c098863b1e01c58dd6793dd06976761d7e52d630e36108b06"
 dependencies = [
  "globset",
  "indexmap 2.14.2",
@@ -10449,10 +10478,11 @@ dependencies = [
 
 [[package]]
 name = "skif-js-syntax"
-version = "0.8.0"
+version = "0.9.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f673a8b0d1bdd5e965abc5c04806da7ee144db4be57eea60a31ed8abe4f7e543"
+checksum = "b86ab8fb6efebb1504319bcbc57305d91afc8ed740312b2c070ff6433cdb59d2"
 dependencies = [
+ "ciborium",
  "memchr",
  "oxc_allocator",
  "oxc_ast",
@@ -10462,16 +10492,15 @@ dependencies = [
  "oxc_span",
  "oxc_str",
  "serde",
- "siphasher",
  "skif-core",
  "thiserror 2.0.21",
 ]
 
 [[package]]
 name = "skif-lint"
-version = "0.8.0"
+version = "0.9.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "17fab8a0060c2e7f5b8790906362c2837e022e99e8cfc262ca4064b29767ffb5"
+checksum = "db13ccf7e75d18ce226858fb19db416ef14ea3f787f83c3e869924aa0332f1b9"
 dependencies = [
  "rayon",
  "serde",
@@ -10485,9 +10514,9 @@ dependencies = [
 
 [[package]]
 name = "skif-rules"
-version = "0.8.0"
+version = "0.9.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d9fc3405b840f1cc08d723c21ae82700b54f44f7443cd08f9fbdb5956a7b0470"
+checksum = "73dea5d9703fec8e8f47fcc741d0e5400768cb3f6f9a1639c52ff94ce1523861"
 dependencies = [
  "serde",
  "serde-saphyr",
@@ -10503,9 +10532,9 @@ dependencies = [
 
 [[package]]
 name = "skif-specifier"
-version = "0.8.0"
+version = "0.9.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c295e0fd8e33de5cf28af193c956d8d896476623ac45e236445351c88ef94fde"
+checksum = "33122e1cd6db941be329298babb7c0f8dcc7ebfa1baf4edc25fc88a3552bf2fb"
 dependencies = [
  "nodejs-semver",
  "skif-core",
@@ -10513,9 +10542,9 @@ dependencies = [
 
 [[package]]
 name = "skif-workspace"
-version = "0.8.0"
+version = "0.9.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "3617ad34c9b1f47f94ead169069f9dc22fe1eecf86238a973bbe16dba991981f"
+checksum = "580c6c8d4f673f36556ba04c60208af72128c1b75d70f1f6a235c7a9e2b74fde"
 dependencies = [
  "globset",
  "ignore",
@@ -10997,10 +11026,10 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "32497e9a4c7b38532efcdebeef879707aa9f794296a4f0244f6f69e9bc8574bd"
 dependencies = [
  "fastrand",
- "getrandom 0.3.4",
+ "getrandom 0.4.3",
  "once_cell",
  "rustix",
- "windows-sys 0.52.0",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -11028,7 +11057,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "230a1b821ccbd75b185820a1f1ff7b14d21da1e442e22c0863ea5f08771a8874"
 dependencies = [
  "rustix",
- "windows-sys 0.59.0",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -12596,7 +12625,7 @@ version = "0.1.11"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c2a7b1c03c876122aa43f3020e6c3c3ee5c05081c9a00739faf7503aeba10d22"
 dependencies = [
- "windows-sys 0.48.0",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]

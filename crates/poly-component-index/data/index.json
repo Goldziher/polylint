@@ -602,7 +602,7 @@
             "fix": false,
             "project": true
           },
-          "version": "skif-0.8.0+poly6",
+          "version": "skif-0.9.0+poly6",
           "option_keys": [
             {
               "table": "Lint",
@@ -2716,7 +2716,7 @@
             "fix": false,
             "project": false
           },
-          "version": "jsonschema-0.61.2+granit-parser-2.1.0+spans2",
+          "version": "jsonschema-0.61.2+granit-parser-2.2.0+spans2",
           "option_keys": [
             {
               "table": "Lint",
