@@ -204,6 +204,7 @@ fn every_request_covered_method_reaches_the_component() {
                     config: &cfg,
                     environment: &environment,
                     threads: None,
+                    targets: None,
                 };
                 drop(engine.project_check(&request));
             }
