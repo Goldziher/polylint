@@ -68,15 +68,13 @@ fn is_virtualenv(dir: &Path) -> bool {
 /// A relative `path` is already relative to `base`; its `.` components are dropped, so `./pkg` (a
 /// run that named `.`) and `pkg` (the same file reached by its absolute path) key alike.
 fn checkout_relative(path: &Path, base: &Path) -> String {
-    let beneath = if path.is_relative() {
-        path.components()
+    let beneath = match path.strip_prefix(base) {
+        Ok(rest) => rest.to_path_buf(),
+        Err(_) if path.has_root() || path.is_absolute() => return path.to_string_lossy().into_owned(),
+        Err(_) => path
+            .components()
             .filter(|part| !matches!(part, std::path::Component::CurDir))
-            .collect::<PathBuf>()
-    } else {
-        match path.strip_prefix(base) {
-            Ok(rest) => rest.to_path_buf(),
-            Err(_) => return path.to_string_lossy().into_owned(),
-        }
+            .collect::<PathBuf>(),
     };
     if beneath.as_os_str().is_empty() {
         ".".to_owned()

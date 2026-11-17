@@ -223,4 +223,6 @@ fn a_relative_and_an_absolute_package_root_key_alike() {
     assert_eq!(super::checkout_relative(Path::new("./pkg"), base), "pkg");
     assert_eq!(super::checkout_relative(&base.join("pkg"), base), "pkg");
     assert_eq!(super::checkout_relative(Path::new("."), base), ".");
+    let outside = Path::new("/elsewhere/pkg");
+    assert_eq!(super::checkout_relative(outside, base), outside.to_string_lossy());
 }
