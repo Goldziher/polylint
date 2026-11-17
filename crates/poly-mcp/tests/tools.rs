@@ -365,12 +365,17 @@ fn the_run_options_are_declared_on_check_and_fix() {
             "on_missing",
             "no_cache",
             "jobs",
-            "fix_generated",
             "debug",
             "format",
         ] {
             assert!(properties.contains_key(option), "{name} declares `{option}`");
         }
+        // Only a write reads it, so only the writing tool lists (and accepts) it.
+        assert_eq!(
+            properties.contains_key("fix_generated"),
+            name == "fix",
+            "{name} and `fix_generated`"
+        );
         assert_eq!(
             properties["install"]["enum"],
             serde_json::json!(["config", "auto", "never"]),
@@ -604,8 +609,12 @@ async fn workspace_lint_runs_as_async_task_and_completes() {
     let structured = call_result
         .structured_content
         .expect("structured content in task result");
-    assert_eq!(structured["passed"], Value::Bool(true), "disabled phase passes");
-    assert_eq!(structured["tools"], serde_json::json!([]), "no tools ran");
+    // The caller asked for this phase and it did not run: an error naming why, never a pass
+    // with no tools.
+    assert_eq!(call_result.is_error, Some(true), "{structured}");
+    assert_eq!(structured["error"]["kind"], "no_workspace_tools", "{structured}");
+    assert_eq!(structured["summary"], Value::Null, "{structured}");
+    assert_eq!(structured.get("passed"), None, "{structured}");
 
     client.cancel().await.unwrap();
     let _ = server_task.await;

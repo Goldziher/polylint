@@ -145,14 +145,20 @@ impl Services {
             }
             service::WORKSPACE_LINT => {
                 let req: WorkspaceRequest = decode(request)?;
-                self.confine(&[], req.config.as_deref())?;
-                encode(&ops::workspace_lint(
-                    req.config.as_deref(),
-                    req.fix,
-                    req.jobs,
-                    req.no_cache,
-                    self.resolver.as_ref(),
-                )?)
+                let reply = self
+                    .confine(&[], req.config.as_deref())
+                    .map_err(|error| RunFailure::from_anyhow(FailureKind::Workspace, &error))
+                    .and_then(|()| {
+                        ops::workspace_lint(
+                            req.config.as_deref(),
+                            req.fix,
+                            req.jobs,
+                            req.no_cache,
+                            self.resolver.as_ref(),
+                        )
+                    })
+                    .and_then(|report| workspace_reply(&report));
+                encode(&reply.unwrap_or_else(|error| failure_reply(&error)))
             }
             service::CACHE_STATS => encode(&ops::cache_stats(self.resolver.as_ref())?),
             service::CACHE_CLEAN => encode(&ops::cache_clean(self.resolver.as_ref())?),
@@ -299,6 +305,8 @@ trait WithWorkspace: Sized {
 
 impl WithWorkspace for RunReply {
     fn with_workspace(mut self, report: &poly_frontend_api::dto::WorkspaceReport) -> anyhow::Result<Self> {
+        // The caller asked for both tiers; an untrusted repository ran only one of them.
+        self.is_error |= report.untrusted.is_some();
         if let Value::Object(document) = &mut self.document {
             document.insert(
                 "workspace".to_owned(),
@@ -309,6 +317,17 @@ impl WithWorkspace for RunReply {
         self.toon = poly_core::report::render_toon(&self.document).map_err(render_error)?;
         Ok(self)
     }
+}
+
+/// The whole-project phase's report as a reply. A failing tool is a finding, as on the CLI
+/// (exit 1), not an error: the phase ran and verified what was asked.
+fn workspace_reply(report: &poly_frontend_api::dto::WorkspaceReport) -> anyhow::Result<RunReply> {
+    Ok(RunReply {
+        document: serde_json::to_value(report).map_err(render_error)?,
+        json: poly_core::report::render_json(report).map_err(render_error)?,
+        toon: poly_core::report::render_toon(report).map_err(render_error)?,
+        is_error: false,
+    })
 }
 
 /// A lint run as the three renderings and the error flag. A render failure is an error, never an

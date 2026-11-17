@@ -19,8 +19,11 @@
 //!
 //! Every tool returns rmcp **structured content** plus one text block carrying the same value
 //! as JSON or compact **TOON** (`format`). `check` and `fix` return the CLI's `--format json`
-//! document; a run that could not start returns `{error: {kind, message}, summary: null}`
-//! with `isError`. The schemas are resources (see [`resources`]), not tool `outputSchema`s.
+//! document; a run that could not start, or a requested phase that did not run, returns
+//! `{error: {kind, message}, summary: null}` with `isError`. So do arguments a tool cannot act
+//! on (`kind: usage`): an unknown key, a wrong value, a parameter that does not apply to the
+//! chosen `scope`, `action` or `topics`. Only an unknown tool name is a JSON-RPC error. The
+//! schemas are resources (see [`resources`]), not tool `outputSchema`s.
 //!
 //! ## Identity
 //!
@@ -42,16 +45,17 @@ use std::sync::Arc;
 
 use rmcp::model::{
     CallToolRequestParams, CallToolResponse, CallToolResult, CancelTaskParams, GetTaskParams, GetTaskResult,
-    Implementation, ListResourcesResult, ListToolsResult, PaginatedRequestParams, ReadResourceRequestParams,
-    ReadResourceResponse, ReadResourceResult, ResultType, ServerCapabilities, ServerConfig, Tool, UpdateTaskParams,
+    Implementation, JsonObject, ListResourcesResult, ListToolsResult, PaginatedRequestParams,
+    ReadResourceRequestParams, ReadResourceResponse, ReadResourceResult, ResultType, ServerCapabilities, ServerConfig,
+    Tool, UpdateTaskParams,
 };
 use rmcp::service::RequestContext;
 use rmcp::task_manager::{TaskExit, TaskManager, TaskOptions};
 use rmcp::{ErrorData, RoleServer, ServerHandler};
-use serde::Deserialize;
 
 use poly_frontend_api::ServiceCaller;
 
+mod arguments;
 mod info;
 mod manage;
 mod params;
@@ -59,18 +63,20 @@ pub mod resources;
 mod run;
 
 use crate::backend::Backend;
+use crate::dto::usage_result;
 use crate::identity::{self, ExecutableWatch};
-use params::{CHECK, FIX, INFO, InfoParams, MANAGE, ManageParams, RunParams, Topic};
+use params::{CHECK, FIX, INFO, InfoParams, ManageParams, RunParams, Topic};
 
 /// What every tool's result means, said once instead of in every description.
 const INSTRUCTIONS: &str = "poly lints and formats every language with one config. Tools: `check` (no \
     writes), `fix` (writes), `info` (read-only state), `manage` (cache and components). `check`/`fix` run the \
     tools the repository's poly.toml configures: use them only on repositories you trust. Results are the \
     CLI's `--format json` document plus a `poly` block naming the binary that answered. `isError` means the \
-    run did not verify what was asked (a file failed, a path is missing, the config is broken, a component is \
-    missing, the skip budget was exceeded); findings and drift are not errors. Gate on `summary.checked`, not \
-    on an empty `results`: a clean file has no record. Whole-project scopes and component downloads return a \
-    Task when the client supports them; poll tasks/get. Output schemas: resources under poly://schema/.";
+    run did not verify what was asked: a file failed, a requested phase did not run, or nothing ran at all, \
+    which is `{error: {kind, message}, summary: null}` (invalid or inapplicable arguments are `kind: usage`). \
+    Findings and drift are not errors. Gate on `summary.checked`, not on an empty `results`: a clean file has \
+    no record. Whole-project scopes and component downloads return a Task when the client supports them; poll \
+    tasks/get. Output schemas: resources under poly://schema/.";
 
 /// MCP server exposing poly's checks, fixes, state and maintenance as four tools.
 #[derive(Clone)]
@@ -129,12 +135,10 @@ where
     }
 }
 
-/// Deserialize a tool call's `arguments` map into a typed params struct,
-/// defaulting to an empty object when the caller passed none.
-fn parse_arguments<T: for<'de> Deserialize<'de>>(arguments: Option<rmcp::model::JsonObject>) -> Result<T, ErrorData> {
-    let value = serde_json::Value::Object(arguments.unwrap_or_default());
-    serde_json::from_value(value)
-        .map_err(|error| ErrorData::invalid_params(format!("invalid arguments: {error}"), None))
+/// A usage error as the tool's answer: an `isError` result the model reads and corrects, where
+/// a JSON-RPC error would reach most clients as a transport failure.
+fn usage(message: &str, arguments: &JsonObject) -> CallToolResponse {
+    CallToolResponse::Complete(usage_result(message, arguments::text_repr(arguments)))
 }
 
 impl PolyMcpServer {
@@ -168,13 +172,7 @@ impl PolyMcpServer {
 
     /// The four tool definitions, in listing order.
     pub fn tools(&self) -> Vec<Tool> {
-        params::definitions()
-            .into_iter()
-            .map(|mut tool| {
-                tool.input_schema = crate::schema::compact(&tool.input_schema);
-                tool
-            })
-            .collect()
+        params::definitions().to_vec()
     }
 
     /// Names of every registered tool.
@@ -254,27 +252,42 @@ impl ServerHandler for PolyMcpServer {
         request: CallToolRequestParams,
         context: RequestContext<RoleServer>,
     ) -> Result<CallToolResponse, ErrorData> {
-        match request.name.as_ref() {
+        // Only a tool that does not exist is a protocol error. Everything wrong with the
+        // arguments of one that does is a `usage` result (see [`arguments`]).
+        let Some(tool) = params::definitions().iter().find(|tool| tool.name == request.name) else {
+            return Err(ErrorData::invalid_params(
+                format!("unknown tool `{}`", request.name),
+                None,
+            ));
+        };
+        let raw = request.arguments.unwrap_or_default();
+        match tool.name.as_ref() {
             INFO => {
-                let args: InfoParams = parse_arguments(request.arguments)?;
+                let args: InfoParams = match arguments::parse(tool, &raw) {
+                    Ok(args) => args,
+                    Err(message) => return Ok(usage(&message, &raw)),
+                };
                 // `version` is exempt: it is the topic that *explains* a stale server, and
                 // refusing it would leave a caller with an error and no diagnosis.
                 if args.topics.iter().any(|topic| *topic != Topic::Version) {
                     self.reject_if_stale()?;
                 }
-                self.run_info(args).await.map(CallToolResponse::Complete)
+                self.run_info(args, &raw).await.map(CallToolResponse::Complete)
             }
             CHECK | FIX => {
                 self.reject_if_stale()?;
-                let args: RunParams = parse_arguments(request.arguments)?;
-                self.run_tool(args, &context, request.name.as_ref() == FIX).await
+                match arguments::parse::<RunParams>(tool, &raw) {
+                    Ok(args) => self.run_tool(args, &raw, &context, tool.name == FIX).await,
+                    Err(message) => Ok(usage(&message, &raw)),
+                }
             }
-            MANAGE => {
+            _ => {
                 self.reject_if_stale()?;
-                let args: ManageParams = parse_arguments(request.arguments)?;
-                self.run_manage(args, &context).await
+                match arguments::parse::<ManageParams>(tool, &raw) {
+                    Ok(args) => self.run_manage(args, &raw, &context).await,
+                    Err(message) => Ok(usage(&message, &raw)),
+                }
             }
-            other => Err(ErrorData::invalid_params(format!("unknown tool `{other}`"), None)),
         }
     }
 

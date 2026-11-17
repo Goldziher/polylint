@@ -6,22 +6,33 @@
 
 use poly_frontend_api::dto::ComponentActions;
 use poly_frontend_api::wire::{CacheGcRequest, ComponentsInstallRequest, ComponentsUninstallRequest};
-use rmcp::model::{CallToolResponse, CallToolResult};
+use rmcp::model::{CallToolResponse, CallToolResult, JsonObject};
 use rmcp::service::RequestContext;
 use rmcp::{ErrorData, RoleServer};
 
+use super::arguments::{MANAGE_ACTIONS, applicable};
 use super::params::{Action, ManageParams};
 use super::{PolyMcpServer, effective_config, run_blocking};
-use crate::dto::{TextRepr, actions_result, dto_result, error_result};
+use crate::dto::{TextRepr, actions_result, dto_result, error_result, usage_result};
 
 impl PolyMcpServer {
     /// Answer `manage`.
     pub(super) async fn run_manage(
         &self,
         args: ManageParams,
+        raw: &JsonObject,
         context: &RequestContext<RoleServer>,
     ) -> Result<CallToolResponse, ErrorData> {
         let repr = args.format;
+        // A destructive action must not run under a parameter it ignores: `dry_run` in
+        // particular reads as "change nothing".
+        let action = raw
+            .get("action")
+            .and_then(serde_json::Value::as_str)
+            .unwrap_or_default();
+        if let Err(message) = applicable(raw, "action", &[action], MANAGE_ACTIONS, &["format"]) {
+            return Ok(CallToolResponse::Complete(usage_result(&message, repr)));
+        }
         let backend = self.backend.clone();
         let result = match args.action {
             Action::CacheClean => match run_blocking(move || Ok(backend.cache_clean())).await? {

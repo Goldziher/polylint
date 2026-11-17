@@ -15,7 +15,8 @@ pub mod service {
     pub const LINT: &str = "lint.run";
     /// Check or apply formatting ([`super::RunCall`] -> [`super::RunReply`]).
     pub const FORMAT: &str = "format.run";
-    /// The whole-project lint phase ([`super::WorkspaceRequest`] -> `WorkspaceReport`).
+    /// The whole-project lint phase ([`super::WorkspaceRequest`] -> [`super::RunReply`] whose document is a
+    /// `WorkspaceReport`, or a failure document when the phase did not run).
     pub const WORKSPACE_LINT: &str = "workspace.lint";
     /// Result-cache footprint (no request -> `CacheStatsReport`).
     pub const CACHE_STATS: &str = "cache.stats";
@@ -85,17 +86,17 @@ pub struct RunRequest {
     /// Files or directories (default: the current directory).
     #[serde(default)]
     pub paths: Vec<String>,
-    /// Gitignore-style globs excluded on top of `[discovery] exclude`; `e2e/**` matches at any depth, `/e2e/**`
-    /// only at the config root.
+    /// Gitignore-style globs excluded on top of `[discovery] exclude` (`e2e/**`: any depth; `/e2e/**`: the config
+    /// root).
     #[serde(default)]
     pub exclude: Vec<String>,
-    /// Config file (`poly.toml`); default: discovered from the working directory.
+    /// Config file; default: discovered from the working directory.
     #[serde(default)]
     pub config: Option<String>,
     /// Check named paths even when they match the exclude set.
     #[serde(default)]
     pub include_excluded: bool,
-    /// Run only these engines (tool ids: `ruff`, `oxc`, ...). Never enables one the config leaves off.
+    /// Run only these engines (`ruff`, `oxc`, ...). Never enables one the config leaves off.
     #[serde(default)]
     pub only: Vec<String>,
     /// Drop these engines. Not with `only`.
@@ -117,7 +118,7 @@ pub struct RunRequest {
     /// Worker threads (default: all cores).
     #[serde(default)]
     pub jobs: Option<usize>,
-    /// Also rewrite hash-stamped generated files (fix only).
+    /// Also rewrite hash-stamped generated files.
     #[serde(default)]
     pub fix_generated: bool,
     /// Attach per-engine debug records (cache hits, timings).

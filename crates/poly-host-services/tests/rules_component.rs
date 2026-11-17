@@ -174,6 +174,24 @@ mod injected {
         assert_eq!(format!("{error:#}"), "component not installed: astgrep (offline)");
     }
 
+    /// The service behind the read-only `info` tool: whatever the config says about installing,
+    /// it asks the host for the component without permission to fetch it.
+    #[test]
+    fn the_rules_service_never_installs_even_when_the_config_allows_it() {
+        let dir = tempfile::tempdir().unwrap();
+        let config = dir.path().join("poly.toml");
+        std::fs::write(&config, "[components]\ninstall = \"auto\"\n").unwrap();
+        let (injected, cache) = injection(false);
+        let error =
+            poly_host_services::ops::rules_report_with(&[], config.to_str(), false, None, Some(&injected)).unwrap_err();
+        assert_eq!(format!("{error:#}"), "component not installed: astgrep (install_never)");
+        assert_eq!(
+            std::fs::read_dir(cache.path()).map(Iterator::count).unwrap_or(0),
+            0,
+            "nothing was written to the component cache"
+        );
+    }
+
     #[test]
     fn install_never_refuses_to_fetch_the_component() {
         let (injected, _cache) = injection(false);

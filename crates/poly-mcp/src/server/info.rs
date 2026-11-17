@@ -2,55 +2,62 @@
 
 use poly_frontend_api::wire::{ComponentsStatusRequest, ConfigRequest, RulesRequest, ValidateRequest};
 use rmcp::ErrorData;
-use rmcp::model::CallToolResult;
+use rmcp::model::{CallToolResult, JsonObject};
 use serde_json::{Map, Value};
 
+use super::arguments::{INFO_TOPICS, applicable};
 use super::params::{InfoParams, Topic};
 use super::{PolyMcpServer, effective_config, run_blocking};
 use crate::backend::Backend;
-use crate::dto::{VersionReport, dto_result_with_status, failure_value};
+use crate::dto::{VersionReport, dto_result_with_status, failure_value, usage_result};
 
 impl PolyMcpServer {
     /// Answer `info`. A topic the host cannot answer carries `{error: {kind, message}}` in its
     /// key and marks the result `isError`, as does a failing rule test; the other topics are
     /// still answered.
-    pub(super) async fn run_info(&self, args: InfoParams) -> Result<CallToolResult, ErrorData> {
+    pub(super) async fn run_info(&self, args: InfoParams, raw: &JsonObject) -> Result<CallToolResult, ErrorData> {
+        let mut topics: Vec<Topic> = Vec::new();
+        for topic in &args.topics {
+            if !topics.contains(topic) {
+                topics.push(*topic);
+            }
+        }
+        let names: Vec<&str> = topics.iter().map(|topic| topic.name()).collect();
+        if let Err(message) = applicable(raw, "topics", &names, INFO_TOPICS, &["format"]) {
+            return Ok(usage_result(&message, args.format));
+        }
         let config = effective_config(args.config.clone(), &self.config_override);
         let mut answers = Map::new();
         let mut is_error = false;
-        let mut topics = args.topics.clone();
-        topics.dedup();
         for topic in topics {
-            let (key, answer) = match topic {
-                Topic::Version => ("version", Ok(self.version_report().await?)),
-                Topic::Config => ("config", self.host(config_topic(config.clone())).await?),
-                Topic::Validate => ("validate", self.host(validate_topic(args.paths.clone())).await?),
-                Topic::Rules => (
-                    "rules",
+            let answer = match topic {
+                Topic::Version => Ok(self.version_report().await?),
+                Topic::Config => self.host(config_topic(config.clone())).await?,
+                Topic::Validate => self.host(validate_topic(args.paths.clone())).await?,
+                Topic::Rules => {
                     self.host(rules_topic(RulesRequest {
                         dirs: args.dirs.clone(),
                         config: config.clone(),
                         test: args.test,
                     }))
-                    .await?,
-                ),
-                Topic::Components => (
-                    "components",
+                    .await?
+                }
+                Topic::Components => {
                     self.host(components_topic(ComponentsStatusRequest {
                         paths: args.paths.clone(),
                         config: config.clone(),
                         install: args.install,
                     }))
-                    .await?,
-                ),
-                Topic::Cache => ("cache", self.host(|backend: &Backend| to_value(backend.cache_stats()?)).await?),
+                    .await?
+                }
+                Topic::Cache => self.host(|backend: &Backend| to_value(backend.cache_stats()?)).await?,
             };
             let answer = match answer {
                 Ok(value) => {
                     // A failing rule test, or an invalid config, is the CLI's non-zero exit: the
                     // caller asked whether they pass.
-                    is_error |= value.get("ok") == Some(&Value::Bool(false))
-                        || value.get("valid") == Some(&Value::Bool(false));
+                    is_error |=
+                        value.get("ok") == Some(&Value::Bool(false)) || value.get("valid") == Some(&Value::Bool(false));
                     value
                 }
                 Err(error) => {
@@ -58,7 +65,7 @@ impl PolyMcpServer {
                     failure_value(&error)
                 }
             };
-            answers.insert(key.to_owned(), answer);
+            answers.insert(topic.name().to_owned(), answer);
         }
         dto_result_with_status(&answers, args.format, is_error)
     }

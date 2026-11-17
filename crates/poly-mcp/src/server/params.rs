@@ -3,7 +3,7 @@
 //! Descriptions are terse on purpose: they are sent to the model with every tool listing, and
 //! the result semantics every tool shares are stated once, in the server instructions.
 
-use std::sync::Arc;
+use std::sync::{Arc, OnceLock};
 
 use poly_frontend_api::wire::{InstallMode, RunRequest};
 use rmcp::model::{JsonObject, Tool, ToolAnnotations};
@@ -52,13 +52,13 @@ pub struct RunParams {
     #[serde(default)]
     pub kind: RunKind,
     /// `files` (default): per-file tier over `paths`. `workspace`: whole-project phase (cargo clippy, inline
-    /// jobs; whole repo, no `paths`). `all`: both, as `poly lint`. `workspace`/`all` are lint-only.
+    /// jobs; whole repo, no `paths`). `all`: both. `workspace`/`all` are lint-only.
     #[serde(default)]
     pub scope: Scope,
     /// The run options, shared with the CLI.
     #[serde(flatten)]
     pub run: RunRequest,
-    /// Text block format: `json` (default) or `toon`.
+    /// Text block: `json` (default) or `toon`.
     #[serde(default)]
     pub format: TextRepr,
 }
@@ -81,13 +81,27 @@ pub enum Topic {
     Cache,
 }
 
+impl Topic {
+    /// The topic's name: its value in `topics` and its key in the result.
+    pub(crate) fn name(self) -> &'static str {
+        match self {
+            Topic::Version => "version",
+            Topic::Config => "config",
+            Topic::Validate => "validate",
+            Topic::Rules => "rules",
+            Topic::Components => "components",
+            Topic::Cache => "cache",
+        }
+    }
+}
+
 /// Arguments of `info`.
 #[derive(Debug, Clone, Deserialize, JsonSchema)]
 pub struct InfoParams {
     /// Topics to report, one result key each. Default `["version"]`.
     #[serde(default = "default_topics")]
     pub topics: Vec<Topic>,
-    /// Config file (`poly.toml`); default: discovered from the server's directory.
+    /// Config file; default: discovered from the working directory.
     #[serde(default)]
     pub config: Option<String>,
     /// `components`: the paths to judge. `validate`: config files or directories.
@@ -102,7 +116,7 @@ pub struct InfoParams {
     /// `rules`: also run each rule's `*-test.yml` snippets; a failure sets `isError`.
     #[serde(default)]
     pub test: bool,
-    /// Text block format: `json` (default) or `toon`.
+    /// Text block: `json` (default) or `toon`.
     #[serde(default)]
     pub format: TextRepr,
 }
@@ -146,7 +160,8 @@ pub enum Action {
 pub struct ManageParams {
     /// The operation.
     pub action: Action,
-    /// Components or presets (`all`, a family, a language alias such as `python`).
+    /// `components_install`/`components_uninstall`: components or presets (`all`, a family, a language alias
+    /// such as `python`).
     #[serde(default)]
     pub names: Vec<String>,
     /// `components_install`: languages whose components to install.
@@ -155,10 +170,10 @@ pub struct ManageParams {
     /// `components_install`: install every component these paths need.
     #[serde(default)]
     pub paths: Vec<String>,
-    /// Config file used to judge `paths`.
+    /// `components_install`: config file used to judge `paths`.
     #[serde(default)]
     pub config: Option<String>,
-    /// `components_install`: report what would be downloaded, download nothing.
+    /// `components_install`: report what would be downloaded, download nothing. No other action has a dry run.
     #[serde(default)]
     pub dry_run: bool,
     /// `cache_gc`: evict entries older than this many days.
@@ -167,24 +182,43 @@ pub struct ManageParams {
     /// `cache_gc`: evict oldest-first to this budget (`500M`, `2G`).
     #[serde(default)]
     pub max_size: Option<String>,
-    /// Text block format: `json` (default) or `toon`.
+    /// Text block: `json` (default) or `toon`.
     #[serde(default)]
     pub format: TextRepr,
 }
 
-/// The input schema of `T`.
+/// The input schema of `T`, compacted for the model (see [`crate::schema::compact`]).
 fn input_schema<T: JsonSchema + std::any::Any>() -> Arc<JsonObject> {
-    rmcp::handler::server::tool::schema_for_input::<T>().expect("tool params have a valid input schema")
+    let schema = rmcp::handler::server::tool::schema_for_input::<T>().expect("tool params have a valid input schema");
+    crate::schema::compact(&schema)
 }
 
-/// The four tool definitions, in listing order.
-pub(crate) fn definitions() -> Vec<Tool> {
+/// `schema` without the property `name`.
+fn without(schema: &JsonObject, name: &str) -> Arc<JsonObject> {
+    let mut schema = schema.clone();
+    if let Some(serde_json::Value::Object(properties)) = schema.get_mut("properties") {
+        properties.remove(name);
+    }
+    Arc::new(schema)
+}
+
+/// The four tool definitions, in listing order. A tool's schema is also the list of arguments
+/// it accepts: a key it does not list is refused (see [`super::arguments::parse`]).
+pub(crate) fn definitions() -> &'static [Tool] {
+    static DEFINITIONS: OnceLock<Vec<Tool>> = OnceLock::new();
+    DEFINITIONS.get_or_init(build_definitions)
+}
+
+fn build_definitions() -> Vec<Tool> {
+    let run = input_schema::<RunParams>();
     vec![
         Tool::new(
             CHECK,
-            "Lint, or check formatting, without writing. Mirrors `poly lint --format json` (`scope: all`; `files` is \
-             `--workspace never`) and `poly fmt --format json`. Runs the repository's configured tools.",
-            input_schema::<RunParams>(),
+            "Lint, or check formatting (`kind: format`, as `poly fmt`), without writing. `scope: all` is what \
+             plain `poly lint` runs; the default `files` is `poly lint --workspace never`. Runs the repository's \
+             configured tools.",
+            // Nothing is rewritten, so the fix-only option is not offered.
+            without(&run, "fix_generated"),
         )
         .annotate(
             ToolAnnotations::new()
@@ -197,7 +231,7 @@ pub(crate) fn definitions() -> Vec<Tool> {
             FIX,
             "Apply lint autofixes or formatting in place, then report what remains. Mirrors `poly lint --fix` and \
              `poly fmt --fix`.",
-            input_schema::<RunParams>(),
+            run,
         )
         .annotate(
             ToolAnnotations::new()
@@ -208,8 +242,8 @@ pub(crate) fn definitions() -> Vec<Tool> {
         ),
         Tool::new(
             INFO,
-            "Read poly's state: version, config, validate, rules, components, cache. Never downloads or runs \
-             repository tools.",
+            "Read poly's state: version, config, validate, rules, components, cache. Never downloads, writes or \
+             runs repository tools.",
             input_schema::<InfoParams>(),
         )
         .annotate(

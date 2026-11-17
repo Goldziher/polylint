@@ -12,9 +12,9 @@ use rmcp::model::{ClientCapabilities, ClientConfig};
 use serde_json::{Value, json};
 
 /// Model-visible bytes of `tools/list` (names, descriptions, input schemas, annotations).
-const MODEL_VISIBLE_BUDGET: usize = 8_000;
+const MODEL_VISIBLE_BUDGET: usize = 7_700;
 /// Bytes of the whole `tools/list` result.
-const FULL_LIST_BUDGET: usize = 8_000;
+const FULL_LIST_BUDGET: usize = 7_700;
 /// Bytes of the server instructions.
 const INSTRUCTIONS_BUDGET: usize = 900;
 

@@ -210,11 +210,11 @@ pub fn lint_run(paths: &[String], exclude: &[String], config: Option<&str>, fix:
     lint(&call_for(paths, exclude, config, fix), None)
 }
 
-/// [`format`] over `paths` with every other option at its default.
+/// [`format()`] over `paths` with every other option at its default.
 ///
 /// # Errors
 ///
-/// As [`format`].
+/// As [`format()`].
 pub fn format_run(
     paths: &[String],
     exclude: &[String],
@@ -274,9 +274,22 @@ pub fn rules_report(
     test: bool,
     resolver: Option<&Resolver>,
 ) -> anyhow::Result<RulesReport> {
+    rules_report_with(dirs, config, test, resolver, None)
+}
+
+/// [`rules_report`] against an injected component host (tests): the config is loaded and its
+/// install policy overridden exactly as the service does it.
+#[doc(hidden)]
+pub fn rules_report_with(
+    dirs: &[String],
+    config: Option<&str>,
+    test: bool,
+    resolver: Option<&Resolver>,
+    injection: Option<&poly_core::components::ComponentInjection>,
+) -> anyhow::Result<RulesReport> {
     let mut resolved = (*resolve_config_with(config.map(Path::new), resolver)?).clone();
     resolved.components.install = ComponentInstallPolicy::Never;
-    rules_report_for(&resolved, dirs, test, None)
+    rules_report_for(&resolved, dirs, test, injection)
 }
 
 /// [`rules_report`] over an already resolved config.
@@ -465,6 +478,12 @@ pub fn config_validate(paths: &[String]) -> anyhow::Result<ValidateReport> {
 /// (mirrors `poly lint`'s whole-project phase). When `fix` is true the tools run
 /// in fix mode. Reporting is captured, never written to stdout, so the caller's
 /// stdio MCP transport stays a clean JSON-RPC stream.
+///
+/// # Errors
+///
+/// A [`RunFailure`] when the phase did not run: the config cannot be loaded, the repository is
+/// not trusted to run its `[hooks]`, or nothing is planned. The caller asked for this phase
+/// alone, so a report with no tools would read as a pass of a check that never happened.
 pub fn workspace_lint(
     config: Option<&str>,
     fix: bool,
@@ -472,11 +491,23 @@ pub fn workspace_lint(
     no_cache: bool,
     resolver: Option<&Resolver>,
 ) -> anyhow::Result<WorkspaceReport> {
-    let _tool_lock = tool_lock_scope(config.map(Path::new))?;
-    let resolved = resolve_poly_config_with(config.map(Path::new), resolver)?;
+    let config_failure = |error: anyhow::Error| RunFailure::from_anyhow(FailureKind::Config, &error);
+    let _tool_lock = tool_lock_scope(config.map(Path::new)).map_err(config_failure)?;
+    let resolved = resolve_poly_config_with(config.map(Path::new), resolver).map_err(config_failure)?;
     let plan = poly_workspace::plan_workspace_lint(&resolved)?;
-    run_planned(&resolved, plan, fix, jobs, no_cache)
+    let planned = plan.is_some();
+    let report = run_planned(&resolved, plan, fix, jobs, no_cache)?;
+    if let Some(untrusted) = &report.untrusted {
+        return Err(RunFailure::new(FailureKind::Untrusted, untrusted).into());
+    }
+    if !planned {
+        return Err(RunFailure::new(FailureKind::NoWorkspaceTools, NOTHING_PLANNED).into());
+    }
+    Ok(report)
 }
+
+/// Why a whole-project phase with nothing planned did not run.
+const NOTHING_PLANNED: &str = "whole-project phase did not run: no whole-project tool is configured, or it is disabled";
 
 fn run_planned(
     config: &PolyConfig,
@@ -515,7 +546,7 @@ fn run_planned(
         notes: if planned || outcome.untrusted {
             Vec::new()
         } else {
-            vec!["whole-project phase did not run: no whole-project tool is configured, or it is disabled".to_owned()]
+            vec![NOTHING_PLANNED.to_owned()]
         },
     })
 }

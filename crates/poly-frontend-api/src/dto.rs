@@ -16,13 +16,20 @@ pub enum FailureKind {
     Workspace,
     /// The config (or its `poly.lock`) could not be loaded.
     Config,
-    /// The pipeline failed before it could report on files (an unknown `only` engine, a failed
-    /// component plan, an unreadable cache).
+    /// The operation failed before it could report (an unknown `only` engine, a failed component
+    /// plan, an unreadable cache, a maintenance action or lookup the host could not carry out).
     Pipeline,
     /// The run finished but its document could not be serialized.
     Render,
-    /// The request combines arguments that do not go together.
+    /// The arguments are invalid: an unknown key, a wrong type or value, or a parameter that does
+    /// not apply to the chosen `scope`, `action` or `topics`.
     Usage,
+    /// The whole-project phase was asked for and did not run: the repository is not trusted to
+    /// run its `[hooks]` (`poly trust`).
+    Untrusted,
+    /// The whole-project phase was asked for and did not run: the config plans no whole-project
+    /// tool, or the phase is disabled.
+    NoWorkspaceTools,
 }
 
 /// A run's failure: its class and the message the CLI prints.

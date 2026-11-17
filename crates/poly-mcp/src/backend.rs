@@ -8,7 +8,7 @@ use std::sync::Arc;
 
 use poly_frontend_api::dto::{
     CacheFreedReport, CacheStatsReport, ComponentActions, ComponentSummary, ComponentsStatus, RulesReport,
-    ValidateReport, WorkspaceReport,
+    ValidateReport,
 };
 use poly_frontend_api::wire::{
     CacheGcRequest, ComponentsInstallRequest, ComponentsStatusRequest, ComponentsUninstallRequest, ConfigRequest,
@@ -47,12 +47,14 @@ impl Backend {
         call(&*self.caller, service::FORMAT, request)
     }
 
-    /// Run the whole-project lint phase.
+    /// Run the whole-project lint phase. The reply's document is a
+    /// [`WorkspaceReport`](poly_frontend_api::dto::WorkspaceReport), or a
+    /// failure document when the phase did not run.
     ///
     /// # Errors
     ///
     /// As [`Backend::lint`].
-    pub fn workspace_lint(&self, request: &WorkspaceRequest) -> anyhow::Result<WorkspaceReport> {
+    pub fn workspace_lint(&self, request: &WorkspaceRequest) -> anyhow::Result<RunReply> {
         call(&*self.caller, service::WORKSPACE_LINT, request)
     }
 

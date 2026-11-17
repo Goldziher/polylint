@@ -8,20 +8,22 @@
 
 use poly_frontend_api::dto::FailureKind;
 use poly_frontend_api::wire::{ComponentsStatusRequest, InstallMode, RunCall, RunReply, WorkspaceRequest};
-use rmcp::model::CallToolResponse;
+use rmcp::model::{CallToolResponse, JsonObject};
 use rmcp::service::RequestContext;
 use rmcp::{ErrorData, RoleServer};
 
+use super::arguments::{WORKSPACE_SCOPE, applicable};
 use super::params::{RunKind, RunParams, Scope};
 use super::{PolyMcpServer, effective_config, run_blocking, supports_tasks};
 use crate::backend::Backend;
-use crate::dto::{dto_result, error_result, run_result, usage_result};
+use crate::dto::{run_result, usage_result};
 
 impl PolyMcpServer {
     /// Answer `check` (`apply` false) or `fix` (`apply` true).
     pub(super) async fn run_tool(
         &self,
         args: RunParams,
+        raw: &JsonObject,
         context: &RequestContext<RoleServer>,
         apply: bool,
     ) -> Result<CallToolResponse, ErrorData> {
@@ -35,9 +37,12 @@ impl PolyMcpServer {
                 repr,
             ))),
             (RunKind::Lint, Scope::Workspace) => {
-                if !request.paths.is_empty() {
+                if let Err(message) = applicable(raw, "scope", &["workspace"], WORKSPACE_SCOPE, &["kind", "format"]) {
                     return Ok(CallToolResponse::Complete(usage_result(
-                        "the whole-project phase covers the whole repository and takes no `paths`; use `scope: all`",
+                        &format!(
+                            "{message}: the whole-project phase runs the repository's own tools over the whole \
+                             repository; use `scope: all` to lint files as well"
+                        ),
                         repr,
                     )));
                 }
@@ -48,10 +53,7 @@ impl PolyMcpServer {
                     no_cache: request.no_cache,
                 };
                 let backend = self.backend.clone();
-                let work = move || match backend.workspace_lint(&workspace) {
-                    Ok(report) => dto_result(&report, repr),
-                    Err(error) => Ok(error_result(&error, repr)),
-                };
+                let work = move || Ok(run_result(host_reply(backend.workspace_lint(&workspace)), repr));
                 if !tasks {
                     return run_blocking(move || Ok(work())).await?.map(CallToolResponse::Complete);
                 }
@@ -110,10 +112,14 @@ impl PolyMcpServer {
 /// Run `call` on the host. A host that could not answer at all (the service is unreachable or
 /// its reply does not decode) is reported like a failed run, as a pipeline failure.
 fn run(kind: RunKind, backend: &Backend, call: &RunCall) -> RunReply {
-    let reply = match kind {
+    host_reply(match kind {
         RunKind::Lint => backend.lint(call),
         RunKind::Format => backend.format(call),
-    };
+    })
+}
+
+/// The host's reply, or a pipeline failure when it could not answer at all.
+fn host_reply(reply: anyhow::Result<RunReply>) -> RunReply {
     reply.unwrap_or_else(|error| crate::dto::failure_reply(FailureKind::Pipeline, &format!("{error:#}")))
 }
 

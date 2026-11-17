@@ -5,7 +5,7 @@ expression: projection
 [
   {
     "name": "check",
-    "description": "Lint, or check formatting, without writing. Mirrors `poly lint --format json` (`scope: all`; `files` is `--workspace never`) and `poly fmt --format json`. Runs the repository's configured tools.",
+    "description": "Lint, or check formatting (`kind: format`, as `poly fmt`), without writing. `scope: all` is what plain `poly lint` runs; the default `files` is `poly lint --workspace never`. Runs the repository's configured tools.",
     "inputSchema": {
       "properties": {
         "kind": {
@@ -17,7 +17,7 @@ expression: projection
           ]
         },
         "scope": {
-          "description": "`files` (default): per-file tier over `paths`. `workspace`: whole-project phase (cargo clippy, inline jobs; whole repo, no `paths`). `all`: both, as `poly lint`. `workspace`/`all` are lint-only.",
+          "description": "`files` (default): per-file tier over `paths`. `workspace`: whole-project phase (cargo clippy, inline jobs; whole repo, no `paths`). `all`: both. `workspace`/`all` are lint-only.",
           "type": "string",
           "enum": [
             "files",
@@ -33,14 +33,14 @@ expression: projection
           }
         },
         "exclude": {
-          "description": "Gitignore-style globs excluded on top of `[discovery] exclude`; `e2e/**` matches at any depth, `/e2e/**` only at the config root.",
+          "description": "Gitignore-style globs excluded on top of `[discovery] exclude` (`e2e/**`: any depth; `/e2e/**`: the config root).",
           "type": "array",
           "items": {
             "type": "string"
           }
         },
         "config": {
-          "description": "Config file (`poly.toml`); default: discovered from the working directory.",
+          "description": "Config file; default: discovered from the working directory.",
           "type": "string"
         },
         "include_excluded": {
@@ -48,7 +48,7 @@ expression: projection
           "type": "boolean"
         },
         "only": {
-          "description": "Run only these engines (tool ids: `ruff`, `oxc`, ...). Never enables one the config leaves off.",
+          "description": "Run only these engines (`ruff`, `oxc`, ...). Never enables one the config leaves off.",
           "type": "array",
           "items": {
             "type": "string"
@@ -90,21 +90,17 @@ expression: projection
           "description": "Worker threads (default: all cores).",
           "type": "integer"
         },
-        "fix_generated": {
-          "description": "Also rewrite hash-stamped generated files (fix only).",
-          "type": "boolean"
-        },
-        "debug": {
-          "description": "Attach per-engine debug records (cache hits, timings).",
-          "type": "boolean"
-        },
         "format": {
-          "description": "Text block format: `json` (default) or `toon`.",
+          "description": "Text block: `json` (default) or `toon`.",
           "type": "string",
           "enum": [
             "json",
             "toon"
           ]
+        },
+        "debug": {
+          "description": "Attach per-engine debug records (cache hits, timings).",
+          "type": "boolean"
         }
       },
       "type": "object"
@@ -130,7 +126,7 @@ expression: projection
           ]
         },
         "scope": {
-          "description": "`files` (default): per-file tier over `paths`. `workspace`: whole-project phase (cargo clippy, inline jobs; whole repo, no `paths`). `all`: both, as `poly lint`. `workspace`/`all` are lint-only.",
+          "description": "`files` (default): per-file tier over `paths`. `workspace`: whole-project phase (cargo clippy, inline jobs; whole repo, no `paths`). `all`: both. `workspace`/`all` are lint-only.",
           "type": "string",
           "enum": [
             "files",
@@ -146,14 +142,14 @@ expression: projection
           }
         },
         "exclude": {
-          "description": "Gitignore-style globs excluded on top of `[discovery] exclude`; `e2e/**` matches at any depth, `/e2e/**` only at the config root.",
+          "description": "Gitignore-style globs excluded on top of `[discovery] exclude` (`e2e/**`: any depth; `/e2e/**`: the config root).",
           "type": "array",
           "items": {
             "type": "string"
           }
         },
         "config": {
-          "description": "Config file (`poly.toml`); default: discovered from the working directory.",
+          "description": "Config file; default: discovered from the working directory.",
           "type": "string"
         },
         "include_excluded": {
@@ -161,7 +157,7 @@ expression: projection
           "type": "boolean"
         },
         "only": {
-          "description": "Run only these engines (tool ids: `ruff`, `oxc`, ...). Never enables one the config leaves off.",
+          "description": "Run only these engines (`ruff`, `oxc`, ...). Never enables one the config leaves off.",
           "type": "array",
           "items": {
             "type": "string"
@@ -204,7 +200,7 @@ expression: projection
           "type": "integer"
         },
         "fix_generated": {
-          "description": "Also rewrite hash-stamped generated files (fix only).",
+          "description": "Also rewrite hash-stamped generated files.",
           "type": "boolean"
         },
         "debug": {
@@ -212,7 +208,7 @@ expression: projection
           "type": "boolean"
         },
         "format": {
-          "description": "Text block format: `json` (default) or `toon`.",
+          "description": "Text block: `json` (default) or `toon`.",
           "type": "string",
           "enum": [
             "json",
@@ -231,15 +227,13 @@ expression: projection
   },
   {
     "name": "info",
-    "description": "Read poly's state: version, config, validate, rules, components, cache. Never downloads or runs repository tools.",
+    "description": "Read poly's state: version, config, validate, rules, components, cache. Never downloads, writes or runs repository tools.",
     "inputSchema": {
       "properties": {
         "topics": {
           "description": "Topics to report, one result key each. Default `[\"version\"]`.",
           "type": "array",
           "items": {
-            "description": "One `info` topic.",
-            "type": "string",
             "enum": [
               "version",
               "config",
@@ -247,11 +241,12 @@ expression: projection
               "rules",
               "components",
               "cache"
-            ]
+            ],
+            "type": "string"
           }
         },
         "config": {
-          "description": "Config file (`poly.toml`); default: discovered from the server's directory.",
+          "description": "Config file; default: discovered from the working directory.",
           "type": "string"
         },
         "paths": {
@@ -282,7 +277,7 @@ expression: projection
           "type": "boolean"
         },
         "format": {
-          "description": "Text block format: `json` (default) or `toon`.",
+          "description": "Text block: `json` (default) or `toon`.",
           "type": "string",
           "enum": [
             "json",
@@ -317,7 +312,7 @@ expression: projection
           ]
         },
         "names": {
-          "description": "Components or presets (`all`, a family, a language alias such as `python`).",
+          "description": "`components_install`/`components_uninstall`: components or presets (`all`, a family, a language alias such as `python`).",
           "type": "array",
           "items": {
             "type": "string"
@@ -338,11 +333,11 @@ expression: projection
           }
         },
         "config": {
-          "description": "Config file used to judge `paths`.",
+          "description": "`components_install`: config file used to judge `paths`.",
           "type": "string"
         },
         "dry_run": {
-          "description": "`components_install`: report what would be downloaded, download nothing.",
+          "description": "`components_install`: report what would be downloaded, download nothing. No other action has a dry run.",
           "type": "boolean"
         },
         "max_age_days": {
@@ -354,7 +349,7 @@ expression: projection
           "type": "string"
         },
         "format": {
-          "description": "Text block format: `json` (default) or `toon`.",
+          "description": "Text block: `json` (default) or `toon`.",
           "type": "string",
           "enum": [
             "json",

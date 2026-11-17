@@ -4,8 +4,8 @@
 //! session. schemars renders a unit enum as a `oneOf` of documented constants behind a `$ref`,
 //! and states trivial defaults (`[]`, `false`, `null`). [`compact`] inlines the references,
 //! turns each enum into a plain `enum` list, drops the trivial defaults, the null alternative of
-//! an optional field and integer widths, and unwraps descriptions; the field descriptions
-//! already say what each value means.
+//! an optional field, integer widths and the description of a described list's members, and
+//! unwraps descriptions; the field descriptions already say what each value means.
 
 use std::sync::Arc;
 
@@ -86,6 +86,12 @@ fn rewrite(value: &mut Value, defs: &Map<String, Value>) {
             collapse_enum(object);
             for child in object.values_mut() {
                 rewrite(child, defs);
+            }
+            // A list's description says what its members are; the member type's own does not add to it.
+            if object.contains_key("description")
+                && let Some(Value::Object(items)) = object.get_mut("items")
+            {
+                items.remove("description");
             }
         }
         Value::Array(items) => {

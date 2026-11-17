@@ -191,19 +191,18 @@ pub fn usage_result(message: &str, repr: TextRepr) -> CallToolResult {
     run_result(failure_reply(FailureKind::Usage, message), repr)
 }
 
-/// `{"error": {"message": …}}` for a host lookup that failed: the body of an `info` topic the
-/// host could not answer, and of a failed `manage` action.
+/// `{"error": {"kind": "pipeline", "message": …}}` for a host lookup that failed: the body of an
+/// `info` topic the host could not answer. The host's services report these as plain messages,
+/// so the class is the generic one.
 pub fn failure_value(error: &anyhow::Error) -> Value {
-    serde_json::json!({ "error": { "message": format!("{error:#}") } })
+    serde_json::json!({ "error": Failure { kind: FailureKind::Pipeline, message: format!("{error:#}") } })
 }
 
-/// An `isError` result carrying [`failure_value`]. A host failure is a result, not a JSON-RPC
-/// error, so the model reads the message and can correct its call.
+/// An `isError` result for a `manage` action the host failed: the same failure document a run
+/// that could not start returns. A host failure is a result, not a JSON-RPC error, so the model
+/// reads the message and can correct its call.
 pub fn error_result(error: &anyhow::Error, repr: TextRepr) -> CallToolResult {
-    let value = failure_value(error);
-    let json = serde_json::to_string_pretty(&value).unwrap_or_default();
-    let toon = serde_toon::to_string(&value).unwrap_or_else(|_| json.clone());
-    build_with_status(value, json, toon, repr, true)
+    run_result(failure_reply(FailureKind::Pipeline, &format!("{error:#}")), repr)
 }
 
 /// Health of the binary serving this MCP session (the `info` tool's `version` topic).
