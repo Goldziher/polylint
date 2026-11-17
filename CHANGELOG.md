@@ -7,6 +7,24 @@ binary drives lint, format, hooks, and commit checks from one `poly.toml`.
 
 ## [Unreleased]
 
+### Breaking changes
+
+Each item is described in full under the section named in brackets.
+
+- **Repository trust.** Config keys that run programs (`[tools]` overrides, `[hooks]` whole-project jobs, `[cache] dir` and others) are ignored until `poly trust` records the repository, and `[tools]` `bin`, `root`, `url` and `env` are limited even then. Run `poly trust` once per repository, or set `POLY_TRUST=1` in CI. [Security]
+- **Remote `extends` bases and hook sources are fetched over https and ssh only.** `POLY_GIT_ALLOW_PROTOCOLS` allows other transports. [Security]
+- **`poly hooks install` refuses a shared `core.hooksPath`** without `--force` or `POLY_HOOKS_ALLOW_SHARED_PATH=1`. [Security]
+- **Component cache and lock checks.** A component cache root owned by another user is refused, and a component lock without signing keys is rejected. [Security]
+- **`poly mcp` confines paths to its workspace** and refuses to start in `/` or the home directory without `--allow-outside-workspace`; `lint` and `format_check` are no longer annotated read-only. [Security]
+- **Component protocol v3.** Components and sidecars built for protocol 2 are rejected. [Changed]
+- **The repository and the Action moved to the `polylint` organization.** The old names redirect. [Changed]
+- **`poly commit` exits `2`, not `1`, when it could not verify the message**, and reads the global `--config`. [Changed]
+- **The most specific rule level wins a severity remap.** [Changed]
+- **YAML that contains `{{` but is valid YAML is now linted and formatted.** [Changed]
+- **C-family files under a `.clang-format` are skipped by the generic formatter**, which counts toward `--deny-skips`. [Changed]
+- **A multi-ref `git push` runs the pre-push hooks over every pushed ref.** [Changed]
+- **`poly config validate` rejects a `poly.toml` that mixes v1 tables with `[engines]`.** [Changed]
+
 ### Added
 
 - **Prose and grammar checks with harper.** The opt-in `harper` engine (`[engines.harper] enabled = true`, component `prose`) reads Markdown and the comments of every language with a loaded grammar, and reports repeated words, wrong articles and other grammar and style findings as warnings. Rules go through `select`/`extend_select`/`ignore`; `SpellCheck` is off unless selected, and `dictionary`, `dialect` and `comments` are the engine's own keys (ADR 0068).
@@ -44,6 +62,13 @@ binary drives lint, format, hooks, and commit checks from one `poly.toml`.
   `tex-fmt`, both in-process engines in the `misc` component. (#171, #172)
 - **`[discovery] max_file_size`.** A file larger than this many bytes (default 32 MiB, `0` for no limit) is not read and
   is reported as skipped (`file too large`), which counts toward `--deny-skips`. (#207)
+- **`[engines.shellcheck] install = "auto"`.** With no `shellcheck` on `PATH`, the built-in engine downloads the catalog's pinned, checksummed release and runs it. The default stays `"never"`, and `--offline` never downloads. (#110)
+- **YAML schemas for `jsonschema`.** A schema file ending in `.yaml` or `.yml` is read as YAML, `$ref` is followed through YAML schemas for the cache key, and YAML merge keys (`<<`) are resolved before a document is validated.
+- **Secret scanning on Linux.** The `secrets` component now ships for x86_64 and aarch64 Linux (glibc 2.28 and newer):
+  the release compiles vectorscan from source in its manylinux_2_28 image instead of using the prebuilt archive, which
+  needs glibc 2.32. (#112)
+- **Third-party licenses ship with every binary.** Each release archive, npm platform package and PyPI wheel carries `THIRD-PARTY-LICENSES.md` and `ATTRIBUTIONS.md` next to the binary (under `polylint/licenses/` in a wheel).
+- **Ctrl-C and SIGTERM clean up.** An interrupted run kills the tools it started, removes its scratch directories and temporary files, and exits `130`. (#207)
 - **PMD and detekt recipes** for Java and Kotlin, on the host JRE with pinned, checksummed downloads
   (`install = "auto"`). PMD is installed as its whole distribution (a new `dist` release kind, extracted with the same
   path, link and size checks as a single archive member); detekt's SARIF report is written to a per-run file through a
@@ -64,9 +89,7 @@ binary drives lint, format, hooks, and commit checks from one `poly.toml`.
 
 - **The core binary is built for speed.** `--profile core` moves from `opt-level = "s"` to `opt-level = 3` (fat LTO, stripped), and the size gate moves from 14 MiB to 22 MiB (ADR 0065). The `release` profile used by the bundled build and every component also moves to fat LTO with stripped symbols.
 - **Cargo hooks hash their declared inputs once per run.** The clippy, sort, machete and deny hooks share one `git ls-files` listing and one parallel, streamed blake3 pass, and the staged-run mutation probe streams index blobs into hashes instead of holding the tracked tree in memory. (#215)
-- **The `file_safety` hook runs inside `poly hooks`.** It no longer starts a `poly hooks check` process per commit; the runner calls the same checks over the staged snapshot and reports the same lines. `lint`, `fmt` and `commit` still run as child processes. (ADR 0067, #215)
-- **The `commit`, `lint` and `fmt` hooks run inside `poly hooks` too.** `commit` always does, and so do `lint` and `fmt`, the default staged pre-commit run included when no engine it needs is a downloaded component: that run is rooted at the staged snapshot, so its files, configs and every working-directory anchor are the snapshot's, and a staged run that needs a component still starts a child. The output and exit code are the child's. Every in-process hook now runs under the hook timeout and is reported as killed past it. (ADR 0071, ADR 0073, #215)
-- **Component protocol v3 (ADR 0058); every engine component and sidecar must be rebuilt.** Requests and responses are
+- **BREAKING: component protocol v3 (ADR 0058); every engine component and sidecar must be rebuilt.** Requests and responses are
   encoded positionally instead of with a field name per struct field, and a diagnostic no longer repeats the engine
   id of the request. Components built for protocol 2 are rejected as incompatible.
 - **One oxc copy in the `web` component.** rumdl comes from `polylint-rumdl` 0.3.5, polylint's fork on Oxc 0.158, and
@@ -74,7 +97,13 @@ binary drives lint, format, hooks, and commit checks from one `poly.toml`.
 - **Markdown lists with mixed item spacing format as loose lists.** The rumdl update carries upstream's MD076 fix: when
   any items of a list are separated by a blank line, `poly fmt` separates all of them, so such lists reformat once.
 - **The `file_safety`, `commit`, `lint` and `fmt` hooks run inside `poly hooks`.** `file_safety` no longer starts a `poly hooks check` process per commit: the runner calls the same checks over the staged snapshot and reports the same lines (ADR 0067). `commit`, `lint` and `fmt` run in process too, the default staged pre-commit run included, which is rooted at the staged snapshot (ADR 0073) and stays in process only when no engine it needs is a downloaded component; the output and exit code are the child's. Every in-process hook now runs under the hook timeout and is reported as killed past it. (ADR 0071, #215)
-- **The repository moved to the `polylint` organization.** The repository is `polylint/polylint` and the Action is `polylint/polylint@v0`; install with `brew install polylint/tap/polylint` or `scoop bucket add polylint https://github.com/polylint/scoop-bucket`, and point a `#:schema` line at `https://polylint.github.io/polylint/` (`poly migrate` rewrites the old URLs). The old names redirect. Attestation checks (`POLY_VERIFY_ATTESTATION=1`, the Action's `verify-attestation`) accept both the new and the `Goldziher/polylint` identity, so releases up to v0.35.0 still verify. Homebrew and Scoop are rendered from `packaging/` templates by the organization's GitHub App, and `HOMEBREW_TOKEN` and `RELEASE_TAG_TOKEN` are retired. (ADR 0062, #228)
+- **BREAKING: the repository moved to the `polylint` organization.** The repository is `polylint/polylint` and the Action is `polylint/polylint@v0`; install with `brew install polylint/tap/polylint` or `scoop bucket add polylint https://github.com/polylint/scoop-bucket`, and point a `#:schema` line at `https://polylint.github.io/polylint/` (`poly migrate` rewrites the old URLs). The old names redirect. Attestation checks (`POLY_VERIFY_ATTESTATION=1`, the Action's `verify-attestation`) accept both the new and the `Goldziher/polylint` identity, so releases up to v0.35.0 still verify. Homebrew and Scoop are rendered from `packaging/` templates by the organization's GitHub App, and `HOMEBREW_TOKEN` and `RELEASE_TAG_TOKEN` are retired. (ADR 0062, #228)
+- **BREAKING: `poly commit` exits `2` when it could not verify the message.** A config or I/O failure used to exit `1`, the code for a rejected message. `poly commit` also honours the global `--config`, and reads the `[commit]` table of a `poly.toml` named that way instead of parsing it as a gitfluff file.
+- **BREAKING: the most specific rule level wins a severity remap.** With both `rules.F` and `rules.F401` set, the family level used to override the exact code; the longest matching rule now applies, and rules of equal length keep config order.
+- **BREAKING: YAML that contains `{{` but is valid YAML is linted and formatted.** Prometheus rules, Taskfiles and Grafana provisioning files were skipped as templates. A file is still skipped when a `{{` sits where a template action would change the document, as in `image: {{ .Values.image }}`. A formatter failure on a document that parses is an error instead of an unchanged file.
+- **BREAKING: files a `.clang-format` governs are left to clang-format.** The generic formatter skips C, C++, Objective-C, Java, JavaScript and Protobuf files below a `.clang-format` or `_clang-format` it would otherwise reindent, with the reason `formatted by clang-format (.clang-format present)`, which counts toward `--deny-skips` and `--max-skips`. **Migration:** set `[tools.clang-format] enabled = true`.
+- **BREAKING: a multi-ref push is gated on every ref.** `git push origin a b`, `--all` and `--tags` ran the pre-push hooks over the first ref only; they now run over the changed files of every pushed range.
+- **BREAKING: `poly config validate` rejects a `poly.toml` that mixes v1 tables with `[engines]`.** It used to accept the file as v1 although the loader ignores the v1 tables; the error points at `poly migrate --to-v2`.
 - **Internal: the `Engine` trait is split into facets.** Batching, project analysis, planner policy and catalog takeover moved from `Engine` into the `Batching`, `ProjectAnalysis`, `PlanPolicy` and `CatalogTakeover` traits, which a backend implements only when it has the concern. No behaviour, wire-protocol or cache-key change. (ADR 0072)
 
 ### Performance
@@ -86,11 +115,14 @@ binary drives lint, format, hooks, and commit checks from one `poly.toml`.
 - **Shell and Go formatting no longer queue on one process.** The `sh` and `go` sidecars speak alef 0.130's stdio
   protocol 2: payloads travel as raw bytes and concurrent calls are pipelined over the one sidecar, up to one per CPU.
   The per-file limit for a sidecar engine rises from 3 MiB to 12 MiB. (ADR 0063, #189)
-- **Secret scanning on Linux.** The `secrets` component now ships for x86_64 and aarch64 Linux (glibc 2.28 and newer):
-  the release compiles vectorscan from source in its manylinux_2_28 image instead of using the prebuilt archive, which
-  needs glibc 2.32. (#112)
 - **uncomment shares the lint pass's parse.** With uncomment 3.12, the `uncomment` engine takes the tree `quality` or
   `ast-grep` already parsed for the file instead of parsing it again, where the engines are linked together. (#187)
+- **`quality` and ast-grep share one parse.** A lint pass parses each file once for both engines instead of once per engine, and a `--fix` re-lint does the same. (#187)
+- **Per-file work is scheduled largest first.** Each file is its own unit of work, taken in descending size order, so a run of large neighbouring files (generated bindings, vendored sources) no longer lands on one worker while the others idle. Output is unchanged.
+- **mimalloc on musl.** The bundled `x86_64-unknown-linux-musl` build uses mimalloc, since musl's allocator takes one global lock and serialised the worker threads. Other targets keep the system allocator. (#179)
+- **Project checks run in parallel.** Engines that check a whole project load their inputs and run side by side, and `ty` checks a project's files on several threads. Findings keep their order.
+- **The whole-project phase overlaps the per-file tier.** A `poly lint` without `--fix` runs the whole-project tools beside the per-file tier, and missing components are installed up to four at a time.
+- **Less work per file across the engines.** ruff, oxc, rumdl, ast-grep, typos, mago, sqruff and jsonschema build their per-config state once instead of once per file, discovery shares one `git ls-files` listing per root, and ruff's first-party module walk skips virtualenvs and gitignored directories.
 
 ### Fixed
 
@@ -100,13 +132,12 @@ binary drives lint, format, hooks, and commit checks from one `poly.toml`.
   `degraded: [{tool, language, reason, files}]`, omitted when empty. `poly fmt` used to print `All formatted.` with
   nothing to say rustfmt never ran. The files still count as checked, not skipped, and exit codes do not change.
   (ADR 0075, #230)
-- **golangci-lint keeps a project's own `run.timeout`.** poly passes `--timeout=0` only when the project's golangci-lint config (or the file `-c` names) sets no `run.timeout`; a recipe declares such arguments with the new `config_defaults` key. (ADR 0066)
 - **An invalid glob is reported instead of silently dropped.** A malformed pattern in ruff's `exclude`, typos' `extend_exclude`, an `.oxfmtrc` `overrides[].files`/`excludeFiles` entry, a jsonschema `schemas` glob or a recipe's dependency globs now logs a warning naming it, and the valid patterns beside it stay in force. (#217)
 - **Hook sources recover from a damaged cached mirror.** A mirror holding a locked commit without its tree is refetched, then re-cloned, instead of failing with `unable to read tree`; the final error names the cache directory to remove.
 - **golangci-lint no longer fails beside another golangci-lint, or times out a cold module and reruns it.** poly
   passes `--allow-parallel-runners`, so a run no longer exits 3 (`parallel golangci-lint is running`) on every Go file
-  while an editor or another repository holds golangci-lint's per-user lock, and `--timeout=0` when the project sets no `run.timeout`, so a cold-cache
-  run is not killed; `POLY_TOOL_TIMEOUT_SECS` bounds it instead. A whole-run failure (a
+  while an editor or another repository holds golangci-lint's per-user lock, and `--timeout=0` only when the project's golangci-lint config (or the file `-c` names) sets no `run.timeout`, so a cold-cache
+  run is not killed and a project's own timeout is kept; `POLY_TOOL_TIMEOUT_SECS` bounds the run instead, and a recipe declares such arguments with the new `config_defaults` key (ADR 0066). A whole-run failure (a
   recipe's new `unsplittable_exits`, a signal, poly's deadline, a missing program) fails the invocation's files once
   instead of being retried on halves of its packages or once per package by the per-file loop, and findings printed
   before such an exit are not taken as a verdict. A `serial` tool now runs one invocation at a time across the whole process, not only within one batch.
@@ -127,9 +158,44 @@ binary drives lint, format, hooks, and commit checks from one `poly.toml`.
   folds in an engine's `lint_cache_salt`, so jarl re-lints an R file after an edit to the package's `DESCRIPTION`,
   `jarl.toml` or a file it sources instead of replaying the verdict recorded before. The salt is asked only of an
   engine that declares it, and only in `poly lint`. (#229)
+- **A failing native or catalog tool is reported, and a hung one is stopped.** A non-zero exit from `rustfmt`, `gofmt`, `shfmt` or `shellcheck` (a bad `rustfmt.toml`, a shellcheck exit 2) used to pass as an unchanged or clean file; it now fails the file with the tool's first stderr line. A tool is killed after 60 seconds per file, 10 seconds for a version probe and 30 minutes per batch (`POLY_TOOL_TIMEOUT_SECS`, `0` for no limit), and its output is capped.
+- **`poly fmt --fix` writes through a symlink and refuses a lost update.** A symlinked file is rewritten at its target instead of being replaced by a regular file, and a file that changed on disk after poly read it is reported instead of overwritten. `poly migrate` keeps a `poly.toml`'s mode and symlink too.
+- **Format results are cached per language and file name.** Identical bytes in `x.json` and `package.json`, or in a `.json` and a `.js` file, shared one cache entry although oxc formats them differently.
+- **Columns count characters, not bytes.** `quality`, `uncomment`, `typos` and `dockerfile` findings on a line with a non-ASCII character before them reported a shifted column, and a multi-line Dockerfile instruction now spans all of its lines. Columns are 1-based Unicode scalar values. (#180, #183, #201)
+- **oxc reads `single_quote`, and JSON `trailing_commas` takes the JavaScript names.** `single_quote = true` was declared for JS/TS but ignored; it now selects single quotes unless `quote_style` is set. JSON accepts `all`, `es5` and `none` beside `always` and `never`; `none` used to mean `always`.
+- **Formatters decline what they cannot format stably.** `markup_fmt` formats `<script type="module">` bodies in HTML, which never converged, and declines a file whose multi-line template literals it would re-indent on every pass. A Markdown file with an empty footnote definition (`[^1]:`) is skipped with a reason instead of failing with exit 2, and inside a `markdown` fence only that fence is left as written.
+- **shfmt-formatted Bash stays as shfmt wrote it.** The generic shell reindenter flattened a loop that follows assignment lines and dedented a pipeline's continuation line.
+- **Deeply nested input fails one file, not the run.** sqruff, mago, ruff, graphql and the Dockerfile parser refuse pathological nesting before parsing, and the `quality` rules and the generic formatter's case handling walk the tree without recursion, so a generated file can no longer overflow the worker stack and abort poly.
+- **A glibc-only tool is not downloaded on a musl host.** A recipe whose Linux assets are all `-gnu` builds (zizmor) installed cleanly on Alpine and then failed to start; it is now used from `PATH` or reported missing with the command that installs it. (#114)
+- **A recipe tool with an invalid `files` or `exclude` glob is refused** with a message naming the pattern, instead of running over the files the glob was meant to skip. (#217)
+- **`mix format` works on a project with dependencies.** The scratch copy links `deps/`, so `import_deps` resolves; files outside the configured root no longer take its `.formatter.exs`, and a project whose dependencies are not fetched is skipped with a reason naming `mix deps.get`.
+- **Recipe reports are read more completely.** SARIF artifact URIs are percent-decoded and resolved through `uriBaseId`, Windows drive paths parse, a finding that names no file is counted in one warning instead of dropped, and a tool killed by a signal is an error. A run fails when the project's config cannot be copied for the tool.
+- **`proguard-rules.pro` and `consumer-rules.pro` are ProGuard, not Prolog.** They were reindented as Prolog; no engine touches them now.
+- **typos corrections follow the word's case.** An `extend_words` correction is capitalised like the word it replaces, as dictionary corrections are, and an entry whose value differs from its key reports that value as the correction.
+- **Inline suppressions after code are placed correctly.** A trailing `poly: allow[...]` after code that starts with a comment-opener character (`*p`, `--i`, `#include`) covers its own line, stacked directives all cover the next code line, and `# noqa  # poly: allow[X] reason` on its own line covers the next line.
+- **`[per_file_ignores]` and nested configs follow the file, not the path named.** `poly lint docs/adr` matched `docs/adr/*.md` against `x.md`, and a relative path named from a subdirectory stopped looking for a governing `poly.toml` at the working directory.
+- **Nested `poly.toml` files get their own PHP rules.** mago's rule set was built from the first file's options and reused for every config; one invalid mago format option no longer drops the valid ones beside it.
+- **SQL keeps sqruff's indent width** unless `indent_width` is set; every SQL file whose width differed from poly's default was reindented.
+- **An invalid `indent_style`, `line_ending` or `line_width` logs a warning** instead of silently falling back to the default.
+- **`[engines.adrlint.rules.MADR31]` enables MADR31.** The rule is off by default, and only `select` or `extend_select` could switch it on.
+- **tsrs checks more projects.** A `tsconfig` that extends a package the project declares is no longer stopped at `TS6053`, `types="vite/client"` resolves to its package, a project's own `.d.ts` files report their errors, and declared packages are judged per `package.json` ancestry (ADR 0055).
+- **Staged cargo hooks honour the repository's target directory.** `CARGO_TARGET_DIR`, `CARGO_BUILD_TARGET_DIR` and `build.target-dir` were overridden with `<root>/target`, so worktrees could not share a build directory. (#223)
+- **Hook commands survive odd inputs.** A tracked file whose name starts with `-` is passed as `./-x.py` instead of being read as a flag, a large environment no longer makes a batched hook fail with `E2BIG`, and inherited `GIT_WORK_TREE`, `GIT_OBJECT_DIRECTORY` and similar variables no longer leak into poly's own git calls.
+- **`poly migrate` keeps a source whose settings were not all applied.** A key that conflicts with the existing `poly.toml` leaves the source file in place and is named in the report, fragments merged into a v2 `poly.toml` are converted to `[engines.*]` first, `--write` refuses outside a git work tree, and the `#:schema` line `--to-v2` writes names a URL that is served.
+- **`poly cache <subcommand> --cache-dir <dir>` is accepted**, and a large `--max-age` no longer overflows.
+- **`poly doctor` no longer warns that a mise shim shadows poly.**
+- **The installers find the installed version.** `install.sh` and `install.ps1` read the wrong token of `poly --version`, so an up-to-date install was never recognised. Linux musl aarch64 and Windows arm64, which have no release binary, are rejected with a message, and a download error names the URL.
 
 ### Security
 
+- **BREAKING: remote `extends` bases and hook sources are fetched over https and ssh only.** A config could point git at `git://`, `http://`, `file://` or an `ext::` helper. Other schemes are now rejected before git runs; plain local paths still work. **Migration:** `POLY_GIT_ALLOW_PROTOCOLS` (a `:`-separated list) replaces the allowed set, and a leading `+` adds to it, as in `+http`.
+- **BREAKING: `poly hooks install` refuses a shared `core.hooksPath`.** With a global or shared hooks directory, the shims were written where every repository runs them and the stale-shim prune could delete another tool's. **Migration:** unset `core.hooksPath` for the repository, or pass `--force` or set `POLY_HOOKS_ALLOW_SHARED_PATH=1`; poly never prunes outside the repository.
+- **BREAKING: the component cache must be private, and a component lock must name its keys.** A component cache root owned by another user is refused; one of your own that is group- or world-writable is tightened to `0700` (and refused if that fails). A lock that lists components without signing keys, or an entry whose key is not among them, is rejected instead of loaded unverified.
+- **BREAKING: `poly mcp` confines tool calls to its workspace.** `paths`, `dirs` and `config` arguments are resolved (symlinks and `..` included) and refused outside the directory `poly mcp` started in, and the server refuses to start in `/` or the home directory. The `--config` given on the server's own command line is always accepted. `lint` and `format_check` are no longer annotated read-only, since they run the repository's configured tools. **Migration:** start the server in the project directory, or pass `--allow-outside-workspace`.
+- **Pinned tool downloads are bound to the catalog.** A URL in `poly.lock` must be https on the origin and release path the tool's catalog entry names, redirects are followed only to GitHub's release hosts or the same origin, and the GitHub token is sent to `api.github.com` only. The install stamp records the binary's size and mtime, and a tool cache that is not private to the current user is tightened or refused.
+- **Staged symlinks are resolved before a hook reads them.** A chain of in-tree links that escapes the staged snapshot once resolved is removed from it.
+- **The installers and the Action validate the requested version** as `X.Y.Z[-pre]` against the whole string before using it.
+- **Accepted advisories.** `deny.toml` ignores the chrono, chrono-tz and zip advisories published on 2026-11-17: chrono has no fixed release, and the zip fixes need 9.x while harper-core requires 8.x. The only zip reader in the tree is harper's rule-bundle loader, which poly never calls.
 - **BREAKING: a repository's config keys that run programs need `poly trust`.** A cloned `poly.toml` could make
   `poly lint`, `poly fmt` and the MCP `lint`/`workspace_lint` tools run any program with no prompt. Now
   `[tools.<name>] bin` (a path), `url`/`sha256`, `env`, `args`, `extra_args`, `format_extra_args`,
