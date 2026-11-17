@@ -22,6 +22,9 @@ impl ToolProbe for StubProbe {
     fn guard_passes(&self, _command: &str) -> bool {
         true
     }
+    fn cargo_cache_salt(&self, tool: &str) -> String {
+        format!("salt:{tool}")
+    }
 }
 
 /// Like [`StubProbe`] but reports the repo is *not* a Cargo project, to
@@ -320,6 +323,40 @@ fn cargo_lowers_only_tools_present_on_path() {
         matches!(clippy.cache, HookCache::DeclaredInputs(_)),
         "cargo group is result-cached by default"
     );
+}
+
+/// S7: what the declared files cannot carry (toolchain and tool versions, the environment, untracked config) reaches
+/// each cached tool's key, the clippy and cargo config files are declared inputs, and `cargo deny` is never cached:
+/// its advisory database changes without any input changing.
+#[test]
+fn cargo_keys_carry_toolchain_and_config_inputs_and_deny_is_never_cached() {
+    let hooks = hooks_from("[hooks.builtin]\ncargo = true\n");
+    let probe = StubProbe(&["cargo-clippy", "cargo-sort", "cargo-deny"]);
+    let spec = lower_stage_with_probe(
+        &hooks,
+        &poly(),
+        HookStage::PreCommit,
+        &[],
+        &HookCacheMode::Safe,
+        &probe,
+        &ToolsConfig::default(),
+    )
+    .unwrap();
+    let hook = |id: &str| spec.hooks.iter().find(|hook| hook.id == id).unwrap();
+    assert_eq!(hook("cargo-clippy").cache_salt, "salt:cargo-clippy");
+    assert_eq!(hook("cargo-sort").cache_salt, "salt:cargo-sort");
+    let HookCache::DeclaredInputs(inputs) = &hook("cargo-clippy").cache else {
+        panic!("clippy is cached on declared inputs");
+    };
+    for config in [
+        "clippy.toml",
+        "crates/a/.clippy.toml",
+        ".cargo/config.toml",
+        "a/.cargo/config",
+    ] {
+        assert!(inputs.is_match(Path::new(config)), "{config} is a declared input");
+    }
+    assert!(matches!(hook("cargo-deny").cache, HookCache::Disabled));
 }
 
 #[test]

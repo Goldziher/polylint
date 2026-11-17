@@ -6642,6 +6642,7 @@ name = "poly-workspace"
 version = "0.35.0"
 dependencies = [
  "anyhow",
+ "blake3",
  "clap 4.6.7",
  "console 0.16.6",
  "owo-colors",
