@@ -7,7 +7,7 @@ usage: /poly-check [paths]
 <!--
 AI-RULEZ :: GENERATED FILE — DO NOT EDIT
 Content-Hash: blake3:573ff027b2f58d0c7cb2150b6132e728498e83eae067372a6eb72f681b0f573f
-Source-Hash: blake3:ea06cdb8524784872da741d339272b44a5c4d9291a0a23fde7e56c89c63eefbe
+Source-Hash: blake3:f60abe81ffa53c7bfcfe0e481f708fc4b973b82c737833378c665357ef68bff1
 Schema-Version: v1
 -->
 
