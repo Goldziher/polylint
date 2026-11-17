@@ -32,7 +32,12 @@ Each item is described in full under the section named in brackets.
   crates.io, versioned on its own (`0.1.0`): programs of the tsrs checker over a host file system, files and configs
   parsed once per run, an owner that frees a program, an observer of what a program reads, and a cache seam. It was
   imported from skif's `skif-tsrs` and depends on the `tsrs_*` crates alone, at `=7.1.0-beta.tsrs2`; the `plain-ptrs`
-  feature is off by default. It is the one crate poly publishes (ADR 0078).
+  feature is off by default. It and `polylint-js-types` are the crates poly publishes (ADR 0078).
+- **`polylint-js-types`, a second published crate.** skif's type-aware analysis, which skif 0.9.0 drops, is a
+  library on crates.io, versioned on its own (`0.1.0`): which members of a project's classes, enums and namespaces
+  are read, from the tsrs checker over `polylint-tsrs`, with the type coverage of every package. It was imported from
+  skif's `skif-js-types` at skif commit `75500e05` with its known false findings (`KNOWN-DEFECTS.md`); the
+  `plain-ptrs` feature is off by default. poly's binary does not use it (ADR 0081).
 - **Prose and grammar checks with harper.** The opt-in `harper` engine (`[engines.harper] enabled = true`, component `prose`) reads Markdown and the comments of every language with a loaded grammar, and reports repeated words, wrong articles and other grammar and style findings as warnings. Rules go through `select`/`extend_select`/`ignore`; `SpellCheck` is off unless selected, and `dictionary`, `dialect` and `comments` are the engine's own keys (ADR 0068).
 - **Lua formatting and linting.** `.lua` files format through StyLua and lint through selene, both in-process engines in
   the new `lua` component. `stylua.toml` / `.stylua.toml` and `selene.toml` are read from the nearest directory up to the

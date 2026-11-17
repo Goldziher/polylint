@@ -940,6 +940,24 @@ dependencies = [
 ]
 
 [[package]]
+name = "polylint-js-types"
+version = "0.1.0"
+dependencies = [
+ "polylint-tsrs",
+ "rayon",
+ "rustc-hash",
+ "tempfile",
+ "thiserror",
+ "tsrs_ast",
+ "tsrs_checker",
+ "tsrs_compiler",
+ "tsrs_core",
+ "tsrs_scanner",
+ "tsrs_tsoptions",
+ "tsrs_vfs",
+]
+
+[[package]]
 name = "polylint-tsrs"
 version = "0.1.0"
 dependencies = [
