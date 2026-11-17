@@ -109,6 +109,70 @@ impl ProjectAnalysis for LogCheck {
     }
 }
 
+/// Reports on every Python file it is handed, under the path it was handed: an engine with no
+/// directories of its own, served the run's files as the run spelled them (the shape of ty).
+struct ServedCheck;
+
+const SERVED_ENGINE: &str = "served-check";
+const SERVED: &str = "SERVED";
+
+impl Engine for ServedCheck {
+    fn name(&self) -> &'static str {
+        SERVED_ENGINE
+    }
+
+    fn languages(&self) -> &'static [Language] {
+        &[Language::Python]
+    }
+
+    fn capabilities(&self) -> Capabilities {
+        Capabilities {
+            project: true,
+            ..Capabilities::default()
+        }
+    }
+
+    fn version(&self) -> &str {
+        "1"
+    }
+
+    fn project_analysis(&self) -> Option<&dyn ProjectAnalysis> {
+        Some(self)
+    }
+}
+
+impl ProjectAnalysis for ServedCheck {
+    fn project_inputs(&self) -> ProjectInputs {
+        ProjectInputs::default()
+    }
+
+    fn project_check(&self, req: &ProjectRequest<'_>) -> anyhow::Result<Vec<(PathBuf, Vec<Diagnostic>)>> {
+        Ok(req
+            .files
+            .iter()
+            .filter(|file| file.language == Language::Python)
+            .map(|file| {
+                let mut found = finding(SERVED);
+                found.engine = SERVED_ENGINE.to_owned();
+                (file.path.clone(), vec![found])
+            })
+            .collect())
+    }
+}
+
+/// The result paths of a run of `paths` that carry the served check's finding, sorted; a path
+/// listed twice means the finding did not merge into the file's own result.
+fn served(paths: &[&Path], cached: bool) -> Vec<PathBuf> {
+    let mut served: Vec<PathBuf> = run(paths, cached)
+        .results
+        .iter()
+        .filter(|result| result.diagnostics.iter().any(|d| d.engine == SERVED_ENGINE))
+        .map(|result| result.path.clone())
+        .collect();
+    served.sort();
+    served
+}
+
 fn finding(code: &str) -> Diagnostic {
     Diagnostic {
         engine: ENGINE.to_owned(),
@@ -134,11 +198,13 @@ fn write(root: &Path, name: &str, contents: &str) {
     fs::write(path, contents).unwrap();
 }
 
-fn run(paths: &[&Path]) -> LintRun {
+/// One run of `paths`; with `cached`, over the result cache, which a run of any spelling may have
+/// filled (the entry is keyed by what the project holds, not by how the run named it).
+fn run(paths: &[&Path], cached: bool) -> LintRun {
     let paths: Vec<PathBuf> = paths.iter().map(|path| path.to_path_buf()).collect();
     let options = RunOptions {
         jobs: Some(1),
-        no_cache: true,
+        no_cache: !cached,
         ..RunOptions::default()
     };
     lint_run(&paths, &Config::default(), &options, false, false).unwrap()
@@ -187,6 +253,7 @@ fn the_verdict_is_the_same_however_the_run_spells_its_paths() {
     write(&root, "log/0000-a.md", "# a\n");
     write(&root, "log/0000-b.md", "# b\n");
     write(&root, "log.lock", "log/0000-a.md\n");
+    write(&root, "log/m.py", "x = 1\n");
     std::env::set_current_dir(&root).unwrap();
     // SAFETY: the only test of this binary, so no other thread reads the environment.
     unsafe {
@@ -229,20 +296,37 @@ fn the_verdict_is_the_same_however_the_run_spells_its_paths() {
         (&[Path::new("../README.md"), record], Path::new(""), one),
     ];
     let engine: Arc<dyn Engine> = Arc::new(LogCheck);
+    let served_engine: Arc<dyn Engine> = Arc::new(ServedCheck);
     // Every spelling is run before any is judged, so a failure names all the ones that disagree.
     let disagreeing = |runs: &[Spelling<'_>]| -> Vec<String> {
         runs.iter()
             .filter_map(|(paths, prefix, records)| {
-                let found = found(&run(paths));
-                (found != expected(prefix, records)).then(|| format!("poly lint {paths:?} reported {found:?}"))
+                let expected = expected(prefix, records);
+                // Uncached, then cached twice: the second cached run is always a replay.
+                let wrong: Vec<String> = [("uncached", false), ("cached", true), ("replayed", true)]
+                    .into_iter()
+                    .filter_map(|(how, cached)| {
+                        let found = found(&run(paths, cached));
+                        (found != expected).then(|| format!("poly lint {paths:?} ({how}) reported {found:?}"))
+                    })
+                    .collect();
+                (!wrong.is_empty()).then(|| wrong.join("\n"))
             })
             .collect()
     };
-    let wrong: Vec<String> = with_extra_project_engines(vec![engine], || {
+    let (wrong, replays) = with_extra_project_engines(vec![engine, served_engine], || {
         let mut wrong = disagreeing(runs);
         std::env::set_current_dir(&absolute).unwrap();
         wrong.extend(disagreeing(inside).into_iter().map(|line| format!("in log/: {line}")));
-        wrong
+        // A served file named relatively from below the project root: a replayed finding must come
+        // back under the path a cold run reports it on, or it does not merge into the file's result.
+        let module: &[&Path] = &[Path::new("./m.py")];
+        let replays = [served(module, false), served(module, true), served(module, true)];
+        (wrong, replays)
     });
     assert!(wrong.is_empty(), "{}", wrong.join("\n"));
+    let [uncached, cached, replayed] = replays;
+    assert_eq!(uncached.len(), 1, "{uncached:?}");
+    assert_eq!(cached, uncached);
+    assert_eq!(replayed, uncached);
 }

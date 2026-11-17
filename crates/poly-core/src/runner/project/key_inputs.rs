@@ -21,7 +21,7 @@ use std::ffi::OsString;
 use std::path::{Path, PathBuf};
 
 use ignore::WalkBuilder;
-use rustc_hash::FxHashSet;
+use rustc_hash::{FxHashMap, FxHashSet};
 
 use crate::engine::{Diagnostic, ProjectEnvironment, ProjectFile};
 
@@ -235,7 +235,8 @@ pub(super) fn engine_env_text(engine: &str, vars: impl Iterator<Item = (OsString
 }
 
 /// `reported` with each path under `root` made relative to it, so an entry stored from one checkout
-/// names the files of whichever checkout replays it.
+/// names the files of whichever checkout replays it. A path outside `root` is stored in its absolute
+/// form: a relative stored path always means "under the root".
 pub(super) fn to_stored<'a>(
     root: &Path,
     reported: &'a [(PathBuf, Vec<Diagnostic>)],
@@ -244,20 +245,40 @@ pub(super) fn to_stored<'a>(
     reported
         .iter()
         .map(|(path, diagnostics)| {
-            let stored = absolute(path)
-                .strip_prefix(&root)
-                .map_or_else(|_| path.clone(), Path::to_path_buf);
+            let path = absolute(path);
+            let stored = path.strip_prefix(&root).map(Path::to_path_buf).unwrap_or(path);
             (stored, diagnostics.as_slice())
         })
         .collect()
 }
 
-/// The inverse of [`to_stored`]: relative paths are joined back onto `root` (an absolute path, as an
-/// older entry stored, is left as it is).
-pub(super) fn from_stored(root: &Path, stored: Vec<(PathBuf, Vec<Diagnostic>)>) -> Vec<(PathBuf, Vec<Diagnostic>)> {
+/// The inverse of [`to_stored`]. A relative path that names one of the `served` files comes back
+/// spelled as this run spells that file, which is what a check reports and what the per-file results
+/// it is merged with are keyed by; any other is joined onto `root`. An absolute path is left as it is.
+pub(super) fn from_stored(
+    root: &Path,
+    served: &[ProjectFile],
+    stored: Vec<(PathBuf, Vec<Diagnostic>)>,
+) -> Vec<(PathBuf, Vec<Diagnostic>)> {
+    let mut spelled: Option<FxHashMap<String, &Path>> = None;
     stored
         .into_iter()
-        .map(|(path, diagnostics)| (if path.is_absolute() { path } else { root.join(path) }, diagnostics))
+        .map(|(path, diagnostics)| {
+            if path.is_absolute() {
+                return (path, diagnostics);
+            }
+            let spelled = spelled.get_or_insert_with(|| {
+                served
+                    .iter()
+                    .map(|file| (relative_text(&file.path, root), file.path.as_path()))
+                    .collect()
+            });
+            let name = path.to_string_lossy().replace('\\', "/");
+            let path = spelled
+                .get(name.as_str())
+                .map_or_else(|| root.join(&path), |served| served.to_path_buf());
+            (path, diagnostics)
+        })
         .collect()
 }
 
@@ -392,17 +413,52 @@ mod tests {
         assert_ne!(one, engine_env_text("tsrs", vars(&[0xff, 0x02])));
     }
 
-    #[test]
-    fn stored_findings_are_root_relative_and_restored_under_the_replaying_root() {
-        let reported = vec![(PathBuf::from("/a/repo/pkg/m.py"), Vec::new())];
-        let stored: Vec<(PathBuf, Vec<Diagnostic>)> = to_stored(Path::new("/a/repo"), &reported)
+    fn round_trip(
+        stored_from: &Path,
+        reported: &Path,
+        replay_root: &Path,
+        served: &[ProjectFile],
+    ) -> (PathBuf, PathBuf) {
+        let reported = vec![(reported.to_path_buf(), Vec::new())];
+        let stored: Vec<(PathBuf, Vec<Diagnostic>)> = to_stored(stored_from, &reported)
             .into_iter()
             .map(|(path, diagnostics)| (path, diagnostics.to_vec()))
             .collect();
-        assert_eq!(stored[0].0, PathBuf::from("pkg/m.py"));
-        assert_eq!(
-            from_stored(Path::new("/b/wt"), stored)[0].0,
-            PathBuf::from("/b/wt/pkg/m.py")
+        let name = stored[0].0.clone();
+        (name, from_stored(replay_root, served, stored).remove(0).0)
+    }
+
+    #[test]
+    fn stored_findings_are_root_relative_and_restored_under_the_replaying_root() {
+        let (stored, replayed) = round_trip(
+            Path::new("/a/repo"),
+            Path::new("/a/repo/pkg/m.py"),
+            Path::new("/b/wt"),
+            &[],
         );
+        assert_eq!(stored, PathBuf::from("pkg/m.py"));
+        assert_eq!(replayed, PathBuf::from("/b/wt/pkg/m.py"));
+    }
+
+    /// A replayed finding on a served file is spelled as the run spells that file, as a cold run's is.
+    #[test]
+    fn a_replayed_finding_takes_the_served_files_spelling() {
+        let here = std::env::current_dir().expect("cwd");
+        let root = here.parent().unwrap_or(&here).to_path_buf();
+        let served_path = Path::new("./m.py");
+        let served = [python(served_path, "")];
+        let (stored, replayed) = round_trip(&root, served_path, &root, &served);
+        assert!(stored.is_relative() && stored.ends_with("m.py"), "{stored:?}");
+        assert_eq!(replayed, served_path);
+    }
+
+    /// A finding outside the root is not stored as if it were under it.
+    #[test]
+    fn a_finding_outside_the_root_keeps_its_own_file() {
+        let here = std::env::current_dir().expect("cwd");
+        let outside = Path::new("elsewhere.py");
+        let (stored, replayed) = round_trip(&here.join("project"), outside, &here.join("project"), &[]);
+        assert_eq!(stored, here.join("elsewhere.py"));
+        assert_eq!(replayed, here.join("elsewhere.py"));
     }
 }

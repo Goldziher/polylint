@@ -660,7 +660,7 @@ fn report_for(
         .as_ref()
         .and_then(|key| cache.get(Namespace::Lint, key))
         .and_then(|bytes| serde_json::from_slice::<Vec<(PathBuf, Vec<Diagnostic>)>>(&bytes).ok())
-        .map(|stored| key_inputs::from_stored(root, stored));
+        .map(|stored| key_inputs::from_stored(root, loaded, stored));
     if let Some(reported) = cached {
         return Ok(reported);
     }
