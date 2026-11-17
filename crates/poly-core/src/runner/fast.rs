@@ -66,6 +66,11 @@ pub(super) struct FastPath<'a> {
     slots: Vec<FxHashMap<Language, Slot<'a>>>,
     limits: &'a SizeLimits,
     replay: Replay,
+    /// Whether a record answers only for the plan that wrote it. A fmt record says that the whole
+    /// chain left the bytes unchanged, not what each engine did: one that declined the file, or
+    /// that a `FormatScope` kept away from it, has a segment like
+    /// any other, so a different chain can read nothing from it.
+    whole_plan: bool,
 }
 
 /// What is fixed for one `(config, language)` pair across the run.
@@ -232,6 +237,7 @@ impl<'a> FastPath<'a> {
             slots,
             limits,
             replay,
+            whole_plan: namespace == Namespace::Fmt,
         })
     }
 
@@ -364,7 +370,12 @@ impl<'a> FastPath<'a> {
     ) -> Option<(Hit<'a>, VouchedBy)> {
         let record = prior?;
         let order = if record.has_keys(keys) {
+            if self.whole_plan && record.segments.len() != keys.len() {
+                return None;
+            }
             None
+        } else if self.whole_plan {
+            return None;
         } else {
             Some(
                 keys.iter()
@@ -420,7 +431,8 @@ impl<'a> FastPath<'a> {
     /// the old one's other segments for the same bytes ([`Record::merged`]).
     pub(super) fn record(&self, probe: &Probe, bytes: &[u8], outcome: Outcome) {
         let digest = ContentDigest::of(bytes);
-        if let Some(prior) = probe.prior
+        if !self.whole_plan
+            && let Some(prior) = probe.prior
             && prior.digest == digest
             && (prior.verdict == Verdict::Binary) == (outcome.verdict == Verdict::Binary)
             && probe.keys.iter().all(|key| prior.segment(key).is_some())
@@ -442,7 +454,12 @@ impl<'a> FastPath<'a> {
             replayable: outcome.replayable,
             segments,
         };
-        self.index.put(probe.path, record.merged(probe.prior));
+        let record = if self.whole_plan {
+            record
+        } else {
+            record.merged(probe.prior)
+        };
+        self.index.put(probe.path, record);
     }
 }
 
