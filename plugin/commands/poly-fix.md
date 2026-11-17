@@ -6,8 +6,8 @@ usage: /poly-fix [paths]
 
 <!--
 AI-RULEZ :: GENERATED FILE — DO NOT EDIT
-Content-Hash: blake3:3a1dd0ec1c3ede0e283301e978fd20995839e69467de2b2b99c944aaffa52187
-Source-Hash: blake3:92d73e3d088ef76a10ede1c0e15e8d76188d3829a5ad453f60eb55359f169514
+Content-Hash: blake3:6c4829d259e62209da08c9fa072488da04fcdcd1360080aad2402dc09087ad14
+Source-Hash: blake3:878edad36512a2923b307b675bc84505a1ef65f961a68db87e3fa9accbf810dd
 Schema-Version: v1
 -->
 
@@ -33,8 +33,10 @@ Report:
 - What changed — files reformatted and lint rules auto-fixed.
 - What remains — findings that need a hand-fix (auto-fix couldn't resolve them), grouped by
   rule and severity.
-- The final exit status of step 3 (aim for `0`). Note that steps 1 and 2 legitimately exit
-  `1` when they changed something; only `2` means the run failed to verify.
+- The final exit status of step 3 (aim for `0`). A fix that lands is not a failure: step 2
+  exits `0` after rewriting files (`1` only with `--exit-nonzero-on-fix`), and step 1 exits `1`
+  only when error-severity findings remain or a whole-project tool fails. `2` means the run
+  failed to verify.
 
 To apply no fixes, use `/poly-check` instead. (Even there poly's whole-project phase executes
 `cargo clippy` and friends against the live worktree; add `--workspace never` if the tree must be

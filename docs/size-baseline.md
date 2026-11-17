@@ -45,8 +45,9 @@ The typos dictionary is data, not code: it adds 11.1 MB to the core on its own (
 
 The numbers above predate the component host and the alef runtime. v0.33.1 shipped a core of
 17.3 MB (`aarch64-apple-darwin`) and 21.1 MB (`x86_64-unknown-linux-gnu`), stripped: thin LTO at
-`opt-level = 3`, nothing gating the size. ADR 0043 sets a 14 MiB (14,680,064 bytes) ceiling on
-`x86_64-unknown-linux-gnu`, gated by `mise run check:core-size` in CI and on the shipped binary.
+`opt-level = 3`, nothing gating the size. ADR 0043 set a 14 MiB (14,680,064 bytes) ceiling on
+`x86_64-unknown-linux-gnu`, gated by `mise run check:core-size` in CI and on the shipped binary; ADR 0065 raised it
+to 22 MiB (23,068,672 bytes) and moved the core to `opt-level = 3`.
 
 Stripped bytes, `poly-cli --no-default-features --features core`, macOS 27 / aarch64 unless noted
 (rustc 1.99.1). Each row is a separate full build:
@@ -59,10 +60,11 @@ Stripped bytes, `poly-cli --no-default-features --features core`, macOS 27 / aar
 | `core` profile, `z` with `tree-sitter`, `blake3`, `ignore`, `memchr`, `aho-corasick`, `regex-automata`, `poly-cache` at 3, plus `poly-core` at 3 | 10,441,360 |
 | `core` profile, `z` with the packages above except `poly-core` at 3, `uncomment` and `ini` moved to components, schemars off the protocol | 8,840,128 |
 | same, `aarch64-unknown-linux-gnu` (Docker `rust:latest`) | 10,171,472 |
-| **shipped**: `core` profile, `opt-level = "s"`, no per-package overrides, `uncomment` and `ini` moved to components, schemars off the protocol | **11,076,848** |
+| **shipped until ADR 0065**: `core` profile, `opt-level = "s"`, no per-package overrides, `uncomment` and `ini` moved to components, schemars off the protocol | **11,076,848** |
 
-The shipped profile is `s`: it fits 10 MiB only with `z`, but `z` costs cold-run CPU (below), so
-speed was chosen over the 10 MiB target and the ceiling is 14 MiB. The Linux build is about 13 MB
+Under ADR 0043 the shipped profile was `s`: it fits 10 MiB only with `z`, but `z` costs cold-run CPU (below), so
+speed was chosen over the 10 MiB target and the ceiling was 14 MiB. ADR 0065 since ships `opt-level = 3` under
+22 MiB. The Linux build is about 13 MB
 (the `z` rows show the macOS to Linux ratio, about 1.15); CI is the authority on the gated
 `x86_64-unknown-linux-gnu` size.
 
@@ -92,8 +94,8 @@ baselines come from other hardware and were not comparable):
 | `runner_e2e/format_64_rust_files_dry_run` | 2.90 s (loaded) | 0.74 s | 1.12 s |
 
 `s` is within the 5% budget everywhere, while `z` with the hot-path packages raised still costs a
-cold run 11-16% CPU time. The shipped profile is therefore `s`, and the ceiling moved from 10 MiB to
-14 MiB.
+cold run 11-16% CPU time. The shipped profile was therefore `s`, and the ceiling moved from 10 MiB to
+14 MiB (ADR 0043), until ADR 0065 moved the core to `3` under 22 MiB.
 
 ### Where the bytes are
 
@@ -205,9 +207,10 @@ so the verified stamp (xberg-io/alef#833, shipped) must be on in poly's host.
 
 ## Decisions
 
-- **The core ships at `opt-level = "s"` under a 14 MiB ceiling** (11.1 MB on
+- **The core shipped at `opt-level = "s"` under a 14 MiB ceiling** (11.1 MB on
   `aarch64-apple-darwin`). `z` fits 10 MB (9.4 MB core-only) but costs cold-run CPU; speed was
-  chosen over the 10 MiB target. Components keep their own profile.
+  chosen over the 10 MiB target. Components keep their own profile. Superseded in part by ADR 0065:
+  the core now ships at `opt-level = 3` under a 22 MiB ceiling.
 - **In the core:** quality (+0.14 MB, shares the tree-sitter runtime), gitfluff, tslp, catalog and
   native-tool tiers, clap, ureq/rustls and the alef runtime. `uncomment` and `ini` moved to
   components (ADR 0043); the gated size is in "The released core after ADR 0043".
@@ -238,11 +241,12 @@ hyperfine -N --warmup 3 --runs 20 'poly fmt .'
 ```
 
 The size delta must be measured with the existing procedure (`mise run measure:core-size`); the
-ceiling stays 14 MiB.
+ceiling was then 14 MiB (22 MiB since ADR 0065).
 
 ## Hot-path overrides reverted
 
 The `[profile.core.package.*] opt-level = 3` overrides added for #192 were reverted: the `core-size` gate
-(ceiling 14 MiB) measured the Linux x86_64 core at 15,620,648 bytes with them and the other changes since
+(ceiling then 14 MiB) measured the Linux x86_64 core at 15,620,648 bytes with them and the other changes since
 v0.35.0, 940,584 bytes over. Their speed benefit was never measured. Re-evaluate them one package at a time
 with `mise run bench:hyperfine` (warm lint) and `mise run check:core-size`, keeping only what pays for its size.
+ADR 0065 made the question moot by building the whole core at `opt-level = 3`.

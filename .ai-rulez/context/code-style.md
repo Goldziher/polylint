@@ -77,8 +77,9 @@ Project-specific conventions baked into context so they ship into every AI tool'
   is no `vendor/` directory. Three documented exceptions, all recorded in `ATTRIBUTIONS.md`: the
   prek port in `crates/poly-hooks`, the mdsf tool-catalog data, and `crates/dockerfile-parser`,
   maintained in-tree because upstream `dockerfile-parser-rs` is archived — ADR 0003 amendment.)
-- We do **not** publish our own crates to crates.io (see release-versioning), so git deps are
-  fine — crates.io only forbids them when *publishing*, which we don't do.
+- We do **not** publish poly's crates to crates.io (see release-versioning), so git deps are
+  fine — crates.io only forbids them when *publishing*. The exception, the `components-tsrs/crates/polylint-*`
+  libraries (ADR 0078/0081), takes registry `tsrs_*` dependencies only and never a git one.
 - Empirically verify a tool's library API before wiring it — clone a git dep to `/tmp` at the
   exact pinned `rev`, or read the exact published version for a registry dep.
 - Pin the exact version or git `rev`, and commit `Cargo.lock`, for reproducible builds.

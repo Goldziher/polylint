@@ -4,7 +4,7 @@
 version = 1
 ai_rulez_version = '5.13.4'
 scope = 'all'
-tree = 'sha256:8f55c3f621ea5817991101ddda88635b0778722c914d08fc9d1dd581d1baafc1'
+tree = 'sha256:f6aeca19e1fb2d41156c497c8d934242a63ef447a724648932968d6d60215ab8'
 
 [[served]]
 name = 'adr-workflow'
@@ -118,25 +118,25 @@ digest = 'sha256:cce650aeeb6442614a1867d6f4e64adb1a4181276c70d4d6b71ef5431f952d1
 kind = 'context'
 id = 'code-style'
 path = 'context/code-style.md'
-digest = 'sha256:bc2c478e409ffba89b4dbfe113d251acb3c4a0e56744b348fc411516d1ef30af'
+digest = 'sha256:acade2fbaa6eedc7376a119ad359b051cf3d54377e23c8fcfaf4558adfa49590'
 
 [[item]]
 kind = 'context'
 id = 'crate-layout'
 path = 'context/crate-layout.md'
-digest = 'sha256:22bfb71c8475a659cce17acce0317c9717b3fd20e9aada32299d71cf9d941588'
+digest = 'sha256:e284a875d8d14cc95dc7786f004437ea4775c347bdc7f48dc2fdf88ea0b67509'
 
 [[item]]
 kind = 'context'
 id = 'engine-library'
 path = 'context/engine-library.md'
-digest = 'sha256:912549eb05b9108976742b80b34336dae147f3f6f310f914286719d0c4a8b798'
+digest = 'sha256:d7015a02938b05ba3f6144c945a046f8ed0dc001753c03977153cd61476525f8'
 
 [[item]]
 kind = 'context'
 id = 'poly'
 path = 'context/poly.md'
-digest = 'sha256:a0849470f835922dd7809b3e81eadb567cf3860247f3e61401a468c79a3efda3'
+digest = 'sha256:26b6ac4802a2a7126e87b85ba60827034e2aca6a899247cc0a01af20d4edd0dc'
 
 [[item]]
 kind = 'context'
@@ -148,7 +148,7 @@ digest = 'sha256:a990db02a0f705e889a3ef936125dcbd64c74cea4a95d38163d464e781c9e30
 kind = 'context'
 id = 'runtime-architecture'
 path = 'context/runtime-architecture.md'
-digest = 'sha256:ce93f1fd654d9f2ce6ac40cdc863518ac1d1b5137adaa76ad683a3ecfc5a5730'
+digest = 'sha256:11a16393eeb02dd3608ced2e2429dd4090a84f81b2652ef4318d0878be035d4c'
 
 [[item]]
 kind = 'rule'
@@ -172,7 +172,7 @@ digest = 'sha256:c7332e641d1edc0a2d39fed803765c3e8c841e91979a5d086b796ab7ee3de22
 kind = 'rule'
 id = 'release-versioning'
 path = 'rules/release-versioning.md'
-digest = 'sha256:a6579edbb0c52bb74500a7e9397a55fb69cab439273cbfe1a8b9664996af4a30'
+digest = 'sha256:0cb0264a0b6ce900274c798fcc9606e4927a2cb6f70e62cdd0fac65bbb160602'
 
 [[item]]
 kind = 'rule'
