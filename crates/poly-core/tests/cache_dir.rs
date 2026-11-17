@@ -1,6 +1,7 @@
 //! `[cache] dir` pins where a lint or fmt run keeps its result cache, as it does for `poly cache` and
 //! the hook runner, and a relative one names the same directory whichever directory poly starts in.
 //! One test per process: `POLY_CACHE_HOME` is process-global.
+#![cfg(feature = "engine-python")]
 
 use std::path::{Path, PathBuf};
 

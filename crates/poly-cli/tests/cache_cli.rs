@@ -159,6 +159,8 @@ fn json_of(output: &Output) -> serde_json::Value {
 /// A relative `[cache] dir` is anchored at the root `poly.toml`: a run from a subdirectory reuses
 /// the cache a run from the root filled, `poly cache stats` there measures it, and a nested config's
 /// own `[cache]` is ignored with a warning naming it.
+// Lints a Python file, which the core build serves from a component this test build has no lock for.
+#[cfg(feature = "all-engines")]
 #[test]
 fn a_relative_cache_dir_is_one_cache_from_every_directory() {
     let tmp = TempDir::new().expect("tempdir");
@@ -167,8 +169,17 @@ fn a_relative_cache_dir_is_one_cache_from_every_directory() {
     std::fs::create_dir_all(&sub).expect("create the repository");
     let init = Command::new("git").args(["init", "-q"]).current_dir(&repo).status();
     assert!(init.expect("git init").success());
-    std::fs::write(repo.join("poly.toml"), "[cache]\ndir = \".poly-cache\"\n").expect("root config");
-    std::fs::write(sub.join("poly.toml"), "[cache]\ndir = \"nested-cache\"\n").expect("nested config");
+    std::fs::write(
+        repo.join("poly.toml"),
+        "[cache]\ndir = \".poly-cache\"\n\n[engines.astgrep]\nbuiltin_pack = false\n",
+    )
+    .expect("root config");
+    std::fs::write(
+        sub.join("poly.toml"),
+        "[cache]\ndir = \"nested-cache\"\n\n[engines.astgrep]\nbuiltin_pack = false\n",
+    )
+    .expect("nested config");
+    // The built-in ast-grep pack needs a downloaded grammar, which an offline run cannot fetch.
     std::fs::write(sub.join("main.py"), "x = 1\n").expect("source");
     std::fs::write(repo.join(".gitignore"), ".poly-cache/\n").expect("ignore the cache");
     // Named rather than `.`: the TOML engine is a component this test build has no lock for.

@@ -1,5 +1,6 @@
 //! `[cache] enabled = false` turns a lint or fmt run's result cache off, as `--no-cache` does. One test per process:
 //! `POLY_CACHE_HOME` is process-global.
+#![cfg(feature = "engine-python")]
 
 use std::path::{Path, PathBuf};
 
