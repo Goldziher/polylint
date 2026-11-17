@@ -11,7 +11,7 @@ Set TypingSpeed 40ms
 Set PlaybackSpeed 1.0
 
 Hide
-Type "export PATH=/Users/naamanhirschfeld/workspace/poly/target/release:$PATH POLY_NO_SHADOW_WARN=1" Enter
+Type "export PATH=/Users/naamanhirschfeld/workspace/polylint/polylint/target/release:$PATH POLY_NO_SHADOW_WARN=1" Enter
 Type "cd /tmp/poly-demo/kubernetes && clear" Enter
 Sleep 1s
 Show
