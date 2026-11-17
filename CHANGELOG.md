@@ -215,6 +215,28 @@ Each item is described in full under the section named in brackets.
 - **The MCP server accepts the run options the CLI has.** `check` and `fix` take `only`, `skip`, `include_excluded`,
   `no_cache`, `jobs`, `max_skips`, `fix_generated`, `on_missing` and `debug`, built from the same request the CLI
   fills, so a new CLI run option reaches the server by construction. (ADR 0076)
+- **A long-lived `poly mcp` kept linting with the project configs of its first call.** The per-directory lookups a
+  run memoises (`.oxlintrc.json` and the oxlint services built from it, `.oxfmtrc.json`, `go.mod`, `.clang-format`,
+  `Cargo.toml` editions) were never forgotten between calls, so an edit was invisible to the next one, and its stale
+  findings were then cached under the new config's key. Every run now starts by forgetting them. On a core build the
+  engines live in components that hold their own copy, so the host announces each new run to the components it has
+  loaded (a `RunBoundary` request) before the run's first lint or format request. (ADR 0076)
+- **`poly lock` and `poly trust` take effect on a running `poly mcp`.** The server read `poly.lock` and the trust
+  store once, at startup: a moved `extends` pin kept resolving the old revision, a `poly.lock` that did not parse
+  ended the process before the handshake, and `poly trust` changed nothing until a restart. Both are now read as they
+  are on disk at each call, and a malformed `poly.lock` is that call's `config` error. (ADR 0076)
+- **MCP `check`/`fix` with `scope: workspace` reported a pass when the whole-project phase never ran.** An untrusted
+  repository, or one with no whole-project tool, answered `passed: true` with no tools. It is now an `isError` result
+  of kind `untrusted` or `no_workspace_tools`, in the same `{error: {kind, message}, summary: null}` shape as every
+  other failure; `scope: all` sets `isError` when the repository is untrusted. (ADR 0076)
+- **MCP tools ignored arguments they did not understand.** `check {path: [...]}` (a typo for `paths`) linted the whole
+  directory, and `manage {action: "cache_clean", dry_run: true}` cleaned the cache. An unknown key, an invalid value
+  and a parameter that does not apply to the chosen `scope`, `action` or `topics` are now `usage` errors naming the
+  key, on all four tools; `check` no longer accepts the fix-only `fix_generated`. (ADR 0076)
+- **The read-only MCP `info` tool could fetch and write.** Its `components` topic resolved a remote `extends` base with
+  the fetching resolver, and its `cache` topic created the cache directory, wherever `[cache] dir` pointed. Every
+  host service now resolves config from the source cache only, and reading the cache footprint creates nothing.
+  (ADR 0076)
 
 ### Security
 

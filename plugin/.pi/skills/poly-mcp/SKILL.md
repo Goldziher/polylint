@@ -9,8 +9,8 @@ metadata:
 
 <!--
 AI-RULEZ :: GENERATED FILE — DO NOT EDIT
-Content-Hash: blake3:d648ec45380f56c14ddbb16137e6d1db7319baf7a24494cb81b609fa4dd31ae5
-Source-Hash: blake3:da70d54d8c2126bf3777e5c8e7e79f8b53fb3e4255a3df3861975e837f0f9417
+Content-Hash: blake3:cf751b8ba6de9ba00ece88ab6aac6d9f042478a3bfff63ce9fd434fd95bf0dda
+Source-Hash: blake3:b4be60cba94084176c82a099adb12c031dabb3f27b81663233735e1ab4723253
 Schema-Version: v1
 -->
 
@@ -57,22 +57,35 @@ trust. Gate `fix` and `manage` behind explicit intent.
 - `kind` — `lint` (default) or `format`.
 - `scope` — `files` (default): the per-file tier over `paths`, like `poly lint --workspace never`
   or `poly fmt`. `workspace`: the whole-project phase only (`cargo clippy` / `cargo-sort` /
-  `cargo-machete` / `cargo-deny` and inline whole-project jobs) over the whole repository; takes no
-  `paths`, lint only. `all`: both, as `poly lint` does; lint only.
+  `cargo-machete` / `cargo-deny` and inline whole-project jobs) over the whole repository; lint
+  only, and it takes only `config`, `jobs` and `no_cache`. `all`: both, lint only. **`scope: all`
+  is what plain `poly lint` runs**; the default is `files` because the whole-project phase
+  executes the repository's tools and can take minutes.
 - Run options shared with the CLI: `paths` (empty means the current directory), `exclude`
   (gitignore-style globs merged with `[discovery] exclude`), `config` (path to a `poly.toml`),
   `include_excluded`, `only` / `skip` (mutually exclusive engine selection), `max_skips` (0 is
   `--deny-skips`), `install` (`config` default, `auto`, `never`), `on_missing` (`fail` / `skip`),
-  `no_cache`, `jobs`, `fix_generated`, `debug`.
+  `no_cache`, `jobs`, `debug`, and on `fix` only `fix_generated`.
 - `format` — `json` (default) or `toon`; selects only the paired text block, `structured_content` is
   always JSON.
 
 The result is the CLI's `--format json` document — `{results, errors, skipped, summary, configs}`,
 plus optional `suppressed`, `components` and `discovery` — with a `poly` identity block.
-`scope: workspace` returns the whole-project report (`passed`, `fixed`, `tools[]`, optional
-`untrusted`); `scope: all` returns the lint document with that report under a `workspace` key.
-Arguments that do not go together (for example `kind: format` with `scope: workspace`) fail with
-a `usage` error.
+`scope: workspace` returns the whole-project report (`passed`, `fixed`, `tools[]`); a failing tool
+is a finding (`passed: false`), not an error. When the phase did not run it is an `isError`
+failure instead: `untrusted` (the repository's `[hooks]` are not trusted) or `no_workspace_tools`
+(nothing is configured, or the phase is disabled). `scope: all` returns the lint document with
+the report under a `workspace` key, and sets `isError` when the repository is untrusted
+(`workspace.untrusted` says so; the per-file results are still there).
+
+Arguments a tool cannot act on fail with a `usage` error naming the key, on all four tools: an
+unknown key (`path` for `paths`), an invalid value, arguments that do not go together (`kind:
+format` with `scope: workspace`), and a parameter that does not apply to the chosen `scope`,
+`action` or `topics` (`exclude` with `scope: workspace`, `dry_run` with `cache_clean`).
+
+The server enforces repository trust (ADR 0059) with no override. A config's exec-capable keys
+that were withheld are listed in `configs[].withheld`; after the user runs `poly trust`, the next
+call honours them, with no server restart.
 
 A whole-project scope executes tools against the live worktree, and their own side effects — a
 refreshed lock file, a populated build or type-checker cache — are not poly's to control, even in
@@ -80,7 +93,8 @@ refreshed lock file, a populated build or type-checker cache — are not poly's 
 
 ### `info`
 
-Read-only, never downloads, never runs repository tools. `topics` is an array of `version`,
+Read-only: it never downloads, never fetches, never writes (the `cache` topic does not create
+the cache it measures) and never runs repository tools. `topics` is an array of `version`,
 `config`, `validate`, `rules`, `components`, `cache` (default `["version"]`); the result has one key
 per topic.
 
@@ -100,11 +114,12 @@ files or directories), `install` (`components`: the policy `would_download` assu
 `info {topics: ["version"]}` still answers when the server's executable was replaced or deleted,
 which is what makes it the call that explains why the others stopped. The `rules` topic never
 downloads: a core build without the `astgrep` component reports it missing. A topic the host cannot
-answer carries `{error: {message}}` under its key and sets `isError`.
+answer carries `{error: {kind, message}}` under its key and sets `isError`.
 
 Remote git `extends` bases are resolved from the local source cache at the `poly.lock`-pinned
-revision and never fetched; a base that is not cached is a `config` error telling you to run
-`poly lock` or a CLI `poly lint` once.
+revision and never fetched, by every tool; a base that is not cached is a `config` error telling
+you to run `poly lock` or a CLI `poly lint` once. `poly.lock` is read on each call, so a `poly
+lock` run beside the server takes effect on the next one.
 
 ### `manage`
 
@@ -114,9 +129,10 @@ revision and never fetched; a base that is not cached is a `config` error tellin
 - `cache_gc` — evict by `max_age_days` and/or `max_size` (for example `500M`, `2G`).
 - `components_install` — download and verify components by `names` (components or presets),
   `languages` and/or `paths`; `config`, `dry_run` reports the plan. Writes only the component cache.
+  No other action has a dry run: `dry_run` with one is a `usage` error, not a silent run.
 - `components_uninstall` — remove components by `names`. Refuses a component loaded in this
   process (`isError`).
-- `components_prune` — remove cached archives nothing references or used recently.
+- `components_prune` — remove cached archives nothing references or used recently; takes no `names`.
 
 The cache actions return `{command, freed_bytes}`, like `poly cache clean|gc --format json`.
 
@@ -183,16 +199,24 @@ part of the result.** `isError: true` means the run did not verify what was aske
 - a file poly failed on (non-empty `errors`),
 - a blocking missing component,
 - skips over `max_skips`,
+- a whole-project phase that was asked for and did not run,
 - a run that could not start.
 
-A run that could not start returns `{error: {kind, message}, summary: null}`, where `kind` is one of:
+A run that could not start, or whose requested phase did not run, returns
+`{error: {kind, message}, summary: null}`, where `kind` is one of:
 
 - `paths` — a named path does not exist (this used to read as a clean pass),
 - `workspace` — a path outside the server's directory,
 - `config` — the config or `poly.lock` failed to load,
 - `pipeline` — for example an unknown `only` engine,
 - `render` — the result could not be serialized,
-- `usage` — arguments that do not go together.
+- `usage` — invalid arguments: an unknown key, a wrong value, arguments that do not go together,
+  or a parameter that does not apply to the chosen `scope`, `action` or `topics`,
+- `untrusted` — `scope: workspace` in a repository whose `[hooks]` are not trusted (`poly trust`),
+- `no_workspace_tools` — `scope: workspace` with no whole-project tool configured.
+
+Only an unknown tool name is a JSON-RPC error; everything wrong with a call to a tool that exists
+is a result.
 
 Error-severity findings and formatting drift are **not** errors: they are the CLI's exit 1 and
 appear in `results`. Check `isError` first; then read `summary` for coverage and `results` for

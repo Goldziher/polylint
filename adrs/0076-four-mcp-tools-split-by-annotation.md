@@ -48,7 +48,27 @@ auto-approve checks while prompting on writes: the tool would have to carry the 
   `isError`.
 - **Errors are results.** A run that cannot start (a missing path, a path outside the workspace, a config that does
   not load, an unknown engine) answers `isError: true` with `{error: {kind, message}, summary: null}`, never a
-  JSON-RPC error, so the model reads the message and can correct its call.
+  JSON-RPC error, so the model reads the message and can correct its call. So does a whole-project phase that was
+  asked for and did not run (`untrusted`, `no_workspace_tools`), in every scope: a report with no tools would read
+  as a pass.
+- **Invalid arguments are results too.** An unknown key, a wrong value and a parameter that does not apply to the
+  chosen `scope`, `action` or `topics` answer `kind: usage`, naming the key. A tool's published input schema is the
+  list of keys it accepts, so `check` neither lists nor accepts the fix-only `fix_generated`, and `dry_run` on a
+  destructive `manage` action is refused rather than ignored. Only an unknown tool name is a JSON-RPC error: the
+  protocol has no result to carry it in.
+- **Config resolution never reaches the network.** `poly mcp` injects a cache-only `extends` resolver into the host
+  services, and the component services (`info`'s `components` topic, the pre-run download probe, `manage
+  components_install` with `paths`) use the same one. A remote git base resolves from the local source cache at its
+  full-object-ID revision or its `poly.lock` pin; one the cache does not hold is a `config` error naming `poly lock`,
+  never a fetch from a URL the repository chose. The resolver holds no copy of `poly.lock`: the file is read at each
+  resolution, so a `poly lock` beside a running server takes effect on its next call and a lock that does not parse
+  fails that call, not the server's startup. It does not install the lock's tool pins either; each run pins those
+  for its own duration. The trust store is re-read when it changes, for the same reason.
+- **`info` writes nothing.** Its `cache` topic reads the footprint without creating the cache directory, which a
+  repository's `[cache] dir` could otherwise place anywhere.
+- **`scope` defaults to `files`.** Plain `poly lint` is `scope: all`. The default stays the per-file tier because the
+  whole-project phase executes the repository's tools and runs for minutes; the tool description says which scope
+  matches the CLI.
 - **Output schemas are resources.** Tools declare no `outputSchema`; the document schemas are served as resources
   under `poly://schema/`. The output contract is unchanged: `check` and `fix` return the CLI's `--format json`
   document plus the `poly` identity block.
