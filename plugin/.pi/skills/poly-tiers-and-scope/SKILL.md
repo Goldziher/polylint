@@ -9,8 +9,8 @@ metadata:
 
 <!--
 AI-RULEZ :: GENERATED FILE — DO NOT EDIT
-Content-Hash: blake3:35d124db26f4cc8fc1654708687dfe9a4341ca02cac2a0ff1a9dd0ecdd53a8bb
-Source-Hash: blake3:b4be60cba94084176c82a099adb12c031dabb3f27b81663233735e1ab4723253
+Content-Hash: blake3:6b1742939e2984eb47fd020d03af8df87e4ce9d618a355acb327c5436c320acf
+Source-Hash: blake3:92d73e3d088ef76a10ede1c0e15e8d76188d3829a5ad453f60eb55359f169514
 Schema-Version: v1
 -->
 
@@ -34,7 +34,8 @@ Five mechanisms decide what actually inspects a file (`crates/poly-core/src/regi
    `shellcheck` are **on by default whenever the tool is found on PATH**; `zigfmt`,
    `google-java-format`, `ktfmt`, `styler`, `swift-format`, `dartfmt`, and `gleamfmt` are
    opt-in via `[engines.<id>] enabled = true`.
-   Absent tool ⇒ the language falls through to tier 2 with an info-level notice, never an error.
+   Absent tool ⇒ the language falls through to tier 2, never an error; the report names the
+   files per tool (a summary line, `degraded` in JSON) and does not count them as skipped.
    Shell formatting is the exception: it comes from the `sh` component (shfmt as a Go sidecar),
    and a host `shfmt` is used only by the bundled build or with `[components] disable = ["sh"]`.
 4. **`quality`, the code-quality metric tier** (ADR 0027) — cross-cutting, appended to every

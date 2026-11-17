@@ -9,8 +9,8 @@ metadata:
 
 <!--
 AI-RULEZ :: GENERATED FILE — DO NOT EDIT
-Content-Hash: blake3:cf751b8ba6de9ba00ece88ab6aac6d9f042478a3bfff63ce9fd434fd95bf0dda
-Source-Hash: blake3:b4be60cba94084176c82a099adb12c031dabb3f27b81663233735e1ab4723253
+Content-Hash: blake3:a70b27d85a5922775a8f133191ae7f7c5b05e700e0690a84f3f5144abd7a35b2
+Source-Hash: blake3:92d73e3d088ef76a10ede1c0e15e8d76188d3829a5ad453f60eb55359f169514
 Schema-Version: v1
 -->
 
@@ -70,7 +70,7 @@ trust. Gate `fix` and `manage` behind explicit intent.
   always JSON.
 
 The result is the CLI's `--format json` document — `{results, errors, skipped, summary, configs}`,
-plus optional `suppressed`, `components` and `discovery` — with a `poly` identity block.
+plus optional `suppressed`, `components`, `degraded` and `discovery` — with a `poly` identity block.
 `scope: workspace` returns the whole-project report (`passed`, `fixed`, `tools[]`); a failing tool
 is a finding (`passed: false`), not an error. When the phase did not run it is an `isError`
 failure instead: `untrusted` (the repository's `[hooks]` are not trusted) or `no_workspace_tools`
@@ -190,6 +190,10 @@ on purpose:
 - **Errored** (`error` field, and the top-level `errors` array) — poly failed to process the
   file (unreadable file, backend crash, bad engine config). Distinct from `skipped` on purpose:
   a skip is a deliberate decision, an error is poly failing on a file it accepted.
+- **Degraded** (top-level `degraded`, omitted when empty) — `[{tool, language, reason, files}]`:
+  a configured or default-on native tool (`rustfmt`, `gofmt`, `shfmt`, `shellcheck`) was not
+  found, so its files were formatted by the generic tier or linted without it (ADR 0075). Still
+  checked, not skipped, not an error; read it to know a pass was at reduced fidelity.
 
 ## isError
 

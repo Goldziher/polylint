@@ -9,8 +9,8 @@ metadata:
 
 <!--
 AI-RULEZ :: GENERATED FILE — DO NOT EDIT
-Content-Hash: blake3:343761da022b361a33812769d63430f27d47a62554d02577a9f6bc7f5c95d659
-Source-Hash: blake3:b4be60cba94084176c82a099adb12c031dabb3f27b81663233735e1ab4723253
+Content-Hash: blake3:794898f3dd99a18f4f456c8839d65bc6679cd2b18446efc6438ec44958fb323a
+Source-Hash: blake3:92d73e3d088ef76a10ede1c0e15e8d76188d3829a5ad453f60eb55359f169514
 Schema-Version: v1
 -->
 
@@ -48,7 +48,8 @@ bundled with every engine linked in.
   `gofmt` and `shellcheck` are **on by default when found on PATH**; `zigfmt`,
   `google-java-format`, `ktfmt`, `styler` (R), `swift-format`, `dartfmt`, and `gleamfmt` are
   opt-in via `[engines.<id>] enabled = true`. When the tool is absent, formatting falls through
-  to tier 2 with an info-level notice.
+  to tier 2, and the report names the files per tool (`rustfmt not found on PATH: 3 Rust files
+  formatted by the generic tier`; `degraded` in JSON).
 - **Shell.** Formatted by the `sh` component (shfmt's Go library, run as a sidecar), not by a
   host `shfmt`. The host `shfmt` is used only by the bundled build or with
   `[components] disable = ["sh"]`.
