@@ -335,7 +335,7 @@ Two cross-cutting lint tiers are on by default for every language, and three mor
 
 - **The code-quality engine** (on) — tree-sitter metric rules, listed below.
 - **The built-in ast-grep pack** (on) — 42 rules across C#, Elixir, Go, Java, Kotlin, Python, Ruby, Rust and Swift.
-  13 are on by default; the other 13 ship `severity: off` and are one config line away. Your own rules under
+  16 are on by default; the other 26 ship `severity: off` and are one config line away. Your own rules under
   `[engines.astgrep] rule_dirs` sit above the pack — a rule with the same `id` replaces the built-in one.
 - **`typos`** (opt-in) — spell-checks identifiers, comments and strings: `[engines.typos] enabled = true`.
 - **`uncomment`** (opt-in) — comment removal, built on [uncomment](https://github.com/polylint/uncomment).
