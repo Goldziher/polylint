@@ -601,7 +601,10 @@ fn cache_key(
     // full run; a full run's key has no entry, as before targets existed. Only an engine that narrows is given
     // targets (`ProjectDirs::narrows_to_targets`).
     if let Some(targets) = targets {
-        let names: Vec<String> = targets.iter().map(|path| key_inputs::relative_text(path, root)).collect();
+        let names: Vec<String> = targets
+            .iter()
+            .map(|path| key_inputs::relative_text(path, root))
+            .collect();
         args.insert("__targets".to_string(), toml::Value::String(names.join("\0")));
     }
     let names: Vec<String> = files.iter().map(|f| key_inputs::relative_text(&f.path, root)).collect();
