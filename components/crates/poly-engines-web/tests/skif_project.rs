@@ -337,14 +337,19 @@ fn a_file_missing_from_the_request_is_not_found_on_disk() {
 }
 
 #[test]
-fn a_project_without_a_workspace_reports_nothing() {
+fn a_project_without_a_workspace_is_declined() {
     let root = fixture();
     let sources: Vec<_> = load(&root)
         .into_iter()
         .filter(|file| file.language == Language::JavaScript)
         .collect();
     assert!(!sources.is_empty());
-    assert!(run(&root, &sources, &cfg(&[])).findings.is_empty());
+    let analysis = run(&root, &sources, &cfg(&[]));
+    assert!(analysis.findings.is_empty());
+    assert_eq!(
+        analysis.declined.as_deref(),
+        Some("no package.json or JavaScript workspace")
+    );
 }
 
 #[test]

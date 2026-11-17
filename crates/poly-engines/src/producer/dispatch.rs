@@ -9,7 +9,9 @@ use poly_component_protocol::{
 use poly_engine_api::component_wire::wire_diagnostic;
 use poly_engine_api::config::EngineConfig;
 use poly_engine_api::declined::Declined;
-use poly_engine_api::engine::{Engine, FormatOutput, ProjectEnvironment, ProjectFile, ProjectRequest, SourceFile};
+use poly_engine_api::engine::{
+    Engine, FormatOutput, ProjectEnvironment, ProjectFile, ProjectReport, ProjectRequest, SourceFile,
+};
 
 use super::describe::TABLES;
 use super::errors::{from_anyhow, guarded, protocol};
@@ -206,7 +208,10 @@ impl Producer {
                     threads: threads.map(|n| n as usize),
                     targets: targets.as_deref(),
                 };
-                let per_file = guarded(engine.name(), || engine.project_check(&request))?;
+                let per_file = match guarded(engine.name(), || engine.project_report(&request))? {
+                    ProjectReport::Checked(per_file) => per_file,
+                    ProjectReport::Declined(reason) => return Ok(Payload::ProjectDeclined(reason)),
+                };
                 Ok(Payload::Project(
                     per_file
                         .iter()

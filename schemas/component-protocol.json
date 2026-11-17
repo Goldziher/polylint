@@ -1063,6 +1063,17 @@
           },
           "required": ["Adr"],
           "additionalProperties": false
+        },
+        {
+          "description": "Answer to `ProjectCheck` when the engine declined the project (`ProjectReport::Declined`, ADR 0079): it\nchecked nothing, for the reason given, which the host reports as a skip. Appended after protocol 3\nshipped: a host that predates it fails to decode the answer and reports the check as failed, never as\na clean pass.",
+          "type": "object",
+          "properties": {
+            "ProjectDeclined": {
+              "type": "string"
+            }
+          },
+          "required": ["ProjectDeclined"],
+          "additionalProperties": false
         }
       ]
     },

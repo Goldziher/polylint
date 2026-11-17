@@ -14,7 +14,8 @@ use super::{
     inputs, report_for, root_for, scope,
 };
 use crate::discover::DiscoveredFile;
-use crate::engine::{Diagnostic, ProjectEnvironment, ProjectFile};
+use crate::engine::{Diagnostic, ProjectEnvironment, ProjectFile, ProjectReport};
+use crate::runner::skips::SkippedFile;
 use crate::runner::types::LintError;
 
 /// Environments resolved so far, one per project root.
@@ -28,6 +29,8 @@ pub(super) enum Settled {
     Note(Option<ProjectFinding>),
     /// The inputs could not be built, or the check failed.
     Failed(LintError),
+    /// The engine declined the project (ADR 0079): a counted skip of its root.
+    Declined(SkippedFile),
     /// The check ran, or was answered from the cache.
     Ran(Box<Ran>),
 }
@@ -100,6 +103,7 @@ pub(super) fn merge(
             Settled::Skip => {}
             Settled::Note(note) => outcome.findings.extend(note),
             Settled::Failed(error) => outcome.errors.push(error),
+            Settled::Declined(skip) => outcome.skips.push(skip),
             Settled::Ran(ran) => fold_ran(outcome, at, *ran),
         }
     }
@@ -182,7 +186,11 @@ impl Schedule<'_, '_> {
             .filter(|dirs| dirs.narrows_to_targets)
             .and_then(|dirs| run_scope.targets(dirs.absolute(&root), &loaded));
         match report_for(plan, &root, &loaded, targets.as_deref(), &environment, cache) {
-            Ok(reported) => Settled::Ran(Box::new(Ran { dirs, loaded, reported })),
+            Ok(ProjectReport::Checked(reported)) => Settled::Ran(Box::new(Ran { dirs, loaded, reported })),
+            Ok(ProjectReport::Declined(reason)) => Settled::Declined(SkippedFile {
+                path: root,
+                reason: format!("{}: {reason}", plan.engine.name()),
+            }),
             Err(error) => Settled::Failed(error),
         }
     }

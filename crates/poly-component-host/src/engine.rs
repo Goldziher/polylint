@@ -15,7 +15,8 @@ use poly_engine_api::config::EngineConfig;
 use poly_engine_api::declined::Declined;
 use poly_engine_api::engine::{
     BatchSupport, Batching, Capabilities, CatalogTakeover, Diagnostic, Engine, FormatOutput, OptionKeys, OptionTable,
-    OptionType, PlanPolicy, ProjectAnalysis, ProjectDirs, ProjectInputs, ProjectRequest, ProjectSideFile, SourceFile,
+    OptionType, PlanPolicy, ProjectAnalysis, ProjectDirs, ProjectInputs, ProjectReport, ProjectRequest,
+    ProjectSideFile, SourceFile,
 };
 use poly_engine_api::host_hooks::HostHook;
 use poly_engine_api::language::Language;
@@ -693,8 +694,12 @@ impl Batching for ComponentEngine {
 
 impl ProjectAnalysis for ComponentEngine {
     fn project_check(&self, req: &ProjectRequest<'_>) -> anyhow::Result<Vec<(PathBuf, Vec<Diagnostic>)>> {
+        self.project_report(req).map(ProjectReport::into_findings)
+    }
+
+    fn project_report(&self, req: &ProjectRequest<'_>) -> anyhow::Result<ProjectReport> {
         if self.unavailable_noop {
-            return Ok(Vec::new());
+            return Ok(ProjectReport::Checked(Vec::new()));
         }
         let connection = self.connect()?;
         let relative = |path: &Path| path.strip_prefix(req.root).unwrap_or(path).to_path_buf();
@@ -727,8 +732,10 @@ impl ProjectAnalysis for ComponentEngine {
             }),
         };
         let payload = connection.call(self.name, req.config, request, &body)?;
-        let Payload::Project(per_file) = payload else {
-            return Err(self.unexpected("ProjectCheck"));
+        let per_file = match payload {
+            Payload::Project(per_file) => per_file,
+            Payload::ProjectDeclined(reason) => return Ok(ProjectReport::Declined(reason)),
+            _ => return Err(self.unexpected("ProjectCheck")),
         };
         per_file
             .into_iter()
@@ -739,7 +746,8 @@ impl ProjectAnalysis for ComponentEngine {
                     .unwrap_or_else(|| req.root.join(&entry.path));
                 Ok((path, diagnostics(entry.diagnostics, self.name)?))
             })
-            .collect()
+            .collect::<anyhow::Result<_>>()
+            .map(ProjectReport::Checked)
     }
 
     fn selection(&self) -> Option<WireSelection> {

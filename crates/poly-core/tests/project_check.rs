@@ -440,6 +440,82 @@ fn only_naming_an_unselected_type_checker_is_a_counted_skip() {
     });
 }
 
+/// A project check that finds nothing it can check (tsrs without a `tsconfig.json`) declines the project; the run
+/// reports that as a counted skip of the project root, never as a clean pass of the check.
+mod declined {
+    use poly_core::engine::ProjectReport;
+
+    use super::*;
+
+    const DECLINING: &str = "declining-project";
+
+    /// Declines every project, as tsrs declines one without a `tsconfig.json`; counts its calls.
+    struct Declining {
+        calls: Arc<AtomicUsize>,
+    }
+
+    impl Engine for Declining {
+        fn name(&self) -> &'static str {
+            DECLINING
+        }
+        fn languages(&self) -> &'static [Language] {
+            &[Language::Python]
+        }
+        fn capabilities(&self) -> Capabilities {
+            Capabilities {
+                project: true,
+                ..Capabilities::default()
+            }
+        }
+        fn version(&self) -> &str {
+            "1"
+        }
+        fn project_analysis(&self) -> Option<&dyn ProjectAnalysis> {
+            Some(self)
+        }
+    }
+
+    impl ProjectAnalysis for Declining {
+        fn project_report(&self, _req: &ProjectRequest<'_>) -> anyhow::Result<ProjectReport> {
+            self.calls.fetch_add(1, Ordering::SeqCst);
+            Ok(ProjectReport::Declined("no tsconfig.json".to_owned()))
+        }
+    }
+
+    #[test]
+    fn a_declined_project_is_a_counted_skip_on_every_run() {
+        let calls = Arc::new(AtomicUsize::new(0));
+        let engine: Arc<dyn Engine> = Arc::new(Declining { calls: calls.clone() });
+        with_extra_project_engines(vec![engine], || {
+            let cache_home = tempfile::tempdir().unwrap();
+            // SAFETY: `with_extra_project_engines` serialises every caller in this process.
+            unsafe {
+                std::env::set_var("POLY_CACHE_HOME", cache_home.path());
+            }
+            let dir = tempfile::tempdir().unwrap();
+            write(dir.path(), "app.py", "x = 1\n");
+            let reason = format!("{DECLINING}: no tsconfig.json");
+            for pass in ["first", "cached"] {
+                let run = lint(dir.path(), &Config::default(), false);
+                assert!(run.errors.is_empty(), "{pass}: {:?}", run.errors);
+                let found: Vec<_> = run.skipped.iter().filter(|s| s.reason == reason).collect();
+                assert_eq!(found.len(), 1, "{pass}: {:?}", run.skipped);
+                // An in-memory config has no directory, so the scope is the working directory.
+                assert_eq!(found[0].path, std::env::current_dir().unwrap());
+                assert!(
+                    !poly_core::is_withdrawal_reason(&found[0].reason),
+                    "{pass}: a decline is charged to --deny-skips"
+                );
+            }
+            assert_eq!(
+                calls.load(Ordering::SeqCst),
+                2,
+                "a decline is not cached as a clean result"
+            );
+        });
+    }
+}
+
 mod tree {
     //! An engine that declares a directory tree (`project_inputs().dirs`), as adrlint does: it judges
     //! the whole tree whatever paths the run names, and the run's paths only narrow what is reported.

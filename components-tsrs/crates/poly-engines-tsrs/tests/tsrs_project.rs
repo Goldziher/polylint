@@ -6,7 +6,7 @@ use std::path::{Path, PathBuf};
 
 use poly_engine_api::config::{EngineConfig, GlobalDefaults};
 use poly_engine_api::engine::{
-    Diagnostic, Engine, ProjectAnalysis, ProjectEnvironment, ProjectFile, ProjectRequest, Severity,
+    Diagnostic, Engine, ProjectAnalysis, ProjectEnvironment, ProjectFile, ProjectReport, ProjectRequest, Severity,
 };
 use poly_engine_api::language::Language;
 use poly_engines_tsrs::TsrsEngine;
@@ -468,9 +468,28 @@ fn the_engine_does_nothing_until_it_is_enabled() {
     }
 }
 
+/// Nothing was checked, so the engine declines the project: the host reports it as a skip, not a clean pass.
 #[test]
-fn a_project_without_a_tsconfig_has_nothing_to_check() {
-    assert!(check(&[("src/a.ts", KNOWN_BAD)], "").is_empty());
+fn a_project_without_a_tsconfig_is_declined() {
+    let files = project(&[("src/a.ts", KNOWN_BAD)]);
+    let report = TsrsEngine
+        .project_report(&ProjectRequest {
+            root: &root(),
+            files: &files,
+            config: &options(""),
+            environment: &ProjectEnvironment::default(),
+            threads: Some(1),
+            targets: None,
+        })
+        .expect("tsrs runs");
+    let ProjectReport::Declined(reason) = report else {
+        panic!("a project without a tsconfig.json was reported as checked: {report:?}");
+    };
+    assert_eq!(reason, "no tsconfig.json");
+    assert!(
+        check(&[("src/a.ts", KNOWN_BAD)], "").is_empty(),
+        "no findings either way"
+    );
 }
 
 #[test]

@@ -314,6 +314,7 @@ fn sample_payloads() -> Vec<Payload> {
             path: "a".into(),
             diagnostics: vec![diagnostic(false)],
         }]),
+        Payload::ProjectDeclined("no tsconfig.json".into()),
         Payload::Bool(true),
         Payload::OptString(None),
         Payload::OptString(Some("salt".into())),
@@ -612,6 +613,61 @@ fn a_project_check_without_targets_decodes_in_a_component_that_predates_them() {
         targets, None,
         "and this component reads the shorter request as every file"
     );
+}
+
+/// `Payload` as a component or host that predates `ProjectDeclined` knows it, for the project check.
+#[derive(Debug, PartialEq, serde::Serialize, serde::Deserialize)]
+enum OlderPayload {
+    Project(Vec<WireFileDiagnostics>),
+}
+
+/// `Response` around [`OlderPayload`].
+#[derive(Debug, PartialEq, serde::Serialize, serde::Deserialize)]
+struct OlderResponse {
+    result: Result<OlderPayload, WireError>,
+    logs: Vec<WireLog>,
+}
+
+fn project_findings() -> Vec<WireFileDiagnostics> {
+    vec![WireFileDiagnostics {
+        path: "src/a.ts".into(),
+        diagnostics: vec![diagnostic(false)],
+    }]
+}
+
+/// A host that knows `ProjectDeclined` calling a component that predates it: the component answers with the
+/// `Project` payload it always sent, and the host reads it as before.
+#[test]
+fn a_project_answer_from_a_component_that_predates_declines_decodes() {
+    let bytes = rmp_serde::to_vec(&OlderResponse {
+        result: Ok(OlderPayload::Project(project_findings())),
+        logs: vec![],
+    })
+    .unwrap();
+    let response = decode_response(&bytes).expect("the older answer decodes");
+    assert_eq!(response.result, Ok(Payload::Project(project_findings())));
+}
+
+/// A component that declines a project calling a host that predates `ProjectDeclined`: the host cannot decode the
+/// answer, so it reports the check as failed, never as a clean pass. A check that ran still reaches it.
+#[test]
+fn a_declined_project_fails_to_decode_in_a_host_that_predates_declines() {
+    let declined = encode_response(&Response {
+        result: Ok(Payload::ProjectDeclined("no tsconfig.json".into())),
+        logs: vec![],
+    })
+    .unwrap();
+    assert!(
+        rmp_serde::from_slice::<OlderResponse>(&declined).is_err(),
+        "an older host must not read a decline as no findings"
+    );
+    let checked = encode_response(&Response {
+        result: Ok(Payload::Project(project_findings())),
+        logs: vec![],
+    })
+    .unwrap();
+    let older: OlderResponse = rmp_serde::from_slice(&checked).expect("an older host decodes a check that ran");
+    assert_eq!(older.result, Ok(OlderPayload::Project(project_findings())));
 }
 
 /// v3 encodes requests and responses positionally: no field name is on the wire, only the variant

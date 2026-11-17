@@ -21,6 +21,7 @@ pub const ENGINE_METHODS: &[(&str, Coverage)] = &[
     ("option_keys", Coverage::Index("WireEngineDesc.option_keys")),
     ("version", Coverage::Index("WireEngineDesc.version")),
     ("project_check", Coverage::Request("ProjectCheck")),
+    ("project_report", Coverage::Request("ProjectCheck")),
     ("project_inputs", Coverage::Index("WireEngineDesc.project_inputs")),
     ("selection", Coverage::Index("WireEngineDesc.selection")),
     ("run_context", Coverage::Request("RunContext")),
