@@ -30,6 +30,9 @@ biome_rowan = { git = "https://github.com/biomejs/biome", rev = "ec3b4b25eea2963
 insta = "1"
 malva = "0.16"
 markup_fmt = "0.27"
+# The parser `oxc_formatter_markdown` uses at the pinned oxc rev (its workspace pins 0.0.4). poly walks
+# that AST to guard the formatter, so the two must resolve to one crate.
+oxc-markdown-parser = "=0.0.4"
 oxc_allocator = { git = "https://github.com/oxc-project/oxc", rev = "74e5e665ab8227c3d43abf3ce0e4383830e80c12" }
 oxc_diagnostics = { git = "https://github.com/oxc-project/oxc", rev = "74e5e665ab8227c3d43abf3ce0e4383830e80c12" }
 oxc_formatter = { git = "https://github.com/oxc-project/oxc", rev = "74e5e665ab8227c3d43abf3ce0e4383830e80c12" }

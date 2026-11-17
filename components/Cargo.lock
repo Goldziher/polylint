@@ -8051,6 +8051,7 @@ dependencies = [
  "insta",
  "malva",
  "markup_fmt",
+ "oxc-markdown-parser",
  "oxc_allocator",
  "oxc_diagnostics",
  "oxc_formatter",

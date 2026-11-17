@@ -10,6 +10,11 @@
 //! `line_ending`, `single_quote`, `prose_wrap` (`"preserve"` / `"always"` / `"never"`),
 //! `embedded_language_formatting` (`"off"` keeps fences and front matter as written) and the
 //! `embedded` option overlays.
+//!
+//! Markdown holding an empty footnote definition is declined rather than formatted: it crashes
+//! `oxc_formatter_markdown` (see [`empty_footnote`]).
+
+mod empty_footnote;
 
 use oxc_allocator::Allocator;
 use oxc_formatter_core::{FormatOptions, FormatSession, InputKind, SessionServices};
@@ -18,8 +23,11 @@ use oxc_formatter_markdown::{MarkdownFormatOptions, ProseWrap};
 use super::markdown_embed;
 use crate::core_options::core_format_options;
 use poly_engine_api::config::EngineConfig;
+use poly_engine_api::declined::Declined;
 use poly_engine_api::engine::{FormatOutput, SourceFile};
 use poly_engine_api::options::OptionsExt;
+
+pub(super) use empty_footnote::has_empty_footnote_definition;
 
 /// Keys that belong to rumdl's own rule-based formatter; setting one keeps that formatter.
 pub(super) const RUMDL_FORMAT_KEYS: &[&str] = &[
@@ -49,7 +57,14 @@ pub(super) fn uses_rumdl_formatter(cfg: &EngineConfig) -> bool {
     true
 }
 
+/// Formats `src`, or declines it with a [`Declined`] error when it holds an empty footnote
+/// definition, which the formatter cannot print.
 pub(super) fn format(src: &SourceFile, cfg: &EngineConfig) -> anyhow::Result<FormatOutput> {
+    if has_empty_footnote_definition(&src.content) {
+        return Err(anyhow::Error::new(Declined(
+            empty_footnote::EMPTY_FOOTNOTE_SKIP.to_owned(),
+        )));
+    }
     let allocator = Allocator::new();
     let session = FormatSession::with_services(
         &allocator,
