@@ -17,8 +17,15 @@
 //! # dir = "~/.sccache"
 //! # max_size = "10G"
 //! ```
+//!
+//! `[cache]` belongs to the root config of a cascade (ADR 0018): one run opens one cache, so a
+//! nested `poly.toml` that sets it is ignored with a warning ([`ignore_nested`]). A relative `dir`
+//! is anchored at the directory of the `poly.toml` declaring it ([`anchor_dir_in_table`]), so every
+//! working directory, `poly cache` and the hook runner name the same cache.
 
+use std::collections::BTreeSet;
 use std::path::Path;
+use std::sync::Mutex;
 
 use serde::Deserialize;
 
@@ -122,13 +129,52 @@ impl SccacheConfig {
     }
 }
 
+/// Anchor a relative `[cache] dir` in a raw config `table` at `dir`, leaving an absolute (or, on
+/// Windows, drive-relative rooted) path as written.
+pub(crate) fn anchor_dir_in_table(table: &mut toml::Table, dir: &Path) {
+    let Some(value) = table
+        .get_mut("cache")
+        .and_then(toml::Value::as_table_mut)
+        .and_then(|cache| cache.get_mut("dir"))
+    else {
+        return;
+    };
+    if let Some(relative) = value.as_str().map(Path::new).filter(|path| !path.has_root()) {
+        *value = toml::Value::String(dir.join(relative).to_string_lossy().into_owned());
+    }
+}
+
+/// Configs already warned about this process; a nested config is resolved once per directory a
+/// run plans, and a long-lived `poly mcp` reloads it on every request.
+static WARNED_NESTED: Mutex<BTreeSet<std::path::PathBuf>> = Mutex::new(BTreeSet::new());
+
+/// Drop `[cache]` from the raw table of the nested config in `config_dir`, warning once that it is
+/// ignored: only the root config of the cascade chooses the run's cache.
+pub(crate) fn ignore_nested(table: &mut toml::Table, config_dir: &Path) {
+    if table.remove("cache").is_none() {
+        return;
+    }
+    let file = config_dir.join(crate::CONFIG_FILE_NAMES[0]);
+    let first = WARNED_NESTED
+        .lock()
+        .map_or(true, |mut warned| warned.insert(file.clone()));
+    if first {
+        eprintln!(
+            "warning: {} sets [cache], which only the root poly.toml of a repository (or of a \
+             `[workspace] root = true` project) can set; it is ignored",
+            file.display()
+        );
+    }
+}
+
 fn default_cache_enabled() -> bool {
     true
 }
 
 /// Configuration for the `[cache]` table in `poly.toml`.
 ///
-/// All fields default so `[cache]` is entirely optional.
+/// All fields default so `[cache]` is entirely optional. Root-only: a nested `poly.toml` that sets
+/// `[cache]` is ignored with a warning, since one run opens one cache.
 #[derive(Debug, Clone, Deserialize, schemars::JsonSchema)]
 #[serde(default)]
 pub struct CacheConfig {
@@ -137,7 +183,8 @@ pub struct CacheConfig {
     /// Equivalent to `--no-cache` on the CLI.
     #[serde(default = "default_cache_enabled")]
     pub enabled: bool,
-    /// Override the cache root directory.
+    /// Override the cache root directory. A relative path is resolved against the directory of
+    /// the `poly.toml` that declares it.
     ///
     /// When absent the cache lives in the per-user cache home (see
     /// `poly_cache::root_from`): `<platform-cache>/poly/<repo-key>`, keyed by the

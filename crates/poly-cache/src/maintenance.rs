@@ -138,6 +138,23 @@ impl ResultCache {
             .with_context(|| format!("failed to record the cache sweep marker {}", path.display()))
     }
 
+    /// Refuse a root whose `VERSION` file poly did not write. Every sentinel poly writes is a bare
+    /// format number; anything else means `[cache] dir` or `--cache-dir` names a directory that is
+    /// not (only) a poly cache, and wiping entries and rewriting that file would destroy its owner's
+    /// data. An absent sentinel is a fresh tree.
+    fn ensure_own_sentinel(&self) -> Result<()> {
+        match self.read_on_disk_version() {
+            Some(version) if version.is_empty() || !version.bytes().all(|byte| byte.is_ascii_digit()) => {
+                anyhow::bail!(
+                    "{} holds a VERSION file poly did not write; refusing to clean it as a cache \
+                     (point the cache directory at a directory of its own)",
+                    self.root().join("VERSION").display()
+                )
+            }
+            _ => Ok(()),
+        }
+    }
+
     /// Rewrite the `VERSION` sentinel to [`CACHE_FORMAT_VERSION`].
     fn rewrite_version(&self) -> Result<()> {
         let path = self.root().join("VERSION");
@@ -253,6 +270,7 @@ impl ResultCache {
     /// Returns `Err` if an entry cannot be removed or the sentinel cannot be
     /// rewritten.
     pub fn clean(&self) -> Result<u64> {
+        self.ensure_own_sentinel()?;
         let mut freed = 0u64;
         for namespace in Namespace::ALL {
             for entry in self.collect_entries(namespace)? {

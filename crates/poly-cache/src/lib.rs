@@ -652,11 +652,20 @@ impl ResultCache {
     /// fmt and hook runs share, so a configured directory is the one `poly cache` measures.
     ///
     /// A configured directory is opened as a run opens its default one (self-healing, swept),
-    /// with its stat index kept per checkout of `start`'s repository.
+    /// with its stat index kept per checkout of `start`'s repository. It must be absolute: the config
+    /// loader anchors a relative `[cache] dir` at the `poly.toml` declaring it, and one that reached
+    /// here unanchored would name a different cache in every working directory.
     pub fn open_for_run(configured: Option<&Path>, start: &Path, enabled: bool) -> anyhow::Result<Self> {
         let Some(root) = configured else {
             return Self::open_from(start, enabled);
         };
+        // `has_root`, not `is_absolute`: the loader keeps a drive-relative Windows `\cache` as written.
+        if !root.has_root() {
+            anyhow::bail!(
+                "the cache directory {} is not absolute; a configured `[cache] dir` is resolved against its poly.toml",
+                root.display()
+            );
+        }
         let mut cache = Self::open_healed(root.to_path_buf(), enabled, DirOrigin::UserConfigured)?;
         cache.checkout = Some(Arc::new(checkout::Checkout::new(&repo_anchor(start))));
         Ok(cache)

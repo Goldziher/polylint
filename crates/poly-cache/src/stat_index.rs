@@ -60,7 +60,8 @@
 //! whole file once; writes merge this run's records into the loaded set (or, if
 //! another process replaced the file meanwhile, into what is on disk now) and
 //! replace the file atomically, so concurrent runs lose at most each other's
-//! newest records.
+//! newest records; where both judged the same bytes of a path, the record keeps
+//! both runs' scopes and segments.
 
 use rustc_hash::FxHashMap;
 use std::path::{Path, PathBuf};
@@ -582,7 +583,17 @@ impl StatIndex {
         if fingerprint(file) == self.seen {
             write_records(file, &self.loaded, &self.seed, &pending, &vouched)
         } else {
+            // Another run replaced the file since it was loaded. Its record for a path this run also
+            // judged may carry scopes and segments this run's did not merge (a concurrent `--only`
+            // run), so fold it in rather than letting the last writer drop them.
             let on_disk = read_records(file);
+            let pending = pending
+                .into_iter()
+                .map(|(path, record)| {
+                    let merged = record.merged(on_disk.get(&path));
+                    (path, merged)
+                })
+                .collect();
             write_records(file, &on_disk, &self.seed, &pending, &vouched)
         }
     }

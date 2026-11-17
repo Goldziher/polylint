@@ -1580,3 +1580,64 @@ fn loading_a_config_whose_required_version_is_unmet_fails() {
     std::fs::write(&path, "required_version = \"garbage\"\n").expect("write");
     assert!(PolyConfig::load_file(&path).is_err());
 }
+
+/// A repository root with a `.git` marker and a root `poly.toml` holding `root_config`.
+fn repository_with(root_config: &str) -> tempfile::TempDir {
+    let root = tempdir().unwrap();
+    fs::create_dir(root.path().join(".git")).unwrap();
+    fs::write(root.path().join("poly.toml"), root_config).unwrap();
+    root
+}
+
+#[test]
+fn a_relative_cache_dir_resolves_against_the_declaring_config_not_the_start_dir() {
+    let root = repository_with("[cache]\ndir = \".poly-cache\"\n");
+    let sub = root.path().join("src").join("pkg");
+    fs::create_dir_all(&sub).unwrap();
+    let expected = root.path().join(".poly-cache").to_string_lossy().into_owned();
+
+    for start in [root.path(), sub.as_path()] {
+        let config = PolyConfig::load(start).expect("load");
+        assert_eq!(
+            config.cache.dir.as_deref(),
+            Some(expected.as_str()),
+            "loaded from {}",
+            start.display()
+        );
+    }
+    let config = PolyConfig::load_file(&root.path().join("poly.toml")).expect("load file");
+    assert_eq!(config.cache.dir.as_deref(), Some(expected.as_str()));
+}
+
+#[test]
+fn a_nested_config_cannot_set_the_cache() {
+    let root = repository_with("[cache]\ndir = \"root-cache\"\n");
+    let nested = root.path().join("packages").join("app");
+    fs::create_dir_all(&nested).unwrap();
+    fs::write(
+        nested.join("poly.toml"),
+        "[cache]\ndir = \"nested-cache\"\nenabled = false\n",
+    )
+    .unwrap();
+
+    let config = PolyConfig::load(&nested).expect("load");
+    let expected = root.path().join("root-cache").to_string_lossy().into_owned();
+    assert_eq!(config.cache.dir.as_deref(), Some(expected.as_str()));
+    assert!(config.cache.enabled, "a nested `[cache] enabled` is ignored too");
+}
+
+#[test]
+fn a_workspace_root_config_below_the_repository_root_keeps_its_cache() {
+    let root = repository_with("[cache]\ndir = \"root-cache\"\n");
+    let project = root.path().join("project");
+    fs::create_dir_all(&project).unwrap();
+    fs::write(
+        project.join("poly.toml"),
+        "[workspace]\nroot = true\n[cache]\ndir = \"own-cache\"\n",
+    )
+    .unwrap();
+
+    let config = PolyConfig::load(&project).expect("load");
+    let expected = project.join("own-cache").to_string_lossy().into_owned();
+    assert_eq!(config.cache.dir.as_deref(), Some(expected.as_str()));
+}
