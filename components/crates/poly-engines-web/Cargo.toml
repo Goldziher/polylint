@@ -32,6 +32,7 @@ oxc_linter.workspace = true
 oxc_parser.workspace = true
 oxc_semantic.workspace = true
 oxc_span.workspace = true
+poly-cache.workspace = true
 poly-component-protocol.workspace = true
 poly-config.workspace = true
 poly-engine-api.workspace = true

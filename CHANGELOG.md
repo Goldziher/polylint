@@ -25,6 +25,8 @@ Each item is described in full under the section named in brackets.
 - **C-family files under a `.clang-format` are skipped by the generic formatter**, which counts toward `--deny-skips`. [Changed]
 - **A multi-ref `git push` runs the pre-push hooks over every pushed ref.** [Changed]
 - **`poly config validate` rejects a `poly.toml` that mixes v1 tables with `[engines]`.** [Changed]
+- **A project `skif.toml` with a `type-aware` key fails the `skif` check.** skif 0.9.0 removed type-aware analysis;
+  delete the key. [Changed]
 
 ### Added
 
@@ -122,7 +124,10 @@ Each item is described in full under the section named in brackets.
   adrlint 0.5.2 builds on it, so the component no longer links a second, older oxc through rumdl. (#192)
 - **oxc 0.159.** The oxc git pin moves to `7053128` on oxc `main`: oxc 0.159.0, `oxc_formatter` 0.79 and `oxc_linter`
   1.94, so oxlint's rules and the JS/TS, JSON, CSS, Markdown, TOML and YAML formatters are the ones of that revision.
-- **skif 0.8.0** (was 0.5.0), which changes the `skif` engine's findings:
+- **skif 0.9.0** (was 0.5.0), which changes the `skif` engine's findings:
+  - skif 0.9.0 removes type-aware analysis, which poly never turned on, so findings are those of 0.8.0; a `type-aware`
+    key in a project `skif.toml` (`[js]`, `[js.workspaces."<dir>"]` or an override's `js` table) is now a
+    configuration error.
   - `unused-class-members`, a new rule on by default at warning, reports the methods, fields and accessors of a used
     exported class that no module reads. A read counts by property name. Decorated members and classes, implemented
     interface members, classes an entry file exports and members of a class whose base lies outside the project are
@@ -150,6 +155,12 @@ Each item is described in full under the section named in brackets.
 
 ### Performance
 
+- **skif keeps its module parses in poly's cache** (ADR 0080). An edit anywhere in a JavaScript workspace still re-runs
+  the `skif` project check, but skif now parses only the modules that changed: the rest come from the result cache's new
+  `engine` namespace, which `poly cache stats`, `clean` and `gc` cover and `[cache] dir` and `POLY_CACHE_HOME` move.
+  `--no-cache` and `[cache] enabled = false` give skif no store. In the core build the host passes the cache to the
+  `web` component as two project-check environment pairs (`poly.cache.dir`, `poly.cache.salt`); protocol v3 is
+  unchanged, and a component or host that predates them ignores or omits them.
 - **Cache keys no longer hold a checkout's location, and a narrowed lint run evicts nothing** (ADR 0077). A second worktree,
   the hook snapshot and an absolute invocation reuse the records of the first (project-check roots, oxc config paths,
   ast-grep rule directories, the Go module root, JSON Schema and recipe digests are keyed checkout-relative), and

@@ -93,6 +93,7 @@ Context, Decision, Consequences (positive and negative/risks), and Alternatives 
 | [0076](0076-four-mcp-tools-split-by-annotation.md) | Four MCP Tools, Split by Annotation Class | Accepted |
 | [0077](0077-cache-keys-carry-every-input-relative-to-the-checkout.md) | Cache Keys Carry Every Input, Relative to the Checkout | Accepted |
 | [0078](0078-polylint-tsrs-published-program-layer.md) | The tsrs Program Layer Is the Published Crate `polylint-tsrs` | Accepted |
+| [0080](0080-engines-keep-their-own-cache-in-polys-cache.md) | Engines Keep Their Own Cache in poly's Cache | Accepted |
 
 ## Conventions
 

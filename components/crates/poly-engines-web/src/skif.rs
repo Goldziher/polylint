@@ -20,6 +20,13 @@
 //! installed on one machine and not another, and the log of what it read is how a test proves every read was a
 //! keyed input ([`analyze`]).
 //!
+//! # skif's own cache
+//!
+//! A project check is cached as a whole, so an edit anywhere re-runs skif over the workspace. When the run caches
+//! ([`ProjectRequest::cache`]), skif is also given a store in poly's result cache ([`store`]) and keeps each module's
+//! parse there, so the re-run parses only what changed (ADR 0080). The store never changes a finding; its keys carry
+//! the host's salt, [`VERSION`] and the engine options, and `--no-cache` gives skif no store at all.
+//!
 //! # Activation
 //!
 //! **Off unless `[engines.skif] enabled = true`.** Discovering a JavaScript workspace is not consent to
@@ -37,8 +44,9 @@
 
 mod fs;
 mod map;
+mod store;
 
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 use std::num::NonZeroUsize;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
@@ -50,6 +58,7 @@ use poly_engine_api::engine::{
 };
 use poly_engine_api::language::Language;
 use poly_engine_api::options::OptionsExt;
+use skif::cache::CacheCounters;
 use skif::{ConfigOverrides, Linter, RunOptions};
 
 pub use fs::ReadLog;
@@ -61,7 +70,7 @@ pub const ENGINE_NAME: &str = "skif";
 /// Cache-key identity: the wrapped crate version plus a marker for this backend's own mapping.
 ///
 /// Bump the suffix whenever the diagnostic or fix mapping changes, and the version whenever `skif` is upgraded.
-const VERSION: &str = "skif-0.8.0+poly5";
+const VERSION: &str = "skif-0.9.0+poly5";
 
 /// The directory skif is run on, relative to the project root.
 const DEFAULT_DIR: &str = ".";
@@ -128,6 +137,8 @@ pub struct Analysis {
     /// One info-level finding naming the rules left off by default, on the workspace's root `package.json`,
     /// or `None` when every rule ran.
     pub note: Option<(PathBuf, Diagnostic)>,
+    /// What skif did with the cache store, per namespace (`modules`): empty when the request carried no cache.
+    pub cache: BTreeMap<String, CacheCounters>,
 }
 
 /// skif dependency and monorepo linter. See the module docs.
@@ -238,6 +249,7 @@ pub fn analyze(req: &ProjectRequest<'_>) -> anyhow::Result<Analysis> {
         findings: Vec::new(),
         log: ReadLog::default(),
         note: None,
+        cache: BTreeMap::new(),
     };
     if req.config.options.opt_bool("enabled") != Some(true) {
         return Ok(nothing());
@@ -267,7 +279,14 @@ pub fn analyze(req: &ProjectRequest<'_>) -> anyhow::Result<Analysis> {
     config
         .apply(&ConfigOverrides::default().with_ignore_rules(off.clone()))
         .context("turning off the rules that need installed packages")?;
-    let linter = Linter::with_fs(&config, Arc::new(fs.clone())).context("building the skif linter")?;
+    let mut linter = Linter::with_fs(&config, Arc::new(fs.clone())).context("building the skif linter")?;
+    if let Some(cache) = req.cache
+        && let Some(store) = store::PolyStore::open(cache)
+    {
+        linter = linter
+            .with_cache_salt(&store::salt(cache, &req.config.options))
+            .with_cache_store(Arc::new(store));
+    }
 
     let mut options = RunOptions::default().with_threads(settings.threads);
     if let Some(select) = &settings.select {
@@ -291,6 +310,7 @@ pub fn analyze(req: &ProjectRequest<'_>) -> anyhow::Result<Analysis> {
         findings,
         log: fs.log(),
         note,
+        cache: report.cache.clone(),
     })
 }
 
