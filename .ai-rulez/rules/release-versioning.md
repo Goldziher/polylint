@@ -82,11 +82,12 @@ lock-step surface, not a separately tracked version. So do the wrapper packages:
   supports token-less publishing and provenance. npm can only configure a trusted publisher for
   a package that *already exists*, so every new package needs one manual publish first (under a
   non-`latest` dist-tag).
-- **A publish job must never fail the release.** `publish_npm`, `publish_pypi` and
-  `publish_scoop` are `continue-on-error: true`, run after `finalize_release`, and have nothing
-  depending on them — a not-yet-configured registry shows as a red job on a green run and
-  cannot put the GitHub release back into draft. `publish_homebrew` is the deliberate exception
-  and still fails hard when the tap cannot be updated.
+- **A publish job must never re-draft the release.** `publish_npm`, `publish_pypi`,
+  `publish_scoop` and `publish_homebrew` run after `finalize_release` and have nothing depending
+  on them, so a failure cannot put the GitHub release back into draft. Only `publish_scoop` is
+  `continue-on-error: true` (a red job on a green run); a failed `publish_npm`, `publish_pypi` or
+  `publish_homebrew` fails the workflow run, deliberately, so a channel that did not update is
+  visible in the run that caused it.
 - **Scoop mirrors the Homebrew shape.** `xberg-io/actions/publish-scoop-manifests` renders
   `bucket/polylint.json` and an identical `bucket/poly.json` (so `scoop install poly` keeps working)
   from `packaging/polylint.json.tmpl` into `polylint/scoop-bucket`, through the same GitHub App.

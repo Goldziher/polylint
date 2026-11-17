@@ -13,7 +13,7 @@ x-ai-rulez:
 poly is a Cargo **workspace** that ships a single self-contained binary, `poly`, driven by one
 config. Its subcommands cover the whole surface: `poly lint`, `poly fmt`, `poly hooks`, `poly
 commit`, `poly rules`, `poly cache`, `poly config`, `poly lock`, `poly components`, `poly
-migrate`, `poly mcp`, and `poly doctor`. Everything runs **in-process, pure Rust** — no subprocess, no system dependency by
+migrate`, `poly trust`, `poly adr`, `poly mcp`, and `poly doctor`. Everything runs **in-process, pure Rust** — no subprocess, no system dependency by
 default (three scoped exceptions: **native-toolchain backends**, the opt-in **catalog-tool**
 tier, and the `poly hooks` engine — see Coverage tiers below).
 
@@ -35,7 +35,7 @@ an installer (see release-versioning).
 
 ## Workspace root
 
-- `Cargo.toml` — `[workspace]` (resolver 3, edition 2024, `rust-version = "1.100"`). Thirty-eight
+- `Cargo.toml` — `[workspace]` (resolver 3, edition 2024, `rust-version = "1.100"`). Forty-two
   members (plus five excluded workspaces: `components/`, `components-pyrefly/`, `components-r/`,
   `components-secrets/`, `components-tsrs/`): `poly-core` (the engine library), `poly-cli` (builds the `poly` binary),
   `poly-config`, `poly-cache`, `poly-catalog`, `poly-hooks`, `poly-workspace`, `poly-mcp`,
@@ -44,7 +44,7 @@ an installer (see release-versioning).
   and two that do **not** carry the prefix — `dockerfile-parser` (the vendored Dockerfile parser behind the
   `dockerfile` engine) and `conformance` (a dev-only differential formatter-conformance harness
   the shipped binary never depends on). Engine families are split out as `poly-engines-<family>`
-  crates (`sql`, `nix`, `php`, `python`, `typos`, `astgrep`, `uncomment`, `jsonschema`, `misc` — the last holds
+  crates (`sql`, `nix`, `php`, `python`, `lua`, `prose`, `typos`, `astgrep`, `uncomment`, `jsonschema`, `misc` — the last holds
   dockerfile, dotenv, hcl and graphql; `poly-engines-sql-component` is the sql component build),
   and
   `poly-engines` is their feature-gated facade plus `producer/`, which adapts engines to the

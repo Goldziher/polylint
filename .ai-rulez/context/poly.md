@@ -20,16 +20,15 @@ used when found on `PATH` (`rustfmt`, `gofmt`, `shfmt` and `shellcheck` are defa
 `zig fmt`, `google-java-format`, `ktfmt`, `swift-format`, `dartfmt`, `styler`, `gleamfmt` are
 opt-in). Opt-in catalog tools run in the per-file tier; thirty-three (`golangci-lint`, `helm`,
 `buf`, …) carry recipes: batched runs, parsed reports, pinned downloads. Whole-project tools (`cargo clippy` / `cargo-sort` / `cargo-machete` /
-`cargo-deny` and `workspace = true` hook jobs) run in the whole-project phase, not the per-file
-tier.
+`cargo-deny` and `workspace = true` hook jobs) run in the whole-project phase.
 
 ## Commands
 
 - Lint: `poly lint .`
-- Lint, per-file tier only (skip whole-project tools): `poly lint --workspace never .`
-- Check formatting (dry-run, the default): `poly fmt .`
-- Apply formatting only (no linting): `poly fmt --fix .`
-- Apply lint autofixes (and whole-project autofixes): `poly lint --fix .`
+- Lint, per-file tier only: `poly lint --workspace never .`
+- Check formatting (dry run): `poly fmt .`
+- Apply formatting: `poly fmt --fix .`
+- Apply lint and whole-project autofixes: `poly lint --fix .`
 
 Global flags: `--config <PATH>`, `--color auto|always|never`, `--offline` (`POLY_OFFLINE=1`),
 `-q`, `-v`, `--debug`.
@@ -47,7 +46,8 @@ adds `--exit-nonzero-on-fix` (a successful `--fix` exits 0 by default). The v1 f
 The other subcommands: `poly hooks` (native git-hook runner over `[hooks]`), `poly commit`
 (commit-message lint, gitfluff), `poly rules test|list` (custom + built-in ast-grep rule packs),
 `poly lock [--upgrade] [--check]`, `poly config show|schema|validate`, `poly cache`, `poly components`, `poly migrate` (absorbs ruff / taplo /
-markdownlint / typos configs and lefthook / pre-commit hook configs), `poly mcp`, `poly doctor`.
+markdownlint / typos configs and lefthook / pre-commit hook configs), `poly trust` (allows a repository's
+exec-capable keys, ADR 0059; `POLY_TRUST=1` in CI), `poly adr lock|unlock|new`, `poly mcp`, `poly doctor`.
 
 ## Machine-readable output
 
