@@ -256,12 +256,11 @@
                   "minimum": 0
                 },
                 "targets": {
-                  "description": "The files whose findings the host reports, spelled as in `files`; `None` is every file (see\n`ProjectRequest::targets`). The last field, so a request one element shorter, from a host that\npredates it, decodes as `None`.",
+                  "description": "The files whose findings the host reports, spelled as in `files`; `None` is every file (see\n`ProjectRequest::targets`). The last field, so a request one element shorter, from a host that\npredates it, decodes as `None`; and left out when `None`, so a component that predates it, which\nrejects a longer request, still decodes a check of every file.",
                   "type": ["array", "null"],
                   "items": {
                     "type": "string"
-                  },
-                  "default": null
+                  }
                 }
               },
               "required": ["engine", "root", "files", "config", "environment"]

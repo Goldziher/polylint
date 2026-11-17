@@ -453,8 +453,9 @@ pub enum Request {
         threads: Option<u32>,
         /// The files whose findings the host reports, spelled as in `files`; `None` is every file (see
         /// `ProjectRequest::targets`). The last field, so a request one element shorter, from a host that
-        /// predates it, decodes as `None`.
-        #[serde(default)]
+        /// predates it, decodes as `None`; and left out when `None`, so a component that predates it, which
+        /// rejects a longer request, still decodes a check of every file.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
         targets: Option<Vec<String>>,
     },
     /// `Engine::lint_cache_salt` for one file (content in `body`).
