@@ -5,11 +5,15 @@
       "name": "web",
       "kind": "engines",
       "opt_in": false,
-      "features": ["engine-web"],
+      "features": [
+        "engine-web"
+      ],
       "engines": [
         {
           "name": "adrlint",
-          "languages": ["markdown"],
+          "languages": [
+            "markdown"
+          ],
           "capabilities": {
             "lint": true,
             "format": false,
@@ -114,7 +118,11 @@
         },
         {
           "name": "malva",
-          "languages": ["css", "scss", "less"],
+          "languages": [
+            "css",
+            "scss",
+            "less"
+          ],
           "capabilities": {
             "lint": false,
             "format": true,
@@ -185,14 +193,24 @@
         },
         {
           "name": "markup_fmt",
-          "languages": ["html", "vue", "svelte", "astro", "angular", "jinja", "vento", "mustache", "xml"],
+          "languages": [
+            "html",
+            "vue",
+            "svelte",
+            "astro",
+            "angular",
+            "jinja",
+            "vento",
+            "mustache",
+            "xml"
+          ],
           "capabilities": {
             "lint": false,
             "format": true,
             "fix": false,
             "project": false
           },
-          "version": "0.27.6+opts-2+tmpltarget-2+embedded-oxc-3+rev:74e5e66+syntax-skip-2+script-fmt-2",
+          "version": "0.27.6+opts-2+tmpltarget-2+embedded-oxc-3+rev:74e5e66+syntax-skip-2+script-fmt-2+tmpl-guard-1",
           "option_keys": [
             {
               "table": "Lint",
@@ -304,7 +322,14 @@
         },
         {
           "name": "oxc",
-          "languages": ["javascript", "typescript", "jsx", "tsx", "json", "jsonc"],
+          "languages": [
+            "javascript",
+            "typescript",
+            "jsx",
+            "tsx",
+            "json",
+            "jsonc"
+          ],
           "capabilities": {
             "lint": true,
             "format": true,
@@ -452,14 +477,17 @@
         },
         {
           "name": "rumdl",
-          "languages": ["markdown", "mdx"],
+          "languages": [
+            "markdown",
+            "mdx"
+          ],
           "capabilities": {
             "lint": true,
             "format": true,
             "fix": true,
             "project": true
           },
-          "version": "0.3.5+polylint-rumdl-oxc158+defaults5-mdx-rules-tmplskip-codeaware-md020guard-md038fmt-structfix+ruleparams1+extendsel2+oxc_formatter_markdown-74e5e66+md-embed-1+oxfmtrc-scope-1+links1+fmt-err-2",
+          "version": "0.3.5+polylint-rumdl-oxc158+defaults5-mdx-rules-tmplskip-codeaware-md020guard-md038fmt-structfix+ruleparams1+extendsel2+oxc_formatter_markdown-74e5e66+md-embed-1+oxfmtrc-scope-1+links1+fmt-err-2+fn-empty-guard-1",
           "option_keys": [
             {
               "table": "Lint",
@@ -715,14 +743,19 @@
               "recursive_key": null,
               "recursive_default": true,
               "whole_tree": true,
-              "file_names": [".gitignore", ".ignore"],
+              "file_names": [
+                ".gitignore",
+                ".ignore"
+              ],
               "list_unserved": false
             }
           }
         },
         {
           "name": "taplo",
-          "languages": ["toml"],
+          "languages": [
+            "toml"
+          ],
           "capabilities": {
             "lint": true,
             "format": true,
@@ -845,7 +878,9 @@
         },
         {
           "name": "yaml",
-          "languages": ["yaml"],
+          "languages": [
+            "yaml"
+          ],
           "capabilities": {
             "lint": true,
             "format": true,
@@ -929,11 +964,15 @@
       "name": "python",
       "kind": "engines",
       "opt_in": false,
-      "features": ["engine-python"],
+      "features": [
+        "engine-python"
+      ],
       "engines": [
         {
           "name": "python-types",
-          "languages": ["python"],
+          "languages": [
+            "python"
+          ],
           "capabilities": {
             "lint": false,
             "format": false,
@@ -1006,7 +1045,9 @@
         },
         {
           "name": "ruff",
-          "languages": ["python"],
+          "languages": [
+            "python"
+          ],
           "capabilities": {
             "lint": true,
             "format": true,
@@ -1604,11 +1645,15 @@
       "kind": "engines",
       "opt_in": true,
       "download_only": true,
-      "features": ["engine-pyrefly"],
+      "features": [
+        "engine-pyrefly"
+      ],
       "engines": [
         {
           "name": "pyrefly",
-          "languages": ["python"],
+          "languages": [
+            "python"
+          ],
           "capabilities": {
             "lint": false,
             "format": false,
@@ -1687,7 +1732,9 @@
       "kind": "engines",
       "opt_in": true,
       "download_only": true,
-      "features": ["engine-secrets"],
+      "features": [
+        "engine-secrets"
+      ],
       "engines": [
         {
           "name": "secrets",
@@ -1757,11 +1804,20 @@
       "kind": "engines",
       "opt_in": true,
       "download_only": true,
-      "features": ["engine-tsrs"],
+      "features": [
+        "engine-tsrs"
+      ],
       "engines": [
         {
           "name": "tsrs",
-          "languages": ["typescript", "tsx", "javascript", "jsx", "json", "jsonc"],
+          "languages": [
+            "typescript",
+            "tsx",
+            "javascript",
+            "jsx",
+            "json",
+            "jsonc"
+          ],
           "capabilities": {
             "lint": false,
             "format": false,
@@ -1842,7 +1898,11 @@
               "recursive_key": null,
               "recursive_default": true,
               "whole_tree": true,
-              "file_names": ["tsconfig.json", "jsconfig.json", "package.json"],
+              "file_names": [
+                "tsconfig.json",
+                "jsconfig.json",
+                "package.json"
+              ],
               "list_unserved": false
             }
           }
@@ -1854,11 +1914,15 @@
       "name": "sql",
       "kind": "engines",
       "opt_in": false,
-      "features": ["engine-sql"],
+      "features": [
+        "engine-sql"
+      ],
       "engines": [
         {
           "name": "sqruff",
-          "languages": ["sql"],
+          "languages": [
+            "sql"
+          ],
           "capabilities": {
             "lint": true,
             "format": true,
@@ -1939,11 +2003,15 @@
       "name": "php",
       "kind": "engines",
       "opt_in": false,
-      "features": ["engine-php"],
+      "features": [
+        "engine-php"
+      ],
       "engines": [
         {
           "name": "mago",
-          "languages": ["php"],
+          "languages": [
+            "php"
+          ],
           "capabilities": {
             "lint": true,
             "format": true,
@@ -2012,11 +2080,16 @@
       "name": "biome",
       "kind": "engines",
       "opt_in": false,
-      "features": ["engine-biome"],
+      "features": [
+        "engine-biome"
+      ],
       "engines": [
         {
           "name": "biome",
-          "languages": ["css", "scss"],
+          "languages": [
+            "css",
+            "scss"
+          ],
           "capabilities": {
             "lint": true,
             "format": false,
@@ -2066,7 +2139,9 @@
         },
         {
           "name": "biome",
-          "languages": ["graphql"],
+          "languages": [
+            "graphql"
+          ],
           "capabilities": {
             "lint": true,
             "format": false,
@@ -2121,11 +2196,15 @@
       "name": "ruby",
       "kind": "engines",
       "opt_in": false,
-      "features": ["engine-ruby"],
+      "features": [
+        "engine-ruby"
+      ],
       "engines": [
         {
           "name": "rubyfmt",
-          "languages": ["ruby"],
+          "languages": [
+            "ruby"
+          ],
           "capabilities": {
             "lint": false,
             "format": true,
@@ -2181,11 +2260,15 @@
       "kind": "engines",
       "opt_in": false,
       "download_only": true,
-      "features": ["engine-r"],
+      "features": [
+        "engine-r"
+      ],
       "engines": [
         {
           "name": "air",
-          "languages": ["r"],
+          "languages": [
+            "r"
+          ],
           "capabilities": {
             "lint": false,
             "format": true,
@@ -2272,7 +2355,9 @@
         },
         {
           "name": "jarl",
-          "languages": ["r"],
+          "languages": [
+            "r"
+          ],
           "capabilities": {
             "lint": true,
             "format": false,
@@ -2336,11 +2421,15 @@
       "name": "nix",
       "kind": "engines",
       "opt_in": false,
-      "features": ["engine-nix"],
+      "features": [
+        "engine-nix"
+      ],
       "engines": [
         {
           "name": "alejandra",
-          "languages": ["nix"],
+          "languages": [
+            "nix"
+          ],
           "capabilities": {
             "lint": false,
             "format": true,
@@ -2395,7 +2484,9 @@
       "name": "typos",
       "kind": "engines",
       "opt_in": true,
-      "features": ["engine-typos"],
+      "features": [
+        "engine-typos"
+      ],
       "engines": [
         {
           "name": "typos",
@@ -2512,7 +2603,9 @@
       "name": "astgrep",
       "kind": "engines",
       "opt_in": false,
-      "features": ["engine-astgrep"],
+      "features": [
+        "engine-astgrep"
+      ],
       "engines": [
         {
           "name": "astgrep",
@@ -2584,7 +2677,9 @@
       "name": "uncomment",
       "kind": "engines",
       "opt_in": true,
-      "features": ["engine-uncomment"],
+      "features": [
+        "engine-uncomment"
+      ],
       "engines": [
         {
           "name": "uncomment",
@@ -2701,11 +2796,18 @@
       "name": "jsonschema",
       "kind": "engines",
       "opt_in": true,
-      "features": ["engine-jsonschema"],
+      "features": [
+        "engine-jsonschema"
+      ],
       "engines": [
         {
           "name": "jsonschema",
-          "languages": ["json", "jsonc", "yaml", "toml"],
+          "languages": [
+            "json",
+            "jsonc",
+            "yaml",
+            "toml"
+          ],
           "capabilities": {
             "lint": true,
             "format": false,
@@ -2769,7 +2871,9 @@
       "name": "prose",
       "kind": "engines",
       "opt_in": true,
-      "features": ["engine-prose"],
+      "features": [
+        "engine-prose"
+      ],
       "engines": [
         {
           "name": "harper",
@@ -2854,11 +2958,15 @@
       "name": "lua",
       "kind": "engines",
       "opt_in": false,
-      "features": ["engine-lua"],
+      "features": [
+        "engine-lua"
+      ],
       "engines": [
         {
           "name": "selene",
-          "languages": ["lua"],
+          "languages": [
+            "lua"
+          ],
           "capabilities": {
             "lint": true,
             "format": false,
@@ -2925,7 +3033,9 @@
         },
         {
           "name": "stylua",
-          "languages": ["lua"],
+          "languages": [
+            "lua"
+          ],
           "capabilities": {
             "lint": false,
             "format": true,
@@ -2992,7 +3102,9 @@
       "engines": [
         {
           "name": "dockerfile",
-          "languages": ["dockerfile"],
+          "languages": [
+            "dockerfile"
+          ],
           "capabilities": {
             "lint": true,
             "format": false,
@@ -3042,7 +3154,9 @@
         },
         {
           "name": "dotenv",
-          "languages": ["dotenv"],
+          "languages": [
+            "dotenv"
+          ],
           "capabilities": {
             "lint": true,
             "format": false,
@@ -3092,7 +3206,9 @@
         },
         {
           "name": "graphql",
-          "languages": ["graphql"],
+          "languages": [
+            "graphql"
+          ],
           "capabilities": {
             "lint": true,
             "format": true,
@@ -3142,7 +3258,9 @@
         },
         {
           "name": "hcl",
-          "languages": ["hcl"],
+          "languages": [
+            "hcl"
+          ],
           "capabilities": {
             "lint": true,
             "format": true,
@@ -3192,7 +3310,9 @@
         },
         {
           "name": "ini",
-          "languages": ["ini"],
+          "languages": [
+            "ini"
+          ],
           "capabilities": {
             "lint": true,
             "format": false,
@@ -3242,7 +3362,9 @@
         },
         {
           "name": "tex-fmt",
-          "languages": ["latex"],
+          "languages": [
+            "latex"
+          ],
           "capabilities": {
             "lint": false,
             "format": true,
@@ -3292,7 +3414,9 @@
         },
         {
           "name": "typstyle",
-          "languages": ["typst"],
+          "languages": [
+            "typst"
+          ],
           "capabilities": {
             "lint": false,
             "format": true,
@@ -3347,11 +3471,15 @@
       "name": "sh",
       "kind": "sidecar",
       "opt_in": false,
-      "features": ["engine-shfmt"],
+      "features": [
+        "engine-shfmt"
+      ],
       "engines": [
         {
           "name": "shfmt",
-          "languages": ["shell"],
+          "languages": [
+            "shell"
+          ],
           "capabilities": {
             "lint": false,
             "format": true,
@@ -3420,11 +3548,15 @@
       "name": "go",
       "kind": "sidecar",
       "opt_in": false,
-      "features": ["engine-gofmt"],
+      "features": [
+        "engine-gofmt"
+      ],
       "engines": [
         {
           "name": "gofmt",
-          "languages": ["go"],
+          "languages": [
+            "go"
+          ],
           "capabilities": {
             "lint": false,
             "format": true,
@@ -3519,31 +3651,97 @@
     }
   ],
   "presets": {
-    "all": ["web", "python", "sql", "php", "biome", "ruby", "r", "nix", "astgrep", "lua", "misc", "sh", "go"],
-    "css": ["web", "biome"],
-    "dockerfile": ["misc"],
-    "dotenv": ["misc"],
-    "go": ["go"],
-    "graphql": ["biome", "misc"],
-    "hcl": ["misc"],
-    "html": ["web"],
-    "js": ["web"],
-    "js-deps": ["web"],
-    "json": ["web"],
-    "latex": ["misc"],
-    "lua": ["lua"],
-    "markdown": ["web"],
-    "nix": ["nix"],
-    "php": ["php"],
-    "python": ["python"],
-    "r": ["r"],
-    "ruby": ["ruby"],
-    "shell": ["sh"],
-    "skif": ["web"],
-    "sql": ["sql"],
-    "toml": ["web"],
-    "ts": ["web"],
-    "typst": ["misc"],
-    "yaml": ["web"]
+    "all": [
+      "web",
+      "python",
+      "sql",
+      "php",
+      "biome",
+      "ruby",
+      "r",
+      "nix",
+      "astgrep",
+      "lua",
+      "misc",
+      "sh",
+      "go"
+    ],
+    "css": [
+      "web",
+      "biome"
+    ],
+    "dockerfile": [
+      "misc"
+    ],
+    "dotenv": [
+      "misc"
+    ],
+    "go": [
+      "go"
+    ],
+    "graphql": [
+      "biome",
+      "misc"
+    ],
+    "hcl": [
+      "misc"
+    ],
+    "html": [
+      "web"
+    ],
+    "js": [
+      "web"
+    ],
+    "js-deps": [
+      "web"
+    ],
+    "json": [
+      "web"
+    ],
+    "latex": [
+      "misc"
+    ],
+    "lua": [
+      "lua"
+    ],
+    "markdown": [
+      "web"
+    ],
+    "nix": [
+      "nix"
+    ],
+    "php": [
+      "php"
+    ],
+    "python": [
+      "python"
+    ],
+    "r": [
+      "r"
+    ],
+    "ruby": [
+      "ruby"
+    ],
+    "shell": [
+      "sh"
+    ],
+    "skif": [
+      "web"
+    ],
+    "sql": [
+      "sql"
+    ],
+    "toml": [
+      "web"
+    ],
+    "ts": [
+      "web"
+    ],
+    "typst": [
+      "misc"
+    ],
+    "yaml": [
+      "web"
+    ]
   }
 }
