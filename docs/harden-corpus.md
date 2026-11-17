@@ -150,6 +150,29 @@ mise run harden --tier extended
 mise run harden django ripgrep       # named roots only
 ```
 
+### Components
+
+The harness drives `poly_core` in-process from a root-workspace test build. That
+build links every engine family except the ones kept in the separate
+`components/` and `components-r/` workspaces — `web` (JS/TS, JSON, CSS, HTML,
+Markdown, TOML, YAML), `biome`, `ruby` and `r` — which a release serves as
+downloadable components. A dev build embeds no component lock, so without one
+every file those families serve errors with `this build embeds no component
+lock` and the run measures almost nothing.
+
+`mise run harden` therefore first runs `mise run components:dev web biome ruby r`
+and builds the harness with `--features dev-lock` against the
+`target/components/components.lock.json` it writes, the same arrangement as the
+`component parity` CI job. The opt-in components (`pyrefly`, `tsrs`, `secrets`)
+are left out: the measurement config does not enable them.
+
+| Variable | Effect |
+| --- | --- |
+| `POLY_HARDEN_COMPONENTS` | the components to build (space-separated; default `web biome ruby r`) |
+| `POLY_COMPONENT_DEV_LOCK` | reuse an existing dev lock and skip the component build |
+| `POLY_HARDEN_NO_BUILD` | skip both builds; the lock at `target/components/` must already exist |
+| `POLY_HARDEN_NO_COMPONENTS` | no lock and no `dev-lock`: faster, but every component-served file errors, so the run fails |
+
 One process per root, so a panic in one repository cannot take the rest of the
 run with it. Each root appends an NDJSON record to
 `/tmp/poly-harden/results.ndjson` **before** its assertions run, so a failing
@@ -207,7 +230,10 @@ that matches nothing anywhere fails the release-gate pass) and `tier` (`core` or
 
 It builds the **bundled** binary (`components/` crate `poly-bundled`, the same
 build as the `dogfood` job and the musl release, with every engine linked
-in-process), then runs, in order: corpus B, corpus C, and the release-gate pass
+in-process) and the component dev lock (`mise run components:dev web biome ruby
+r`, exported as `POLY_COMPONENT_DEV_LOCK` so the corpus steps reuse it; the build
+tree is deleted afterwards, only the packaged archives are read), then runs, in
+order: corpus B, corpus C, and the release-gate pass
 (`harden:repos`) over the B and C clones plus shallow clones of the public
 polylint org repositories (`adrlint`, `skif`, `uncomment`, `rumdl`).
 
