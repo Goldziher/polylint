@@ -15,6 +15,7 @@
 
 use poly_engine_api::{
     config::{EngineConfig, GlobalDefaults},
+    declined::Declined,
     engine::{Engine, FormatOutput, SourceFile},
     language::Language,
 };
@@ -168,6 +169,75 @@ fn markup_fmt_astro_invalid_embedded_javascript_is_left_unchanged() {
         .expect("invalid embedded JavaScript should not fail the repository format run");
 
     assert!(matches!(output, FormatOutput::Unchanged));
+}
+
+/// g-plane/markup_fmt#280: a regex holding a backtick inverts markup_fmt's template-literal tracker,
+/// so it re-indents the content of the later template literal on every pass. The file is declined
+/// and left as written rather than rewritten into a different runtime string.
+const REGEX_BEFORE_MULTI_LINE_TEMPLATE: &str = "\
+<html>
+  <body>
+    <script type=\"module\">
+      const re = /`([^`]+)`/g;
+      function f() {
+        return `
+  x
+`;
+      }
+    </script>
+  </body>
+</html>
+";
+
+#[test]
+fn markup_fmt_declines_a_script_whose_template_literal_it_would_rewrite() {
+    let error = MarkupFmtEngine
+        .format(
+            &make_src("regex.html", Language::Html, REGEX_BEFORE_MULTI_LINE_TEMPLATE),
+            &engine_cfg(),
+        )
+        .expect_err("the file must be declined, not rewritten");
+    let reason = Declined::reason(&error).unwrap_or_else(|| panic!("expected a decline, got: {error:#}"));
+    assert!(
+        reason.contains("https://github.com/g-plane/markup_fmt/issues/280"),
+        "the reason must name the upstream bug: {reason}"
+    );
+}
+
+const MULTI_LINE_TEMPLATE: &str = "\
+<script type=\"module\">
+    const   b = `
+  x
+    y
+`;
+</script>
+";
+
+#[test]
+fn markup_fmt_keeps_multi_line_template_content_and_settles() {
+    let once = format_to_string("template.html", Language::Html, MULTI_LINE_TEMPLATE);
+    assert!(once.contains("const b = `\n  x\n    y\n`;"), "{once}");
+    let twice = MarkupFmtEngine
+        .format(&make_src("template.html", Language::Html, &once), &engine_cfg())
+        .unwrap();
+    assert!(
+        matches!(twice, FormatOutput::Unchanged),
+        "formatting must reach a fixed point"
+    );
+}
+
+const REGEX_WITH_BACKTICK: &str = "\
+<script>
+const   re = /`([^`]+)`/g;
+const   a = `x`
+</script>
+";
+
+#[test]
+fn markup_fmt_formats_a_regex_with_a_backtick_and_no_multi_line_template() {
+    let out = format_to_string("regex.html", Language::Html, REGEX_WITH_BACKTICK);
+    assert!(out.contains("const re = /`([^`]+)`/g;"), "{out}");
+    assert!(out.contains("const a = `x`;"), "{out}");
 }
 
 const KNOWN_UNFORMATTED_ANGULAR: &str = "\

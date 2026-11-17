@@ -62,7 +62,7 @@ fn source_type_for(lang: &Language) -> SourceType {
     }
 }
 
-fn source_type_for_extension(extension: &str) -> SourceType {
+pub(crate) fn source_type_for_extension(extension: &str) -> SourceType {
     match extension {
         "ts" => SourceType::ts(),
         "tsx" => SourceType::tsx(),

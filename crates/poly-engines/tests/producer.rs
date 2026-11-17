@@ -9,6 +9,7 @@ use poly_component_protocol::{
 };
 use poly_engine_api::component_wire::wire_diagnostic;
 use poly_engine_api::config::EngineConfig;
+use poly_engine_api::declined::Declined;
 use poly_engine_api::engine::{
     BatchSupport, Batching, Capabilities, CatalogTakeover, Diagnostic, Engine, FormatOutput, OptionKeys, OptionTable,
     OptionType, Severity, SourceFile, Span,
@@ -86,6 +87,7 @@ impl Engine for Fake {
             "fake-panic" => panic!("boom"),
             "fake-error" => anyhow::bail!("cannot format"),
             _ if src.content.as_ref() == "FORMATTED" => Ok(FormatOutput::Unchanged),
+            _ if src.content.as_ref() == "LATE" => Err(anyhow::Error::new(Declined("late".into()))),
             _ => Ok(FormatOutput::Formatted(src.content.to_uppercase())),
         }
     }
@@ -293,6 +295,11 @@ fn format_returns_formatted_and_unchanged() {
     assert_eq!(
         format(b""),
         Ok(Payload::Formatted(WireFormatOutput::Declined("empty".into())))
+    );
+    // A decline `format` itself returns is sent as a decline, not as a failure.
+    assert_eq!(
+        format(b"LATE"),
+        Ok(Payload::Formatted(WireFormatOutput::Declined("late".into())))
     );
 }
 

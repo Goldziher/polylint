@@ -13,6 +13,11 @@
 //! expression is not a program, so [`is_script_block`] recognises a script block by its position in
 //! the source and only those are formatted.
 //!
+//! markup_fmt re-indents a returned script body with a line-based quote tracker that a regex holding
+//! a quote or backtick confuses, which rewrites the content of a later multi-line template literal
+//! on every pass. A file whose output would change such a literal is declined instead
+//! ([`template_guard`]; <https://github.com/g-plane/markup_fmt/issues/280>).
+//!
 //! ## Angular detection
 //! Angular templates share the `.html` extension with plain HTML. poly
 //! follows markup_fmt's own `detect_language` heuristic: a file whose stem
@@ -45,12 +50,15 @@
 
 use markup_fmt::Language as MarkupLanguage;
 use markup_fmt::config::FormatOptions;
-use markup_fmt::format_text;
+use markup_fmt::{Hints, format_text};
 use std::borrow::Cow;
 
 use poly_engine_api::config::EngineConfig;
+use poly_engine_api::declined::Declined;
 use poly_engine_api::engine::{Capabilities, Engine, FormatOutput, OptionKeys, OptionTable, SourceFile};
 use poly_engine_api::language::Language;
+
+mod template_guard;
 
 /// markup_fmt HTML / Vue / Svelte / Astro / Angular / Jinja / Vento /
 /// Mustache / XML formatter backend.
@@ -60,7 +68,7 @@ pub struct MarkupFmtEngine;
 /// any stale cached output.
 /// Bumped suffix to +opts-1 after exposing full LanguageOptions (options were
 /// previously ignored — existing caches must be invalidated).
-const VERSION: &str = "0.27.6+opts-2+tmpltarget-2+embedded-oxc-3+rev:74e5e66+syntax-skip-2+script-fmt-2";
+const VERSION: &str = "0.27.6+opts-2+tmpltarget-2+embedded-oxc-3+rev:74e5e66+syntax-skip-2+script-fmt-2+tmpl-guard-1";
 
 /// Reason reported when a general-purpose template does not render markup.
 const NON_MARKUP_TEMPLATE_SKIP: &str = "template does not render markup";
@@ -149,51 +157,36 @@ impl Engine for MarkupFmtEngine {
 
         // Most files have no embedded block, so the clone is paid on the first one only.
         let mut scratch: Option<EngineConfig> = None;
+        let mut templates = template_guard::ScriptTemplates::default();
         let formatted = format_text(&src.content, language, &options, |code, hints| {
             let embedded_scratch = scratch.get_or_insert_with(|| cfg.clone());
             embedded_scratch.globals.line_length = hints.print_width;
             let embedded_scratch = &*embedded_scratch;
-            if src.language == Language::Astro && matches!(hints.ext, "js" | "jsx" | "ts" | "tsx") {
-                return super::oxc::with_arena(|allocator| {
-                    super::oxc::format_embedded_js(allocator, code, hints.ext, embedded_scratch)
-                })
-                .map(Cow::Owned)
-                .map_err(anyhow::Error::new);
+            if let Some(ext) = script_ext(&src.language, &src.content, code, &hints) {
+                let formatted = super::oxc::with_arena(|allocator| {
+                    super::oxc::format_embedded_js(allocator, code, ext, embedded_scratch)
+                });
+                // Astro reports a script that does not parse; elsewhere it is left as written.
+                let body = match formatted {
+                    Ok(formatted) => Cow::Owned(formatted),
+                    Err(error) if src.language == Language::Astro => return Err(anyhow::Error::new(error)),
+                    Err(_) => Cow::Borrowed(code),
+                };
+                templates.record(&body, ext);
+                return Ok(body);
             }
-            // `<style>` blocks and `<script>` blocks. Vue and Svelte route template expressions
-            // through the same callback with a `ts` extension, and an expression is not a program
-            // (`{ a: 1 }` parses as a block), so only recognised script blocks are formatted there.
-            // Anything that does not parse is left as written.
-            if hints.attr || !matches!(src.language, Language::Html | Language::Vue | Language::Svelte) {
+            if hints.attr
+                || !matches!(src.language, Language::Html | Language::Vue | Language::Svelte)
+                || !matches!(hints.ext, "css" | "scss" | "less")
+            {
                 return Ok(Cow::Borrowed(code));
             }
-            let script_ext = match src.language {
-                Language::Html => match hints.ext {
-                    "mjs" | "cjs" => "js",
-                    "mts" | "cts" => "ts",
-                    ext => ext,
-                },
-                _ if is_script_block(&src.content, code) => match hints.ext {
-                    "ts" | "mts" => "ts",
-                    "tsx" => "tsx",
-                    "jsx" => "jsx",
-                    "js" | "mjs" => "js",
-                    _ => "",
-                },
-                _ => "",
-            };
-            let formatted = super::oxc::with_arena(|allocator| match hints.ext {
-                "css" | "scss" | "less" => {
-                    let options = super::malva::oxc_css_options(embedded_scratch, css_variant(hints.ext));
-                    oxc_formatter_css::format(allocator, code, options)
-                        .ok()
-                        .and_then(|formatted| formatted.print().ok())
-                        .map(|printed| printed.into_code())
-                }
-                _ if !script_ext.is_empty() && (src.language != Language::Html || is_js_ext(script_ext)) => {
-                    super::oxc::format_embedded_js(allocator, code, script_ext, embedded_scratch).ok()
-                }
-                _ => None,
+            let formatted = super::oxc::with_arena(|allocator| {
+                let options = super::malva::oxc_css_options(embedded_scratch, css_variant(hints.ext));
+                oxc_formatter_css::format(allocator, code, options)
+                    .ok()
+                    .and_then(|formatted| formatted.print().ok())
+                    .map(|printed| printed.into_code())
             });
             Ok(formatted.map_or(Cow::Borrowed(code), Cow::Owned))
         });
@@ -209,10 +202,12 @@ impl Engine for MarkupFmtEngine {
         };
 
         if formatted == *src.content {
-            Ok(FormatOutput::Unchanged)
-        } else {
-            Ok(FormatOutput::Formatted(formatted))
+            return Ok(FormatOutput::Unchanged);
         }
+        if !template_guard::preserved(&templates, &formatted, language, &options, &src.language) {
+            return Err(anyhow::Error::new(Declined(template_guard::REASON.to_owned())));
+        }
+        Ok(FormatOutput::Formatted(formatted))
     }
 }
 
@@ -224,8 +219,43 @@ fn css_variant(ext: &str) -> oxc_formatter_css::CssVariant {
     }
 }
 
-fn is_js_ext(ext: &str) -> bool {
-    matches!(ext, "js" | "jsx" | "ts" | "tsx")
+/// The extension `oxc_formatter` parses an embedded fragment as, or `None` when poly does not format
+/// the fragment as a script.
+///
+/// Astro hands its frontmatter, scripts and expressions over under their own extensions. Vue and
+/// Svelte route template expressions through the same callback with a `ts` extension, and an
+/// expression is not a program (`{ a: 1 }` parses as a block), so only recognised script blocks
+/// count there.
+fn script_ext(language: &Language, source: &str, code: &str, hints: &Hints<'_>) -> Option<&'static str> {
+    if *language == Language::Astro {
+        return match hints.ext {
+            "js" => Some("js"),
+            "jsx" => Some("jsx"),
+            "ts" => Some("ts"),
+            "tsx" => Some("tsx"),
+            _ => None,
+        };
+    }
+    if hints.attr {
+        return None;
+    }
+    match language {
+        Language::Html => match hints.ext {
+            "js" | "mjs" | "cjs" => Some("js"),
+            "ts" | "mts" | "cts" => Some("ts"),
+            "jsx" => Some("jsx"),
+            "tsx" => Some("tsx"),
+            _ => None,
+        },
+        Language::Vue | Language::Svelte if is_script_block(source, code) => match hints.ext {
+            "js" | "mjs" => Some("js"),
+            "ts" | "mts" => Some("ts"),
+            "jsx" => Some("jsx"),
+            "tsx" => Some("tsx"),
+            _ => None,
+        },
+        _ => None,
+    }
 }
 
 /// Whether `code` is the body of a `<script>` element of `source`, as opposed to a template

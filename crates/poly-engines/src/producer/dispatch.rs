@@ -8,6 +8,7 @@ use poly_component_protocol::{
 };
 use poly_engine_api::component_wire::wire_diagnostic;
 use poly_engine_api::config::EngineConfig;
+use poly_engine_api::declined::Declined;
 use poly_engine_api::engine::{Engine, FormatOutput, ProjectEnvironment, ProjectFile, ProjectRequest, SourceFile};
 
 use super::describe::TABLES;
@@ -29,6 +30,18 @@ fn format_output(output: FormatOutput) -> WireFormatOutput {
     }
 }
 
+/// A format call's answer, with a [`Declined`] error — a decline the engine only learns while
+/// formatting — sent as the decline it is rather than as a failure.
+fn format_answer(result: anyhow::Result<FormatOutput>) -> anyhow::Result<WireFormatOutput> {
+    match result {
+        Ok(output) => Ok(format_output(output)),
+        Err(error) => match Declined::reason(&error) {
+            Some(reason) => Ok(WireFormatOutput::Declined(reason.to_owned())),
+            None => Err(error),
+        },
+    }
+}
+
 /// `Engine::format`, or the engine's decline of the file without formatting it.
 ///
 /// The decline is answered here, inside the `Format` reply, so the host never makes a separate
@@ -38,7 +51,7 @@ fn format_or_decline(engine: &dyn Engine, src: &SourceFile, cfg: &EngineConfig) 
     if let Some(reason) = engine.skip_reason(src) {
         return Ok(WireFormatOutput::Declined(reason.into_owned()));
     }
-    engine.format(src, cfg).map(format_output)
+    format_answer(engine.format(src, cfg))
 }
 
 /// `Batching::format_batch` over the members the engine does not decline, merged back in member order
@@ -78,8 +91,7 @@ fn format_batch_or_decline(
             Some(reason) => Ok(WireFormatOutput::Declined(reason)),
             None => formatted
                 .next()
-                .unwrap_or_else(|| Err(anyhow::anyhow!("format_batch lost a member")))
-                .map(format_output),
+                .map_or_else(|| Err(anyhow::anyhow!("format_batch lost a member")), format_answer),
         })
         .collect())
 }
