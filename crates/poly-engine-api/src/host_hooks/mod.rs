@@ -84,29 +84,62 @@ pub enum HostHook {
 }
 
 /// Inputs shared by every file of a run (see [`Engine::run_context`](crate::engine::Engine::run_context)).
+///
+/// Also the run boundary inside an engine component: a component holds its own copy of these
+/// memos, and this is the call every lint run makes into it, so it forgets them
+/// ([`forget_run_memos`]) before the run reads any config.
 #[must_use]
 pub fn run_context(hook: HostHook, cfg: &EngineConfig) -> String {
+    forget_run_memos();
     match hook {
-        HostHook::Editorconfig => {
-            editorconfig::forget();
-            String::new()
-        }
-        HostHook::StyluaConfig | HostHook::SeleneConfig => {
-            native_config::forget();
-            String::new()
-        }
-        HostHook::None | HostHook::OxfmtScope | HostHook::Oxc | HostHook::GoMod | HostHook::GoModLint => String::new(),
-        HostHook::JsonSchema => {
-            jsonschema_source::forget();
-            String::new()
-        }
         HostHook::RuffContext => {
             let src_roots: Vec<std::path::PathBuf> =
                 cfg.options.opt_string_list("src").into_iter().map(Into::into).collect();
-            ruff_context::forget_package_roots();
-            ruff_target::forget_targets();
             ruff_context::module_tree(&src_roots)
         }
+        _ => String::new(),
+    }
+}
+
+/// A function that clears one memo.
+type Forget = fn();
+
+/// Memo-clearing functions registered by engine crates ([`register_run_memo`]).
+fn registered() -> &'static Mutex<Vec<Forget>> {
+    static REGISTERED: OnceLock<Mutex<Vec<Forget>>> = OnceLock::new();
+    REGISTERED.get_or_init(Mutex::default)
+}
+
+/// Register `forget` to run at every run boundary ([`forget_run_memos`]). An engine crate that
+/// memoises something it read from a project file calls this when it first fills the memo.
+pub fn register_run_memo(forget: fn()) {
+    let mut registered = registered().lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+    if !registered.iter().any(|known| std::ptr::fn_addr_eq(*known, forget)) {
+        registered.push(forget);
+    }
+}
+
+/// Forget every memo of a project file's contents: the oxlint, oxfmt, editorconfig, StyLua and
+/// selene, JSON Schema, `go.mod` and ruff lookups here, and whatever engine crates registered.
+///
+/// They are memoised for the length of a run, which is the point: a tree of files costs one
+/// lookup per directory. A long-lived process (`poly mcp`) runs many times, and each run must see
+/// the configs as they are on disk now, so every run starts here.
+pub fn forget_run_memos() {
+    editorconfig::forget();
+    native_config::forget();
+    jsonschema_source::forget();
+    oxfmt_scope::forget();
+    oxlintrc::forget();
+    go_mod::forget();
+    ruff_context::forget_package_roots();
+    ruff_target::forget_targets();
+    let registered = registered()
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner)
+        .clone();
+    for forget in registered {
+        forget();
     }
 }
 

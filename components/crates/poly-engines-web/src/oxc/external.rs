@@ -53,10 +53,25 @@ fn locate(name: &str, start: &Path) -> Option<PathBuf> {
     find_binary(name, start, std::env::var_os("PATH").as_deref())
 }
 
-/// Whether the oxlint config at `config` declares `jsPlugins`, parsed once per file.
-fn declares_js_plugins(config: &Path) -> bool {
+fn js_plugins_memo() -> &'static Mutex<HashMap<PathBuf, bool>> {
     static MEMO: OnceLock<Mutex<HashMap<PathBuf, bool>>> = OnceLock::new();
-    let memo = MEMO.get_or_init(Mutex::default);
+    MEMO.get_or_init(|| {
+        poly_engine_api::host_hooks::register_run_memo(forget_js_plugins);
+        Mutex::default()
+    })
+}
+
+/// Forget [`declares_js_plugins`]'s answers at the run boundary, so an edited config is reread.
+fn forget_js_plugins() {
+    js_plugins_memo()
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner)
+        .clear();
+}
+
+/// Whether the oxlint config at `config` declares `jsPlugins`, parsed once per file and run.
+fn declares_js_plugins(config: &Path) -> bool {
+    let memo = js_plugins_memo();
     if let Some(known) = memo
         .lock()
         .unwrap_or_else(std::sync::PoisonError::into_inner)

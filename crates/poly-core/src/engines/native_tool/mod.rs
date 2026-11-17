@@ -144,7 +144,7 @@ use self::spec::NativeRole;
 mod batch;
 #[cfg(test)]
 mod cache_key_tests;
-mod edition;
+pub(crate) mod edition;
 mod format;
 mod go_imports;
 mod isolate;

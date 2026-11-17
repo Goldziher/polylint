@@ -69,12 +69,9 @@ fn ignore_patterns_of(text: &str) -> Option<Vec<String>> {
 /// The configs governing a file in `dir`, ancestors of `dir` up to the root config's directory.
 /// Memoized per directory, so a tree of files costs one lookup per directory.
 pub fn governing(root: &Path, dir: &Path) -> Arc<Governing> {
-    type Key = (PathBuf, PathBuf);
-    static MEMO: OnceLock<Mutex<HashMap<Key, Arc<Governing>>>> = OnceLock::new();
     let dir = std::path::absolute(dir).unwrap_or_else(|_| dir.to_path_buf());
     let key = (root.to_path_buf(), dir.clone());
-    if let Some(found) = MEMO
-        .get_or_init(Mutex::default)
+    if let Some(found) = memo()
         .lock()
         .unwrap_or_else(std::sync::PoisonError::into_inner)
         .get(&key)
@@ -82,11 +79,23 @@ pub fn governing(root: &Path, dir: &Path) -> Arc<Governing> {
         return Arc::clone(found);
     }
     let computed = Arc::new(compute(root, &dir));
-    MEMO.get_or_init(Mutex::default)
+    memo()
         .lock()
         .unwrap_or_else(std::sync::PoisonError::into_inner)
         .insert(key, Arc::clone(&computed));
     computed
+}
+
+type Memo = HashMap<(PathBuf, PathBuf), Arc<Governing>>;
+
+fn memo() -> &'static Mutex<Memo> {
+    static MEMO: OnceLock<Mutex<Memo>> = OnceLock::new();
+    MEMO.get_or_init(Mutex::default)
+}
+
+/// Drops every memoised config chain so the next run rereads `.oxlintrc.json[c]` from disk.
+pub fn forget() {
+    memo().lock().unwrap_or_else(std::sync::PoisonError::into_inner).clear();
 }
 
 fn compute(root: &Path, dir: &Path) -> Governing {
@@ -158,6 +167,19 @@ pub fn engine_defaults(native: &OxlintNative, language: &Language, engine: &str)
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// A long-lived process (`poly mcp`) starts many runs; the run boundary is what makes the
+    /// second run see an edit the first could not.
+    #[test]
+    fn an_edit_is_seen_after_the_run_boundary() {
+        let repo = tempfile::tempdir().unwrap();
+        let rc = repo.path().join(".oxlintrc.json");
+        std::fs::write(&rc, r#"{"rules": {"eqeqeq": "off"}}"#).unwrap();
+        let first = governing(&rc, repo.path()).digest.clone();
+        std::fs::write(&rc, r#"{"rules": {"eqeqeq": "error"}}"#).unwrap();
+        crate::host_hooks::forget_run_memos();
+        assert_ne!(governing(&rc, repo.path()).digest, first, "reread after the boundary");
+    }
 
     #[test]
     fn the_nearest_config_wins_and_every_config_in_the_chain_is_digested() {

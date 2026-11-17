@@ -29,6 +29,14 @@ fn cache() -> &'static Mutex<HashMap<std::path::PathBuf, &'static str>> {
     CACHE.get_or_init(|| Mutex::new(HashMap::new()))
 }
 
+/// Drops every memoised edition so the next run rereads `Cargo.toml` from disk.
+pub(crate) fn forget() {
+    cache()
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner)
+        .clear();
+}
+
 /// Resolve the Rust edition that applies to `path` by walking up to the nearest
 /// `Cargo.toml` and following workspace inheritance. Returns a `'static` edition
 /// string (an interned, owned-by-the-cache value) so callers avoid an

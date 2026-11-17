@@ -115,6 +115,7 @@ pub fn lint_run(
     fix: bool,
     collect_debug: bool,
 ) -> anyhow::Result<LintRun> {
+    crate::engines::forget_run_memos();
     rooted::run(opts, paths, |paths| {
         lint_run_here(paths, config, opts, fix, collect_debug)
     })
@@ -508,6 +509,7 @@ pub fn format_run(
     write: bool,
     collect_debug: bool,
 ) -> anyhow::Result<FormatRun> {
+    crate::engines::forget_run_memos();
     rooted::run(opts, paths, |paths| {
         format_run_here(paths, config, opts, write, collect_debug)
     })
