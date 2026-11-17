@@ -30,7 +30,7 @@ use crate::validator::{self, Finding};
 
 /// Cache-key identity: the validator and YAML parser versions, plus a marker for this engine's own
 /// logic (span mapping, value conversion). Bump when either crate moves or the logic changes.
-const VERSION: &str = "jsonschema-0.61.2+granit-parser-2.1.0+spans2";
+const VERSION: &str = "jsonschema-0.61.2+granit-parser-2.2.0+spans2";
 
 const LANGUAGES: &[Language] = &[Language::Json, Language::Jsonc, Language::Yaml, Language::Toml];
 
