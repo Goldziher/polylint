@@ -602,7 +602,7 @@
             "fix": false,
             "project": true
           },
-          "version": "skif-0.8.0+poly5",
+          "version": "skif-0.8.0+poly6",
           "option_keys": [
             {
               "table": "Lint",
@@ -1771,7 +1771,7 @@
             "fix": false,
             "project": true
           },
-          "version": "tsrs-7.1.0-beta.tsrs2+proj6",
+          "version": "tsrs-7.1.0-beta.tsrs2+proj7",
           "option_keys": [
             {
               "table": "Lint",
