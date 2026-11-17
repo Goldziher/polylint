@@ -244,6 +244,7 @@ mod tests {
             environment: &ProjectEnvironment::default(),
             threads,
             targets: None,
+            cache: None,
         })
     }
 

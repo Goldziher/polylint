@@ -204,6 +204,8 @@ fn every_request_covered_method_reaches_the_component() {
                     config: &cfg,
                     environment: &environment,
                     threads: None,
+                    targets: None,
+                    cache: None,
                 };
                 drop(engine.project_check(&request));
             }
@@ -391,4 +393,44 @@ fn declining_stub_skips_and_does_nothing_else() {
         engine.format(&src, &config(4)).unwrap(),
         FormatOutput::Unchanged
     ));
+}
+
+/// The host's cache travels to the component as two environment pairs (ADR 0080), and only when the run caches.
+#[test]
+fn a_project_check_carries_the_hosts_cache_only_when_the_run_has_one() {
+    let (engine, fake) = engine_with(0, "none");
+    let cfg = config(4);
+    let files = [poly_engine_api::project::ProjectFile {
+        path: Path::new("/p/q.sql").to_path_buf(),
+        language: source("x").language,
+        content: "x".into(),
+    }];
+    let environment = poly_engine_api::project::ProjectEnvironment::default();
+    let cache = poly_engine_api::project::EngineCache {
+        dir: Path::new("/cache/repo").to_path_buf(),
+        salt: "6\0build".to_owned(),
+    };
+    for cache in [Some(&cache), None] {
+        let request = poly_engine_api::project::ProjectRequest {
+            root: Path::new("/p"),
+            files: &files,
+            config: &cfg,
+            environment: &environment,
+            threads: None,
+            targets: None,
+            cache,
+        };
+        engine
+            .project_check(&request)
+            .expect("the fake answers a project check");
+    }
+    let sent = fake.project_environments();
+    assert_eq!(sent.len(), 2, "{sent:?}");
+    assert_eq!(
+        poly_engine_api::project::EngineCache::from_wire_pairs(&sent[0]),
+        Some(cache),
+        "{:?}",
+        sent[0]
+    );
+    assert!(sent[1].is_empty(), "no cache, no pairs: {:?}", sent[1]);
 }

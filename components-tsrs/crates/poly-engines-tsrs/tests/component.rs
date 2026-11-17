@@ -77,6 +77,7 @@ fn the_tsrs_component_checks_like_the_in_process_engine() {
         environment: &ProjectEnvironment::default(),
         threads: Some(2),
         targets: None,
+        cache: None,
     };
     let expected = TsrsEngine.project_check(&request).expect("in-process check");
     let actual = engine.project_check(&request).expect("component check");

@@ -14,8 +14,9 @@ use poly_engine_api::component_wire::{OffsetOutOfRange, diagnostic_from_wire};
 use poly_engine_api::config::EngineConfig;
 use poly_engine_api::declined::Declined;
 use poly_engine_api::engine::{
-    BatchSupport, Batching, Capabilities, CatalogTakeover, Diagnostic, Engine, FormatOutput, OptionKeys, OptionTable,
-    OptionType, PlanPolicy, ProjectAnalysis, ProjectDirs, ProjectInputs, ProjectRequest, ProjectSideFile, SourceFile,
+    BatchSupport, Batching, Capabilities, CatalogTakeover, Diagnostic, Engine, EngineCache, FormatOutput, OptionKeys,
+    OptionTable, OptionType, PlanPolicy, ProjectAnalysis, ProjectDirs, ProjectInputs, ProjectRequest, ProjectSideFile,
+    SourceFile,
 };
 use poly_engine_api::host_hooks::HostHook;
 use poly_engine_api::language::Language;
@@ -717,7 +718,11 @@ impl ProjectAnalysis for ComponentEngine {
             root: path_string(req.root),
             files,
             config: 0,
-            environment: req.environment.to_wire_pairs(),
+            environment: {
+                let mut pairs = req.environment.to_wire_pairs();
+                pairs.extend(req.cache.into_iter().flat_map(EngineCache::to_wire_pairs));
+                pairs
+            },
             threads: req.threads.map(|n| u32::try_from(n).unwrap_or(u32::MAX)),
             targets: req.targets.map(|targets| {
                 targets

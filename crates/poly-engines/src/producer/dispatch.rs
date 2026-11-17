@@ -9,7 +9,9 @@ use poly_component_protocol::{
 use poly_engine_api::component_wire::wire_diagnostic;
 use poly_engine_api::config::EngineConfig;
 use poly_engine_api::declined::Declined;
-use poly_engine_api::engine::{Engine, FormatOutput, ProjectEnvironment, ProjectFile, ProjectRequest, SourceFile};
+use poly_engine_api::engine::{
+    Engine, EngineCache, FormatOutput, ProjectEnvironment, ProjectFile, ProjectRequest, SourceFile,
+};
 
 use super::describe::TABLES;
 use super::errors::{from_anyhow, guarded, protocol};
@@ -194,6 +196,7 @@ impl Producer {
                         content: src.content,
                     })
                     .collect();
+                let cache = EngineCache::from_wire_pairs(&environment);
                 let environment = ProjectEnvironment::from_wire_pairs(&environment);
                 let root = PathBuf::from(root);
                 let targets: Option<Vec<PathBuf>> =
@@ -205,6 +208,7 @@ impl Producer {
                     environment: &environment,
                     threads: threads.map(|n| n as usize),
                     targets: targets.as_deref(),
+                    cache: cache.as_ref(),
                 };
                 let per_file = guarded(engine.name(), || engine.project_check(&request))?;
                 Ok(Payload::Project(

@@ -72,6 +72,7 @@ pub fn init() -> InitParams {
 struct State {
     calls: Vec<&'static str>,
     registered: HashSet<u32>,
+    environments: Vec<Vec<(String, String)>>,
 }
 
 /// Behaviour by body: `panic` panics, `error` fails with a chain, a body starting `{{` is declined
@@ -97,6 +98,11 @@ impl FakeComponent {
 
     pub fn count(&self, name: &str) -> usize {
         self.calls().iter().filter(|c| **c == name).count()
+    }
+
+    /// The `environment` pairs of every `ProjectCheck` received, in order.
+    pub fn project_environments(&self) -> Vec<Vec<(String, String)>> {
+        self.state.lock().unwrap().environments.clone()
     }
 
     /// Simulate the component forgetting its registered configs.
@@ -191,6 +197,10 @@ impl FakeComponent {
                 ok(Payload::OptString(Some(format!("{}:{path}", request.variant_name()))))
             }
             Request::LintCacheSalt { .. } => ok(Payload::OptString(Some(format!("{} bytes", body.len())))),
+            Request::ProjectCheck { environment, .. } => {
+                state.environments.push(environment.clone());
+                ok(Payload::Project(Vec::new()))
+            }
             other => fail(WireErrorKind::Protocol, other.variant_name(), &[]),
         }
     }

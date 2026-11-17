@@ -45,7 +45,7 @@ use crate::components::ResolvedComponents;
 use crate::config::{EngineConfig, Kind};
 use crate::discover::DiscoveredFile;
 use crate::engine::{
-    Diagnostic, ENABLED_OPTION_KEY, Engine, ProjectEnvironment, ProjectFile, ProjectRequest, WireSelection,
+    Diagnostic, ENABLED_OPTION_KEY, Engine, EngineCache, ProjectEnvironment, ProjectFile, ProjectRequest, WireSelection,
 };
 use crate::engine_guard::guard_engine_panic;
 use crate::filter::{PerFileIgnores, is_binary, is_generated_source};
@@ -601,7 +601,10 @@ fn cache_key(
     // full run; a full run's key has no entry, as before targets existed. Only an engine that narrows is given
     // targets (`ProjectDirs::narrows_to_targets`).
     if let Some(targets) = targets {
-        let names: Vec<String> = targets.iter().map(|path| key_inputs::relative_text(path, root)).collect();
+        let names: Vec<String> = targets
+            .iter()
+            .map(|path| key_inputs::relative_text(path, root))
+            .collect();
         args.insert("__targets".to_string(), toml::Value::String(names.join("\0")));
     }
     let names: Vec<String> = files.iter().map(|f| key_inputs::relative_text(&f.path, root)).collect();
@@ -679,6 +682,11 @@ fn report_for(
     if let Some(reported) = cached {
         return Ok(reported);
     }
+    // The engine's own cache lives in this run's cache, so `--no-cache` and `[cache] dir` reach it too (ADR 0080).
+    let engine_cache = cache.enabled().then(|| EngineCache {
+        dir: std::path::absolute(cache.root()).unwrap_or_else(|_| cache.root().to_path_buf()),
+        salt: poly_cache::engine_data_salt(),
+    });
     let request = ProjectRequest {
         root,
         files: loaded,
@@ -686,6 +694,7 @@ fn report_for(
         environment,
         threads: Some(rayon::current_num_threads()),
         targets,
+        cache: engine_cache.as_ref(),
     };
     let reported =
         guard_engine_panic(plan.engine.name(), root, || plan.engine.project_check(&request)).map_err(|error| {

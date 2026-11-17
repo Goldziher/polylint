@@ -78,6 +78,7 @@ fn run_for(
         environment: &ProjectEnvironment::default(),
         threads,
         targets,
+        cache: None,
     })
 }
 

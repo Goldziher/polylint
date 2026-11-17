@@ -125,6 +125,7 @@ fn oxc_lint_does_not_grow_the_thread_count() {
             environment: &environment,
             threads: None,
             targets: None,
+            cache: None,
         };
         let analysis = analyze(&request).unwrap();
         assert!(

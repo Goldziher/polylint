@@ -106,6 +106,50 @@ pub struct ProjectRequest<'a> {
     /// are still inputs (an import into one resolves as before), only their own findings may go uncomputed.
     /// Findings an engine still returns for other files are harmless.
     pub targets: Option<&'a [PathBuf]>,
+    /// The host's cache, for an engine that keeps entries of its own there (skif's parsed modules), or `None` when
+    /// the run caches nothing (`--no-cache`). An engine that keeps no cache ignores it (ADR 0080).
+    pub cache: Option<&'a EngineCache>,
+}
+
+/// The host's cache, as an engine that keeps its own entries sees it (ADR 0080).
+///
+/// Never part of a project-check cache key: where the cache lives changes no finding, and the engine folds `salt`
+/// into its own keys.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct EngineCache {
+    /// The result-cache root (`<cache home>/<repo key>`, or `[cache] dir`); the engine's entries go in its
+    /// `results/engine/` directory.
+    pub dir: PathBuf,
+    /// Opaque bytes the engine adds to every key: the host's cache format version and build identity.
+    pub salt: String,
+}
+
+impl EngineCache {
+    /// The wire key of [`dir`](Self::dir) among `Request::ProjectCheck::environment`'s pairs.
+    pub const DIR_KEY: &'static str = "poly.cache.dir";
+    /// The wire key of [`salt`](Self::salt).
+    pub const SALT_KEY: &'static str = "poly.cache.salt";
+
+    /// The pairs this cache travels as, appended to the request's environment pairs. A component that predates them
+    /// ignores keys it does not know, so they need no new field and no gate on the component's version.
+    #[must_use]
+    pub fn to_wire_pairs(&self) -> [(String, String); 2] {
+        [
+            (Self::DIR_KEY.to_owned(), self.dir.display().to_string()),
+            (Self::SALT_KEY.to_owned(), self.salt.clone()),
+        ]
+    }
+
+    /// The cache among a request's environment pairs, or `None` when the host sent none (`--no-cache`, or a host
+    /// that predates it).
+    #[must_use]
+    pub fn from_wire_pairs(pairs: &[(String, String)]) -> Option<Self> {
+        let get = |key: &str| pairs.iter().find(|(k, _)| k == key).map(|(_, v)| v.as_str());
+        Some(Self {
+            dir: PathBuf::from(get(Self::DIR_KEY)?),
+            salt: get(Self::SALT_KEY).unwrap_or_default().to_owned(),
+        })
+    }
 }
 
 /// The language id of a listing entry: a file under a declared directory that the engine does not
@@ -169,4 +213,58 @@ pub struct ProjectInputs {
     pub files: Vec<ProjectSideFile>,
     /// When set, only served files under these directories are handed over.
     pub dirs: Option<ProjectDirs>,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn python() -> ProjectEnvironment {
+        ProjectEnvironment {
+            python: Some(PythonEnvironment {
+                interpreter: PathBuf::from("/venv/bin/python"),
+                site_packages: vec![PathBuf::from("/venv/lib/site-packages")],
+                version: Some("3.12.4".to_owned()),
+            }),
+        }
+    }
+
+    fn cache() -> EngineCache {
+        EngineCache {
+            dir: PathBuf::from("/cache/poly/repo"),
+            salt: "6\0release-0.36.0".to_owned(),
+        }
+    }
+
+    fn sent(environment: &ProjectEnvironment, cache: Option<&EngineCache>) -> Vec<(String, String)> {
+        let mut pairs = environment.to_wire_pairs();
+        pairs.extend(cache.into_iter().flat_map(EngineCache::to_wire_pairs));
+        pairs
+    }
+
+    #[test]
+    fn the_cache_round_trips_beside_the_environment() {
+        let pairs = sent(&python(), Some(&cache()));
+        assert_eq!(EngineCache::from_wire_pairs(&pairs), Some(cache()));
+        assert_eq!(ProjectEnvironment::from_wire_pairs(&pairs), python());
+    }
+
+    /// A component that predates the cache reads the environment with `ProjectEnvironment::from_wire_pairs` alone,
+    /// which ignores keys it does not know: the cache pairs change nothing it sees.
+    #[test]
+    fn a_component_that_predates_the_cache_reads_the_same_environment() {
+        for environment in [python(), ProjectEnvironment::default()] {
+            assert_eq!(
+                ProjectEnvironment::from_wire_pairs(&sent(&environment, Some(&cache()))),
+                ProjectEnvironment::from_wire_pairs(&sent(&environment, None)),
+            );
+        }
+    }
+
+    /// A host that predates the cache sends no cache pairs: the component runs without a store.
+    #[test]
+    fn a_host_that_predates_the_cache_sends_none() {
+        assert_eq!(EngineCache::from_wire_pairs(&sent(&python(), None)), None);
+        assert_eq!(EngineCache::from_wire_pairs(&[]), None);
+    }
 }

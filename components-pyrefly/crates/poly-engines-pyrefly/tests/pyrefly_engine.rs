@@ -60,6 +60,7 @@ fn run(
         environment,
         threads: None,
         targets: None,
+        cache: None,
     })
 }
 

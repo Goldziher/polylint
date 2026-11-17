@@ -59,6 +59,7 @@ fn project(root: &Path, config: &EngineConfig) -> Vec<(String, String, u32)> {
         environment: &environment,
         threads: None,
         targets: None,
+        cache: None,
     };
     let mut found: Vec<(String, String, u32)> = RumdlEngine
         .project_check(&request)
