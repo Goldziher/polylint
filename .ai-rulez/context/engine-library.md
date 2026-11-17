@@ -18,9 +18,9 @@ x-ai-rulez:
   `Severity`, `Span`, `Edit`, `Diagnostic`, `FormatOutput`. This is the keystone abstraction.
 - `registry.rs` — crate-private `engines_for(&Language) -> Vec<Box<dyn Engine>>`. A static
   `match`: the native crate backend(s) registered for the language, else the
-  tree-sitter generic backend — then the five **cross-cutting** backends (`typos`, `astgrep`,
-  `uncomment`, `quality`, `secrets`) appended for every language. `runner/plan.rs` plans opt-in engines (`registry::OPT_IN_ENGINES`) only when config enables
-  them and merges enabled catalog tools into the list.
+  tree-sitter generic backend — then the six **cross-cutting** backends (`CROSS_CUTTING_ENGINES`, below)
+  appended for every language. `runner/plan.rs` plans `OPT_IN_ENGINES` (`typos`, `uncomment`, `jsonschema`,
+  `secrets`, `harper`) only when config enables them and merges enabled catalog tools into the list.
 - `config.rs` — normalization and per-engine config slices of the schema the `poly-config`
   crate parses. The config file is `poly.toml` and nothing else (`CONFIG_FILE_NAMES` has one
   entry; there is no YAML form), read with the `toml` crate — `toml_edit` appears only in
@@ -94,7 +94,8 @@ x-ai-rulez:
   - **cross-cutting backends** (`languages() == &[]`, appended by the registry to every
     language): `typos.rs` (spell-check, opt-in; `poly-engines-typos`), `poly-engines-astgrep` (ast-grep
     rules — user rule dirs plus the built-in pack in `src/builtin/`, see Coverage tiers),
-    `uncomment.rs` (`poly-engines-uncomment`), and `quality/` (ADR 0027 code-quality metrics).
+    `uncomment.rs` (`poly-engines-uncomment`), `quality/` (ADR 0027), `secrets` (component-only) and `harper`
+    (prose grammar, opt-in; `poly-engines-prose`).
   - `uncomment.rs` (in `poly-engines-uncomment`) — the **opt-in comment-removal lint backend** wrapping the `uncomment`
     crate: reports each removable comment as a warning with a delete-edit, gated on
     `[engines.uncomment] enabled = true` (or per-language `[engines.uncomment.lang.<lang>]`).

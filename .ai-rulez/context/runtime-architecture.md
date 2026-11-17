@@ -153,9 +153,9 @@ Per-language resolution order:
 
 ### Cross-cutting backends (every language)
 
-The registry appends five backends with `languages() == &[]` to every language, so they are
-orthogonal to the tiers above rather than a step in the resolution order: `typos` (spell-check,
-warning, opt-in via `[engines.typos] enabled = true`), `astgrep`, `uncomment` (opt-in), `quality` and `secrets`.
+The registry appends six backends with `languages() == &[]` (`CROSS_CUTTING_ENGINES`) to every
+language, orthogonal to the tiers above: `typos` (spell-check), `astgrep`, `uncomment`, `quality`,
+`secrets` and `harper` (prose grammar); all but `astgrep` and `quality` are opt-in.
 
 Two of them carry poly's lint coverage for languages no tier-1 backend reaches:
 
