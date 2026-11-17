@@ -373,6 +373,8 @@ Charged (a limit of poly — poly does not know what to do with this file):
 - `binary file` — poly never opened it as text.
 - `file too large (<size> bytes > <limit> bytes)` — the file is above `[discovery] max_file_size`
   and was not read.
+- `tsrs: no tsconfig.json` / `skif: no package.json or JavaScript workspace` — an enabled whole-project
+  type check found nothing to check and declined the project; the project root is the skipped path (ADR 0079).
 
 Not charged (a caller instruction — the run is doing exactly what it was told):
 

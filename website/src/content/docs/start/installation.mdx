@@ -148,7 +148,9 @@ This resolves the same GitHub release archives — it does not build from source
 <Aside type="note" title="poly is not published to crates.io">
     poly's crates depend on pinned git dependencies (oxc, biome, rubyfmt), which crates.io forbids
     in published crates. The prebuilt binary is the only thing any channel ships, so `cargo install
-    poly` will not work.
+    poly` will not work. Two library crates are the exception: `polylint-tsrs` and
+    `polylint-js-types` are published to crates.io (ADRs 0078 and 0081), while poly itself ships
+    only as prebuilt binaries.
 </Aside>
 
 ## As an agent plugin
