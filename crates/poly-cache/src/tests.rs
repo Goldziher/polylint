@@ -544,6 +544,7 @@ fn each_checkout_has_its_own_stat_index_seeded_from_a_sibling() {
     let record = Record {
         stat: main.file_stat(&file).unwrap(),
         scope: PlanKey::builder(Namespace::Lint).finish(),
+        confirmed: Vec::new(),
         digest: ContentDigest::of(&std::fs::read(&file).unwrap()),
         verdict: Verdict::Clean,
         replayable: true,

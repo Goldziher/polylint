@@ -139,8 +139,8 @@ pub use checkout::{checkout_cache_dir, git_common_dir, repository_identity};
 pub use maintenance::{CacheStats, NamespaceStats};
 pub use permissions::{DirOrigin, create_dir_all_private, ensure_private_dir};
 pub use stat_index::{
-    ContentDigest, FileStat, MAX_RETAINED_SEGMENTS, PathKey, PlanKey, PlanKeyBuilder, RACY_WINDOW_NS, Record, Segment,
-    StatIndex, Verdict,
+    ContentDigest, FileStat, MAX_CONFIRMED_SCOPES, MAX_RETAINED_SEGMENTS, PathKey, PlanKey, PlanKeyBuilder,
+    RACY_WINDOW_NS, Record, Segment, StatIndex, Verdict,
 };
 
 /// On-disk format version written to the `VERSION` sentinel file.

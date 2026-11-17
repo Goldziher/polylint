@@ -661,19 +661,37 @@ fn a_narrowed_run_does_not_evict_the_other_engines_records() {
     let full = project.lint();
     assert_eq!(full.resolution.misses, 0, "the premise: a full warm run");
 
-    let narrowed = lint_at(
-        project.dir.path(),
-        project.dir.path(),
-        &project.config(),
-        &RunOptions {
-            only: vec!["ruff".to_owned()],
-            skip: Vec::new(),
-            ..Project::opts()
-        },
-    );
-    assert!(narrowed.errors.is_empty(), "{:?}", narrowed.errors);
+    let narrowed = || {
+        lint_at(
+            project.dir.path(),
+            project.dir.path(),
+            &project.config(),
+            &RunOptions {
+                only: vec!["ruff".to_owned()],
+                skip: Vec::new(),
+                ..Project::opts()
+            },
+        )
+    };
+    let first = narrowed();
+    assert!(first.errors.is_empty(), "{:?}", first.errors);
     let again = project.lint();
 
     assert_eq!(again.findings, full.findings);
     assert_eq!(again.resolution.misses, 0, "{:?}", again.resolution);
+
+    // The second identical narrowed run is answered by `stat` for every file, those the selection left
+    // with no engine included, and the full run still is.
+    let repeated = narrowed();
+    assert_eq!(repeated.findings, first.findings);
+    assert_eq!(
+        repeated.resolution,
+        Resolution {
+            stat_hits: full.resolution.stat_hits,
+            content_hits: 0,
+            misses: 0
+        },
+        "a repeated narrowed run must be answered from the stat index alone"
+    );
+    assert_eq!(project.lint().resolution, full.resolution);
 }

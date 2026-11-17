@@ -14,8 +14,8 @@
 //! that engine ran under and its raw output. That makes it both the fast path
 //! and the per-engine result cache:
 //!
-//! - **`stat` hit** — the stat, the run's scope key and *every* engine key equal
-//!   the recorded ones: the verdict is replayed without opening the file.
+//! - **`stat` hit** — the stat and *every* engine key equal the recorded ones,
+//!   and the record answers for the run's scope key: the verdict is replayed without opening the file.
 //! - **content hit** — the file was read and its digest equals the recorded one:
 //!   each engine whose key still matches reuses its segment, so editing one
 //!   engine's configuration re-runs only that engine, and a touched-but-identical
@@ -69,7 +69,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 use crate::checkout::Checkout;
 
-const MAGIC: &[u8; 4] = b"PSI4";
+const MAGIC: &[u8; 4] = b"PSI5";
 
 const HEADER_LEN: usize = MAGIC.len();
 const ID_LEN: usize = 16;
@@ -354,6 +354,10 @@ pub struct Record {
     pub stat: FileStat,
     /// The run-level switches the verdict depends on, besides the engines.
     pub scope: PlanKey,
+    /// Other scopes a run found this record right for: one of them judged the same bytes, its
+    /// engines' output equal to the segments held under their keys (see [`Record::answers`]).
+    /// Most recent first, at most [`MAX_CONFIRMED_SCOPES`].
+    pub confirmed: Vec<PlanKey>,
     /// Digest of the bytes the segments were computed from.
     pub digest: ContentDigest,
     /// The overall verdict.
@@ -371,6 +375,10 @@ pub struct Record {
 /// content never changes cannot grow without bound across config edits.
 pub const MAX_RETAINED_SEGMENTS: usize = 32;
 
+/// How many scopes besides its own a record answers for, so alternating narrowed runs
+/// (`--only ruff`, `--only oxc`, …) each keep the record without growing it without bound.
+pub const MAX_CONFIRMED_SCOPES: usize = 8;
+
 impl Record {
     /// Whether a recorded `stat` vouches for a file that now looks like `stat`.
     pub fn trusts(&self, stat: &FileStat) -> bool {
@@ -383,6 +391,23 @@ impl Record {
         self.segments.len() >= keys.len() && self.segments.iter().zip(keys).all(|(s, k)| s.key == *k)
     }
 
+    /// Whether a run under `scope` may read this record: `scope` wrote it, or a run under `scope`
+    /// confirmed it. Which segments such a run may read is still decided by its engine keys.
+    pub fn answers(&self, scope: &PlanKey) -> bool {
+        self.scope == *scope || self.confirmed.contains(scope)
+    }
+
+    /// This record, answering for `scope` as well: a run under `scope` judged the same bytes and
+    /// found the segments its engines read right.
+    #[must_use]
+    pub fn confirmed_for(mut self, scope: PlanKey) -> Self {
+        if !self.answers(&scope) {
+            self.confirmed.insert(0, scope);
+            self.confirmed.truncate(MAX_CONFIRMED_SCOPES);
+        }
+        self
+    }
+
     /// The segment recorded under `key`, wherever it sits.
     pub fn segment(&self, key: &PlanKey) -> Option<&Segment> {
         self.segments.iter().find(|segment| segment.key == *key)
@@ -391,6 +416,11 @@ impl Record {
     /// This record with the segments of `earlier` it does not have appended, when `earlier`
     /// judged the same bytes, so a run with a narrower plan (`--only ruff`) does not discard what
     /// the other engines found. At most [`MAX_RETAINED_SEGMENTS`] are kept beyond this record's own.
+    ///
+    /// The scopes `earlier` answered for are kept too: a scope stands for run-level switches
+    /// that decide a verdict from the bytes alone, so it holds for the same bytes whichever
+    /// record carries it, and the segments those runs read are kept or replaced under the same
+    /// keys.
     #[must_use]
     pub fn merged(mut self, earlier: Option<&Record>) -> Self {
         let Some(earlier) = earlier.filter(|earlier| earlier.digest == self.digest) else {
@@ -403,6 +433,14 @@ impl Record {
             }
             if self.segment(&segment.key).is_none() {
                 self.segments.push(segment.clone());
+            }
+        }
+        for scope in std::iter::once(&earlier.scope).chain(&earlier.confirmed) {
+            if self.confirmed.len() >= MAX_CONFIRMED_SCOPES {
+                break;
+            }
+            if !self.answers(scope) {
+                self.confirmed.push(*scope);
             }
         }
         self
@@ -557,9 +595,9 @@ fn read_records(file: &Path) -> FxHashMap<PathKey, Record> {
     let Some(mut rest) = bytes.strip_prefix(MAGIC.as_slice()) else {
         return FxHashMap::default();
     };
-    // A record with one segment is 112 bytes before its payload, so this sizes the
+    // A record with one segment is 113 bytes before its payload, so this sizes the
     // map once instead of rehashing it through every doubling on a large index.
-    let mut records = FxHashMap::with_capacity_and_hasher(rest.len() / 112, Default::default());
+    let mut records = FxHashMap::with_capacity_and_hasher(rest.len() / 113, Default::default());
     while !rest.is_empty() {
         let Some((path, record, after)) = decode(rest) else {
             return FxHashMap::default();
@@ -604,6 +642,9 @@ fn decode(bytes: &[u8]) -> Option<(PathKey, Record, &[u8])> {
     let mut cursor = Cursor(bytes);
     let path = PathKey(cursor.id()?);
     let scope = PlanKey(cursor.id()?);
+    let confirmed = (0..cursor.u8()?)
+        .map(|_| cursor.id().map(PlanKey))
+        .collect::<Option<Vec<_>>>()?;
     let digest = ContentDigest(cursor.id()?);
     let stat = FileStat {
         size: cursor.u64()?,
@@ -627,6 +668,7 @@ fn decode(bytes: &[u8]) -> Option<(PathKey, Record, &[u8])> {
     let record = Record {
         stat,
         scope,
+        confirmed,
         digest,
         verdict,
         replayable,
@@ -639,6 +681,10 @@ fn decode(bytes: &[u8]) -> Option<(PathKey, Record, &[u8])> {
 fn encode(out: &mut Vec<u8>, path: &PathKey, record: &Record, stat: &FileStat) -> Option<()> {
     out.extend_from_slice(&path.0);
     out.extend_from_slice(&record.scope.0);
+    out.push(u8::try_from(record.confirmed.len()).ok()?);
+    for scope in &record.confirmed {
+        out.extend_from_slice(&scope.0);
+    }
     out.extend_from_slice(&record.digest.0);
     out.extend_from_slice(&stat.size.to_le_bytes());
     out.extend_from_slice(&stat.mtime_ns.to_le_bytes());

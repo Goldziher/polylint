@@ -124,6 +124,12 @@ impl RunPlan {
         }
     }
 
+    /// Record `withdrawal` as what narrowed the pair's plan, as planning does for `--only`.
+    pub(super) fn withdrawn(mut self, config_id: usize, language: Language, withdrawal: Withdrawal) -> Self {
+        self.withdrawn.insert((config_id, language), withdrawal);
+        self
+    }
+
     /// Record `tool` as wanted and absent for the pair, as planning does for a native tool the
     /// host lacks.
     pub(super) fn missing_tool(mut self, config_id: usize, language: Language, tool: &'static str) -> Self {

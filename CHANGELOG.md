@@ -154,6 +154,10 @@ Each item is described in full under the section named in brackets.
   the hook snapshot and an absolute invocation reuse the records of the first (project-check roots, oxc config paths,
   ast-grep rule directories, the Go module root, JSON Schema and recipe digests are keyed checkout-relative), and
   `poly lint --only <engine>` keeps the other engines' records, so the next full run re-runs none of them.
+- **A repeated narrowed lint run is answered from the stat index again.** A second `poly lint --only <engine>` re-read
+  and re-hashed every file the selection had left without an engine, since only the full run's record was kept. A
+  record now also answers for each run scope that found it right for the same bytes, so both the narrowed and the full
+  run are stat hits. The stat index format changes (`PSI5`); an older index is discarded and rebuilt on the next run.
 - **The tsrs type check checks only the named files on a path-scoped run.** The pre-commit hook names the staged files;
   tsrs now builds the whole program but computes diagnostics for those files only, instead of type-checking the whole
   project and discarding the rest. A change that breaks an unstaged importer is caught by `poly lint .` and CI, not by

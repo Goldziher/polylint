@@ -520,6 +520,7 @@ mod tests {
         let record = crate::Record {
             stat: crate::FileStat::UNTRUSTED,
             scope: crate::PlanKey::builder(namespace).finish(),
+            confirmed: Vec::new(),
             digest: crate::ContentDigest::of(b"x"),
             verdict: crate::Verdict::Clean,
             replayable: true,
