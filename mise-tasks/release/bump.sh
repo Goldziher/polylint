@@ -291,9 +291,11 @@ grep -qxF "__version__ = \"$hermes_version\"" "$hermes_init" 2>/dev/null ||
 hermes_plugin_init="plugin/.hermes/plugins/poly/__init__.py"
 grep -qxF "__version__ = \"$hermes_version\"" "$hermes_plugin_init" 2>/dev/null ||
   fail "$hermes_plugin_init __version__: expected $hermes_version"
-for hermes_yaml in \
-  plugin/.hermes/package/src/poly_hermes_plugin/plugin.yaml \
-  plugin/.hermes/plugins/poly/plugin.yaml; do
+hermes_yamls=(
+  plugin/.hermes/package/src/poly_hermes_plugin/plugin.yaml
+  plugin/.hermes/plugins/poly/plugin.yaml
+)
+for hermes_yaml in "${hermes_yamls[@]}"; do
   grep -qxF "version: \"$VERSION\"" "$hermes_yaml" 2>/dev/null ||
     fail "$hermes_yaml version: expected $VERSION"
 done
