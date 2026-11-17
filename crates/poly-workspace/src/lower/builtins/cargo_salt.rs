@@ -8,19 +8,28 @@
 //!   the hook will use) plus the tool's own `--version`;
 //! - **the environment cargo reads**: `RUSTFLAGS`, `CARGO_BUILD_*`, `CARGO_PROFILE_*`, `CLIPPY_CONF_DIR`, …
 //!   ([`relevant_env`]);
-//! - **config files the tracked listing cannot see**: an untracked `clippy.toml` or `.cargo/config.toml` in the tree,
-//!   one in a directory above the repository (cargo and clippy both search upward) and `$CARGO_HOME/config.toml`.
+//! - **config files the tracked listing cannot see**: an untracked `clippy.toml`, `.cargo/config.toml` or
+//!   `tomlfmt.toml` (cargo-sort's) in the tree, one in a directory above the repository (cargo and clippy both search
+//!   upward) and `$CARGO_HOME/config.toml`.
 //!
-//! The versions cost a process spawn each, run concurrently, once per repository root per process, and only for a
-//! cached group.
+//! The versions cost a process spawn each, once per repository root per process and only for a cached group: the two
+//! shared probes run concurrently, and a tool's own version is probed the first time that tool's salt is asked for.
 
 use std::collections::HashMap;
+use std::ffi::OsString;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 use std::sync::{Mutex, OnceLock, PoisonError};
 
-/// The config files cargo and clippy read, wherever they are found.
-const CONFIG_NAMES: &[&str] = &["clippy.toml", ".clippy.toml", ".cargo/config.toml", ".cargo/config"];
+/// The config files cargo, clippy and cargo-sort read, wherever they are found.
+const CONFIG_NAMES: &[&str] = &[
+    "clippy.toml",
+    ".clippy.toml",
+    ".cargo/config.toml",
+    ".cargo/config",
+    "tomlfmt.toml",
+    ".tomlfmt.toml",
+];
 
 /// The version probe for each cached cargo builtin, by hook id.
 const TOOL_VERSIONS: &[(&str, &[&str])] = &[
@@ -32,26 +41,31 @@ const TOOL_VERSIONS: &[(&str, &[&str])] = &[
 /// Probes shared by every tool of the group.
 const SHARED_PROBES: &[&[&str]] = &[&["rustc", "-vV"], &["cargo", "-V"]];
 
-type Salts = Mutex<HashMap<PathBuf, HashMap<String, String>>>;
+/// Per repository root: the shared part, and each tool's salt once asked for.
+type Salts = Mutex<HashMap<PathBuf, (String, HashMap<&'static str, String>)>>;
 
-/// The cache salt of the cargo builtin `tool` for the repository at `root`.
+/// The cache salt of the cargo builtin `tool` for the repository at `root`: the shared part, then the tool's own
+/// version. An id that is not a cached cargo builtin gets the shared part alone.
 pub(super) fn salt(root: &Path, tool: &str) -> String {
     static SALTS: OnceLock<Salts> = OnceLock::new();
     let salts = SALTS.get_or_init(Salts::default);
     let mut salts = salts.lock().unwrap_or_else(PoisonError::into_inner);
-    let by_tool = salts.entry(root.to_path_buf()).or_insert_with(|| compute(root));
-    by_tool.get(tool).cloned().unwrap_or_else(|| by_tool[""].clone())
+    let (shared, by_tool) = salts
+        .entry(root.to_path_buf())
+        .or_insert_with(|| (shared_salt(root), HashMap::new()));
+    let Some((id, argv)) = TOOL_VERSIONS.iter().find(|(id, _)| *id == tool) else {
+        return shared.clone();
+    };
+    by_tool
+        .entry(*id)
+        .or_insert_with(|| format!("{shared}|{id}={}", probe(root, argv).trim()))
+        .clone()
 }
 
-/// Every tool's salt for `root`, keyed by hook id; `""` is the shared part alone.
-fn compute(root: &Path) -> HashMap<String, String> {
-    let probes: Vec<&[&str]> = SHARED_PROBES
-        .iter()
-        .copied()
-        .chain(TOOL_VERSIONS.iter().map(|(_, argv)| *argv))
-        .collect();
-    let outputs: Vec<String> = std::thread::scope(|scope| {
-        let handles: Vec<_> = probes
+/// What every tool of the group depends on: the toolchain, the environment and the config files.
+fn shared_salt(root: &Path) -> String {
+    let versions: Vec<String> = std::thread::scope(|scope| {
+        let handles: Vec<_> = SHARED_PROBES
             .iter()
             .map(|argv| scope.spawn(move || probe(root, argv)))
             .collect();
@@ -60,21 +74,13 @@ fn compute(root: &Path) -> HashMap<String, String> {
             .map(|handle| handle.join().unwrap_or_else(|_| "panicked".to_owned()))
             .collect()
     });
-    let (shared_versions, tool_versions) = outputs.split_at(SHARED_PROBES.len());
     let mut hasher = blake3::Hasher::new();
-    for version in shared_versions {
+    for version in &versions {
         feed(&mut hasher, version.as_bytes());
     }
-    feed(&mut hasher, env_digest(std::env::vars()).as_bytes());
+    feed(&mut hasher, env_digest(std::env::vars_os()).as_bytes());
     feed(&mut hasher, config_digest(root).as_bytes());
-    let shared = hasher.finalize().to_hex().to_string();
-    let mut salts: HashMap<String, String> = TOOL_VERSIONS
-        .iter()
-        .zip(tool_versions)
-        .map(|((id, _), version)| ((*id).to_owned(), format!("{shared}|{id}={}", version.trim())))
-        .collect();
-    salts.insert(String::new(), shared);
-    salts
+    hasher.finalize().to_hex().to_string()
 }
 
 fn feed(hasher: &mut blake3::Hasher, part: &[u8]) {
@@ -102,11 +108,13 @@ fn probe(root: &Path, argv: &[&str]) -> String {
 
 /// Whether the environment variable `name` changes what cargo, rustc or clippy report.
 ///
-/// `CARGO_*` is cargo's config-by-environment namespace, less what only changes how output looks (`CARGO_TERM_*`),
-/// where cargo lives (`CARGO_HOME`, whose config is keyed by content instead), and what cargo itself sets for the
-/// processes it runs (`CARGO_PKG_*`, `CARGO_MANIFEST_*`, …), which describe the caller rather than configure the hook.
+/// `CARGO_*` is cargo's config-by-environment namespace, less what changes no verdict: how output looks
+/// (`CARGO_TERM_*`), where cargo lives (`CARGO_HOME`, whose config is keyed by content instead) or builds
+/// (`CARGO_TARGET_DIR`, which a worktree may set for itself), how much it builds at once, and what cargo itself sets
+/// for the processes it runs (`CARGO`, `CARGO_PKG_*`, `CARGO_MANIFEST_*`, …), which describe the caller rather than
+/// configure the hook.
 fn relevant_env(name: &str) -> bool {
-    const SET_BY_CARGO: &[&str] = &[
+    const NOT_AN_INPUT: &[&str] = &[
         "CARGO_PKG_",
         "CARGO_MANIFEST_",
         "CARGO_CRATE_",
@@ -116,23 +124,36 @@ fn relevant_env(name: &str) -> bool {
         "CARGO_TERM_",
         "CARGO_MAKEFLAGS",
     ];
+    const NOT_AN_INPUT_EXACT: &[&str] = &[
+        "CARGO_HOME",
+        "CARGO_TARGET_DIR",
+        "CARGO_BUILD_TARGET_DIR",
+        "CARGO_BUILD_JOBS",
+        "CARGO_INCREMENTAL",
+        "CARGO_BUILD_INCREMENTAL",
+    ];
     if let Some(rest) = name.strip_prefix("CARGO_") {
-        return !rest.is_empty() && name != "CARGO_HOME" && !SET_BY_CARGO.iter().any(|set| name.starts_with(set));
+        return !rest.is_empty()
+            && !NOT_AN_INPUT_EXACT.contains(&name)
+            && !NOT_AN_INPUT.iter().any(|set| name.starts_with(set));
     }
     matches!(
         name,
-        "RUSTFLAGS" | "RUSTDOCFLAGS" | "RUSTC" | "RUSTC_BOOTSTRAP" | "RUSTUP_TOOLCHAIN" | "CARGO"
+        "RUSTFLAGS" | "RUSTDOCFLAGS" | "RUSTC" | "RUSTC_BOOTSTRAP" | "RUSTUP_TOOLCHAIN"
     ) || name.starts_with("CLIPPY_")
 }
 
-/// A digest of the relevant variables in `vars`, independent of their order.
-fn env_digest(vars: impl Iterator<Item = (String, String)>) -> String {
-    let mut relevant: Vec<(String, String)> = vars.filter(|(name, _)| relevant_env(name)).collect();
+/// A digest of the relevant variables in `vars`, independent of their order. Takes [`std::env::vars_os`]: `vars`
+/// panics on a variable that is not Unicode. A name that is not Unicode is none of cargo's; a value is hashed as bytes.
+fn env_digest(vars: impl Iterator<Item = (OsString, OsString)>) -> String {
+    let mut relevant: Vec<(String, OsString)> = vars
+        .filter_map(|(name, value)| Some((name.into_string().ok().filter(|name| relevant_env(name))?, value)))
+        .collect();
     relevant.sort();
     let mut hasher = blake3::Hasher::new();
     for (name, value) in &relevant {
         feed(&mut hasher, name.as_bytes());
-        feed(&mut hasher, value.as_bytes());
+        feed(&mut hasher, value.as_encoded_bytes());
     }
     hasher.finalize().to_hex().to_string()
 }
@@ -254,7 +275,7 @@ mod tests {
         let digest = |vars: &[(&str, &str)]| {
             env_digest(
                 vars.iter()
-                    .map(|(name, value)| ((*name).to_owned(), (*value).to_owned())),
+                    .map(|(name, value)| (OsString::from(name), OsString::from(value))),
             )
         };
         let base = digest(&[("PATH", "/bin")]);
@@ -263,15 +284,54 @@ mod tests {
         assert_ne!(base, digest(&[("CLIPPY_CONF_DIR", "conf")]));
         assert_eq!(base, digest(&[("CARGO_PKG_NAME", "x"), ("CARGO_TERM_COLOR", "always")]));
         assert_eq!(base, digest(&[("PATH", "/usr/bin"), ("HOME", "/root")]));
+        assert_eq!(
+            base,
+            digest(&[
+                ("CARGO_TARGET_DIR", "/elsewhere/target"),
+                ("CARGO_BUILD_JOBS", "2"),
+                ("CARGO_INCREMENTAL", "0"),
+                ("CARGO", "/toolchain/bin/cargo"),
+            ]),
+            "where and how fast cargo builds changes no verdict"
+        );
+    }
+
+    /// A variable that is not Unicode is hashed, not a panic.
+    #[cfg(unix)]
+    #[test]
+    fn the_env_digest_takes_a_value_that_is_not_unicode() {
+        use std::os::unix::ffi::OsStringExt;
+        let digest = |value: &[u8]| {
+            env_digest(
+                [
+                    (OsString::from("RUSTFLAGS"), OsString::from_vec(value.to_vec())),
+                    (OsString::from_vec(vec![0xff]), OsString::from("x")),
+                ]
+                .into_iter(),
+            )
+        };
+        assert_ne!(digest(&[0xff, 0x01]), digest(&[0xff, 0x02]));
     }
 
     #[test]
-    fn every_tool_salt_carries_the_shared_part() {
+    fn a_tool_salt_is_the_shared_part_and_the_tools_own_version() {
         let dir = tempfile::tempdir().expect("tempdir");
-        let clippy = salt(dir.path(), "cargo-clippy");
-        let sort = salt(dir.path(), "cargo-sort");
         let shared = salt(dir.path(), "");
-        assert!(clippy.starts_with(&shared) && sort.starts_with(&shared));
-        assert_ne!(clippy, sort);
+        assert_eq!(shared.len(), blake3::OUT_LEN * 2, "{shared}");
+        for id in ["cargo-clippy", "cargo-sort"] {
+            let own = salt(dir.path(), id);
+            assert!(own.starts_with(&format!("{shared}|{id}=")), "{own}");
+            assert_eq!(own, salt(dir.path(), id), "memoised");
+        }
+    }
+
+    /// cargo-sort's config is an input: `tomlfmt.toml` changes what it accepts.
+    #[test]
+    fn a_tomlfmt_config_changes_the_config_digest() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        git(dir.path(), &["init", "-q"]);
+        let before = config_digest(dir.path());
+        std::fs::write(dir.path().join("tomlfmt.toml"), "table_order = [\"package\"]\n").expect("tomlfmt");
+        assert_ne!(before, config_digest(dir.path()));
     }
 }
