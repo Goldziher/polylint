@@ -333,7 +333,7 @@ fn check(
     let owner = ProgramOwner::new(options);
     let program = owner.program();
     let ctx = Context::default();
-    let narrowed = narrowed(&ctx, program, config_path, targets);
+    let narrowed = narrowed(&ctx, program, config_path, targets, threads);
     let found = get_diagnostics_of_any_program(
         &ctx,
         program,
@@ -370,22 +370,40 @@ fn check(
 /// a check of the targets would go on to their semantic errors. A target the program does not hold (a JSON file it
 /// does not import, an excluded file) is not checked. The program itself is the same either way, so a target's
 /// imports resolve, and its findings are those of the full check.
+///
+/// Every file it is, too, when the targets are too many for narrowing to pay ([`worth_narrowing`]).
 fn narrowed(
     ctx: &Context,
     program: &'static Program,
     config_path: &str,
     targets: Option<&[String]>,
+    threads: usize,
 ) -> Option<Vec<P<SourceFile>>> {
     let targets = targets?;
     if targets.iter().any(|target| target == config_path) || !program.get_syntactic_diagnostics(ctx, None).is_empty() {
         return None;
     }
-    Some(
-        targets
-            .iter()
-            .filter_map(|target| program.get_source_file(target))
-            .collect(),
-    )
+    let files: Vec<P<SourceFile>> = targets
+        .iter()
+        .filter_map(|target| program.get_source_file(target))
+        .collect();
+    let libraries = vfs::lib_path();
+    let sources = program
+        .get_source_files()
+        .iter()
+        .filter(|file| !file.file_name().starts_with(&libraries))
+        .count();
+    worth_narrowing(files.len(), sources, threads).then_some(files)
+}
+
+/// Whether checking `targets` files alone is less work in wall time than checking all `sources` of the program.
+///
+/// tsrs computes the diagnostics of named files one file after another on one checker, and those of every file on
+/// `threads` checkers at once. With the cost of a file taken as even, the named files take `targets` units and the
+/// full pass `sources / threads`, so narrowing pays while `targets * threads < sources`: a hook over a few staged
+/// files narrows, `poly lint src` over most of the program does not, and the host keeps the findings it named.
+fn worth_narrowing(targets: usize, sources: usize, threads: usize) -> bool {
+    targets.saturating_mul(threads) < sources
 }
 
 impl Raw {
@@ -481,6 +499,27 @@ mod tests {
             path: PathBuf::from(path),
             language: Language::Other("tsconfig.json".into()),
             content: "".into(),
+        }
+    }
+
+    #[test]
+    fn narrowing_pays_while_the_targets_times_the_checkers_are_fewer_than_the_sources() {
+        for (targets, sources, threads, narrow) in [
+            (1, 400, 8, true),
+            (49, 400, 8, true),
+            (50, 400, 8, false),
+            (300, 400, 8, false),
+            (399, 400, 1, true),
+            (400, 400, 1, false),
+            (0, 3, 64, true),
+            (1, 3, 4, false),
+            (usize::MAX, 3, 2, false),
+        ] {
+            assert_eq!(
+                worth_narrowing(targets, sources, threads),
+                narrow,
+                "{targets} of {sources} on {threads}"
+            );
         }
     }
 

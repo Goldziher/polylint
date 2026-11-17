@@ -319,7 +319,8 @@ and nested `poly.toml` scopes do not cut the program) and the result is cached o
 A run that names files, or a directory below the project, reports findings only for those files, and the check
 computes only theirs (ADR 0074): the pre-commit hook, which names the staged files, builds the whole program so imports
 resolve, but type-checks only the staged sources. Naming the `tsconfig.json`, or a program with a syntax error in any
-file, checks every file, as `tsc` would. Because the other files are not checked, a change can break a file that
+file, checks every file, as `tsc` would; so does a run that names so many files that checking them one by one would
+take longer than the parallel check of the program (`poly lint src`). Because the other files are not checked, a change can break a file that
 imports it without the hook seeing it: a staged `util.ts` that changes a signature passes while the unstaged `main.ts`
 calling it no longer type-checks. `poly lint .` (and CI) checks every file and catches that.
 

@@ -636,3 +636,19 @@ fn paths_spelled_from_the_root_are_checked_when_the_root_is_not_the_working_dire
     assert_eq!(on_main.len(), 2);
     assert_eq!(spelled(&scoped), on_main);
 }
+
+/// One target of three sources: one checker narrows (1 x 1 < 3), four check every file (1 x 4 >= 3). The engine
+/// returns what it computed, so findings on the other files tell the two apart.
+#[test]
+fn a_target_has_the_same_findings_whether_the_check_narrows_or_checks_every_file() {
+    let files = three_bad_files(UTIL);
+    let main = targets(&["src/main.ts"]);
+    let full = run(&files, &options(""), Some(1)).expect("tsrs runs");
+    let narrowed = run_for(&files, &options(""), Some(1), Some(&main)).expect("tsrs runs");
+    let unnarrowed = run_for(&files, &options(""), Some(4), Some(&main)).expect("tsrs runs");
+    assert!(on(&narrowed, "src/other.ts").is_empty(), "narrowed: {narrowed:?}");
+    assert_eq!(triples(&unnarrowed), triples(&full), "every file was checked");
+    assert_eq!(on(&full, "src/main.ts").len(), 2);
+    assert_eq!(on(&narrowed, "src/main.ts"), on(&full, "src/main.ts"));
+    assert_eq!(on(&unnarrowed, "src/main.ts"), on(&full, "src/main.ts"));
+}

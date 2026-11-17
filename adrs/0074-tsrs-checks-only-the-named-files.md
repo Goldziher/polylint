@@ -43,6 +43,10 @@ serves.
   program. Every file is checked when the checked `tsconfig` is a target, since file-less diagnostics are reported on
   it, and when any file of the program has a syntax error, since `tsc` then reports the syntax errors alone and the
   targets' findings must match. The mapping revision of `version()` moves.
+- **When narrowing pays.** tsrs computes the diagnostics of named files one after another on one checker, and those
+  of every file on all its checkers at once. The check narrows while `targets x checkers < the program's own source
+  files` (the bundled libraries not counted) and checks every file otherwise, so `poly lint src` over most of a
+  program keeps the parallel pass. The host drops the findings it did not name either way.
 
 tsrs moves to `7.1.0-beta.tsrs2` in the same series; its API and its `icu_normalizer` and `unicode-id-start` pins are
 unchanged.
