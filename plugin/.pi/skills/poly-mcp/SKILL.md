@@ -9,8 +9,8 @@ metadata:
 
 <!--
 AI-RULEZ :: GENERATED FILE — DO NOT EDIT
-Content-Hash: blake3:a70b27d85a5922775a8f133191ae7f7c5b05e700e0690a84f3f5144abd7a35b2
-Source-Hash: blake3:878edad36512a2923b307b675bc84505a1ef65f961a68db87e3fa9accbf810dd
+Content-Hash: blake3:33ed085f9627529e3848fcbeba7eb55d301ef699375276db74f93384c5ba96a9
+Source-Hash: blake3:ea06cdb8524784872da741d339272b44a5c4d9291a0a23fde7e56c89c63eefbe
 Schema-Version: v1
 -->
 
@@ -95,8 +95,8 @@ refreshed lock file, a populated build or type-checker cache — are not poly's 
 
 Read-only: it never downloads, never fetches, never writes (the `cache` topic does not create
 the cache it measures) and never runs repository tools. `topics` is an array of `version`,
-`config`, `validate`, `rules`, `components`, `cache` (default `["version"]`); the result has one key
-per topic.
+`config`, `validate`, `rules`, `components`, `cache` (default `["version"]`; an empty list is a
+`usage` error); the result has one key per topic.
 
 | topic        | answers                                                                         |
 | ------------ | ------------------------------------------------------------------------------- |
@@ -107,14 +107,17 @@ per topic.
 | `components` | `poly components status`: `bundled`, `installed`, `not installed`, `unavailable`; with `paths`, what they need, what is `missing`, what would be `would_download` |
 | `cache`      | `poly cache stats --format json`: `{format_version, on_disk_version, namespaces[], total_entries, total_bytes}` |
 
-Parameters besides `topics`: `config`, `paths` (`components`: paths to judge; `validate`: config
+Parameters besides `topics`: `config` (`config`, `rules`, `components`, `cache`: whose `[cache] dir`
+is measured), `paths` (`components`: paths to judge; `validate`: config
 files or directories), `install` (`components`: the policy `would_download` assumes), `dirs` and
 `test` (`rules`), `format`.
 
 `info {topics: ["version"]}` still answers when the server's executable was replaced or deleted,
-which is what makes it the call that explains why the others stopped. The `rules` topic never
-downloads: a core build without the `astgrep` component reports it missing. A topic the host cannot
-answer carries `{error: {kind, message}}` under its key and sets `isError`.
+which is what makes it the call that explains why the others stopped; asked beside other topics, it
+answers and they carry a `stale` error. The `rules` topic never downloads: a core build without the
+`astgrep` component reports it missing. A topic the host cannot answer carries `{error: {kind,
+message}}` under its key and sets `isError`; the kind is the one `check` reports for the same cause
+(`workspace`, `config`), else `pipeline`.
 
 Remote git `extends` bases are resolved from the local source cache at the `poly.lock`-pinned
 revision and never fetched, by every tool; a base that is not cached is a `config` error telling
@@ -134,7 +137,8 @@ lock` run beside the server takes effect on the next one.
   process (`isError`).
 - `components_prune` — remove cached archives nothing references or used recently; takes no `names`.
 
-The cache actions return `{command, freed_bytes}`, like `poly cache clean|gc --format json`.
+The cache actions take `config` (default: the server's `--config`, else discovery), whose `[cache] dir`
+is the cache they act on, and return `{command, freed_bytes}`, like `poly cache clean|gc --format json`.
 
 ## Components
 
@@ -172,7 +176,8 @@ back on. The digest is what distinguishes two builds sharing one version number 
 build, or two builds of one tag) when their wrapped crates differ; the full engine map is on
 the `info` `version` topic. The server fingerprints its own executable at startup and re-checks it
 per request: if the binary is replaced or deleted underneath a long-lived server, every call but
-`info {topics: ["version"]}` fails rather than answering with superseded behaviour.
+`info {topics: ["version"]}` returns an `isError` result of kind `stale` rather than answering with
+superseded behaviour. Restart the server.
 
 ## Per-file outcomes: checked, skipped, error
 
@@ -217,7 +222,8 @@ A run that could not start, or whose requested phase did not run, returns
 - `usage` — invalid arguments: an unknown key, a wrong value, arguments that do not go together,
   or a parameter that does not apply to the chosen `scope`, `action` or `topics`,
 - `untrusted` — `scope: workspace` in a repository whose `[hooks]` are not trusted (`poly trust`),
-- `no_workspace_tools` — `scope: workspace` with no whole-project tool configured.
+- `no_workspace_tools` — `scope: workspace` with no whole-project tool configured,
+- `stale` — the server's executable was replaced or deleted; restart the server.
 
 Only an unknown tool name is a JSON-RPC error; everything wrong with a call to a tool that exists
 is a result.
