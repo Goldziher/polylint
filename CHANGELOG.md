@@ -137,6 +137,11 @@ Each item is described in full under the section named in brackets.
   `degraded: [{tool, language, reason, files}]`, omitted when empty. `poly fmt` used to print `All formatted.` with
   nothing to say rustfmt never ran. The files still count as checked, not skipped, and exit codes do not change.
   (ADR 0075, #230)
+- **The tsrs type check reported nothing when poly ran from outside the project root.** The host hands a component
+  paths relative to the project root, and the tsrs component resolved them against its working directory, so
+  `cd src && poly lint .`, `cd src && poly lint a.ts` and `poly lint /abs/project` from elsewhere found no
+  `tsconfig.json` and printed "No issues found" over real type errors. The paths are now resolved against the root.
+  Shipped in 0.35.0.
 - **An invalid glob is reported instead of silently dropped.** A malformed pattern in ruff's `exclude`, typos' `extend_exclude`, an `.oxfmtrc` `overrides[].files`/`excludeFiles` entry, a jsonschema `schemas` glob or a recipe's dependency globs now logs a warning naming it, and the valid patterns beside it stay in force. (#217)
 - **Hook sources recover from a damaged cached mirror.** A mirror holding a locked commit without its tree is refetched, then re-cloned, instead of failing with `unable to read tree`; the final error names the cache directory to remove.
 - **golangci-lint no longer fails beside another golangci-lint, or times out a cold module and reruns it.** poly

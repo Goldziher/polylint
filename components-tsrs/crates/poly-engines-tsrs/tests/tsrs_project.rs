@@ -591,3 +591,48 @@ fn a_targeted_tsconfig_checks_the_whole_program_and_no_target_checks_nothing() {
     let unknown = run_for(&files, &options(""), Some(1), Some(&outside)).expect("tsrs runs");
     assert!(unknown.is_empty(), "{unknown:?}");
 }
+
+/// The files as a component receives them: spelled from the project root.
+fn from_the_root(files: &[ProjectFile]) -> Vec<ProjectFile> {
+    files
+        .iter()
+        .map(|file| ProjectFile {
+            path: file.path.strip_prefix(root()).expect("inside the root").to_path_buf(),
+            ..file.clone()
+        })
+        .collect()
+}
+
+/// Every finding with the path it is reported under, rendered whole.
+fn spelled(found: &Findings) -> Vec<(PathBuf, String)> {
+    found
+        .iter()
+        .flat_map(|(path, diagnostics)| diagnostics.iter().map(move |d| (path.clone(), format!("{d:?}"))))
+        .collect()
+}
+
+#[test]
+fn paths_spelled_from_the_root_are_checked_when_the_root_is_not_the_working_directory() {
+    assert_ne!(std::env::current_dir().expect("a working directory"), root());
+    let absolute = three_bad_files(UTIL);
+    let relative = from_the_root(&absolute);
+    let full = run(&absolute, &options(""), Some(1)).expect("tsrs runs");
+    let expected: Vec<(PathBuf, String)> = spelled(&full)
+        .into_iter()
+        .map(|(path, diagnostic)| {
+            (
+                path.strip_prefix(root()).expect("inside the root").to_path_buf(),
+                diagnostic,
+            )
+        })
+        .collect();
+    assert_eq!(expected.len(), 4, "{full:?}");
+    let found = run(&relative, &options(""), Some(1)).expect("tsrs runs");
+    assert_eq!(spelled(&found), expected, "reported under the paths handed over");
+
+    let main = [PathBuf::from("src/main.ts")];
+    let scoped = run_for(&relative, &options(""), Some(1), Some(&main)).expect("tsrs runs");
+    let on_main: Vec<_> = expected.iter().filter(|(path, _)| path == &main[0]).cloned().collect();
+    assert_eq!(on_main.len(), 2);
+    assert_eq!(spelled(&scoped), on_main);
+}

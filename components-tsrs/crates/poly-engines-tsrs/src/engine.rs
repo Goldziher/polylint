@@ -21,7 +21,7 @@ pub const ENGINE_NAME: &str = "tsrs";
 ///
 /// Bump the suffix whenever the mapping or the filtering of findings changes, and the version whenever the tsrs
 /// crates are upgraded.
-const VERSION: &str = "tsrs-7.1.0-beta.tsrs2+proj4";
+const VERSION: &str = "tsrs-7.1.0-beta.tsrs2+proj5";
 
 /// The stack of the thread tsrs checks on: checking recurses deeply, and tsrs's own binaries give their program
 /// threads the same.
@@ -137,6 +137,7 @@ impl ProjectAnalysis for TsrsEngine {
         };
         Ok(findings(
             outcome,
+            req.root,
             req.files,
             &declared,
             settings.report_unresolved_modules,

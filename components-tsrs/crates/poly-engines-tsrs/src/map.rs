@@ -6,23 +6,24 @@
 //! checked `.d.ts` that has an error reports it.
 
 use std::collections::{BTreeMap, HashMap};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use poly_engine_api::engine::{Diagnostic, ProjectFile, Severity, Span};
 
 use crate::ENGINE_NAME;
 use crate::external::{Declared, quoted};
 use crate::program::{Outcome, Raw};
-use crate::vfs::tsrs_path;
+use crate::vfs::tsrs_name;
 
 /// `outcome`'s diagnostics under the paths of `files`, in file order and then position order.
 pub(crate) fn findings(
     outcome: Outcome,
+    root: &Path,
     files: &[ProjectFile],
     declared: &Declared,
     report_unresolved_modules: bool,
 ) -> Vec<(PathBuf, Vec<Diagnostic>)> {
-    let by_name: HashMap<String, &ProjectFile> = files.iter().map(|file| (tsrs_path(&file.path), file)).collect();
+    let by_name: HashMap<String, &ProjectFile> = files.iter().map(|file| (tsrs_name(root, &file.path), file)).collect();
     let mut grouped: BTreeMap<PathBuf, Vec<Diagnostic>> = BTreeMap::new();
     for raw in outcome.diagnostics {
         let name = raw.file.as_deref().unwrap_or(&outcome.config);
@@ -85,6 +86,9 @@ mod tests {
     use poly_engine_api::language::Language;
 
     use super::*;
+    use crate::vfs::tsrs_path;
+
+    const ROOT: &str = "/w";
 
     fn raw(file: Option<&str>, code: i32, argument: Option<&str>) -> Raw {
         Raw {
@@ -108,7 +112,7 @@ mod tests {
 
     fn outcome(diagnostics: Vec<Raw>, allow_js: bool) -> Outcome {
         Outcome {
-            config: tsrs_path(std::path::Path::new("/w/tsconfig.json")),
+            config: tsrs_path(Path::new("/w/tsconfig.json")),
             allow_js,
             jsx: false,
             diagnostics,
@@ -137,9 +141,10 @@ mod tests {
     #[test]
     fn findings_carry_code_severity_span_and_the_flattened_chain() {
         let files = [file("/w/src/a.ts")];
-        let name = tsrs_path(std::path::Path::new("/w/src/a.ts"));
+        let name = tsrs_path(Path::new("/w/src/a.ts"));
         let found = findings(
             outcome(vec![raw(Some(&name), 2322, None)], false),
+            Path::new(ROOT),
             &files,
             &Declared::default(),
             false,
@@ -161,9 +166,10 @@ mod tests {
     #[test]
     fn a_diagnostic_without_a_file_lands_on_the_tsconfig_and_one_outside_the_files_is_dropped() {
         let files = [file("/w/tsconfig.json"), file("/w/src/a.ts")];
-        let outside = tsrs_path(std::path::Path::new("/elsewhere/b.ts"));
+        let outside = tsrs_path(Path::new("/elsewhere/b.ts"));
         let found = findings(
             outcome(vec![raw(None, 5009, None), raw(Some(&outside), 2322, None)], false),
+            Path::new(ROOT),
             &files,
             &Declared::default(),
             false,
@@ -175,7 +181,7 @@ mod tests {
     #[test]
     fn a_missing_install_is_dropped_unless_asked_for() {
         let files = [file("/w/src/a.ts")];
-        let name = tsrs_path(std::path::Path::new("/w/src/a.ts"));
+        let name = tsrs_path(Path::new("/w/src/a.ts"));
         let manifest = ProjectFile {
             path: PathBuf::from("/w/package.json"),
             language: Language::Other("package.json".into()),
@@ -191,16 +197,16 @@ mod tests {
                 false,
             )
         };
-        let hidden = findings(missing(), &files, &declared, false);
+        let hidden = findings(missing(), Path::new(ROOT), &files, &declared, false);
         assert_eq!(hidden[0].1.len(), 1, "only the undeclared package is reported");
-        let shown = findings(missing(), &files, &declared, true);
+        let shown = findings(missing(), Path::new(ROOT), &files, &declared, true);
         assert_eq!(shown[0].1.len(), 2);
     }
 
     #[test]
     fn the_module_is_read_from_the_message_when_no_argument_was_kept() {
         let files = [file("/w/src/a.ts")];
-        let name = tsrs_path(std::path::Path::new("/w/src/a.ts"));
+        let name = tsrs_path(Path::new("/w/src/a.ts"));
         let manifest = ProjectFile {
             path: PathBuf::from("/w/package.json"),
             language: Language::Other("package.json".into()),
@@ -210,6 +216,7 @@ mod tests {
         diagnostic.message = "Cannot find module 'left-pad' or its corresponding type declarations.".to_owned();
         let found = findings(
             outcome(vec![diagnostic], false),
+            Path::new(ROOT),
             &files,
             &Declared::from_files(&[manifest]),
             false,

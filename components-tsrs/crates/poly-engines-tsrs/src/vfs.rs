@@ -20,6 +20,18 @@ pub(crate) fn tsrs_path(path: &Path) -> String {
     tspath::normalize_path(&absolute.to_string_lossy())
 }
 
+/// The file `path` of a request rooted at `root`, as tsrs names files.
+///
+/// A component is handed paths relative to the root, and the root is not the working directory of a run started
+/// below it or naming it from elsewhere; a path the host spells from the root or absolutely is taken as it is.
+pub(crate) fn tsrs_name(root: &Path, path: &Path) -> String {
+    if path.is_absolute() || path.starts_with(root) {
+        tsrs_path(path)
+    } else {
+        tsrs_path(&root.join(path))
+    }
+}
+
 /// The directory of the `lib.*.d.ts` files embedded in tsrs. Passed explicitly: `bundled::default_lib_path`
 /// reads `TSRS_LIB_PATH`.
 pub(crate) fn lib_path() -> String {

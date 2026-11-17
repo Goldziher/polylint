@@ -29,7 +29,7 @@ use tsrs_vfs::FS;
 use crate::external::{Declared, package_name};
 use crate::owner::ProgramOwner;
 use crate::settings::Settings;
-use crate::vfs::{self, MemoryFs, tsrs_path};
+use crate::vfs::{self, MemoryFs, tsrs_name, tsrs_path};
 
 /// The first chunk of the scratch region configs and program bookkeeping are allocated in.
 const SCRATCH_CHUNK: usize = 1 << 20;
@@ -84,16 +84,16 @@ pub(crate) struct Outcome {
 pub(crate) fn diagnose(request: &Request<'_>) -> anyhow::Result<Option<Outcome>> {
     let mut memory = MemoryFs::default();
     for file in request.files {
-        memory.insert(tsrs_path(&file.path), Arc::clone(&file.content));
+        memory.insert(tsrs_name(request.root, &file.path), Arc::clone(&file.content));
     }
     let Some(config) = locate(request, &memory)? else {
         return Ok(None);
     };
     let cwd = tsrs_path(&request.root.join(&request.settings.dir));
-    let host_config = host_path_of(request.files, &config);
+    let host_config = host_path_of(request.root, request.files, &config);
     let targets: Option<Vec<String>> = request
         .targets
-        .map(|targets| targets.iter().map(|path| tsrs_path(path)).collect());
+        .map(|targets| targets.iter().map(|path| tsrs_name(request.root, path)).collect());
     let region = Region::new_scratch(SCRATCH_CHUNK);
     let entered = region.enter();
     let result = panic::catch_unwind(AssertUnwindSafe(|| {
@@ -119,10 +119,10 @@ pub(crate) fn diagnose(request: &Request<'_>) -> anyhow::Result<Option<Outcome>>
 
 /// The host's path of the file tsrs names `name`, which is how [`Declared`] scopes manifests: tsrs normalises
 /// separators and drive prefixes, so its names do not share a prefix with the host's manifest directories on Windows.
-fn host_path_of(files: &[ProjectFile], name: &str) -> PathBuf {
+fn host_path_of(root: &Path, files: &[ProjectFile], name: &str) -> PathBuf {
     files
         .iter()
-        .find(|file| tsrs_path(&file.path) == name)
+        .find(|file| tsrs_name(root, &file.path) == name)
         .map_or_else(|| PathBuf::from(name), |file| file.path.clone())
 }
 
@@ -488,10 +488,13 @@ mod tests {
     fn the_host_path_of_a_tsrs_name_is_the_path_the_host_handed_over() {
         let files = [file("/w/a/tsconfig.json"), file("/w/b/tsconfig.json")];
         let name = tsrs_path(Path::new("/w/b/tsconfig.json"));
-        assert_eq!(host_path_of(&files, &name), PathBuf::from("/w/b/tsconfig.json"));
+        let root = Path::new("/w");
+        assert_eq!(host_path_of(root, &files, &name), PathBuf::from("/w/b/tsconfig.json"));
         assert_eq!(
-            host_path_of(&files, "/x/tsconfig.json"),
+            host_path_of(root, &files, "/x/tsconfig.json"),
             PathBuf::from("/x/tsconfig.json")
         );
+        let relative = [file("b/tsconfig.json")];
+        assert_eq!(host_path_of(root, &relative, &name), PathBuf::from("b/tsconfig.json"));
     }
 }
