@@ -45,8 +45,11 @@ enabled = true
 enabled = false   # use the tree-sitter tier for Go instead
 ```
 
-- **Absent or disabled** — the language falls through to tree-sitter formatting with a notice. A
-  missing host tool is never an error.
+- **Absent or disabled** — the language falls through to tree-sitter formatting. A missing host
+  tool is never an error, but a tool that is on by default or switched on and not found is named in
+  the report: one summary line per tool (`rustfmt not found on PATH: 3 Rust files formatted by the
+  generic tier`) and a `degraded` array of `{tool, language, reason, files}` in `--format json`.
+  Those files count as checked, not skipped.
 - **Cache** — each tool's own `--version` output is part of the cache key, so upgrading the tool
   invalidates its cached results.
 - **Batching** — `batch = true` hands a tool many files per invocation, with output identical to

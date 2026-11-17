@@ -81,7 +81,8 @@ covering nothing.
 Engines and components are pinned to the poly version, so local, hook, and CI runs agree —
 with one caveat: `rustfmt` and `gofmt` (and `shellcheck` for lint) are host tools used
 automatically whenever they are on `PATH`, and output then depends on that tool's version. A
-machine without them falls through to the lower-fidelity tree-sitter tier with a notice. Pin
+machine without them falls through to the lower-fidelity tree-sitter tier, and the report says so
+per tool (a summary line, and `degraded` in JSON) without failing the run. Pin
 those toolchains in CI (and expect drift otherwise), or set `[engines.rustfmt] enabled = false` /
 `[engines.gofmt] enabled = false` to stop the subprocess. That does not leave the language
 unformatted: native-toolchain backends read `enabled` themselves and hand the file to the

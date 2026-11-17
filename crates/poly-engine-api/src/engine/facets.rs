@@ -188,6 +188,17 @@ pub trait PlanPolicy: Engine {
         default_provides_language_format(self)
     }
 
+    /// The host tool this backend was meant to run for `language` under `cfg` and could not find,
+    /// or `None` when it found it, was switched off, or runs no host tool.
+    ///
+    /// A native tool that is wanted but absent hands its files to a lower-fidelity path (the
+    /// tier-2 reindenter, ADR 0014) or lints nothing, and the run still reads as a pass. The
+    /// planner asks this once per plan so the report can name the files that path served
+    /// (ADR 0075); asking the engine call instead would lose the answer on a cache hit.
+    fn missing_tool(&self, _language: &Language, _cfg: &EngineConfig) -> Option<&'static str> {
+        None
+    }
+
     /// Whether this backend reads [`ENABLED_OPTION_KEY`](super::ENABLED_OPTION_KEY) itself and
     /// degrades gracefully when it is `false`, rather than expecting the runner to drop it from
     /// the plan.
@@ -325,6 +336,11 @@ impl dyn Engine + '_ {
             Some(facet) => facet.provides_language_format(language, cfg),
             None => default_provides_language_format(self),
         }
+    }
+
+    /// [`PlanPolicy::missing_tool`], or `None` for an engine without the facet.
+    pub fn missing_tool(&self, language: &Language, cfg: &EngineConfig) -> Option<&'static str> {
+        self.plan_policy().and_then(|facet| facet.missing_tool(language, cfg))
     }
 
     /// [`PlanPolicy::self_manages_enabled`], or `false` for an engine without the facet.

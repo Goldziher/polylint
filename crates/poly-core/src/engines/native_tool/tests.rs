@@ -527,3 +527,22 @@ fn go_native_unchanged_on_already_formatted() {
         "gofmt must return Unchanged for already-formatted source"
     );
 }
+
+/// The planner's question (ADR 0075): a wanted tool names itself only when the host lacks it, and a
+/// tool switched off is never missing, whatever the host has.
+#[test]
+fn missing_tool_names_a_wanted_tool_only_when_it_is_absent() {
+    let rustfmt = NativeToolEngine::for_language(Language::Rust);
+    let expected = rustfmt.probed_version().is_none().then_some("rustfmt");
+    assert_eq!(rustfmt.missing_tool(&Language::Rust, &default_cfg()), expected);
+    assert_eq!(rustfmt.missing_tool(&Language::Rust, &bool_cfg(false)), None);
+
+    let shellcheck = NativeToolEngine::shell_lint();
+    let expected = shellcheck.probed_version().is_none().then_some("shellcheck");
+    assert_eq!(shellcheck.missing_tool(&Language::Shell, &default_cfg()), expected);
+    assert_eq!(shellcheck.missing_tool(&Language::Shell, &bool_cfg(false)), None);
+
+    // Opt-in and never switched on: not wanted, so not missing.
+    let zig = NativeToolEngine::for_language(Language::Zig);
+    assert_eq!(zig.missing_tool(&Language::Zig, &default_cfg()), None);
+}

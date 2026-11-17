@@ -43,6 +43,13 @@ pub(super) type PlanMap = FxHashMap<(usize, Language), Vec<EnginePlan>>;
 /// that about a file the caller switched off on purpose is false.
 pub(super) type WithdrawnMap = FxHashMap<(usize, Language), Withdrawal>;
 
+/// The `(config, language)` pairs whose plan holds a native tool that is wanted and absent, and
+/// which tools ([`PlanPolicy::missing_tool`](crate::engine::PlanPolicy::missing_tool)).
+///
+/// Answered once per plan, beside it rather than on each [`EnginePlan`]: the per-file loop never
+/// asks, only the report does, and only for pairs where a tool is missing.
+type MissingToolMap = FxHashMap<(usize, Language), Vec<&'static str>>;
+
 /// A run's engine plans, and why any `(config, language)` pair has none.
 ///
 /// The two maps are keyed identically and are always read together — "what runs
@@ -52,6 +59,7 @@ pub(super) type WithdrawnMap = FxHashMap<(usize, Language), Withdrawal>;
 pub(super) struct RunPlan {
     plans: PlanMap,
     withdrawn: WithdrawnMap,
+    missing_tools: MissingToolMap,
     components: ComponentsReport,
     /// The components' engines, for the project-check phase, which plans separately from the per-file tier.
     resolved: ResolvedComponents,
@@ -80,6 +88,13 @@ impl RunPlan {
         self.withdrawn.get(&(config_id, language.clone()))
     }
 
+    /// The wanted native tools this pair's plan found absent, or an empty slice when none.
+    pub(super) fn missing_tools(&self, config_id: usize, language: &Language) -> &[&'static str] {
+        self.missing_tools
+            .get(&(config_id, language.clone()))
+            .map_or(&[], Vec::as_slice)
+    }
+
     /// Whether anything is planned for this pair — the question
     /// `unmatched_explicit_paths` asks of a path named on the command line.
     pub(super) fn routes(&self, config_id: usize, language: &Language) -> bool {
@@ -103,9 +118,17 @@ impl RunPlan {
         Self {
             plans,
             withdrawn: WithdrawnMap::default(),
+            missing_tools: MissingToolMap::default(),
             components: ComponentsReport::default(),
             resolved: ResolvedComponents::default(),
         }
+    }
+
+    /// Record `tool` as wanted and absent for the pair, as planning does for a native tool the
+    /// host lacks.
+    pub(super) fn missing_tool(mut self, config_id: usize, language: Language, tool: &'static str) -> Self {
+        self.missing_tools.entry((config_id, language)).or_default().push(tool);
+        self
     }
 }
 
@@ -744,6 +767,7 @@ pub(super) fn plan_by_config_language(
     drop(phase);
     let mut plans: PlanMap = FxHashMap::default();
     let mut withdrawn: WithdrawnMap = FxHashMap::default();
+    let mut missing_tools: MissingToolMap = FxHashMap::default();
     for f in files {
         let key = (f.config_id, f.language.clone());
         if plans.contains_key(&key) {
@@ -767,11 +791,19 @@ pub(super) fn plan_by_config_language(
         if let Some(withdrawal) = withdrawal {
             withdrawn.insert(key.clone(), withdrawal);
         }
+        let missing: Vec<&'static str> = plan
+            .iter()
+            .filter_map(|engine| engine.engine.missing_tool(&f.language, &engine.config))
+            .collect();
+        if !missing.is_empty() {
+            missing_tools.insert(key.clone(), missing);
+        }
         plans.insert(key, plan);
     }
     RunPlan {
         plans,
         withdrawn,
+        missing_tools,
         components: resolved.report().clone(),
         resolved,
     }

@@ -47,7 +47,8 @@ bundled with every engine linked in.
   `gofmt` and `shellcheck` are **on by default when found on PATH**; `zigfmt`,
   `google-java-format`, `ktfmt`, `styler` (R), `swift-format`, `dartfmt`, and `gleamfmt` are
   opt-in via `[engines.<id>] enabled = true`. When the tool is absent, formatting falls through
-  to tier 2 with an info-level notice.
+  to tier 2, and the report names the files per tool (`rustfmt not found on PATH: 3 Rust files
+  formatted by the generic tier`; `degraded` in JSON).
 - **Shell.** Formatted by the `sh` component (shfmt's Go library, run as a sidecar), not by a
   host `shfmt`. The host `shfmt` is used only by the bundled build or with
   `[components] disable = ["sh"]`.

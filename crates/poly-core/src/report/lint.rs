@@ -8,8 +8,9 @@ use super::layout::{files, issues};
 use super::notes::{push_discovery_note, push_skip_note, qualification_lines};
 use super::shared::{Verbosity, render_debug_block, strip_ansi};
 use super::theme::Theme;
+use crate::config::Kind;
 use crate::discover::DiscoveryReport;
-use crate::runner::{LintError, LintResult, LintRun, SkippedFile};
+use crate::runner::{DegradedTool, LintError, LintResult, LintRun, SkippedFile};
 
 /// Build the human-oriented lint report as a string. By default one terse line
 /// per diagnostic: `level  engine  code?  line:col?  title`. `--verbose` adds
@@ -19,7 +20,7 @@ use crate::runner::{LintError, LintResult, LintRun, SkippedFile};
 /// The summary is unqualified: it can say "No issues found." but not how much was
 /// looked at. Prefer [`render_lint_pretty_run`], which does both.
 pub fn render_lint_pretty(results: &[LintResult], verbosity: Verbosity) -> (String, usize) {
-    render_lint_core(results, None, &[], &[], &DiscoveryReport::default(), verbosity)
+    render_lint_core(results, None, &[], &[], &[], &DiscoveryReport::default(), verbosity)
 }
 
 /// [`render_lint_pretty`] over a whole [`LintRun`], so the summary can state how
@@ -30,6 +31,7 @@ pub fn render_lint_pretty_run(run: &LintRun, verbosity: Verbosity) -> (String, u
         &run.results,
         Some(run.checked),
         &run.skipped,
+        &run.degraded,
         &run.errors,
         &run.discovery,
         verbosity,
@@ -42,6 +44,7 @@ fn render_lint_core(
     results: &[LintResult],
     checked: Option<usize>,
     skipped: &[SkippedFile],
+    degraded: &[DegradedTool],
     errors: &[LintError],
     discovery: &DiscoveryReport,
     verbosity: Verbosity,
@@ -154,7 +157,7 @@ fn render_lint_core(
         out.push('\n');
     }
     let _ = writeln!(out, "{headline}");
-    for line in qualification_lines(checked, "linted", skipped, discovery) {
+    for line in qualification_lines(checked, "linted", skipped, (degraded, Kind::Lint), discovery) {
         let _ = writeln!(out, "{line}");
     }
     // A partially fixed run reports both halves: what it changed under the

@@ -33,7 +33,8 @@ Five mechanisms decide what actually inspects a file (`crates/poly-core/src/regi
    `shellcheck` are **on by default whenever the tool is found on PATH**; `zigfmt`,
    `google-java-format`, `ktfmt`, `styler`, `swift-format`, `dartfmt`, and `gleamfmt` are
    opt-in via `[engines.<id>] enabled = true`.
-   Absent tool ⇒ the language falls through to tier 2 with an info-level notice, never an error.
+   Absent tool ⇒ the language falls through to tier 2, never an error; the report names the
+   files per tool (a summary line, `degraded` in JSON) and does not count them as skipped.
    Shell formatting is the exception: it comes from the `sh` component (shfmt as a Go sidecar),
    and a host `shfmt` is used only by the bundled build or with `[components] disable = ["sh"]`.
 4. **`quality`, the code-quality metric tier** (ADR 0027) — cross-cutting, appended to every

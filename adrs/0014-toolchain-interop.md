@@ -2,6 +2,7 @@
 
 - Status: Accepted
 - Date: 2026-06-28
+- Updated: 2026-11-17 (the run report names the files a missing tool left to the generic tier — ADR 0075)
 - Updated: 2026-08-29 (shellcheck is default-on — see "Amendment — 2026-08-29")
 - Updated: 2026-07-05 (project-wide tools deferred here — `cargo clippy`, `pyrefly`,
   `golangci-lint` — now have a home as whole-workspace hooks under ADR 0019, not as

@@ -449,6 +449,7 @@ pub fn run_lint(args: LintArgs) -> ExitCode {
             }
             report::eprint_discovery_note(&run.discovery, verbosity);
             report::eprint_skip_note(&run.skipped, verbosity);
+            report::eprint_degraded_note(&run.degraded, poly_core::config::Kind::Lint);
             report::eprint_lint_errors(&run.errors);
             results.iter().map(|r| r.diagnostics.len()).sum()
         }
@@ -458,6 +459,7 @@ pub fn run_lint(args: LintArgs) -> ExitCode {
             }
             report::eprint_discovery_note(&run.discovery, verbosity);
             report::eprint_skip_note(&run.skipped, verbosity);
+            report::eprint_degraded_note(&run.degraded, poly_core::config::Kind::Lint);
             report::eprint_lint_errors(&run.errors);
             results.iter().map(|r| r.diagnostics.len()).sum()
         }
@@ -619,6 +621,7 @@ pub fn run_fmt(args: FmtArgs) -> ExitCode {
                     }
                     report::eprint_discovery_note(&run.discovery, verbosity);
                     report::eprint_skip_note(&run.skipped, verbosity);
+                    report::eprint_degraded_note(&run.degraded, poly_core::config::Kind::Format);
                     report::eprint_format_errors(&run.errors);
                     run.results.iter().filter(|r| r.changed).count()
                 }
@@ -628,6 +631,7 @@ pub fn run_fmt(args: FmtArgs) -> ExitCode {
                     }
                     report::eprint_discovery_note(&run.discovery, verbosity);
                     report::eprint_skip_note(&run.skipped, verbosity);
+                    report::eprint_degraded_note(&run.degraded, poly_core::config::Kind::Format);
                     report::eprint_format_errors(&run.errors);
                     run.results.iter().filter(|r| r.changed).count()
                 }

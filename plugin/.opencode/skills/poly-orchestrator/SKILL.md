@@ -9,8 +9,8 @@ metadata:
 
 <!--
 AI-RULEZ :: GENERATED FILE — DO NOT EDIT
-Content-Hash: blake3:0b610d73697d861353dcde1418f78a278df0b0f90620f0077836173a96039482
-Source-Hash: blake3:3e280378c2b0495cf466c05e9a5c1ffe6ac2d0ea3466b3c4a8b8535b90cb0702
+Content-Hash: blake3:31c69478ca8977d8a0d985627f1131c4cf24a8e839d41f03a9558cd28a1fbd1c
+Source-Hash: blake3:26d1bb1f1ac715a6c0be970f19cd46b4fbd2c1a2b7490d9c4a48ec5d30dba40a
 Schema-Version: v1
 -->
 
@@ -82,7 +82,8 @@ covering nothing.
 Engines and components are pinned to the poly version, so local, hook, and CI runs agree —
 with one caveat: `rustfmt` and `gofmt` (and `shellcheck` for lint) are host tools used
 automatically whenever they are on `PATH`, and output then depends on that tool's version. A
-machine without them falls through to the lower-fidelity tree-sitter tier with a notice. Pin
+machine without them falls through to the lower-fidelity tree-sitter tier, and the report says so
+per tool (a summary line, and `degraded` in JSON) without failing the run. Pin
 those toolchains in CI (and expect drift otherwise), or set `[engines.rustfmt] enabled = false` /
 `[engines.gofmt] enabled = false` to stop the subprocess. That does not leave the language
 unformatted: native-toolchain backends read `enabled` themselves and hand the file to the

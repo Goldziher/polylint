@@ -66,6 +66,12 @@ pub const ENGINE_METHODS: &[(&str, Coverage)] = &[
         Coverage::Index("WireEngineDesc.supersedes_generic_formatter"),
     ),
     (
+        "missing_tool",
+        Coverage::HostSide(
+            "only an in-process native-tool backend probes for a host binary; a component brings its own",
+        ),
+    ),
+    (
         "batching",
         Coverage::HostSide("facet accessor; a component engine exposes every facet and serves its methods"),
     ),

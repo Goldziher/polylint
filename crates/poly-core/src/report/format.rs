@@ -8,8 +8,9 @@ use super::layout::files;
 use super::notes::{push_discovery_note, push_skip_note, qualification_lines, skips_from_results};
 use super::shared::{Verbosity, render_debug_block, strip_ansi};
 use super::theme::Theme;
+use crate::config::Kind;
 use crate::discover::DiscoveryReport;
-use crate::runner::{FormatError, FormatResult, FormatRun, SkippedFile};
+use crate::runner::{DegradedTool, FormatError, FormatResult, FormatRun, SkippedFile};
 
 /// Echo format failures to stderr, so a machine-readable run still tells a
 /// human watching the terminal that files went unchecked.
@@ -34,6 +35,7 @@ pub fn render_format_pretty(results: &[FormatResult], check: bool, verbosity: Ve
         results,
         &skips_from_results(results),
         &[],
+        &[],
         &DiscoveryReport::default(),
         check,
         verbosity,
@@ -47,6 +49,7 @@ pub fn render_format_pretty_run(run: &FormatRun, check: bool, verbosity: Verbosi
     render_format_core(
         &run.results,
         &run.skipped,
+        &run.degraded,
         &run.errors,
         &run.discovery,
         check,
@@ -95,6 +98,7 @@ pub fn render_format_errors(errors: &[FormatError]) -> String {
 fn render_format_core(
     results: &[FormatResult],
     skipped: &[SkippedFile],
+    degraded: &[DegradedTool],
     errors: &[FormatError],
     discovery: &DiscoveryReport,
     check: bool,
@@ -144,7 +148,7 @@ fn render_format_core(
         out.push('\n');
     }
     let _ = writeln!(out, "{headline}");
-    for line in qualification_lines(Some(checked), "checked", skipped, discovery) {
+    for line in qualification_lines(Some(checked), "checked", skipped, (degraded, Kind::Format), discovery) {
         let _ = writeln!(out, "{line}");
     }
     (out, n)

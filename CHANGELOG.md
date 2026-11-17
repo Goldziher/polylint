@@ -94,6 +94,12 @@ binary drives lint, format, hooks, and commit checks from one `poly.toml`.
 
 ### Fixed
 
+- **A missing native tool shows in the report.** When `rustfmt`, `gofmt`, `shfmt` or `shellcheck` (or an opt-in
+  native tool that is switched on) is not on `PATH`, the summary prints one line per tool (`rustfmt not found on PATH:
+  3 Rust files formatted by the generic tier`) and the `json`/`toon` document and MCP results carry
+  `degraded: [{tool, language, reason, files}]`, omitted when empty. `poly fmt` used to print `All formatted.` with
+  nothing to say rustfmt never ran. The files still count as checked, not skipped, and exit codes do not change.
+  (ADR 0075, #230)
 - **golangci-lint keeps a project's own `run.timeout`.** poly passes `--timeout=0` only when the project's golangci-lint config (or the file `-c` names) sets no `run.timeout`; a recipe declares such arguments with the new `config_defaults` key. (ADR 0066)
 - **An invalid glob is reported instead of silently dropped.** A malformed pattern in ruff's `exclude`, typos' `extend_exclude`, an `.oxfmtrc` `overrides[].files`/`excludeFiles` entry, a jsonschema `schemas` glob or a recipe's dependency globs now logs a warning naming it, and the valid patterns beside it stay in force. (#217)
 - **Hook sources recover from a damaged cached mirror.** A mirror holding a locked commit without its tree is refetched, then re-cloned, instead of failing with `unable to read tree`; the final error names the cache directory to remove.

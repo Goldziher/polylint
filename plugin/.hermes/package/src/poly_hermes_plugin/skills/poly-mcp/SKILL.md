@@ -9,8 +9,8 @@ metadata:
 
 <!--
 AI-RULEZ :: GENERATED FILE — DO NOT EDIT
-Content-Hash: blake3:9338297d15daaeb8bf125fe7acc6f379427f164c11cd580c52ec0cbbe838a2ce
-Source-Hash: blake3:3e280378c2b0495cf466c05e9a5c1ffe6ac2d0ea3466b3c4a8b8535b90cb0702
+Content-Hash: blake3:22aa74d27fc2d6f4122c774a0208d77e8e155e904317162ad40ad2219ab1d0c8
+Source-Hash: blake3:26d1bb1f1ac715a6c0be970f19cd46b4fbd2c1a2b7490d9c4a48ec5d30dba40a
 Schema-Version: v1
 -->
 
@@ -160,6 +160,10 @@ The skipped/error sets and `results` overlap on purpose:
 - **Errored** (`error` field, and the top-level `errors` array) — poly failed to process the
   file (unreadable file, backend crash, bad engine config). Distinct from `skipped` on purpose:
   a skip is a deliberate decision, an error is poly failing on a file it accepted.
+- **Degraded** (top-level `degraded`, omitted when empty) — `[{tool, language, reason, files}]`:
+  a configured or default-on native tool (`rustfmt`, `gofmt`, `shfmt`, `shellcheck`) was not
+  found, so its files were formatted by the generic tier or linted without it (ADR 0075). Still
+  checked, not skipped, not an error; read it to know a pass was at reduced fidelity.
 
 The top-level `errors` array duplicates the `error`-carrying records in `results` so a caller
 can gate on "did the run fail on anything" without scanning every record. When `errors` is

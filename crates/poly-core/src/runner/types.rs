@@ -15,7 +15,7 @@ use crate::components::{ComponentInjection, ComponentsReport};
 use crate::discover::DiscoveryReport;
 use crate::engine::Diagnostic;
 use crate::language::Language;
-use crate::runner::{SkippedFile, SuppressedDiagnostic};
+use crate::runner::{DegradedTool, SkippedFile, SuppressedDiagnostic};
 
 /// Options controlling a lint/format run.
 #[derive(Debug, Clone, Default)]
@@ -316,6 +316,9 @@ pub struct LintRun {
     /// unfiltered finding set, reconstructible from **one** run rather than by
     /// re-running poly with the filters off.
     pub suppressed: Vec<SuppressedDiagnostic>,
+    /// Native tools that were configured or on by default and absent, each with the files it
+    /// should have linted (`shellcheck`). Not skips: see [`DegradedTool`].
+    pub degraded: Vec<DegradedTool>,
     /// The configuration each file was governed by, indexed by
     /// [`LintResult::config`] / [`FormatResult::config`].
     ///
@@ -360,6 +363,10 @@ pub struct FormatRun {
     /// The per-file [`FormatResult::skipped`] already carries the former; this
     /// is the run-level union, so one strict-mode check covers both kinds.
     pub skipped: Vec<SkippedFile>,
+    /// Native tools that were configured or on by default and absent, each with the files the
+    /// tier-2 reindenter formatted in its place (`rustfmt`, `gofmt`, `shfmt`). Not skips: see
+    /// [`DegradedTool`].
+    pub degraded: Vec<DegradedTool>,
     /// The configuration each file was governed by, indexed by
     /// [`FormatResult::config`]. The lint side's [`LintRun::configs`], for the
     /// same reason.

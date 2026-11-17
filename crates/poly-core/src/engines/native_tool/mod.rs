@@ -23,8 +23,9 @@
 //! (Go) — are **default-on when the tool is detected on `PATH`**. When present,
 //! `poly fmt` formats those languages through the real tool instead of the
 //! lower-fidelity tree-sitter generic tier; when absent, the language falls
-//! through to the generic tier and an **info-level** notice is emitted once per
-//! language per run. This preserves the zero-system-dependency guarantee (a
+//! through to the generic tier, a warning is logged once per language per run,
+//! and the run report names the files per tool
+//! ([`PlanPolicy::missing_tool`], ADR 0075). This preserves the zero-system-dependency guarantee (a
 //! missing toolchain is never an error) while fixing the measured tier-2 churn
 //! against `rustfmt`.
 //!
@@ -639,6 +640,17 @@ impl PlanPolicy for NativeToolEngine {
 
     fn provides_language_format(&self, _language: &Language, cfg: &EngineConfig) -> bool {
         self.capabilities().format && self.is_enabled(cfg) && self.probed_version().is_some()
+    }
+
+    /// The tool, when it is wanted and absent: `format` then hands the file to the tier-2
+    /// reindenter, and `shellcheck` lints nothing. `shellcheck` counts as present when
+    /// `install = "auto"` supplies the pinned download in its place.
+    fn missing_tool(&self, _language: &Language, cfg: &EngineConfig) -> Option<&'static str> {
+        let present = match self.role {
+            NativeRole::Shellcheck => self.shellcheck(cfg).is_some(),
+            _ => self.probed_version().is_some(),
+        };
+        should_notify_fallback(self.is_enabled(cfg), present).then(|| self.role.spec().probe_binary())
     }
 }
 

@@ -16,7 +16,7 @@ use std::sync::Arc;
 use poly_engine_api::run_root;
 
 use super::types::{FormatRun, LintRun, RunOptions};
-use super::{SkippedFile, SuppressedDiagnostic, WORKER_STACK_SIZE};
+use super::{DegradedTool, SkippedFile, SuppressedDiagnostic, WORKER_STACK_SIZE};
 use crate::discover::DiscoveryReport;
 
 /// Run `body` over `paths` as the run `opts` describes: unchanged when it names no
@@ -113,6 +113,7 @@ impl Relativize for LintRun {
         }
         skipped(&mut self.skipped, prefix);
         suppressed(&mut self.suppressed, prefix);
+        degraded(&mut self.degraded, prefix);
         discovery(&mut self.discovery, prefix);
     }
 }
@@ -129,6 +130,7 @@ impl Relativize for FormatRun {
             prefix.text(&mut error.message);
         }
         skipped(&mut self.skipped, prefix);
+        degraded(&mut self.degraded, prefix);
         discovery(&mut self.discovery, prefix);
     }
 }
@@ -136,6 +138,12 @@ impl Relativize for FormatRun {
 fn optional(text: &mut Option<String>, prefix: &Prefix<'_>) {
     if let Some(text) = text {
         prefix.text(text);
+    }
+}
+
+fn degraded(entries: &mut [DegradedTool], prefix: &Prefix<'_>) {
+    for path in entries.iter_mut().flat_map(|entry| entry.files.iter_mut()) {
+        prefix.path(path);
     }
 }
 

@@ -8,8 +8,9 @@ use std::fmt::Write as _;
 use super::layout::{self, directories, files, paths, wrap_items};
 use super::shared::{Verbosity, strip_ansi};
 use super::theme::Theme;
+use crate::config::Kind;
 use crate::discover::DiscoveryReport;
-use crate::runner::{FormatResult, SkippedFile};
+use crate::runner::{DegradedTool, FormatResult, SkippedFile};
 
 /// Indent of a summary breakdown line, and of the detail block beneath it.
 const INDENT: &str = "  ";
@@ -275,6 +276,7 @@ pub(super) fn qualification_lines(
     checked: Option<usize>,
     verb: &str,
     skipped: &[SkippedFile],
+    degraded: (&[DegradedTool], Kind),
     discovery: &DiscoveryReport,
 ) -> Vec<String> {
     let theme = Theme::STDOUT;
@@ -284,6 +286,10 @@ pub(super) fn qualification_lines(
     }
     if let Some(clause) = skipped_clause(skipped) {
         lines.push(theme.skipped(clause));
+    }
+    let (degraded, kind) = degraded;
+    for entry in degraded {
+        lines.push(theme.skipped(degraded_clause(entry, kind)));
     }
     for clause in [
         exclusion_clause(discovery),
@@ -416,4 +422,35 @@ fn skip_reason_counts(skipped: &[SkippedFile]) -> Vec<String> {
         .iter()
         .map(|(reason, count)| format!("{} {reason}", layout::number(*count)))
         .collect()
+}
+
+/// The summary's line for one native tool the run wanted and did not find:
+/// `rustfmt not found on PATH: 3 Rust files formatted by the generic tier`.
+///
+/// One line per tool at every verbosity, beside the skip count: the files were checked, so they are
+/// not skips, but a pass over them says less than the configured tool's would have, and the summary
+/// is where that verdict is read (ADR 0075).
+pub(super) fn degraded_clause(entry: &DegradedTool, kind: Kind) -> String {
+    let count = entry.files.len();
+    let outcome = match kind {
+        Kind::Format => "formatted by the generic tier",
+        Kind::Lint => "linted without it",
+    };
+    format!(
+        "{INDENT}{} {}: {} {} {} {outcome}",
+        entry.tool,
+        entry.reason,
+        layout::number(count),
+        entry.language.display_name(),
+        if count == 1 { "file" } else { "files" },
+    )
+}
+
+/// Print the degraded-tool lines to **stderr**, for the `json`/`toon` formats, whose document
+/// carries the same entries under `degraded` — the split [`eprint_skip_note`] uses. Printed at
+/// every verbosity, as the pretty summary prints them.
+pub fn eprint_degraded_note(degraded: &[DegradedTool], kind: Kind) {
+    for entry in degraded {
+        eprintln!("{}", Theme::STDERR.skipped(degraded_clause(entry, kind)));
+    }
 }

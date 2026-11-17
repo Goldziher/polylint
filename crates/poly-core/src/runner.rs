@@ -17,6 +17,7 @@ use rustc_hash::FxHashSet;
 mod batch;
 mod ctx;
 mod debug_record;
+mod degraded;
 mod edits;
 mod engine_clock;
 mod fast;
@@ -39,6 +40,7 @@ mod write;
 use crate::fingerprint::run_fingerprints as config_fingerprints;
 use batch::{LintPrefill, PendingLint, prefill, prefill_lint};
 use ctx::{FormatCtx, LintCtx, LintSetup, RunEnv};
+pub use degraded::{DegradedTool, MISSING_TOOL_REASON};
 use fast::{FastPath, Replay, Resolution, flush_stat_indexes, log_fast_path};
 use format_file::format_one;
 use generated::acts_on_generated;
@@ -408,6 +410,18 @@ fn assemble_lint_run(
     }
     skipped.extend(project_skips);
     add_unmatched_paths(env, &mut skipped);
+    // A file no backend held rules for stays in: a missing `shellcheck` is why a shell script has none.
+    let unhandled: FxHashSet<&std::path::Path> = errors
+        .iter()
+        .map(|error| error.path.as_path())
+        .chain(
+            skipped
+                .iter()
+                .filter(|skip| !skip.reason.starts_with(NO_LINT_RULES_SKIP_PREFIX))
+                .map(|skip| skip.path.as_path()),
+        )
+        .collect();
+    let degraded = degraded::degraded_tools(env.files, env.plan, &unhandled);
     LintRun {
         results,
         configs: config_fingerprints,
@@ -415,6 +429,7 @@ fn assemble_lint_run(
         checked,
         skipped,
         suppressed,
+        degraded,
         discovery,
         components: env.plan.components().clone(),
     }
@@ -651,12 +666,19 @@ fn assemble_format_run(
     for result in &mut results {
         result.config = config_index[result.config];
     }
+    let unhandled: FxHashSet<&std::path::Path> = errors
+        .iter()
+        .map(|error| error.path.as_path())
+        .chain(skipped.iter().map(|skip| skip.path.as_path()))
+        .collect();
+    let degraded = degraded::degraded_tools(env.files, env.plan, &unhandled);
     FormatRun {
         results,
         checked,
         configs: config_fingerprints,
         errors,
         skipped,
+        degraded,
         discovery,
         components: env.plan.components().clone(),
     }

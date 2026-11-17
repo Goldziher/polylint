@@ -159,6 +159,10 @@ The skipped/error sets and `results` overlap on purpose:
 - **Errored** (`error` field, and the top-level `errors` array) — poly failed to process the
   file (unreadable file, backend crash, bad engine config). Distinct from `skipped` on purpose:
   a skip is a deliberate decision, an error is poly failing on a file it accepted.
+- **Degraded** (top-level `degraded`, omitted when empty) — `[{tool, language, reason, files}]`:
+  a configured or default-on native tool (`rustfmt`, `gofmt`, `shfmt`, `shellcheck`) was not
+  found, so its files were formatted by the generic tier or linted without it (ADR 0075). Still
+  checked, not skipped, not an error; read it to know a pass was at reduced fidelity.
 
 The top-level `errors` array duplicates the `error`-carrying records in `results` so a caller
 can gate on "did the run fail on anything" without scanning every record. When `errors` is

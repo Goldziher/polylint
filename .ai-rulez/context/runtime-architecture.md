@@ -137,7 +137,8 @@ Per-language resolution order:
      is intact for anyone without the toolchain installed.
    - **Capability-gated, graceful degradation.** Probe for the tool once (cached); declare the
      `format`/`lint` capability only when it is found *and* enabled; otherwise the language
-     falls through to tier-2. A missing toolchain is never an error — just lower fidelity.
+     falls through to tier-2. A missing toolchain is never an error — just lower fidelity, which
+     the run report names per tool (`degraded`, ADR 0075) without counting the files as skipped.
    - **Per-file, stdin→stdout.** Wrap only tools that process a single file over
      stdin/stdout (`gofmt`, `rustfmt`, `zig fmt`); opt-in `batch = true` (ADR 0033) must match
      the per-file output exactly. Project-wide tools that must compile a

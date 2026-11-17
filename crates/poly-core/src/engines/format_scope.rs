@@ -194,6 +194,10 @@ impl PlanPolicy for FormatScope {
         self.inner.self_manages_enabled()
     }
 
+    fn missing_tool(&self, language: &Language, cfg: &EngineConfig) -> Option<&'static str> {
+        self.inner.missing_tool(language, cfg)
+    }
+
     fn supersedes_generic_formatter(&self) -> bool {
         self.inner.supersedes_generic_formatter()
     }
@@ -468,6 +472,10 @@ mod tests {
             self.note("provides_language_format");
             true
         }
+        fn missing_tool(&self, _language: &Language, _cfg: &EngineConfig) -> Option<&'static str> {
+            self.note("missing_tool");
+            None
+        }
         fn self_manages_enabled(&self) -> bool {
             self.note("self_manages_enabled");
             false
@@ -594,6 +602,9 @@ mod tests {
             }
             "supplements_tier_one" => {
                 let _ = engine.supplements_tier_one();
+            }
+            "missing_tool" => {
+                let _ = engine.missing_tool(&Language::Toml, &cfg);
             }
             "self_manages_enabled" => {
                 let _ = engine.self_manages_enabled();

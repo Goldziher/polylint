@@ -65,7 +65,9 @@ pub use lint::{
     eprint_lint_errors, render_lint_errors, render_lint_pretty, render_lint_pretty_run, report_lint_pretty,
     report_lint_pretty_run,
 };
-pub use notes::{eprint_discovery_note, eprint_skip_note, render_discovery_note, render_skip_note};
+pub use notes::{
+    eprint_degraded_note, eprint_discovery_note, eprint_skip_note, render_discovery_note, render_skip_note,
+};
 pub use render::{RenderError, render_json, render_toon};
 pub use shared::{Verbosity, strip_ansi};
 pub use structured::{

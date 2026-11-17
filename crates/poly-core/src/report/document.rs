@@ -19,7 +19,8 @@ use serde::Serialize;
 use crate::ConfigFingerprint;
 use crate::components::ComponentsReport;
 use crate::runner::{
-    FormatError, FormatResult, FormatRun, LintError, LintResult, LintRun, SkippedFile, SuppressedDiagnostic,
+    DegradedTool, FormatError, FormatResult, FormatRun, LintError, LintResult, LintRun, SkippedFile,
+    SuppressedDiagnostic,
 };
 
 /// What a run actually did, in three numbers.
@@ -91,6 +92,14 @@ pub struct LintDocument {
     /// suppressed nothing in byte-identical to what consumers already parse.
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub suppressed: Vec<SuppressedDiagnostic>,
+    /// Native tools that were configured or on by default and not found, each with the files it
+    /// should have linted (ADR 0075).
+    ///
+    /// These files were not skipped — the other engines still ran over them — so they are not in
+    /// `skipped` and not charged to `--deny-skips`; see [`DegradedTool`]. Omitted when empty, like
+    /// `suppressed`, so a run on a host with every tool serializes exactly as before.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub degraded: Vec<DegradedTool>,
     /// The run's own account of what it covered.
     pub summary: RunSummary,
     /// The configurations that governed this run, indexed by each result's
@@ -117,6 +126,7 @@ impl LintDocument {
             errors: run.errors.clone(),
             skipped: run.skipped.clone(),
             suppressed: run.suppressed.clone(),
+            degraded: run.degraded.clone(),
             summary: RunSummary {
                 checked: run.checked,
                 skipped: run.skipped.len(),
@@ -141,6 +151,11 @@ pub struct FormatDocument {
     pub errors: Vec<FormatError>,
     /// Files nothing inspected, each with the reason.
     pub skipped: Vec<SkippedFile>,
+    /// Native tools that were configured or on by default and not found, each with the files the
+    /// tier-2 reindenter formatted in its place (ADR 0075). Not skips; omitted when empty. See
+    /// [`LintDocument::degraded`].
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub degraded: Vec<DegradedTool>,
     /// The run's own account of what it covered.
     pub summary: RunSummary,
     /// The configurations that governed this run, indexed by each result's
@@ -166,6 +181,7 @@ impl FormatDocument {
             results: super::structured::format_results_for_output(run),
             errors: run.errors.clone(),
             skipped: run.skipped.clone(),
+            degraded: run.degraded.clone(),
             summary: RunSummary {
                 checked: run.checked,
                 skipped: run.skipped.len(),

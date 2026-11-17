@@ -57,7 +57,10 @@ and the field to gate on. The counts do not sum to `results.len()`: a file that 
 found clean produces no `results` entry at all, and a file can appear in both `results` (as a
 synthetic entry with empty diagnostics) and in the top-level `skipped`/`errors` arrays (redundant on
 purpose). `configs` holds one `ConfigFingerprint` per directory-scoped
-config that governed the run, indexed by each result's `config` field.
+config that governed the run, indexed by each result's `config` field. `degraded` (omitted when
+empty) lists `{tool, language, reason, files}` for each configured or default-on native tool that
+was not on `PATH`: its files were formatted by the generic tier or linted without it, so they count
+as checked and not as skipped (ADR 0075); the pretty summary prints one line per tool.
 
 ## Whole-project lint phase
 
