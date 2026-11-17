@@ -10,7 +10,9 @@
 //! `extends` base is not fetched (see [`ops`]).
 
 pub mod adr;
+pub mod failure;
 pub mod ops;
+pub mod paths;
 mod services;
 pub mod state_cache;
 mod workspace_guard;

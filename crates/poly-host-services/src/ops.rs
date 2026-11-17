@@ -23,12 +23,14 @@ use poly_config::PolyConfig;
 use poly_core::{Config, FormatRun, Kind, Language, LintRun, RunOptions};
 
 use poly_config::v2::{ComponentInstallPolicy, OnMissing};
+use poly_frontend_api::dto::FailureKind;
 use poly_frontend_api::dto::{
     CacheCleanReport, CacheNamespace, CacheStatsReport, ConfigDefaults, ConfigShowReport, RulesReport, WorkspaceReport,
     WorkspaceToolReport,
 };
 use poly_frontend_api::wire::InstallMode;
 
+use crate::failure::RunFailure;
 use crate::state_cache::{self, StateCache, ToolLockGuard};
 
 static CONFIGS: StateCache<Config> = StateCache::new();
@@ -87,6 +89,25 @@ fn resolve_paths(paths: &[String]) -> Vec<PathBuf> {
     } else {
         paths.iter().map(PathBuf::from).collect()
     }
+}
+
+/// The request's paths, defaulting to the current directory, refused when any does not exist
+/// (see [`crate::paths::missing_paths_message`]).
+fn existing_paths(paths: &[String]) -> anyhow::Result<Vec<PathBuf>> {
+    let resolved = resolve_paths(paths);
+    match crate::paths::missing_paths_message(&resolved) {
+        None => Ok(resolved),
+        Some(message) => Err(RunFailure::new(FailureKind::Paths, message).into()),
+    }
+}
+
+/// Pin the repository's tool lock and load the run's config, classifying a failure of either as
+/// a config failure.
+fn load_for_run(config: Option<&str>) -> anyhow::Result<(ToolLockGuard, Arc<Config>)> {
+    let explicit = config.map(Path::new);
+    let guard = tool_lock_scope(explicit).map_err(|error| RunFailure::from_anyhow(FailureKind::Config, &error))?;
+    let config = resolve_config(explicit).map_err(|error| RunFailure::from_anyhow(FailureKind::Config, &error))?;
+    Ok((guard, config))
 }
 
 /// The run options every path-oriented tool uses, differing only in the caller's
@@ -149,9 +170,8 @@ pub fn lint_run_with(
     install: InstallMode,
 ) -> anyhow::Result<LintRun> {
     let explicit_config = config.is_some();
-    let _tool_lock = tool_lock_scope(config.map(Path::new))?;
-    let config = resolve_config(config.map(Path::new))?;
-    let resolved = resolve_paths(paths);
+    let resolved = existing_paths(paths)?;
+    let (_tool_lock, config) = load_for_run(config)?;
     poly_core::lint_run(
         &resolved,
         &config,
@@ -182,9 +202,8 @@ pub fn format_run_with(
     install: InstallMode,
 ) -> anyhow::Result<FormatRun> {
     let explicit_config = config.is_some();
-    let _tool_lock = tool_lock_scope(config.map(Path::new))?;
-    let config = resolve_config(config.map(Path::new))?;
-    let resolved = resolve_paths(paths);
+    let resolved = existing_paths(paths)?;
+    let (_tool_lock, config) = load_for_run(config)?;
     poly_core::format_run(
         &resolved,
         &config,
@@ -244,8 +263,12 @@ pub fn cache_clean() -> anyhow::Result<CacheCleanReport> {
 /// reporting a raw on-disk inventory. A build that links the engine family
 /// answers in-process; a core build asks the `astgrep` component (see
 /// [`rules_report_for`]).
+///
+/// Never downloads: a core build without the `astgrep` component reports it as not installed
+/// instead, because the frontend serves this from a read-only, closed-world tool.
 pub fn rules_report(dirs: &[String], config: Option<&str>, test: bool) -> anyhow::Result<RulesReport> {
-    let resolved = resolve_config(config.map(Path::new))?;
+    let mut resolved = (*resolve_config(config.map(Path::new))?).clone();
+    resolved.components.install = ComponentInstallPolicy::Never;
     rules_report_for(&resolved, dirs, test, None)
 }
 

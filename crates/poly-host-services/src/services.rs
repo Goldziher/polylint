@@ -6,7 +6,7 @@ use anyhow::Context;
 use poly_core::report::{FormatDocument, LintDocument};
 use poly_core::{FormatRun, LintRun};
 use poly_frontend_api::ServiceCaller;
-use poly_frontend_api::dto::{ComponentActions, ComponentSummary, ComponentsStatus};
+use poly_frontend_api::dto::{ComponentActions, ComponentSummary, ComponentsStatus, FailureKind};
 use poly_frontend_api::wire::{
     ComponentsInstallRequest, ComponentsStatusRequest, ComponentsUninstallRequest, ConfigRequest, Engines,
     PathsRequest, RulesRequest, RunReply, Schemas, WorkspaceRequest, service,
@@ -16,6 +16,7 @@ use serde::Serialize;
 use serde::de::DeserializeOwned;
 use serde_json::Value;
 
+use crate::failure::{RunFailure, failure_document};
 use crate::ops;
 use crate::workspace_guard::WorkspaceGuard;
 
@@ -98,6 +99,12 @@ impl Services {
         }
     }
 
+    /// [`Services::confine`] for a run, classifying a refusal as a workspace failure.
+    fn confine_run(&self, request: &PathsRequest) -> anyhow::Result<()> {
+        self.confine(&request.paths, request.config.as_deref())
+            .map_err(|error| RunFailure::from_anyhow(FailureKind::Workspace, &error))
+    }
+
     /// Run `service` on `request` and return the encoded reply.
     ///
     /// # Errors
@@ -108,16 +115,23 @@ impl Services {
         match service_name {
             service::LINT => {
                 let req: PathsRequest = decode(request)?;
-                self.confine(&req.paths, req.config.as_deref())?;
-                let run = ops::lint_run_with(&req.paths, &req.exclude, req.config.as_deref(), req.apply, req.install)?;
-                encode(&lint_reply(&run)?)
+                let reply = self
+                    .confine_run(&req)
+                    .and_then(|()| {
+                        ops::lint_run_with(&req.paths, &req.exclude, req.config.as_deref(), req.apply, req.install)
+                    })
+                    .and_then(|run| lint_reply(&run));
+                encode(&reply.unwrap_or_else(|error| failure_reply(&error)))
             }
             service::FORMAT => {
                 let req: PathsRequest = decode(request)?;
-                self.confine(&req.paths, req.config.as_deref())?;
-                let run =
-                    ops::format_run_with(&req.paths, &req.exclude, req.config.as_deref(), req.apply, req.install)?;
-                encode(&format_reply(&run)?)
+                let reply = self
+                    .confine_run(&req)
+                    .and_then(|()| {
+                        ops::format_run_with(&req.paths, &req.exclude, req.config.as_deref(), req.apply, req.install)
+                    })
+                    .and_then(|run| format_reply(&run));
+                encode(&reply.unwrap_or_else(|error| failure_reply(&error)))
             }
             service::WORKSPACE_LINT => {
                 let req: WorkspaceRequest = decode(request)?;
@@ -231,7 +245,21 @@ fn root_schema<T: schemars::JsonSchema>() -> anyhow::Result<Value> {
 }
 
 fn render_error(error: impl std::fmt::Display) -> anyhow::Error {
-    anyhow::anyhow!("failed to serialize tool output: {error}")
+    RunFailure::new(FailureKind::Render, format!("failed to serialize tool output: {error}")).into()
+}
+
+/// A run that failed before it reported on any file, as an error reply carrying its
+/// [`FailureDocument`](poly_frontend_api::dto::FailureDocument).
+fn failure_reply(error: &anyhow::Error) -> RunReply {
+    let document = failure_document(error);
+    let json = poly_core::report::render_json(&document).unwrap_or_else(|_| document.error.message.clone());
+    let toon = poly_core::report::render_toon(&document).unwrap_or_else(|_| json.clone());
+    RunReply {
+        document: serde_json::to_value(&document).unwrap_or(Value::Null),
+        json,
+        toon,
+        is_error: true,
+    }
 }
 
 /// A lint run as the three renderings and the error flag. A render failure is an error, never an
@@ -279,11 +307,17 @@ mod tests {
         let outside = tempfile::tempdir().unwrap();
         let guard = WorkspaceGuard::new(root.path(), None, false).unwrap();
         let request = serde_json::json!({ "paths": [outside.path()], "apply": true }).to_string();
-        let error = Services::new()
-            .with_workspace_guard(guard)
-            .dispatch(service::LINT, request.as_bytes())
-            .unwrap_err();
-        assert!(format!("{error:#}").contains("outside the workspace"), "{error:#}");
+        let reply: RunReply = serde_json::from_slice(
+            &Services::new()
+                .with_workspace_guard(guard)
+                .dispatch(service::LINT, request.as_bytes())
+                .unwrap(),
+        )
+        .unwrap();
+        assert!(reply.is_error, "a refused run is an error result");
+        assert_eq!(reply.document["error"]["kind"], "workspace", "{}", reply.document);
+        let message = reply.document["error"]["message"].as_str().unwrap();
+        assert!(message.contains("outside the workspace"), "{message}");
     }
 
     #[test]

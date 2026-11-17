@@ -80,7 +80,7 @@ use crate::backend::Backend;
 use crate::dto;
 use crate::dto::{
     ComponentActions, ComponentsStatus, TextRepr, VersionReport, WorkspaceReport, actions_result, dto_result,
-    schema_for_output_with_identity,
+    dto_result_with_status, schema_for_output_with_identity,
 };
 use crate::identity::{self, ExecutableWatch};
 use components::{COMPONENTS_INSTALL, PathsTool};
@@ -361,7 +361,8 @@ impl PolyMcpServer {
             test: args.test,
         };
         let report = run_blocking(move || backend.rules(&request)).await?;
-        dto_result(&report, repr)
+        // A failing rule test is the CLI's exit 1: the caller asked whether the rules pass.
+        dto_result_with_status(&report, repr, report.ok == Some(false))
     }
 
     #[tool(

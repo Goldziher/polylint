@@ -4,6 +4,45 @@
 
 use serde::{Deserialize, Serialize};
 
+/// Why a lint or format run produced no document: the classes the CLI reports with exit code 2
+/// before any file is checked.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
+#[serde(rename_all = "snake_case")]
+pub enum FailureKind {
+    /// A named path does not exist.
+    Paths,
+    /// A path or config lies outside the server's workspace.
+    Workspace,
+    /// The config (or its `poly.lock`) could not be loaded.
+    Config,
+    /// The pipeline failed before it could report on files (an unknown `only` engine, a failed
+    /// component plan, an unreadable cache).
+    Pipeline,
+    /// The run finished but its document could not be serialized.
+    Render,
+}
+
+/// A run's failure: its class and the message the CLI prints.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
+pub struct Failure {
+    /// The failure class.
+    pub kind: FailureKind,
+    /// What went wrong.
+    pub message: String,
+}
+
+/// The document a failed run reports in place of a lint or format document.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
+pub struct FailureDocument {
+    /// Why nothing was checked.
+    pub error: Failure,
+    /// Always null: a run that failed checked nothing, so it has no summary to gate on.
+    pub summary: Option<()>,
+}
+
 /// One result-cache namespace's footprint.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]

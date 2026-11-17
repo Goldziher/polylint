@@ -85,16 +85,11 @@ fn serialize_error(error: impl std::fmt::Display) -> ErrorData {
 /// has no `poly --version` to fall back on, so a result that does not say which
 /// binary produced it is indistinguishable from one produced by a build with
 /// known-destructive behaviour.
-fn build(structured: Value, json_text: String, toon_text: String, repr: TextRepr) -> CallToolResult {
-    build_with_status(structured, json_text, toon_text, repr, false)
-}
-
-/// [`build`], additionally marking the result as a tool-level **error**.
 ///
-/// A run that could not process a file did not check it, and a caller that reads
-/// only the tool's success/failure flag must not be told otherwise — the MCP
-/// counterpart of the CLI's exit code 2. The payload is unchanged: the caller
-/// still gets every result the run did produce, alongside the failures.
+/// `is_error` marks the result as a tool-level **error**: a run that could not process a file
+/// did not check it, and a caller that reads only the tool's success/failure flag must not be
+/// told otherwise — the MCP counterpart of the CLI's exit code 2. The payload is unchanged: the
+/// caller still gets every result the run did produce, alongside the failures.
 fn build_with_status(
     structured: Value,
     json_text: String,
@@ -136,7 +131,7 @@ fn identity_meta() -> MetaObject {
 }
 
 /// The output schema for `T`, extended with the `poly` identity property that
-/// [`build`] injects, so the declared schema matches what is actually sent.
+/// [`build_with_status`] injects, so the declared schema matches what is actually sent.
 pub fn schema_for_output_with_identity<T: JsonSchema + std::any::Any>() -> Arc<JsonObject> {
     with_identity_property(rmcp::handler::server::tool::schema_for_output::<T>())
 }
@@ -217,10 +212,19 @@ fn identity_schema() -> Value {
 /// Build a tool result for a self-describing DTO: structured JSON plus a JSON or
 /// TOON text block derived from the same value.
 pub fn dto_result<T: Serialize>(value: &T, repr: TextRepr) -> Result<CallToolResult, ErrorData> {
+    dto_result_with_status(value, repr, false)
+}
+
+/// [`dto_result`], marked as a tool error when `is_error` is set.
+pub fn dto_result_with_status<T: Serialize>(
+    value: &T,
+    repr: TextRepr,
+    is_error: bool,
+) -> Result<CallToolResult, ErrorData> {
     let structured = serde_json::to_value(value).map_err(serialize_error)?;
     let json_text = serde_json::to_string_pretty(value).map_err(serialize_error)?;
     let toon_text = serde_toon::to_string(value).unwrap_or_else(|_| json_text.clone());
-    Ok(build(structured, json_text, toon_text, repr))
+    Ok(build_with_status(structured, json_text, toon_text, repr, is_error))
 }
 
 /// The result of an install or uninstall. A component that failed or was refused is a tool error:
