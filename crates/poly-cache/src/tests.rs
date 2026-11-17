@@ -7,6 +7,8 @@ use tempfile::TempDir;
 
 use super::*;
 
+mod open_for_run;
+
 /// The per-repo slot [`repo_cache_dir`] creates in the *real* per-user cache
 /// home for a temporary repository, removed again when the test ends.
 ///

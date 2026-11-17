@@ -207,6 +207,8 @@ Each item is described in full under the section named in brackets.
   the working directory, so a run from a subdirectory, `poly cache` and the MCP server use the same cache.
 - **`[cache]` is root-only.** A nested `poly.toml` that sets it is ignored with a warning naming the file; before, a
   run started in that directory took its cache settings while one from the root did not.
+- **A cache directory poly did not create is never wiped.** A format-version bump cleaned `[cache] dir` and rewrote
+  its `VERSION` file even when that file was someone else's; such a directory is now refused with an error.
 - **`poly lint` and `poly fmt` honour `[cache] enabled = false`.** Only `--no-cache` turned the result cache off;
   the config key was read by `poly cache` alone. A run with it set now stores and replays nothing.
 - **A missing native tool shows in the report.** When `rustfmt`, `gofmt`, `shfmt` or `shellcheck` (or an opt-in

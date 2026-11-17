@@ -465,7 +465,8 @@ diagnostics, and are described in [Tool catalog](/polylint/reference/catalog/#to
 
 `[cache]` is read from the root config only: the repository's `poly.toml`, or one marked
 `[workspace] root = true`. A nested `poly.toml` that sets it is ignored with a warning naming the file, so every run,
-whichever directory it starts in, uses one cache.
+whichever directory it starts in, uses one cache. Point `dir` at a directory of its own: poly refuses one holding a
+`VERSION` file it did not write rather than clean it.
 
 Without `dir`, the result cache lives in the per-user cache directory (`POLY_CACHE_HOME`, else
 `~/.cache/poly` on Linux, `~/Library/Caches/poly` on macOS, `%LOCALAPPDATA%\poly` on Windows), in a
