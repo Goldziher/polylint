@@ -564,6 +564,18 @@ jobs:
             echo "polylint-tsrs tests passed ($features): $passed"
             test "$passed" -gt 0
           done
+      # The second published crate (ADR 0081), for the same reason.
+      - name: polylint-js-types tests, without and with plain-ptrs
+        run: |
+          set -euo pipefail
+          for features in "" "--features plain-ptrs"; do
+            # shellcheck disable=SC2086 # the empty feature set must expand to no argument
+            cargo test --locked --manifest-path components-tsrs/Cargo.toml -p polylint-js-types $features --no-fail-fast 2>&1 | tee polylint-js-types-test.log
+            if grep -q "test result: FAILED" polylint-js-types-test.log; then echo "::error::a polylint-js-types test binary failed"; exit 1; fi
+            passed="$(grep -Eo "test result: ok\. [0-9]+ passed" polylint-js-types-test.log | awk '{ n += $4 } END { print n + 0 }')"
+            echo "polylint-js-types tests passed ($features): $passed"
+            test "$passed" -gt 0
+          done
       - name: Build the component cdylib
         run: cargo build --locked --release --manifest-path components-tsrs/Cargo.toml -p poly-engines-tsrs-component
 

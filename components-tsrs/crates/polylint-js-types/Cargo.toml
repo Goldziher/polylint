@@ -1,0 +1,58 @@
+[package]
+name = "polylint-js-types"
+# The crate's own version, not poly's lock-step one: it is a library with an API of its own, published to crates.io
+# (ADR 0081), and it moves when that API, the tsrs pin or the polylint-tsrs version does.
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.100"
+license = "MIT"
+authors = ["Na'aman Hirschfeld <nhirschfeld@gmail.com>"]
+description = "Type-aware facts about JS/TS class, enum and namespace members from the TypeScript checker of tsrs."
+repository = "https://github.com/polylint/polylint"
+homepage = "https://github.com/polylint/polylint/tree/main/components-tsrs/crates/polylint-js-types"
+documentation = "https://docs.rs/polylint-js-types"
+readme = "README.md"
+keywords = ["typescript", "javascript", "tsrs", "type-checker", "dead-code"]
+categories = ["development-tools"]
+include = ["src/**/*.rs", "tests/**/*.rs", "README.md", "KNOWN-DEFECTS.md", "LICENSE", "Cargo.toml"]
+
+[lib]
+name = "polylint_js_types"
+path = "src/lib.rs"
+
+[features]
+# tsrs with plain pointers instead of compressed ones, which reserve 32 GiB of address space for the process. The
+# crate is correct either way. Off by default: a feature of tsrs is the choice of the binary that links it.
+plain-ptrs = ["polylint-tsrs/plain-ptrs", "tsrs_core/plain-ptrs"]
+
+# The tsrs crates move together and only at an exact version, the one polylint-tsrs pins, each named here with its
+# registry version: a published crate cannot take them from the workspace table, whose `tsrs_core` and
+# `polylint-tsrs` turn `plain-ptrs` on.
+[dependencies]
+polylint-tsrs = { path = "../polylint-tsrs", version = "0.1.0" }
+rayon = "1.12.0"
+rustc-hash = "2.1.3"
+thiserror = "2.0.21"
+tsrs_ast = { version = "=7.1.0-beta.tsrs2", default-features = false }
+tsrs_checker = { version = "=7.1.0-beta.tsrs2", default-features = false }
+tsrs_compiler = { version = "=7.1.0-beta.tsrs2", default-features = false }
+tsrs_core = { version = "=7.1.0-beta.tsrs2", default-features = false }
+tsrs_scanner = { version = "=7.1.0-beta.tsrs2", default-features = false }
+tsrs_tsoptions = { version = "=7.1.0-beta.tsrs2", default-features = false }
+tsrs_vfs = { version = "=7.1.0-beta.tsrs2", default-features = false }
+
+[dev-dependencies]
+tempfile = "3.27.0"
+
+[lints.rust]
+unsafe_code = "forbid"
+missing_docs = "warn"
+
+[lints.rustdoc]
+broken_intra_doc_links = "warn"
+
+[lints.clippy]
+pedantic = { level = "warn", priority = -1 }
+all = { level = "warn", priority = -1 }
+unwrap_used = "warn"
+expect_used = "warn"
