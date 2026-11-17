@@ -23,6 +23,8 @@ poly-component-protocol = { path = "../crates/poly-component-protocol" }
 poly-engine-api = { path = "../crates/poly-engine-api" }
 poly-engines = { path = "../crates/poly-engines", default-features = false }
 poly-engines-tsrs = { path = "crates/poly-engines-tsrs" }
+# The published program layer (ADR 0078), versioned on its own; `plain-ptrs` as for `tsrs_core` below.
+polylint-tsrs = { path = "crates/polylint-tsrs", version = "0.1.0", features = ["plain-ptrs"] }
 serde_json = { version = "1", features = ["preserve_order"] }
 tempfile = "3"
 toml = "1"
