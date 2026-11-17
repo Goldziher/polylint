@@ -108,6 +108,7 @@ setting.
 | `force_exclude` | boolean | `true` | Apply `exclude` to explicitly named paths too. |
 | `no_prune` | string or array | `[]` | Directory **names** to keep despite the built-in prune set (`build`, `dist`, …). |
 | `generated` | boolean | `true` | Whether poly lints and formats machine-generated files. |
+| `max_file_size` | integer | `33554432` | Largest file, in bytes, poly reads (32 MiB); `0` is no limit. A larger file is not opened: it is skipped as `file too large (<size> bytes > <limit> bytes)` and counts toward `--deny-skips` / `--max-skips`. |
 
 ## Engines
 

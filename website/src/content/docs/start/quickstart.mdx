@@ -153,7 +153,8 @@ jobs:
 ```
 
 `--deny-skips` turns a skip that is a limit of poly — no matching engine, no lint rules for the
-language, a generated-file skip, a binary file — into an exit-2 failure, so the job cannot quietly
+language, a generated-file skip, a binary file, a file over `max_file_size`, a type check that
+found no project to check — into an exit-2 failure, so the job cannot quietly
 stop covering part of the tree. A skip that names a caller instruction (`--only`/`--skip`,
 `enabled = false`) is never charged; see
 [Coverage and withdrawal](/polylint/guides/configuration/#coverage-and-withdrawal). Use

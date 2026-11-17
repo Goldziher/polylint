@@ -36,7 +36,7 @@ Each item is described in full under the section named in brackets.
   crates.io, versioned on its own (`0.1.0`): programs of the tsrs checker over a host file system, files and configs
   parsed once per run, an owner that frees a program, an observer of what a program reads, and a cache seam. It was
   imported from skif's `skif-tsrs` and depends on the `tsrs_*` crates alone, at `=7.1.0-beta.tsrs2`; the `plain-ptrs`
-  feature is off by default. It and `polylint-js-types` are the crates poly publishes (ADR 0078).
+  feature is off by default. It and `polylint-js-types` are the crates poly publishes (ADRs 0078 and 0081).
 - **`polylint-js-types`, a second published crate.** skif's type-aware analysis, which skif 0.9.0 drops, is a
   library on crates.io, versioned on its own (`0.1.0`): which members of a project's classes, enums and namespaces
   are read, from the tsrs checker over `polylint-tsrs`, with the type coverage of every package. It was imported from
@@ -199,7 +199,8 @@ Each item is described in full under the section named in brackets.
   `tsconfig.json`, and `skif` on one with no `package.json` or JavaScript workspace, used to report no findings, so the
   run read as a passing check. The project root is now in `skipped` with the reason (`tsrs: no tsconfig.json`),
   counted by `summary.skipped` and charged to `--deny-skips` / `--max-skips`. Component protocol v3 gains the
-  `ProjectDeclined` answer; a host built before it reports such a check as failed. (ADR 0079)
+  `ProjectDeclined` answer, which a host built before it cannot decode: a `tsrs` or `skif` component from this release
+  that declines a project, run by an older poly host, fails the check (exit `2`) instead of skipping it. (ADR 0079)
 - **`poly lint` and `poly fmt` honour `[cache] dir`.** The per-file runner always used the per-user default cache (or
   `POLY_CACHE_HOME`), so a configured directory was measured and cleaned by `poly cache` but never written by a lint or
   fmt run. Runs and hooks now open the cache through one resolver: `[cache] dir` when set, with its stat index kept

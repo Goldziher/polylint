@@ -301,7 +301,7 @@ again. See [Git hooks](https://polylint.github.io/polylint/guides/hooks/).
 ## Agents and MCP
 
 `poly mcp` is a stdio MCP server with four tools that mirror the CLI: `check` (lint or format
-check, writes nothing), `fix`, `info` (version, config, rules, components, cache; read-only) and `manage` (cache and
+check, writes nothing), `fix`, `info` (version, config, validate, rules, components, cache; read-only) and `manage` (cache and
 component maintenance). Every result identifies the binary that answered and separates
 checked, skipped and errored files, so an agent can gate on what was actually verified.
 
