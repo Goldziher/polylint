@@ -159,6 +159,8 @@ pub(super) struct Hit<'a> {
     /// (a narrowed run's record holding the full run's segments, or the reverse); `None` when the
     /// record's own plan was this one, so its leading segments are this plan's in order.
     order: Option<Vec<usize>>,
+    /// How many engines the plan has: the record's segments beyond them were retained from other plans.
+    planned: usize,
 }
 
 impl std::ops::Deref for Hit<'_> {
@@ -172,7 +174,10 @@ impl std::ops::Deref for Hit<'_> {
 impl Hit<'_> {
     /// The planned engines' segments, in plan order.
     fn segments(&self) -> impl Iterator<Item = &Segment> {
-        let positional = self.order.is_none().then(|| self.record.segments.iter());
+        let positional = self
+            .order
+            .is_none()
+            .then(|| self.record.segments.iter().take(self.planned));
         let mapped = self
             .order
             .iter()
@@ -291,18 +296,20 @@ impl<'a> FastPath<'a> {
         })
     }
 
-    /// Whether `hit` may stand in for a lint pass. A record written by another plan carries that
-    /// plan's verdict, so this plan's is read from its own segments.
+    /// Whether `hit` may stand in for a lint pass. The record's verdict is that of the plan that
+    /// last wrote it, whose segments need not be the ones this plan reads (a narrowed run's clean
+    /// record keeps the findings of the engines it left out), so the verdict is read from the
+    /// planned engines' segments.
     fn may_replay(&self, hit: &Hit) -> bool {
-        let verdict = match (&hit.order, hit.verdict) {
-            (Some(_), Verdict::Clean | Verdict::Diagnostics) => {
+        let verdict = match hit.verdict {
+            Verdict::Binary => Verdict::Binary,
+            Verdict::Clean | Verdict::Diagnostics => {
                 if hit.segments().all(|segment| segment.payload.is_empty()) {
                     Verdict::Clean
                 } else {
                     Verdict::Diagnostics
                 }
             }
-            (_, verdict) => verdict,
         };
         self.replay.verdicts
             && match verdict {
@@ -383,7 +390,11 @@ impl<'a> FastPath<'a> {
                     .collect::<Option<Vec<usize>>>()?,
             )
         };
-        let hit = Hit { record, order };
+        let hit = Hit {
+            record,
+            order,
+            planned: keys.len(),
+        };
         if !self.may_replay(&hit) {
             return None;
         }
@@ -425,9 +436,11 @@ impl<'a> FastPath<'a> {
 
     /// Remember how `probe`'s file, whose bytes are `bytes`, was judged.
     ///
-    /// When the path's record already holds every segment this run produced for these bytes (a
-    /// narrowed run over a file a full run recorded), it stays as it is, re-stamped with the new
-    /// `stat`: replacing it would evict the engines this run left out. Otherwise the new record keeps
+    /// A fmt record replaces the path's record outright (see `whole_plan`). For lint:
+    ///
+    /// When the path's record already holds every segment this run produced for these bytes, with
+    /// the same output (a narrowed run over a file a full run recorded), it stays as it is,
+    /// re-stamped with the new `stat`: replacing it would evict the engines this run left out. Otherwise the new record keeps
     /// the old one's other segments for the same bytes ([`Record::merged`]).
     pub(super) fn record(&self, probe: &Probe, bytes: &[u8], outcome: Outcome) {
         let digest = ContentDigest::of(bytes);
@@ -435,7 +448,18 @@ impl<'a> FastPath<'a> {
             && let Some(prior) = probe.prior
             && prior.digest == digest
             && (prior.verdict == Verdict::Binary) == (outcome.verdict == Verdict::Binary)
-            && probe.keys.iter().all(|key| prior.segment(key).is_some())
+            && prior.replayable == outcome.replayable
+            && probe
+                .keys
+                .iter()
+                .zip(
+                    outcome
+                        .payloads
+                        .iter()
+                        .map(Vec::as_slice)
+                        .chain(std::iter::repeat(&[][..])),
+                )
+                .all(|(key, payload)| prior.segment(key).is_some_and(|segment| segment.payload == payload))
         {
             self.index.vouch(probe.path, probe.stat, digest);
             return;

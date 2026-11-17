@@ -325,3 +325,150 @@ mod plans {
         assert_eq!(narrowed.skipped.as_deref(), Some("declined by the test"));
     }
 }
+
+mod narrowed_lint {
+    //! A record the selection flags wrote in pieces, read by a `--fix` run.
+
+    use std::collections::BTreeMap;
+    use std::sync::Arc;
+    use std::sync::atomic::{AtomicUsize, Ordering};
+
+    use super::super::super::batch::LintPrefill;
+    use super::super::super::ctx::{LintCtx, LintSetup};
+    use super::super::super::lint_file::lint_one;
+    use super::super::super::plan::RunPlan;
+    use super::super::super::types::LintResult;
+    use super::super::*;
+    use super::plans::{Tree, plan_of};
+    use crate::config::EngineConfig;
+    use crate::engine::{Capabilities, Edit, Engine, Severity};
+    use crate::filter::PerFileIgnores;
+
+    /// Reports one fixable finding on a file that still starts with `x`, when `finds`.
+    struct Linter {
+        name: &'static str,
+        finds: bool,
+        runs: Arc<AtomicUsize>,
+    }
+
+    impl Engine for Linter {
+        fn name(&self) -> &'static str {
+            self.name
+        }
+
+        fn languages(&self) -> &'static [Language] {
+            &[Language::Python]
+        }
+
+        fn capabilities(&self) -> Capabilities {
+            Capabilities {
+                lint: true,
+                format: false,
+                fix: true,
+                project: false,
+            }
+        }
+
+        fn version(&self) -> &str {
+            "1"
+        }
+
+        fn lint(&self, src: &SourceFile, _cfg: &EngineConfig) -> anyhow::Result<Vec<Diagnostic>> {
+            self.runs.fetch_add(1, Ordering::SeqCst);
+            if !self.finds || !src.content.starts_with('x') {
+                return Ok(Vec::new());
+            }
+            Ok(vec![Diagnostic {
+                engine: self.name.to_owned(),
+                code: Some("F001".to_owned()),
+                severity: Severity::Warning,
+                title: "rename x".to_owned(),
+                description: None,
+                url: None,
+                span: None,
+                fix: vec![Edit {
+                    start_byte: 0,
+                    end_byte: 1,
+                    replacement: "y".to_owned(),
+                }],
+                metadata: BTreeMap::new(),
+            }])
+        }
+    }
+
+    struct Run<'t> {
+        tree: &'t Tree,
+        runs: Arc<AtomicUsize>,
+    }
+
+    impl Run<'_> {
+        /// One `poly lint` by the `quiet` engine, the `finder`, or both in that order.
+        fn lint(&self, quiet: bool, finder: bool, fix: bool) -> LintResult {
+            let cache = ResultCache::open(self.tree.cache_root.clone(), true).expect("open the cache");
+            let engine = |name: &'static str, finds: bool| {
+                plan_of(Box::new(Linter {
+                    name,
+                    finds,
+                    runs: Arc::clone(&self.runs),
+                }))
+            };
+            let mut engines = Vec::new();
+            if quiet {
+                engines.push(engine("quiet", false));
+            }
+            if finder {
+                engines.push(engine("finder", true));
+            }
+            let plan = RunPlan::serving(0, Language::Python, engines);
+            let setup = LintSetup {
+                ignores: vec![PerFileIgnores::compile(&BTreeMap::new())],
+                ignore_bases: vec![Vec::new()],
+                act_on_generated: vec![true],
+                size_limits: SizeLimits::default(),
+            };
+            let replay = Replay {
+                diagnostics: !fix,
+                verdicts: true,
+            };
+            let fast = FastPath::new(&cache, Namespace::Lint, &plan, &|_| 1u8, &setup.size_limits, replay);
+            let resolution = fast
+                .as_ref()
+                .map_or(Resolution::Unavailable, |fast| fast.resolve(&self.tree.file));
+            let prefilled = LintPrefill::default();
+            let ctx = LintCtx {
+                plan: &plan,
+                fix,
+                fix_generated: false,
+                collect_debug: false,
+                setup: &setup,
+                externally_linted: &[],
+                prefilled: &prefilled,
+                fast: fast.as_ref(),
+            };
+            let result = lint_one(&ctx, &self.tree.file, resolution).expect("lint");
+            flush_stat_indexes(&cache);
+            result
+        }
+    }
+
+    /// `--skip quiet`, then `--only quiet`, then `--fix`: the middle run's clean record keeps the
+    /// finder's segment, and its verdict is not the full plan's.
+    #[test]
+    fn a_fix_run_fixes_a_finding_a_narrowed_run_left_in_a_clean_record() {
+        let tree = Tree::new("x = 1\n");
+        let run = Run {
+            tree: &tree,
+            runs: Arc::new(AtomicUsize::new(0)),
+        };
+        assert_eq!(run.lint(false, true, false).diagnostics.len(), 1);
+        assert_eq!(run.lint(true, false, false).diagnostics.len(), 0);
+
+        // Without `--fix` the full plan is answered from the two runs' segments.
+        let before = run.runs.load(Ordering::SeqCst);
+        assert_eq!(run.lint(true, true, false).diagnostics.len(), 1);
+        assert_eq!(run.runs.load(Ordering::SeqCst), before, "both segments are recorded");
+
+        assert_eq!(run.lint(true, true, true).fixed, 1);
+        assert_eq!(std::fs::read_to_string(&tree.file.path).expect("read"), "y = 1\n");
+    }
+}
