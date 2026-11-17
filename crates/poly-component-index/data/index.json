@@ -1768,7 +1768,7 @@
             "fix": false,
             "project": true
           },
-          "version": "tsrs-7.1.0-beta.tsrs1+proj3",
+          "version": "tsrs-7.1.0-beta.tsrs2+proj4",
           "option_keys": [
             {
               "table": "Lint",
