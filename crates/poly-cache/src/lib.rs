@@ -33,6 +33,7 @@
 //!                          `poly lint`, which records per-engine output in index/)
 //!     fmt/<hex-key>      — a tag byte, then the formatted text (tag 0: unchanged, no text)
 //!     hook/<hex-key>     — JSON-encoded hook outcome
+//!     engine/<hex-key>   — an engine's own cache entries, opaque bytes (see [`EngineDataStore`])
 //!   index/<checkout>/
 //!     lint.idx, fmt.idx  — stat-validated per-file records, one set per worktree;
 //!                          see [`StatIndex`]
@@ -128,6 +129,7 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, OnceLock};
 
 pub mod checkout;
+mod engine_data;
 mod maintenance;
 pub mod permissions;
 mod presence;
@@ -136,6 +138,7 @@ mod stat_index;
 use presence::PresenceIndex;
 
 pub use checkout::{checkout_cache_dir, git_common_dir, repository_identity};
+pub use engine_data::{EngineDataStore, engine_data_salt};
 pub use maintenance::{CacheStats, NamespaceStats};
 pub use permissions::{DirOrigin, create_dir_all_private, ensure_private_dir};
 pub use stat_index::{
@@ -429,6 +432,7 @@ pub fn root_from_cwd() -> anyhow::Result<PathBuf> {
 /// | `Lint`  | `results/lint/` | `serde_json`-encoded diagnostics |
 /// | `Fmt`   | `results/fmt/`  | UTF-8 formatted text             |
 /// | `Hook`  | `results/hook/` | JSON-encoded hook outcome        |
+/// | `Engine` | `results/engine/` | an engine's own entries, opaque bytes ([`EngineDataStore`]) |
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum Namespace {
     /// Lint-diagnostic results (`Vec<Diagnostic>` JSON bytes).
@@ -437,12 +441,15 @@ pub enum Namespace {
     Fmt,
     /// Hook execution result (opaque JSON bytes).
     Hook,
+    /// Work an engine caches below the granularity of a poly result (skif's parsed modules), written and
+    /// read by the engine itself through an [`EngineDataStore`].
+    Engine,
 }
 
 impl Namespace {
     /// Every namespace, in a fixed order — used by maintenance operations that
     /// walk the whole `results/` tree.
-    pub const ALL: [Namespace; 3] = [Namespace::Lint, Namespace::Fmt, Namespace::Hook];
+    pub const ALL: [Namespace; 4] = [Namespace::Lint, Namespace::Fmt, Namespace::Hook, Namespace::Engine];
 
     /// The sub-directory component used in the storage path.
     pub fn as_dir(self) -> &'static str {
@@ -450,6 +457,7 @@ impl Namespace {
             Namespace::Lint => "lint",
             Namespace::Fmt => "fmt",
             Namespace::Hook => "hook",
+            Namespace::Engine => "engine",
         }
     }
 
@@ -458,6 +466,7 @@ impl Namespace {
             Namespace::Lint => 0,
             Namespace::Fmt => 1,
             Namespace::Hook => 2,
+            Namespace::Engine => 3,
         }
     }
 }
@@ -550,7 +559,7 @@ pub struct ResultCache {
     root: PathBuf,
     enabled: bool,
     present: Arc<PresenceIndex>,
-    stat_indexes: Arc<[OnceLock<StatIndex>; 3]>,
+    stat_indexes: Arc<[OnceLock<StatIndex>; Namespace::ALL.len()]>,
     /// The checkout the run's files live in, when the cache was opened from
     /// one ([`ResultCache::open_from`]): stat-index records are then keyed by
     /// checkout-relative path, so another worktree of the repository can reuse
@@ -670,7 +679,7 @@ impl ResultCache {
     fn init_dirs(root: &Path, origin: DirOrigin) -> anyhow::Result<()> {
         permissions::ensure_private_dir(root, origin)
             .map_err(|e| anyhow::anyhow!("failed to create cache dir {}: {e}", root.display()))?;
-        for sub in ["results/lint", "results/fmt", "results/hook"] {
+        for sub in ["results/lint", "results/fmt", "results/hook", "results/engine"] {
             permissions::create_dir_all_private(&root.join(sub))
                 .map_err(|e| anyhow::anyhow!("failed to create cache dir {}: {e}", root.join(sub).display()))?;
         }

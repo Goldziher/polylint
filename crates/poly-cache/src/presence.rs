@@ -17,8 +17,8 @@ use crate::{CacheKey, Namespace};
 /// treats deletion or corruption as a miss.
 #[derive(Debug)]
 pub(crate) struct PresenceIndex {
-    snapshot: [HashSet<String>; 3],
-    added: [RwLock<HashSet<String>>; 3],
+    snapshot: [HashSet<String>; Namespace::ALL.len()],
+    added: [RwLock<HashSet<String>>; Namespace::ALL.len()],
     any_added: AtomicBool,
 }
 

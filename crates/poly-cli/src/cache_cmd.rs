@@ -133,7 +133,7 @@ fn print_stats(stats: &CacheStats) {
     let column = counts.iter().map(|c| c.chars().count()).max().unwrap_or(0);
     for (namespace, count) in stats.per_namespace.iter().zip(&counts) {
         println!(
-            "  {:<5} {count:>column$}  {:>10}",
+            "  {:<6} {count:>column$}  {:>10}",
             namespace.namespace.as_dir(),
             format_iec(namespace.bytes),
         );
