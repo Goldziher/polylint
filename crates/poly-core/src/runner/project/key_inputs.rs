@@ -376,13 +376,18 @@ mod tests {
             environment_text(&environment(one), one),
             environment_text(&environment(two), two)
         );
+        let outside = std::path::absolute("/usr/bin/python3").expect("absolute");
         let system = ProjectEnvironment {
             python: Some(PythonEnvironment {
-                interpreter: PathBuf::from("/usr/bin/python3"),
+                interpreter: outside.clone(),
                 ..PythonEnvironment::default()
             }),
         };
-        assert!(environment_text(&system, one).contains("/usr/bin/python3"));
+        let text = environment_text(&system, one);
+        assert!(
+            text.contains(&format!("python.interpreter={}\0", outside.display())),
+            "{text:?}"
+        );
     }
 
     #[test]
