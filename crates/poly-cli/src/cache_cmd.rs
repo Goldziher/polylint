@@ -10,17 +10,15 @@
 
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
-use std::time::Duration;
 
-use anyhow::{Context, Result, bail};
+use anyhow::{Context, Result};
 use clap::{Args, Subcommand};
-use poly_cache::{CacheStats, ResultCache, root_from_cwd};
+use poly_cache::CacheStats;
 use poly_config::PolyConfig;
+use poly_host_services::cache;
 use serde::Serialize;
 
 use crate::OutputFormat;
-
-const SECONDS_PER_DAY: u64 = 86_400;
 
 /// `poly cache` arguments — an optional subcommand (defaulting to `stats`).
 #[derive(Args)]
@@ -69,86 +67,27 @@ pub fn run_cache(args: CacheArgs) -> ExitCode {
 
 fn run(args: CacheArgs) -> Result<ExitCode> {
     let root = resolve_root(args.cache_dir.as_deref())?;
-    let cache = ResultCache::open(root, true).context("failed to open the result cache")?;
+    let cache = cache::open(root)?;
 
     match args.command.unwrap_or(CacheCommand::Stats) {
         CacheCommand::Stats => {
             let stats = cache.stats()?;
-            emit(args.format, &StatsDocument::from(&stats), |_| print_stats(&stats))?;
+            emit(args.format, &cache::stats_report(&stats), |_| print_stats(&stats))?;
         }
         CacheCommand::Gc { max_age, max_size } => {
-            let max_age = max_age.map(max_age_duration);
-            let max_size = max_size.as_deref().map(parse_size).transpose()?;
-            let freed = cache.gc(max_age, max_size)?;
-            let document = FreedDocument {
-                command: "gc",
-                freed_bytes: freed,
-            };
+            let document = cache::gc(&cache, max_age, max_size.as_deref())?;
             emit(args.format, &document, |d| {
                 println!("freed {} ({} bytes)", format_iec(d.freed_bytes), d.freed_bytes);
             })?;
         }
         CacheCommand::Clean => {
-            let freed = cache.clean()?;
-            let document = FreedDocument {
-                command: "clean",
-                freed_bytes: freed,
-            };
+            let document = cache::clean(&cache)?;
             emit(args.format, &document, |d| {
                 println!("cleaned {} ({} bytes)", format_iec(d.freed_bytes), d.freed_bytes);
             })?;
         }
     }
     Ok(ExitCode::SUCCESS)
-}
-
-/// `--max-age` days as a duration; a huge value saturates instead of overflowing.
-fn max_age_duration(days: u64) -> Duration {
-    Duration::from_secs(days.saturating_mul(SECONDS_PER_DAY))
-}
-
-/// The `--format json|toon` document of `poly cache stats`.
-#[derive(Serialize)]
-struct StatsDocument {
-    format_version: String,
-    on_disk_version: Option<String>,
-    namespaces: Vec<NamespaceDocument>,
-    total_entries: u64,
-    total_bytes: u64,
-}
-
-#[derive(Serialize)]
-struct NamespaceDocument {
-    namespace: &'static str,
-    entries: u64,
-    bytes: u64,
-}
-
-/// The `--format json|toon` document of `poly cache gc` and `poly cache clean`.
-#[derive(Serialize)]
-struct FreedDocument {
-    command: &'static str,
-    freed_bytes: u64,
-}
-
-impl From<&CacheStats> for StatsDocument {
-    fn from(stats: &CacheStats) -> Self {
-        Self {
-            format_version: stats.format_version.clone(),
-            on_disk_version: stats.on_disk_version.clone(),
-            namespaces: stats
-                .per_namespace
-                .iter()
-                .map(|n| NamespaceDocument {
-                    namespace: n.namespace.as_dir(),
-                    entries: n.entries,
-                    bytes: n.bytes,
-                })
-                .collect(),
-            total_entries: stats.per_namespace.iter().map(|n| n.entries).sum(),
-            total_bytes: stats.total_bytes,
-        }
-    }
 }
 
 fn emit<T: Serialize>(format: OutputFormat, document: &T, pretty: impl FnOnce(&T)) -> Result<()> {
@@ -168,10 +107,7 @@ pub(crate) fn resolve_root(cache_dir: Option<&Path>) -> Result<PathBuf> {
     }
     let cwd = std::env::current_dir().context("failed to resolve the working directory")?;
     let config = PolyConfig::load_with(&cwd, &crate::config_sources::resolver()?).context("failed to load config")?;
-    match config.cache.dir {
-        Some(dir) => Ok(PathBuf::from(dir)),
-        None => root_from_cwd().context("failed to resolve the cache directory"),
-    }
+    cache::root(None, config.cache.dir.as_deref())
 }
 
 /// A cache entry count, grouped and pluralised the way every other poly count
@@ -210,31 +146,6 @@ fn print_stats(stats: &CacheStats) {
     );
 }
 
-/// Parse a human size string (`512`, `64K`, `500M`, `2G`, `1T`) into bytes.
-///
-/// A bare number is bytes; a `K`/`M`/`G`/`T` suffix (case-insensitive) scales by
-/// the corresponding power of 1024.
-fn parse_size(value: &str) -> Result<u64> {
-    let trimmed = value.trim();
-    if trimmed.is_empty() {
-        bail!("empty size value");
-    }
-    let (number, scale) = match trimmed.as_bytes()[trimmed.len() - 1] {
-        b'k' | b'K' => (&trimmed[..trimmed.len() - 1], 1024u64),
-        b'm' | b'M' => (&trimmed[..trimmed.len() - 1], 1024 * 1024),
-        b'g' | b'G' => (&trimmed[..trimmed.len() - 1], 1024 * 1024 * 1024),
-        b't' | b'T' => (&trimmed[..trimmed.len() - 1], 1024u64.pow(4)),
-        _ => (trimmed, 1u64),
-    };
-    let number: u64 = number
-        .trim()
-        .parse()
-        .with_context(|| format!("invalid size `{value}` (expected e.g. `500M`, `2G`)"))?;
-    number
-        .checked_mul(scale)
-        .with_context(|| format!("size `{value}` overflows a 64-bit byte count"))
-}
-
 /// Format a byte count using IEC binary units (`B`, `KiB`, `MiB`, …).
 fn format_iec(bytes: u64) -> String {
     const UNITS: [&str; 5] = ["B", "KiB", "MiB", "GiB", "TiB"];
@@ -252,30 +163,7 @@ fn format_iec(bytes: u64) -> String {
 
 #[cfg(test)]
 mod tests {
-    use std::time::Duration;
-
-    use super::{format_iec, max_age_duration, parse_size};
-
-    #[test]
-    fn parse_size_handles_suffixes_and_bare_bytes() {
-        assert_eq!(parse_size("512").unwrap(), 512);
-        assert_eq!(parse_size("64K").unwrap(), 64 * 1024);
-        assert_eq!(parse_size("500M").unwrap(), 500 * 1024 * 1024);
-        assert_eq!(parse_size("2g").unwrap(), 2 * 1024 * 1024 * 1024);
-    }
-
-    #[test]
-    fn max_age_saturates_instead_of_overflowing() {
-        assert_eq!(max_age_duration(2), Duration::from_secs(172_800));
-        assert_eq!(max_age_duration(u64::MAX), Duration::from_secs(u64::MAX));
-    }
-
-    #[test]
-    fn parse_size_rejects_garbage() {
-        assert!(parse_size("").is_err());
-        assert!(parse_size("abc").is_err());
-        assert!(parse_size("12X").is_err());
-    }
+    use super::format_iec;
 
     #[test]
     fn format_iec_uses_binary_units() {

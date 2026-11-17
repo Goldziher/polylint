@@ -164,29 +164,52 @@ pub(crate) fn admit_local_base(base: &Path, declaring_dir: &Path) -> bool {
     false
 }
 
-fn store_slot() -> &'static Mutex<Option<Arc<TrustStore>>> {
-    static STORE: OnceLock<Mutex<Option<Arc<TrustStore>>>> = OnceLock::new();
+/// The store file's modification time and length, `None` when it is absent or unreadable.
+type StoreStamp = Option<(std::time::SystemTime, u64)>;
+
+/// The stamp of the store file as it is on disk now.
+fn store_stamp() -> StoreStamp {
+    let meta = std::fs::metadata(store::store_file().ok()?).ok()?;
+    Some((meta.modified().ok()?, meta.len()))
+}
+
+/// The store this process holds and the stamp of the file it was read from.
+type StoreSlot = Mutex<Option<(StoreStamp, Arc<TrustStore>)>>;
+
+fn store_slot() -> &'static StoreSlot {
+    static STORE: OnceLock<StoreSlot> = OnceLock::new();
     STORE.get_or_init(|| Mutex::new(None))
 }
 
 /// Make `store`, just written, the one this process consults from now on.
 pub fn use_store(store: TrustStore) {
-    *store_slot().lock().unwrap_or_else(PoisonError::into_inner) = Some(Arc::new(store));
+    *store_slot().lock().unwrap_or_else(PoisonError::into_inner) = Some((store_stamp(), Arc::new(store)));
 }
 
-/// The store as this process first read it, or `None` (with a note) when it is unreadable.
+/// The store as it is on disk, or `None` (with a note) when it is unreadable.
+///
+/// Read once and kept while the file's stamp holds: a long-lived process (`poly mcp`) must see a
+/// `poly trust` run beside it on its next request, not after a restart.
 fn cached_store() -> Option<Arc<TrustStore>> {
+    let stamp = store_stamp();
     let mut slot = store_slot().lock().unwrap_or_else(PoisonError::into_inner);
-    if slot.is_none() {
-        match TrustStore::load() {
-            Ok(store) => *slot = Some(Arc::new(store)),
-            Err(error) => {
-                notes::store_error(format!("{error:#}"));
-                return None;
-            }
+    if let Some((read_at, store)) = &*slot
+        && *read_at == stamp
+    {
+        return Some(Arc::clone(store));
+    }
+    match TrustStore::load() {
+        Ok(store) => {
+            let store = Arc::new(store);
+            *slot = Some((stamp, Arc::clone(&store)));
+            Some(store)
+        }
+        Err(error) => {
+            *slot = None;
+            notes::store_error(format!("{error:#}"));
+            None
         }
     }
-    slot.clone()
 }
 
 /// One config of a repository as `poly trust` sees it.

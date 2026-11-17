@@ -11,7 +11,8 @@
 //!
 //! The recorded files are, for each ancestor directory of the root, `poly.toml`,
 //! `poly.local.toml`, `poly.lock`, the typos, oxfmt and oxlint native configs, `pyproject.toml`
-//! and `.git`, with absent files recorded as absent so one appearing invalidates the entry. A
+//! and `.git`, plus the per-user trust store (a config's exec-capable keys are kept or withheld
+//! by it), with absent files recorded as absent so one appearing invalidates the entry. A
 //! config that uses `extends` reads files this stamp cannot enumerate, so it is never cached.
 //! An mtime-and-length stamp can miss a same-length rewrite within one mtime tick.
 //!
@@ -69,6 +70,12 @@ fn stamp_for(root: &Path, explicit: bool) -> Stamp {
             let state = file_state(&path);
             stamp.push((path, state));
         }
+    }
+    // What a parsed config keeps of its exec-capable keys depends on the trust store, so a
+    // `poly trust` run beside the server invalidates the entry like an edit to the config.
+    if let Ok(store) = poly_config::trust::store::store_file() {
+        let state = file_state(&store);
+        stamp.push((store, state));
     }
     stamp
 }

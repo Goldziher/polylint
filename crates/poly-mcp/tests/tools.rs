@@ -241,15 +241,18 @@ fn explicit_missing_config_is_an_error() {
 
 #[test]
 fn cache_stats_report_has_format_version() {
-    let report = ops::cache_stats().unwrap();
+    let report = ops::cache_stats(None).unwrap();
     assert!(!report.format_version.is_empty(), "format version is populated");
 }
 
 #[test]
 fn config_show_reports_effective_defaults() {
-    let report = ops::config_show(None).unwrap();
+    let report = serde_json::to_value(ops::config_show(None, None).unwrap()).unwrap();
     // The opinionated default line length is 120 everywhere the tool exposes it.
-    assert_eq!(report.defaults.line_length, 120, "opinionated default line length");
+    assert_eq!(
+        report["config"]["defaults"]["line_length"], 120,
+        "opinionated default line length"
+    );
 }
 
 /// With no user rule dirs at all, the report still lists poly's built-in pack —
@@ -260,7 +263,7 @@ fn rules_report_lists_the_builtin_pack_with_no_user_dirs() {
     let dir = tempfile::tempdir().unwrap();
     std::fs::write(dir.path().join("poly.toml"), "[rules]\ndirs = []\n").unwrap();
     let config = dir.path().join("poly.toml");
-    let report = ops::rules_report(&[], Some(&config.display().to_string()), false).unwrap();
+    let report = ops::rules_report(&[], Some(&config.display().to_string()), false, None).unwrap();
     assert!(report.dirs.is_empty(), "empty rule dirs from config");
     assert!(report.builtin_pack_enabled, "the pack is on by default");
     assert!(report.tests.is_none(), "no test report when test=false");
@@ -292,7 +295,7 @@ fn rules_report_omits_the_pack_when_builtin_is_disabled() {
     let dir = tempfile::tempdir().unwrap();
     std::fs::write(dir.path().join("poly.toml"), "[rules]\ndirs = []\nbuiltin = false\n").unwrap();
     let config = dir.path().join("poly.toml");
-    let report = ops::rules_report(&[], Some(&config.display().to_string()), false).unwrap();
+    let report = ops::rules_report(&[], Some(&config.display().to_string()), false, None).unwrap();
     assert!(!report.builtin_pack_enabled, "the pack is disabled by config");
     assert!(report.rules.is_empty(), "no rules left once the pack is off");
 }
@@ -302,64 +305,31 @@ fn rules_report_omits_the_pack_when_builtin_is_disabled() {
 #[test]
 fn registered_tools_have_expected_names_and_annotations() {
     let server = common::server(None);
-    let mut names = server.tool_names();
-    names.sort();
-    assert_eq!(
-        names,
-        vec![
-            "cache_clean",
-            "cache_stats",
-            "components",
-            "components_install",
-            "components_uninstall",
-            "config_show",
-            "format_check",
-            "format_write",
-            "lint",
-            "lint_fix",
-            "rules",
-            "version",
-            "workspace_lint",
-            "workspace_lint_fix",
-        ]
-    );
+    assert_eq!(server.tool_names(), ["check", "fix", "info", "manage"]);
 
-    for tool in ["cache_stats", "rules", "config_show", "components", "version"] {
-        let (read_only, destructive) = server.tool_hints(tool).unwrap();
-        assert_eq!(read_only, Some(true), "{tool} should be read-only");
-        assert_eq!(destructive, Some(false), "{tool} should not be destructive");
-    }
-    for tool in ["lint", "format_check"] {
-        let (read_only, destructive) = server.tool_hints(tool).unwrap();
-        assert_eq!(
-            (read_only, destructive),
-            (Some(false), Some(false)),
-            "{tool} runs the repository's configured tools: not read-only, but it deletes nothing"
-        );
-    }
-    let (read_only, destructive) = server.tool_hints("components_install").unwrap();
     assert_eq!(
-        (read_only, destructive),
-        (Some(false), Some(false)),
-        "the installer writes the component cache and removes nothing"
+        server.tool_hints("info").unwrap(),
+        (Some(true), Some(false)),
+        "info is read-only"
     );
-    for tool in [
-        "lint_fix",
-        "format_write",
-        "cache_clean",
-        "workspace_lint_fix",
-        "components_uninstall",
-    ] {
-        let (read_only, destructive) = server.tool_hints(tool).unwrap();
-        assert_eq!(read_only, Some(false), "{tool} should not be read-only");
-        assert_eq!(destructive, Some(true), "{tool} should be destructive");
+    assert_eq!(
+        server.tool_hints("check").unwrap(),
+        (Some(false), Some(false)),
+        "check runs the repository's configured tools: not read-only, but it deletes nothing"
+    );
+    for tool in ["fix", "manage"] {
+        assert_eq!(
+            server.tool_hints(tool).unwrap(),
+            (Some(false), Some(true)),
+            "{tool} writes"
+        );
     }
 }
 
 /// A run that needs a missing component downloads it, so the tools that can start one reach beyond
-/// the machine; the rest never touch the network. Clients read `open_world_hint` for exactly this.
+/// the machine; `info` never touches the network. Clients read `open_world_hint` for exactly this.
 #[test]
-fn tools_that_may_download_are_open_world_and_the_rest_are_not() {
+fn tools_that_may_download_are_open_world_and_info_is_not() {
     let server = common::server(None);
     let open_world = |name: &str| {
         server
@@ -368,81 +338,48 @@ fn tools_that_may_download_are_open_world_and_the_rest_are_not() {
             .annotations
             .and_then(|annotations| annotations.open_world_hint)
     };
-    for tool in ["lint", "format_check", "lint_fix", "format_write", "components_install"] {
+    for tool in ["check", "fix", "manage"] {
         assert_eq!(open_world(tool), Some(true), "{tool} may download");
     }
-    for tool in [
-        "components",
-        "components_uninstall",
-        "cache_stats",
-        "cache_clean",
-        "rules",
-        "config_show",
-        "version",
-        "workspace_lint",
-        "workspace_lint_fix",
-    ] {
-        assert_eq!(open_world(tool), Some(false), "{tool} never downloads");
-    }
+    assert_eq!(open_world("info"), Some(false), "info never downloads");
 }
 
+/// `check` and `fix` take the run options the CLI takes, from one shared request type.
 #[test]
-fn the_install_parameter_is_declared_on_the_four_run_tools() {
+fn the_run_options_are_declared_on_check_and_fix() {
     let server = common::server(None);
-    for name in ["lint", "format_check", "lint_fix", "format_write"] {
+    for name in ["check", "fix"] {
         let tool = server.get_tool(name).unwrap();
-        let install = &tool.input_schema["properties"]["install"];
-        assert!(
-            install.is_object(),
-            "{name} declares `install`: {:?}",
-            tool.input_schema
-        );
-        let schema = serde_json::to_string(&tool.input_schema).unwrap();
-        for mode in ["config", "auto", "never"] {
-            assert!(schema.contains(mode), "{name}'s `install` offers `{mode}`: {schema}");
+        let properties = tool.input_schema["properties"].as_object().unwrap();
+        for option in [
+            "kind",
+            "scope",
+            "paths",
+            "exclude",
+            "config",
+            "include_excluded",
+            "only",
+            "skip",
+            "max_skips",
+            "install",
+            "on_missing",
+            "no_cache",
+            "jobs",
+            "debug",
+            "format",
+        ] {
+            assert!(properties.contains_key(option), "{name} declares `{option}`");
         }
-    }
-}
-
-/// `workspace_lint` applies no fixes, but the phase executes cargo against the
-/// live worktree, so it is not read-only. Clients gate auto-approval on
-/// `read_only_hint`; a tool that can change the tree without a prompt is the
-/// exact case the hint exists to catch, so it is asserted separately from both
-/// the read-only set and the destructive set rather than folded into either.
-#[test]
-fn workspace_lint_is_not_annotated_read_only_because_its_tools_touch_the_tree() {
-    let server = common::server(None);
-    let (read_only, destructive) = server.tool_hints("workspace_lint").unwrap();
-    assert_eq!(
-        read_only,
-        Some(false),
-        "workspace_lint executes cargo against the worktree"
-    );
-    assert_eq!(
-        destructive,
-        Some(false),
-        "workspace_lint deletes nothing and writes no output of its own"
-    );
-}
-
-#[test]
-fn declared_output_schemas_include_the_identity_they_send() {
-    let server = common::server(None);
-    for name in ["lint", "format_check", "cache_stats", "config_show", "version"] {
-        let tool = server.get_tool(name).unwrap();
-        let schema = tool
-            .output_schema
-            .as_ref()
-            .unwrap_or_else(|| panic!("{name} declares an output schema"));
-        let properties = schema["properties"].as_object().unwrap();
-        assert!(
-            properties.contains_key("poly"),
-            "{name}'s schema declares the `poly` identity it actually sends"
+        // Only a write reads it, so only the writing tool lists (and accepts) it.
+        assert_eq!(
+            properties.contains_key("fix_generated"),
+            name == "fix",
+            "{name} and `fix_generated`"
         );
-        let required = schema["required"].as_array().unwrap();
-        assert!(
-            required.contains(&Value::from("poly")),
-            "{name}'s schema requires the identity, since every response carries it"
+        assert_eq!(
+            properties["install"]["enum"],
+            serde_json::json!(["config", "auto", "never"]),
+            "{name}'s `install` is a plain enum"
         );
     }
 }
@@ -450,7 +387,7 @@ fn declared_output_schemas_include_the_identity_they_send() {
 #[test]
 fn server_constructs_with_config_override() {
     let server = common::server(Some(PathBuf::from("poly.toml")));
-    assert_eq!(server.tool_names().len(), 14);
+    assert_eq!(server.tool_names().len(), 4);
 }
 
 // ── Layer 3: in-process round-trips ───────────────────────────────────────
@@ -495,12 +432,11 @@ async fn lint_returns_structured_content_and_json_text() {
         .iter()
         .map(|t| t.name.to_string())
         .collect();
-    assert!(names.contains(&"lint".to_string()));
-    assert!(names.contains(&"workspace_lint".to_string()));
+    assert_eq!(names, ["check", "fix", "info", "manage"]);
 
     let result = client
         .call_tool(
-            CallToolRequestParams::new("lint")
+            CallToolRequestParams::new("check")
                 .with_arguments(arguments(&[("paths", Value::from(vec![path.display().to_string()]))])),
         )
         .await
@@ -534,12 +470,12 @@ async fn lint_toon_text_differs_from_json_but_structured_matches() {
     let (client, server_task) = connect().await;
 
     let json_result = client
-        .call_tool(CallToolRequestParams::new("lint").with_arguments(arguments(&[("paths", paths.clone())])))
+        .call_tool(CallToolRequestParams::new("check").with_arguments(arguments(&[("paths", paths.clone())])))
         .await
         .unwrap();
     let toon_result = client
         .call_tool(
-            CallToolRequestParams::new("lint")
+            CallToolRequestParams::new("check")
                 .with_arguments(arguments(&[("paths", paths), ("format", Value::from("toon"))])),
         )
         .await
@@ -566,12 +502,15 @@ async fn lint_toon_text_differs_from_json_but_structured_matches() {
 async fn cache_stats_tool_returns_typed_structured_content() {
     let (client, server_task) = connect().await;
     let result = client
-        .call_tool(CallToolRequestParams::new("cache_stats"))
+        .call_tool(
+            CallToolRequestParams::new("info").with_arguments(arguments(&[("topics", serde_json::json!(["cache"]))])),
+        )
         .await
         .unwrap();
-    let structured = result.structured_content.as_ref().expect("structured_content present");
+    let structured = &result.structured_content.as_ref().expect("structured_content present")["cache"];
     assert!(structured["format_version"].is_string(), "typed format_version");
-    assert!(structured["per_namespace"].is_array(), "typed per_namespace");
+    assert!(structured["namespaces"].is_array(), "the CLI's namespaces list");
+    assert!(structured["total_entries"].is_u64(), "the CLI's entry total");
     client.cancel().await.unwrap();
     let _ = server_task.await;
 }
@@ -580,12 +519,18 @@ async fn cache_stats_tool_returns_typed_structured_content() {
 async fn config_show_tool_returns_effective_defaults() {
     let (client, server_task) = connect().await;
     let result = client
-        .call_tool(CallToolRequestParams::new("config_show"))
+        .call_tool(
+            CallToolRequestParams::new("info").with_arguments(arguments(&[("topics", serde_json::json!(["config"]))])),
+        )
         .await
         .unwrap();
-    let structured = result.structured_content.as_ref().expect("structured_content present");
+    let structured = &result.structured_content.as_ref().expect("structured_content present")["config"];
+    assert!(
+        structured["resolution"].is_object(),
+        "the CLI's resolution block: {structured}"
+    );
     assert_eq!(
-        structured["defaults"]["line_length"], 120,
+        structured["config"]["defaults"]["line_length"], 120,
         "opinionated default line length"
     );
     client.cancel().await.unwrap();
@@ -599,10 +544,13 @@ async fn rules_tool_lists_rules_structured() {
     let config = dir.path().join("poly.toml").display().to_string();
     let (client, server_task) = connect().await;
     let result = client
-        .call_tool(CallToolRequestParams::new("rules").with_arguments(arguments(&[("config", Value::from(config))])))
+        .call_tool(CallToolRequestParams::new("info").with_arguments(arguments(&[
+            ("topics", serde_json::json!(["rules"])),
+            ("config", Value::from(config)),
+        ])))
         .await
         .unwrap();
-    let structured = result.structured_content.as_ref().expect("structured_content present");
+    let structured = &result.structured_content.as_ref().expect("structured_content present")["rules"];
     let rules = structured["rules"].as_array().expect("rules array");
     let rule = rules
         .iter()
@@ -628,9 +576,10 @@ async fn workspace_lint_runs_as_async_task_and_completes() {
 
     // The whole-project tool returns a task handle, not a completed result.
     let response = client
-        .call_tool_once(
-            CallToolRequestParams::new("workspace_lint").with_arguments(arguments(&[("config", Value::from(config))])),
-        )
+        .call_tool_once(CallToolRequestParams::new("check").with_arguments(arguments(&[
+            ("scope", Value::from("workspace")),
+            ("config", Value::from(config)),
+        ])))
         .await
         .unwrap();
     let create = match response {
@@ -660,8 +609,12 @@ async fn workspace_lint_runs_as_async_task_and_completes() {
     let structured = call_result
         .structured_content
         .expect("structured content in task result");
-    assert_eq!(structured["passed"], Value::Bool(true), "disabled phase passes");
-    assert_eq!(structured["tools"], serde_json::json!([]), "no tools ran");
+    // The caller asked for this phase and it did not run: an error naming why, never a pass
+    // with no tools.
+    assert_eq!(call_result.is_error, Some(true), "{structured}");
+    assert_eq!(structured["error"]["kind"], "no_workspace_tools", "{structured}");
+    assert_eq!(structured["summary"], Value::Null, "{structured}");
+    assert_eq!(structured.get("passed"), None, "{structured}");
 
     client.cancel().await.unwrap();
     let _ = server_task.await;
@@ -716,15 +669,23 @@ async fn every_tool_response_identifies_the_binary_that_answered() {
     // and the identity tool itself.
     let lint = client
         .call_tool(
-            CallToolRequestParams::new("lint")
+            CallToolRequestParams::new("check")
                 .with_arguments(arguments(&[("paths", Value::from(vec![path.display().to_string()]))])),
         )
         .await
         .unwrap();
     assert_identifies_the_binary(&lint, "lint");
 
-    for tool in ["format_check", "cache_stats", "config_show", "version"] {
-        let result = client.call_tool(CallToolRequestParams::new(tool)).await.unwrap();
+    for (tool, args) in [
+        ("check", serde_json::json!({ "kind": "format" })),
+        ("info", serde_json::json!({ "topics": ["cache", "config"] })),
+        ("info", serde_json::json!({})),
+    ] {
+        let Value::Object(args) = args else { unreachable!() };
+        let result = client
+            .call_tool(CallToolRequestParams::new(tool).with_arguments(args))
+            .await
+            .unwrap();
         assert_identifies_the_binary(&result, tool);
     }
 
@@ -735,8 +696,8 @@ async fn every_tool_response_identifies_the_binary_that_answered() {
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn version_tool_reports_executable_health_and_uptime() {
     let (client, server_task) = connect().await;
-    let result = client.call_tool(CallToolRequestParams::new("version")).await.unwrap();
-    let structured = result.structured_content.as_ref().expect("structured content");
+    let result = client.call_tool(CallToolRequestParams::new("info")).await.unwrap();
+    let structured = &result.structured_content.as_ref().expect("structured content")["version"];
     assert_eq!(
         structured["executable_current"],
         Value::Bool(true),
@@ -757,7 +718,7 @@ async fn adding_identity_does_not_disturb_the_existing_payload() {
     let (client, server_task) = connect().await;
     let result = client
         .call_tool(
-            CallToolRequestParams::new("lint")
+            CallToolRequestParams::new("check")
                 .with_arguments(arguments(&[("paths", Value::from(vec![path.display().to_string()]))])),
         )
         .await
@@ -821,7 +782,10 @@ async fn a_server_whose_binary_was_replaced_refuses_to_answer() {
     // While it is still the same file, tools answer normally.
     assert!(
         client
-            .call_tool(CallToolRequestParams::new("cache_stats"))
+            .call_tool(
+                CallToolRequestParams::new("info")
+                    .with_arguments(arguments(&[("topics", serde_json::json!(["cache"]))]))
+            )
             .await
             .is_ok(),
         "an untouched executable serves normally"
@@ -833,7 +797,9 @@ async fn a_server_whose_binary_was_replaced_refuses_to_answer() {
     std::fs::write(&executable, b"a newer build installed underneath us").unwrap();
 
     let error = client
-        .call_tool(CallToolRequestParams::new("cache_stats"))
+        .call_tool(
+            CallToolRequestParams::new("info").with_arguments(arguments(&[("topics", serde_json::json!(["cache"]))])),
+        )
         .await
         .expect_err("a replaced executable must fail, not answer");
     let message = error.to_string();
@@ -862,14 +828,14 @@ async fn the_version_tool_still_answers_after_the_binary_is_deleted() {
     // Everything else is refused, but `version` must still diagnose the cause —
     // an error with no explanation leaves the caller exactly where they started.
     assert!(
-        client.call_tool(CallToolRequestParams::new("lint")).await.is_err(),
+        client.call_tool(CallToolRequestParams::new("check")).await.is_err(),
         "lint is refused once the binary is gone"
     );
     let result = client
-        .call_tool(CallToolRequestParams::new("version"))
+        .call_tool(CallToolRequestParams::new("info"))
         .await
         .expect("version answers even when the binary is gone");
-    let structured = result.structured_content.as_ref().expect("structured content");
+    let structured = &result.structured_content.as_ref().expect("structured content")["version"];
     assert_eq!(
         structured["executable_current"],
         Value::Bool(false),
@@ -907,7 +873,7 @@ async fn every_response_identifies_the_engines_it_was_built_with() {
     let (client, server_task) = connect().await;
     let result = client
         .call_tool(
-            CallToolRequestParams::new("lint")
+            CallToolRequestParams::new("check")
                 .with_arguments(arguments(&[("paths", Value::from(vec![path.display().to_string()]))])),
         )
         .await
@@ -931,11 +897,11 @@ async fn every_response_identifies_the_engines_it_was_built_with() {
 async fn version_expands_the_engines_digest_into_a_map() {
     let (client, server_task) = connect().await;
     let result = client
-        .call_tool(CallToolRequestParams::new("version").with_arguments(arguments(&[])))
+        .call_tool(CallToolRequestParams::new("info").with_arguments(arguments(&[])))
         .await
         .unwrap();
 
-    let structured = result.structured_content.as_ref().unwrap();
+    let structured = &result.structured_content.as_ref().unwrap()["version"];
     let engines = structured["engines"].as_object().expect("engines map");
     assert!(engines.contains_key("ruff"), "a compiled-in backend is listed");
     assert!(
@@ -955,23 +921,32 @@ async fn a_host_without_a_component_manager_is_explicit_about_it() {
     let (client, server_task) = connect().await;
 
     let status = client
-        .call_tool(CallToolRequestParams::new("components").with_arguments(arguments(&[])))
+        .call_tool(
+            CallToolRequestParams::new("info")
+                .with_arguments(arguments(&[("topics", serde_json::json!(["components"]))])),
+        )
         .await
         .unwrap();
     let structured = status.structured_content.as_ref().unwrap();
-    assert!(structured["lock_error"].is_string(), "{structured}");
-    assert_eq!(structured["components"], serde_json::json!([]));
+    assert!(structured["components"]["lock_error"].is_string(), "{structured}");
+    assert_eq!(structured["components"]["components"], serde_json::json!([]));
     assert_eq!(structured["poly"]["flavor"], "unknown");
     assert!(structured["poly"]["components_lock"].is_null(), "{structured}");
 
-    for tool in ["components_install", "components_uninstall"] {
-        let error = client
-            .call_tool(
-                CallToolRequestParams::new(tool).with_arguments(arguments(&[("names", Value::from(vec!["web"]))])),
-            )
+    for action in ["components_install", "components_uninstall"] {
+        let result = client
+            .call_tool(CallToolRequestParams::new("manage").with_arguments(arguments(&[
+                ("action", Value::from(action)),
+                ("names", Value::from(vec!["web"])),
+            ])))
             .await
-            .unwrap_err();
-        assert!(format!("{error}").contains("no component manager"), "{tool}: {error}");
+            .unwrap();
+        assert_eq!(result.is_error, Some(true), "{action}");
+        let message = &result.structured_content.as_ref().unwrap()["error"]["message"];
+        assert!(
+            message.as_str().unwrap().contains("no component manager"),
+            "{action}: {message}"
+        );
     }
 
     client.cancel().await.unwrap();
@@ -989,27 +964,16 @@ fn read_only_is_claimed_exactly_by_tools_that_cannot_run_repository_config() {
         .filter(|name| server.tool_hints(name).unwrap().0 == Some(true))
         .collect();
     read_only.sort();
-    assert_eq!(
-        read_only,
-        ["cache_stats", "components", "config_show", "rules", "version"],
-        "read-only tools"
-    );
+    assert_eq!(read_only, ["info"], "read-only tools");
 }
 
-/// The descriptions of the tools that run repository config tell the client to trust the repository.
+/// The trust warning is stated once, in the instructions every session receives, not in each
+/// description.
 #[test]
-fn lint_and_format_descriptions_warn_about_untrusted_repositories() {
-    let server = common::server(None);
-    for tool in ["lint", "format_check", "lint_fix", "format_write"] {
-        let description = server
-            .get_tool(tool)
-            .unwrap()
-            .description
-            .unwrap_or_default()
-            .to_string();
-        assert!(
-            description.contains("only run against repositories you trust"),
-            "{tool}"
-        );
-    }
+fn the_instructions_warn_about_untrusted_repositories() {
+    let instructions = common::server(None).get_info().instructions.unwrap_or_default();
+    assert!(
+        instructions.contains("only on repositories you trust"),
+        "{instructions}"
+    );
 }

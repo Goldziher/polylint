@@ -404,6 +404,15 @@ pub fn root_from(start: &Path) -> anyhow::Result<PathBuf> {
     repo_cache_dir(start)
 }
 
+/// The result-cache root for `start`, resolved without creating, tagging or migrating anything.
+///
+/// The path [`root_from`] returns, for a caller that only reads: a cache that was never
+/// written stays absent.
+pub fn existing_root_from(start: &Path) -> anyhow::Result<PathBuf> {
+    let home = cache_home_with_origin()?.0;
+    Ok(home.join(repo_key(&repository_identity(&repo_anchor(start)))))
+}
+
 /// Resolve the result-cache root from the current working directory.
 ///
 /// Equivalent to `root_from(&std::env::current_dir()?)`.

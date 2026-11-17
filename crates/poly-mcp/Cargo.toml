@@ -38,6 +38,8 @@ serde_toon_format.workspace = true
 tokio.workspace = true
 
 [dev-dependencies]
+# The `tools/list` snapshot: a change to the surface a model pays for is a reviewed diff.
+insta = { workspace = true, features = ["json"] }
 # The tests run the server over the real host services, in process: the same wire path a
 # downloaded component takes, with `Services` standing in for the component ABI's service table.
 poly-core = { workspace = true, features = ["all-engines", "schemars"] }

@@ -29,7 +29,7 @@ fn memo() -> &'static RwLock<HashMap<PathBuf, bool>> {
 }
 
 /// Drops every memoised answer so the next run rereads the filesystem.
-pub(super) fn forget() {
+pub(crate) fn forget() {
     memo()
         .write()
         .unwrap_or_else(std::sync::PoisonError::into_inner)

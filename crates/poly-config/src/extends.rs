@@ -197,6 +197,12 @@ pub trait BaseConfigResolver: Send + Sync + std::fmt::Debug {
     /// Resolve `source` to an existing local config file path. `relative_to` is
     /// the directory of the config that declared the `extends` entry.
     fn resolve(&self, source: &ExtendsSource, relative_to: &Path) -> anyhow::Result<PathBuf>;
+
+    /// The object ID a git `source` resolves to, for display: `None` for a local base, an
+    /// unlocked symbolic revision, or a resolver that knows no lock (the default).
+    fn resolved_oid(&self, _source: &ExtendsSource) -> Option<String> {
+        None
+    }
 }
 
 /// The default resolver: resolves `path` sources against the declaring config's

@@ -150,12 +150,8 @@ fn lint(common: &CommonArgs, root: Option<&Path>) -> Option<Outcome> {
     };
     let (text, _) = report::render_lint_pretty_run(&run, Verbosity::from_flags(false, false, false));
     streams.stdout.push_str(&text);
-    let blocking = components(&run.components, &mut streams);
-    let code = if blocking || !run.errors.is_empty() {
-        EXIT_NOT_VERIFIED
-    } else {
-        u8::from(crate::lint_has_errors(&run.results))
-    };
+    components(&run.components, &mut streams);
+    let code = poly_host_services::run::Verdict::of_lint(&run, None).exit_code();
     Some(streams.finish(code))
 }
 
@@ -275,23 +271,11 @@ fn prepare(
         // Where the child's `--set discovery.force_exclude=true` lands.
         config.force_exclude = true;
     }
-    let opts = RunOptions {
-        no_cache: common.no_cache,
-        jobs: common.jobs,
-        exclude: common.exclude.clone(),
-        force_exclude: crate::resolve_force_exclude(common, &config),
-        fix_generated: common.fix_generated,
-        generated: None,
-        explicit_config: false,
-        config_resolver: Some(resolver),
-        externally_linted_languages: Vec::new(),
-        only: common.only.clone(),
-        skip: common.skip.clone(),
-        on_missing: common.on_missing.map(Into::into),
-        timings: false,
-        root: root.map(Path::to_path_buf),
-        ..RunOptions::default()
-    };
+    let resolver: std::sync::Arc<dyn poly_config::BaseConfigResolver> = resolver;
+    let mut opts = poly_host_services::run::run_options(&crate::run_request(common), &config, Some(resolver));
+    // The hook's child never passes `--config`: the config is the one found at the hook's root.
+    opts.explicit_config = false;
+    opts.root = root.map(Path::to_path_buf);
     Some((paths, config, opts))
 }
 

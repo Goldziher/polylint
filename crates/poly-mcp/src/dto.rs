@@ -1,8 +1,8 @@
 //! Data-transfer objects and result builders for the MCP tools.
 //!
 //! Every tool returns rmcp **structured content**: the typed payload lands in
-//! [`rmcp::model::CallToolResult::structured_content`] (its JSON schema is
-//! attached to the tool definition via `#[tool(output_schema = …)]`), and a
+//! [`rmcp::model::CallToolResult::structured_content`] (its JSON schema is a
+//! resource, see [`crate::server::resources`]), and a
 //! single text [`ContentBlock`] carries either the same JSON or a compact
 //! **TOON** rendering, selected per request by [`TextRepr`]. A client thus gets
 //! machine-readable structured JSON *and* a human/compact text view from one
@@ -39,21 +39,21 @@
 //! prose rather than a serializable value.
 
 use std::collections::BTreeMap;
-use std::sync::{Arc, OnceLock};
 
 pub use poly_frontend_api::dto::{
-    CacheCleanReport, CacheNamespace, CacheStatsReport, ComponentAction, ComponentActions, ComponentRow,
-    ComponentSummary, ComponentsStatus, ConfigDefaults, ConfigShowReport, RuleInfo, RuleTestOutcome, RulesReport,
-    WorkspaceReport, WorkspaceToolReport,
+    CacheFreedReport, CacheNamespace, CacheStatsReport, ComponentAction, ComponentActions, ComponentRow,
+    ComponentSummary, ComponentsStatus, RuleInfo, RuleTestOutcome, RulesReport, ValidateReport, WorkspaceReport,
+    WorkspaceToolReport,
 };
-use poly_frontend_api::wire::{RunReply, Schemas};
+use poly_frontend_api::dto::{Failure, FailureDocument, FailureKind};
+use poly_frontend_api::wire::RunReply;
 use rmcp::ErrorData;
-use rmcp::model::{CallToolResult, ContentBlock, JsonObject, MetaObject};
+use rmcp::model::{CallToolResult, ContentBlock, MetaObject};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
-use crate::identity::{IDENTITY_KEY, PolyIdentity, identity_value};
+use crate::identity::{IDENTITY_KEY, identity_value};
 
 /// Which text representation a tool should place in its text content block.
 /// `structured_content` is always JSON regardless; this selects only the text
@@ -80,21 +80,16 @@ fn serialize_error(error: impl std::fmt::Display) -> ErrorData {
 /// block. `structured` is always the JSON value; the text block is `json_text`
 /// or `toon_text` per `repr`.
 ///
-/// Every result also carries the serving binary's [`PolyIdentity`], both as a
+/// Every result also carries the serving binary's [`crate::identity::PolyIdentity`], both as a
 /// `poly` key in `structured_content` and in the response `_meta`. An MCP caller
 /// has no `poly --version` to fall back on, so a result that does not say which
 /// binary produced it is indistinguishable from one produced by a build with
 /// known-destructive behaviour.
-fn build(structured: Value, json_text: String, toon_text: String, repr: TextRepr) -> CallToolResult {
-    build_with_status(structured, json_text, toon_text, repr, false)
-}
-
-/// [`build`], additionally marking the result as a tool-level **error**.
 ///
-/// A run that could not process a file did not check it, and a caller that reads
-/// only the tool's success/failure flag must not be told otherwise — the MCP
-/// counterpart of the CLI's exit code 2. The payload is unchanged: the caller
-/// still gets every result the run did produce, alongside the failures.
+/// `is_error` marks the result as a tool-level **error**: a run that could not process a file
+/// did not check it, and a caller that reads only the tool's success/failure flag must not be
+/// told otherwise — the MCP counterpart of the CLI's exit code 2. The payload is unchanged: the
+/// caller still gets every result the run did produce, alongside the failures.
 fn build_with_status(
     structured: Value,
     json_text: String,
@@ -135,92 +130,22 @@ fn identity_meta() -> MetaObject {
     meta
 }
 
-/// The output schema for `T`, extended with the `poly` identity property that
-/// [`build`] injects, so the declared schema matches what is actually sent.
-pub fn schema_for_output_with_identity<T: JsonSchema + std::any::Any>() -> Arc<JsonObject> {
-    with_identity_property(rmcp::handler::server::tool::schema_for_output::<T>())
-}
-
-/// The root schemas the host published for the lint and format documents.
-static DOCUMENT_SCHEMAS: OnceLock<Schemas> = OnceLock::new();
-
-/// Remember the host's document schemas so the lint and format tools can declare them. The first
-/// call wins: the host's documents do not change while it runs.
-pub fn install_document_schemas(schemas: Schemas) {
-    let _ = DOCUMENT_SCHEMAS.set(schemas);
-}
-
-/// The declared output schema of the lint tools, with the identity property.
-///
-/// Before the host's schema is known it is the bare object schema carrying only the identity, so
-/// a tool list never fails for want of it.
-pub fn lint_output_schema() -> Arc<JsonObject> {
-    document_output_schema(DOCUMENT_SCHEMAS.get().map(|schemas| &schemas.lint))
-}
-
-/// The declared output schema of the format tools; see [`lint_output_schema`].
-pub fn format_output_schema() -> Arc<JsonObject> {
-    document_output_schema(DOCUMENT_SCHEMAS.get().map(|schemas| &schemas.format))
-}
-
-/// A host-published root schema in the shape rmcp gives an output schema (top-level `title` and
-/// `description` removed), plus the identity property.
-fn document_output_schema(published: Option<&Value>) -> Arc<JsonObject> {
-    let mut object = match published {
-        Some(Value::Object(object)) => object.clone(),
-        _ => {
-            let mut object = JsonObject::new();
-            object.insert("type".to_string(), Value::String("object".to_string()));
-            object.insert("properties".to_string(), Value::Object(JsonObject::new()));
-            object
-        }
-    };
-    object.remove("title");
-    object.remove("description");
-    with_identity_property(Arc::new(object))
-}
-
-/// Extend an object schema with the `poly` identity property.
-fn with_identity_property(base: Arc<JsonObject>) -> Arc<JsonObject> {
-    let mut object = base.as_ref().clone();
-    // Only object schemas have properties to extend; anything else is returned
-    // unchanged rather than reshaped.
-    if !matches!(object.get("properties"), Some(Value::Object(_))) {
-        return base;
-    }
-    if let Some(Value::Object(properties)) = object.get_mut("properties") {
-        properties.insert(IDENTITY_KEY.to_string(), identity_schema());
-    }
-    match object.get_mut("required") {
-        Some(Value::Array(required)) => required.push(Value::String(IDENTITY_KEY.to_string())),
-        _ => {
-            object.insert(
-                "required".to_string(),
-                Value::Array(vec![Value::String(IDENTITY_KEY.to_string())]),
-            );
-        }
-    }
-    Arc::new(object)
-}
-
-/// The inline JSON schema for [`PolyIdentity`], with the document-level keys
-/// that do not belong on a nested subschema removed.
-fn identity_schema() -> Value {
-    let mut schema = serde_json::to_value(schemars::schema_for!(PolyIdentity)).unwrap_or(Value::Bool(true));
-    if let Value::Object(map) = &mut schema {
-        map.remove("$schema");
-        map.remove("title");
-    }
-    schema
-}
-
 /// Build a tool result for a self-describing DTO: structured JSON plus a JSON or
 /// TOON text block derived from the same value.
 pub fn dto_result<T: Serialize>(value: &T, repr: TextRepr) -> Result<CallToolResult, ErrorData> {
+    dto_result_with_status(value, repr, false)
+}
+
+/// [`dto_result`], marked as a tool error when `is_error` is set.
+pub fn dto_result_with_status<T: Serialize>(
+    value: &T,
+    repr: TextRepr,
+    is_error: bool,
+) -> Result<CallToolResult, ErrorData> {
     let structured = serde_json::to_value(value).map_err(serialize_error)?;
     let json_text = serde_json::to_string_pretty(value).map_err(serialize_error)?;
     let toon_text = serde_toon::to_string(value).unwrap_or_else(|_| json_text.clone());
-    Ok(build(structured, json_text, toon_text, repr))
+    Ok(build_with_status(structured, json_text, toon_text, repr, is_error))
 }
 
 /// The result of an install or uninstall. A component that failed or was refused is a tool error:
@@ -232,30 +157,55 @@ pub fn actions_result(actions: &ComponentActions, repr: TextRepr) -> Result<Call
     Ok(build_with_status(structured, json_text, toon_text, repr, !actions.ok))
 }
 
-/// Build the tool result for a whole lint run.
+/// Build the tool result for a whole lint or format run.
 ///
-/// The payload is the host's rendering of `poly-core`'s own `LintDocument` — the same value
-/// `poly lint --format json` prints — so `structured_content` and the text block
-/// carry one shape, and the CLI and this server cannot answer "what did you
-/// actually check" differently. A render failure never reaches here: the host
-/// reports it as a failed call, which becomes a tool error rather than an empty
-/// document, since an MCP caller has no other way to tell "clean" from "poly
-/// could not tell you".
-pub fn lint_result(reply: RunReply, repr: TextRepr) -> CallToolResult {
-    run_result(reply, repr)
-}
-
-/// Build the tool result for a whole format run — the counterpart of
-/// [`lint_result`], and for the same reasons.
-pub fn format_result(reply: RunReply, repr: TextRepr) -> CallToolResult {
-    run_result(reply, repr)
-}
-
-fn run_result(reply: RunReply, repr: TextRepr) -> CallToolResult {
+/// The payload is the host's rendering of `poly-core`'s own document — the same value
+/// `poly lint --format json` prints — so `structured_content` and the text block carry one
+/// shape, and the CLI and this server cannot answer "what did you actually check" differently.
+/// A run that could not start arrives as a failure document with `is_error` set.
+pub fn run_result(reply: RunReply, repr: TextRepr) -> CallToolResult {
     build_with_status(reply.document, reply.json, reply.toon, repr, reply.is_error)
 }
 
-/// Health of the binary serving this MCP session (the `version` tool).
+/// A failed run the frontend itself has to report: the host could not be reached, or the
+/// arguments do not go together.
+pub fn failure_reply(kind: FailureKind, message: &str) -> RunReply {
+    let document = FailureDocument {
+        error: Failure {
+            kind,
+            message: message.to_owned(),
+        },
+        summary: None,
+    };
+    let json = serde_json::to_string_pretty(&document).unwrap_or_else(|_| message.to_owned());
+    RunReply {
+        toon: serde_toon::to_string(&document).unwrap_or_else(|_| json.clone()),
+        document: serde_json::to_value(&document).unwrap_or(Value::Null),
+        json,
+        is_error: true,
+    }
+}
+
+/// An `isError` result for arguments that do not go together.
+pub fn usage_result(message: &str, repr: TextRepr) -> CallToolResult {
+    run_result(failure_reply(FailureKind::Usage, message), repr)
+}
+
+/// `{"error": {"kind": "pipeline", "message": …}}` for a host lookup that failed: the body of an
+/// `info` topic the host could not answer. The host's services report these as plain messages,
+/// so the class is the generic one.
+pub fn failure_value(error: &anyhow::Error) -> Value {
+    serde_json::json!({ "error": Failure { kind: FailureKind::Pipeline, message: format!("{error:#}") } })
+}
+
+/// An `isError` result for a `manage` action the host failed: the same failure document a run
+/// that could not start returns. A host failure is a result, not a JSON-RPC error, so the model
+/// reads the message and can correct its call.
+pub fn error_result(error: &anyhow::Error, repr: TextRepr) -> CallToolResult {
+    run_result(failure_reply(FailureKind::Pipeline, &format!("{error:#}")), repr)
+}
+
+/// Health of the binary serving this MCP session (the `info` tool's `version` topic).
 ///
 /// The identity itself rides in the `poly` key every response carries; this adds
 /// what only a long-lived server can tell you — whether the executable it is

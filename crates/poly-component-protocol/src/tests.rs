@@ -286,6 +286,7 @@ fn sample_requests() -> Vec<Request> {
             config: WireValue::Table(vec![]),
             files: vec![],
         },
+        Request::RunBoundary { run: 7 },
     ]
 }
 
@@ -704,7 +705,8 @@ fn config_mut_names_the_registered_config_of_every_request_that_has_one() {
             | Request::LintCacheSalt { .. }
             | Request::DerivedOptionKeys { .. }
             | Request::Rules { .. }
-            | Request::Adr { .. } => None,
+            | Request::Adr { .. }
+            | Request::RunBoundary { .. } => None,
             _ => Some(3),
         };
         let name = request.variant_name();

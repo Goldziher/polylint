@@ -15,7 +15,8 @@ Each item is described in full under the section named in brackets.
 - **Remote `extends` bases and hook sources are fetched over https and ssh only.** `POLY_GIT_ALLOW_PROTOCOLS` allows other transports. [Security]
 - **`poly hooks install` refuses a shared `core.hooksPath`** without `--force` or `POLY_HOOKS_ALLOW_SHARED_PATH=1`. [Security]
 - **Component cache and lock checks.** A component cache root owned by another user is refused, and a component lock without signing keys is rejected. [Security]
-- **`poly mcp` confines paths to its workspace** and refuses to start in `/` or the home directory without `--allow-outside-workspace`; `lint` and `format_check` are no longer annotated read-only. [Security]
+- **`poly mcp` confines paths to its workspace** and refuses to start in `/` or the home directory without `--allow-outside-workspace`. [Security]
+- **`poly mcp` exposes four tools (`check`, `fix`, `info`, `manage`) instead of fourteen.** The old tool names are removed with no aliases, and `check` is not annotated read-only. [Changed]
 - **Component protocol v3.** Components and sidecars built for protocol 2 are rejected. [Changed]
 - **The repository and the Action moved to the `polylint` organization.** The old names redirect. [Changed]
 - **`poly commit` exits `2`, not `1`, when it could not verify the message**, and reads the global `--config`. [Changed]
@@ -89,12 +90,29 @@ Each item is described in full under the section named in brackets.
 - **`.editorconfig` conformance:** `editorconfig-checker` as a pinned release recipe, opt-in under
   `[tools.editorconfig-checker]`. (#176)
 - **Makefile linting:** `checkmake` as a pinned release recipe, opt-in under `[tools.checkmake]`. (#175)
+- **`discovery` and `configs[].withheld` in the JSON document.** `poly lint` and `poly fmt` `--format json` now carry a
+  `discovery` object when discovery left something out (excluded files and directories, `excluded_explicit` named paths
+  that matched an exclusion, pruned directories, unrecognized files), which was previously stderr only. Each `configs[]`
+  entry lists `withheld` when exec-capable keys were withheld from that config by trust (ADR 0059). (ADR 0076)
+- **MCP `info` topic `validate`, and `manage` actions `cache_gc` and `components_prune`.** `validate` answers
+  `poly config validate` as `{valid, files, partial}`; `cache_gc` takes `max_age_days` and `max_size` like `poly cache
+  gc`; `components_prune` removes cached archives nothing references or used recently. (ADR 0076)
 
 ### Changed
 
 - **The tsrs type check builds its program through `polylint-tsrs`.** The engine's own copies of the in-memory file
   system, the config loading and the program owner are gone; findings are unchanged. The diagnostics the checkers
   make are now freed with the program instead of staying in the worker threads' arenas (ADR 0078).
+- **BREAKING: `poly mcp` exposes four tools instead of fourteen.** `check` (lint or check formatting, writes nothing),
+  `fix`, `info` (read-only: `version`, `config`, `validate`, `rules`, `components`, `cache`) and `manage` (cache and
+  component maintenance) replace `lint`, `lint_fix`, `format_check`, `format_write`, `workspace_lint`,
+  `workspace_lint_fix`, `cache_stats`, `cache_clean`, `rules`, `config_show`, `components`, `components_install`,
+  `components_uninstall` and `version`, split along the annotation boundary so clients can still approve checks and
+  prompt on writes. The old names are removed with no aliases: update client permission allowlists (`mcp__poly__lint`
+  becomes `mcp__poly__check`, and so on) and saved prompts. `check` and `fix` take `kind` (`lint`|`format`) and `scope`
+  (`files`|`workspace`|`all`). Tools no longer declare an `outputSchema`; the schemas are MCP resources under
+  `poly://schema/`. `info`'s `config` topic is now exactly `poly config show --format json`, and its `cache` topic
+  matches `poly cache stats --format json`. (ADR 0076)
 - **The core binary is built for speed.** `--profile core` moves from `opt-level = "s"` to `opt-level = 3` (fat LTO, stripped), and the size gate moves from 14 MiB to 22 MiB (ADR 0065). The `release` profile used by the bundled build and every component also moves to fat LTO with stripped symbols.
 - **Cargo hooks hash their declared inputs once per run.** The clippy, sort, machete and deny hooks share one `git ls-files` listing and one parallel, streamed blake3 pass, and the staged-run mutation probe streams index blobs into hashes instead of holding the tracked tree in memory. (#215)
 - **BREAKING: component protocol v3 (ADR 0058); every engine component and sidecar must be rebuilt.** Requests and responses are
@@ -236,19 +254,54 @@ Each item is described in full under the section named in brackets.
 - **`poly cache <subcommand> --cache-dir <dir>` is accepted**, and a large `--max-age` no longer overflows.
 - **`poly doctor` no longer warns that a mise shim shadows poly.**
 - **The installers find the installed version.** `install.sh` and `install.ps1` read the wrong token of `poly --version`, so an up-to-date install was never recognised. Linux musl aarch64 and Windows arm64, which have no release binary, are rejected with a message, and a download error names the URL.
+- **A missing path no longer reads as a clean pass over MCP.** A named path that does not exist now answers
+  `isError: true` with `{error: {kind: "paths", message}, summary: null}`. A config or `poly.lock` that fails to load
+  (`config`), an unknown `only` engine (`pipeline`) and a path outside the server's directory (`workspace`) answer the
+  same way instead of a JSON-RPC error. (ADR 0076)
+- **The MCP `rules` topic claimed to be read-only and closed-world but could download.** `info` never downloads: a core
+  build without the `astgrep` component reports it as missing. A failing `*-test.yml` rule test now sets `isError`.
+  (ADR 0076)
+- **A repository with a remote `extends` base no longer fails every MCP tool.** The server resolves the base from the
+  local source cache at the `poly.lock`-pinned revision and never fetches; a base that is not cached is a `config`
+  error telling you to run `poly lock` or a CLI `poly lint` once. (ADR 0076)
+- **The MCP server accepts the run options the CLI has.** `check` and `fix` take `only`, `skip`, `include_excluded`,
+  `no_cache`, `jobs`, `max_skips`, `fix_generated`, `on_missing` and `debug`, built from the same request the CLI
+  fills, so a new CLI run option reaches the server by construction. (ADR 0076)
+- **A long-lived `poly mcp` kept linting with the project configs of its first call.** The per-directory lookups a
+  run memoises (`.oxlintrc.json` and the oxlint services built from it, `.oxfmtrc.json`, `go.mod`, `.clang-format`,
+  `Cargo.toml` editions) were never forgotten between calls, so an edit was invisible to the next one, and its stale
+  findings were then cached under the new config's key. Every run now starts by forgetting them. On a core build the
+  engines live in components that hold their own copy, so the host announces each new run to the components it has
+  loaded (a `RunBoundary` request) before the run's first lint or format request. (ADR 0076)
+- **`poly lock` and `poly trust` take effect on a running `poly mcp`.** The server read `poly.lock` and the trust
+  store once, at startup: a moved `extends` pin kept resolving the old revision, a `poly.lock` that did not parse
+  ended the process before the handshake, and `poly trust` changed nothing until a restart. Both are now read as they
+  are on disk at each call, and a malformed `poly.lock` is that call's `config` error. (ADR 0076)
+- **MCP `check`/`fix` with `scope: workspace` reported a pass when the whole-project phase never ran.** An untrusted
+  repository, or one with no whole-project tool, answered `passed: true` with no tools. It is now an `isError` result
+  of kind `untrusted` or `no_workspace_tools`, in the same `{error: {kind, message}, summary: null}` shape as every
+  other failure; `scope: all` sets `isError` when the repository is untrusted. (ADR 0076)
+- **MCP tools ignored arguments they did not understand.** `check {path: [...]}` (a typo for `paths`) linted the whole
+  directory, and `manage {action: "cache_clean", dry_run: true}` cleaned the cache. An unknown key, an invalid value
+  and a parameter that does not apply to the chosen `scope`, `action` or `topics` are now `usage` errors naming the
+  key, on all four tools; `check` no longer accepts the fix-only `fix_generated`. (ADR 0076)
+- **The read-only MCP `info` tool could fetch and write.** Its `components` topic resolved a remote `extends` base with
+  the fetching resolver, and its `cache` topic created the cache directory, wherever `[cache] dir` pointed. Every
+  host service now resolves config from the source cache only, and reading the cache footprint creates nothing.
+  (ADR 0076)
 
 ### Security
 
 - **BREAKING: remote `extends` bases and hook sources are fetched over https and ssh only.** A config could point git at `git://`, `http://`, `file://` or an `ext::` helper. Other schemes are now rejected before git runs; plain local paths still work. **Migration:** `POLY_GIT_ALLOW_PROTOCOLS` (a `:`-separated list) replaces the allowed set, and a leading `+` adds to it, as in `+http`.
 - **BREAKING: `poly hooks install` refuses a shared `core.hooksPath`.** With a global or shared hooks directory, the shims were written where every repository runs them and the stale-shim prune could delete another tool's. **Migration:** unset `core.hooksPath` for the repository, or pass `--force` or set `POLY_HOOKS_ALLOW_SHARED_PATH=1`; poly never prunes outside the repository.
 - **BREAKING: the component cache must be private, and a component lock must name its keys.** A component cache root owned by another user is refused; one of your own that is group- or world-writable is tightened to `0700` (and refused if that fails). A lock that lists components without signing keys, or an entry whose key is not among them, is rejected instead of loaded unverified.
-- **BREAKING: `poly mcp` confines tool calls to its workspace.** `paths`, `dirs` and `config` arguments are resolved (symlinks and `..` included) and refused outside the directory `poly mcp` started in, and the server refuses to start in `/` or the home directory. The `--config` given on the server's own command line is always accepted. `lint` and `format_check` are no longer annotated read-only, since they run the repository's configured tools. **Migration:** start the server in the project directory, or pass `--allow-outside-workspace`.
+- **BREAKING: `poly mcp` confines tool calls to its workspace.** `paths`, `dirs` and `config` arguments are resolved (symlinks and `..` included) and refused outside the directory `poly mcp` started in, and the server refuses to start in `/` or the home directory. The `--config` given on the server's own command line is always accepted. `check`, which replaces `lint` and `format_check`, is not annotated read-only, since it runs the repository's configured tools. **Migration:** start the server in the project directory, or pass `--allow-outside-workspace`.
 - **Pinned tool downloads are bound to the catalog.** A URL in `poly.lock` must be https on the origin and release path the tool's catalog entry names, redirects are followed only to GitHub's release hosts or the same origin, and the GitHub token is sent to `api.github.com` only. The install stamp records the binary's size and mtime, and a tool cache that is not private to the current user is tightened or refused.
 - **Staged symlinks are resolved before a hook reads them.** A chain of in-tree links that escapes the staged snapshot once resolved is removed from it.
 - **The installers and the Action validate the requested version** as `X.Y.Z[-pre]` against the whole string before using it.
 - **Accepted advisories.** `deny.toml` ignores the chrono, chrono-tz and zip advisories published on 2026-11-17: chrono has no fixed release, and the zip fixes need 9.x while harper-core requires 8.x. The only zip reader in the tree is harper's rule-bundle loader, which poly never calls.
 - **BREAKING: a repository's config keys that run programs need `poly trust`.** A cloned `poly.toml` could make
-  `poly lint`, `poly fmt` and the MCP `lint`/`workspace_lint` tools run any program with no prompt. Now
+  `poly lint`, `poly fmt` and the MCP `check` and `fix` tools run any program with no prompt. Now
   `[tools.<name>] bin` (a path), `url`/`sha256`, `env`, `args`, `extra_args`, `format_extra_args`,
   `lint_extra_args`, `new_from_rev` and `root`; `[hooks]` whole-project jobs and their `skip`/`only` guards;
   `[cache] dir` and `[cache.sccache] dir`/`bin`; oxc `js_plugins = "external"` and `external = true`; and local

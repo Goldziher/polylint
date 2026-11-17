@@ -4,7 +4,7 @@
 version = 1
 ai_rulez_version = '5.13.4'
 scope = 'all'
-tree = 'sha256:399424cc3cb60a925f5619ab81970d883d2a9e22aebee0ce5baef1f4350bc6c9'
+tree = 'sha256:ba6dcdd8b69285ad299f2999110807063b937f4e69f80ca42926009d262becb9'
 
 [[item]]
 kind = 'command'
@@ -28,7 +28,7 @@ digest = 'sha256:83f0ef6a6cc45762f40188e8b1b4e065b7ed91070a496af7a9bfaeac06d6c10
 kind = 'skill'
 id = 'poly-mcp'
 path = 'skills/poly-mcp'
-digest = 'sha256:09d50831181e85e8ec39d88b5c29724a2fcde288704c6f774e1f638fbaf3c584'
+digest = 'sha256:acf2c02c9ab5e270a95ad226edfa64418526d854a39e22689c23dd3a6b49adc7'
 
 [[item]]
 kind = 'skill'

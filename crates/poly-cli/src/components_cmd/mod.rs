@@ -132,29 +132,31 @@ fn cache_root_of(host: Option<&ComponentHost>) -> PathBuf {
 }
 
 fn needed(paths: &[PathBuf]) -> anyhow::Result<Vec<String>> {
-    needed_with(paths, None).map(|(names, _)| names)
+    needed_with(paths, None, &crate::config_sources::resolver()?).map(|(names, _)| names)
 }
 
 /// The components `paths` need, and the `[components]` policy of the config that governs them.
 /// `config` names a config file; without it the global `--config`, then discovery, applies.
+/// `resolver` resolves the configs' `extends` bases: the CLI's fetches a remote one, the host
+/// services' reads it from the source cache only.
 fn needed_with(
     paths: &[PathBuf],
     config: Option<&std::path::Path>,
+    resolver: &dyn poly_config::BaseConfigResolver,
 ) -> anyhow::Result<(Vec<String>, poly_config::v2::ComponentsConfig)> {
     let paths = if paths.is_empty() {
         vec![PathBuf::from(".")]
     } else {
         paths.to_vec()
     };
-    let resolver = crate::config_sources::resolver()?;
     let cwd = std::env::current_dir().context("failed to resolve the working directory")?;
     let loaded = match config.or(crate::global().config.as_deref()) {
-        Some(file) => poly_config::PolyConfig::load_file_with(file, &resolver)?,
-        None => poly_config::PolyConfig::load_with(&cwd, &resolver)?,
+        Some(file) => poly_config::PolyConfig::load_file_with(file, resolver)?,
+        None => poly_config::PolyConfig::load_with(&cwd, resolver)?,
     };
     let policy = loaded.components.clone();
     let config: poly_core::Config = loaded.into();
-    let names = needed_component_names(poly_component_index::index(), &paths, &config, &resolver)?;
+    let names = needed_component_names(poly_component_index::index(), &paths, &config, resolver)?;
     Ok((names, policy))
 }
 

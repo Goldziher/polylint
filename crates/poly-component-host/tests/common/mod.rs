@@ -128,6 +128,7 @@ impl FakeComponent {
                 state.registered.insert(*id);
                 ok(Payload::Ok)
             }
+            Request::RunBoundary { .. } => ok(Payload::Ok),
             Request::Lint { config, file, .. } | Request::Format { config, file, .. } => {
                 if !state.registered.contains(config) {
                     return fail(WireErrorKind::UnknownConfig, "no such config", &[]);

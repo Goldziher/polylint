@@ -44,10 +44,19 @@ fn parse(text: &str) -> GoMod {
     parsed
 }
 
+fn memo() -> &'static Mutex<HashMap<PathBuf, Option<Arc<GoMod>>>> {
+    static MEMO: OnceLock<Mutex<HashMap<PathBuf, Option<Arc<GoMod>>>>> = OnceLock::new();
+    MEMO.get_or_init(Mutex::default)
+}
+
+/// Drops every memoised `go.mod` so the next run rereads them from disk.
+pub fn forget() {
+    memo().lock().unwrap_or_else(std::sync::PoisonError::into_inner).clear();
+}
+
 /// The parsed `go.mod` in `dir`, once per directory.
 fn load(dir: &Path) -> Option<Arc<GoMod>> {
-    static MEMO: OnceLock<Mutex<HashMap<PathBuf, Option<Arc<GoMod>>>>> = OnceLock::new();
-    let memo = MEMO.get_or_init(Mutex::default);
+    let memo = memo();
     if let Some(known) = memo.lock().unwrap_or_else(std::sync::PoisonError::into_inner).get(dir) {
         return known.clone();
     }

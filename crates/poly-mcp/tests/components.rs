@@ -211,10 +211,11 @@ fn fixture() -> tempfile::TempDir {
 async fn components_reports_what_a_run_would_download_and_downloads_nothing() {
     let fake = Fake::new(&["web"]);
     let (client, server_task) = connect(Arc::clone(&fake), true).await;
-    let result = expect_complete(&client, "components", arguments(&[("paths", names(&["."]))])).await;
+    let topics = ("topics", serde_json::json!(["components"]));
+    let result = expect_complete(&client, "info", arguments(&[topics.clone(), ("paths", names(&["."]))])).await;
     let structured = result.structured_content.as_ref().unwrap();
-    assert_eq!(structured["would_download"], serde_json::json!(["web"]));
-    assert_eq!(structured["missing"], serde_json::json!(["web"]));
+    assert_eq!(structured["components"]["would_download"], serde_json::json!(["web"]));
+    assert_eq!(structured["components"]["missing"], serde_json::json!(["web"]));
     assert_eq!(fake.installs.load(Ordering::SeqCst), 0, "status never installs");
 
     let identity = &structured["poly"];
@@ -223,12 +224,12 @@ async fn components_reports_what_a_run_would_download_and_downloads_nothing() {
 
     let never = expect_complete(
         &client,
-        "components",
-        arguments(&[("paths", names(&["."])), ("install", Value::from("never"))]),
+        "info",
+        arguments(&[topics, ("paths", names(&["."])), ("install", Value::from("never"))]),
     )
     .await;
     assert_eq!(
-        never.structured_content.as_ref().unwrap()["would_download"],
+        never.structured_content.as_ref().unwrap()["components"]["would_download"],
         serde_json::json!([]),
         "install = never downloads nothing"
     );
@@ -240,7 +241,15 @@ async fn components_reports_what_a_run_would_download_and_downloads_nothing() {
 async fn an_install_that_downloads_is_a_task_naming_the_components() {
     let fake = Fake::new(&["web"]);
     let (client, server_task) = connect(Arc::clone(&fake), true).await;
-    let (task_id, message) = expect_task(&client, "components_install", arguments(&[("names", names(&["web"]))])).await;
+    let (task_id, message) = expect_task(
+        &client,
+        "manage",
+        arguments(&[
+            ("action", Value::from("components_install")),
+            ("names", names(&["web"])),
+        ]),
+    )
+    .await;
     assert!(
         message.contains("web"),
         "the status says what is downloading: {message}"
@@ -259,8 +268,11 @@ async fn an_install_with_nothing_to_download_answers_inline_without_installing()
     let (client, server_task) = connect(Arc::clone(&fake), true).await;
     let result = expect_complete(
         &client,
-        "components_install",
-        arguments(&[("names", names(&["python"]))]),
+        "manage",
+        arguments(&[
+            ("action", Value::from("components_install")),
+            ("names", names(&["python"])),
+        ]),
     )
     .await;
     assert_eq!(
@@ -278,8 +290,12 @@ async fn a_dry_run_install_reports_the_plan_and_downloads_nothing() {
     let (client, server_task) = connect(Arc::clone(&fake), true).await;
     let result = expect_complete(
         &client,
-        "components_install",
-        arguments(&[("names", names(&["web"])), ("dry_run", Value::from(true))]),
+        "manage",
+        arguments(&[
+            ("action", Value::from("components_install")),
+            ("names", names(&["web"])),
+            ("dry_run", Value::from(true)),
+        ]),
     )
     .await;
     assert_eq!(
@@ -295,7 +311,15 @@ async fn a_dry_run_install_reports_the_plan_and_downloads_nothing() {
 async fn a_client_without_tasks_gets_the_install_inline() {
     let fake = Fake::new(&["web"]);
     let (client, server_task) = connect(Arc::clone(&fake), false).await;
-    let result = expect_complete(&client, "components_install", arguments(&[("names", names(&["web"]))])).await;
+    let result = expect_complete(
+        &client,
+        "manage",
+        arguments(&[
+            ("action", Value::from("components_install")),
+            ("names", names(&["web"])),
+        ]),
+    )
+    .await;
     assert_eq!(result.structured_content.unwrap()["results"][0]["action"], "installed");
     assert_eq!(fake.installs.load(Ordering::SeqCst), 1);
     client.cancel().await.unwrap();
@@ -309,7 +333,7 @@ async fn a_lint_that_would_download_is_a_task_and_a_never_policy_is_not() {
     let fake = Fake::new(&["web"]);
     let (client, server_task) = connect(Arc::clone(&fake), true).await;
 
-    let (task_id, message) = expect_task(&client, "lint", arguments(&[("paths", names(&[&path]))])).await;
+    let (task_id, message) = expect_task(&client, "check", arguments(&[("paths", names(&[&path]))])).await;
     assert!(message.contains("web"), "{message}");
     let result = settle(&client, &task_id).await;
     let structured = result.structured_content.unwrap();
@@ -322,7 +346,7 @@ async fn a_lint_that_would_download_is_a_task_and_a_never_policy_is_not() {
     let probes = fake.statuses.load(Ordering::SeqCst);
     let inline = expect_complete(
         &client,
-        "lint",
+        "check",
         arguments(&[("paths", names(&[&path])), ("install", Value::from("never"))]),
     )
     .await;
@@ -341,7 +365,12 @@ async fn a_lint_with_nothing_to_download_stays_inline() {
     let dir = fixture();
     let path = dir.path().join("bad.py").display().to_string();
     let (client, server_task) = connect(Fake::new(&[]), true).await;
-    let result = expect_complete(&client, "format_check", arguments(&[("paths", names(&[&path]))])).await;
+    let result = expect_complete(
+        &client,
+        "check",
+        arguments(&[("kind", Value::from("format")), ("paths", names(&[&path]))]),
+    )
+    .await;
     assert!(result.structured_content.unwrap()["summary"].is_object());
     client.cancel().await.unwrap();
     let _ = server_task.await;
@@ -353,8 +382,11 @@ async fn uninstall_refuses_a_loaded_component_and_marks_the_call_an_error() {
 
     let refused = expect_complete(
         &client,
-        "components_uninstall",
-        arguments(&[("names", names(&["mcp"]))]),
+        "manage",
+        arguments(&[
+            ("action", Value::from("components_uninstall")),
+            ("names", names(&["mcp"])),
+        ]),
     )
     .await;
     assert_eq!(refused.is_error, Some(true), "a refusal is a tool error");
@@ -362,8 +394,11 @@ async fn uninstall_refuses_a_loaded_component_and_marks_the_call_an_error() {
 
     let removed = expect_complete(
         &client,
-        "components_uninstall",
-        arguments(&[("names", names(&["web"]))]),
+        "manage",
+        arguments(&[
+            ("action", Value::from("components_uninstall")),
+            ("names", names(&["web"])),
+        ]),
     )
     .await;
     assert_eq!(removed.is_error, Some(false));

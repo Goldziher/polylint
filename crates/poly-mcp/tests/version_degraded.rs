@@ -40,10 +40,10 @@ async fn version_reports_a_host_failure_instead_of_failing() {
     .await
     .unwrap();
 
-    let result = client.call_tool(CallToolRequestParams::new("version")).await.unwrap();
+    let result = client.call_tool(CallToolRequestParams::new("info")).await.unwrap();
 
     assert_ne!(result.is_error, Some(true), "{result:?}");
-    let structured = result.structured_content.as_ref().expect("structured content");
+    let structured = &result.structured_content.as_ref().expect("structured content")["version"];
     let status = structured["executable_status"].as_str().unwrap();
     assert!(status.contains("component host detached"), "{status}");
     assert!(

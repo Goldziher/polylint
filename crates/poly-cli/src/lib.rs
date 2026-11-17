@@ -5,7 +5,9 @@ use std::process::ExitCode;
 
 use clap::Args;
 use poly_config::BaseConfigResolver;
-use poly_core::{Config, LintResult, RunOptions, Severity, Verbosity, report};
+use poly_core::{Config, RunOptions, Verbosity, report};
+use poly_frontend_api::wire::{InstallMode, OnMissingMode, RunRequest};
+use poly_host_services::run::{Verdict, over_budget, run_options};
 
 use crate::component_notes::report_blocking_components;
 use crate::config_sources::RemoteExtendsResolver;
@@ -33,7 +35,6 @@ pub mod remote;
 pub mod rules_cmd;
 mod timings;
 pub mod trust_cmd;
-pub mod workspace_coverage;
 pub mod workspace_phase;
 
 pub use adr_cmd::{AdrArgs, run_adr};
@@ -47,6 +48,7 @@ pub use hooks::{HooksArgs, run_hooks};
 pub use lock_cmd::{LockArgs, run_lock};
 pub use mcp_cmd::run_mcp;
 pub use migrate::{MigrateArgs, run_migrate};
+pub use poly_host_services::workspace_coverage;
 pub use rules_cmd::{RulesArgs, run_rules};
 pub use trust_cmd::{TrustArgs, run_trust};
 
@@ -467,8 +469,8 @@ pub fn run_lint(args: LintArgs) -> ExitCode {
 
     // Reported here, folded into the exit code at the end: a strictness flag
     // must change the verdict, not what else the run does.
-    let skips_over_budget = report_skip_budget(&common, &run.skipped);
-    let components_blocking = report_blocking_components(&run.components);
+    report_skip_budget(&common, &run.skipped);
+    report_blocking_components(&run.components);
     trust_cmd::eprint_untrusted_note();
 
     let workspace_ok = match workspace_config {
@@ -526,12 +528,11 @@ pub fn run_lint(args: LintArgs) -> ExitCode {
     // coverage failures in 2 — never in 1, which callers treat as "findings to
     // fix" and, under `--fix`, as success. The findings that *were* produced are
     // still reported above; only the verdict changes.
-    if skips_over_budget || components_blocking || !run.errors.is_empty() {
-        ExitCode::from(EXIT_NOT_VERIFIED)
-    } else if lint_has_errors(results) || !workspace_ok {
-        ExitCode::from(1)
-    } else {
-        ExitCode::SUCCESS
+    match Verdict::of_lint(&run, run_request(&common).max_skips) {
+        Verdict::Clean if workspace_ok => ExitCode::SUCCESS,
+        // A failing whole-project tool is a finding, like an error-severity diagnostic.
+        Verdict::Clean | Verdict::Findings => ExitCode::from(1),
+        Verdict::NotVerified(_) => ExitCode::from(EXIT_NOT_VERIFIED),
     }
 }
 
@@ -543,28 +544,19 @@ pub fn run_lint(args: LintArgs) -> ExitCode {
 /// consumer is again left reconstructing which files poly meant. Printed to
 /// stderr so it survives `--format json` piping.
 fn report_skip_budget(common: &CommonArgs, skipped: &[poly_core::SkippedFile]) -> bool {
-    let Some(budget) = (if common.deny_skips { Some(0) } else { common.max_skips }) else {
-        return false;
-    };
-    // A file left unchecked by an instruction the caller wrote — `--only` /
-    // `--skip`, or `enabled = false` — is not charged. The budget exists to
-    // catch coverage this run lost *without saying so*, and an instruction that
-    // names itself in the report is the opposite of that. Charging it would make
-    // `--only` unusable under the very gate that most wants it, and would fail a
-    // user's own gate for a line in their own `poly.toml`.
-    let skipped: Vec<&poly_core::SkippedFile> = skipped
-        .iter()
-        .filter(|entry| !poly_core::is_withdrawal_reason(&entry.reason))
-        .collect();
-    if skipped.len() <= budget {
+    let budget = run_request(common).max_skips;
+    // Files left unchecked by an instruction the caller wrote are not charged; see `over_budget`.
+    let charged = over_budget(skipped, budget);
+    if charged.is_empty() {
         return false;
     }
-    for entry in &skipped {
+    for entry in &charged {
         eprintln!("error: skipped {}: {}", entry.path.display(), entry.reason);
     }
     eprintln!(
-        "error: refusing to report success for {} skipped (limit {budget})",
-        report::files(skipped.len())
+        "error: refusing to report success for {} skipped (limit {})",
+        report::files(charged.len()),
+        budget.unwrap_or_default()
     );
     true
 }
@@ -577,13 +569,6 @@ fn report_skip_budget(common: &CommonArgs, skipped: &[poly_core::SkippedFile]) -
 /// [`progress::Progress::start`] itself, which draws only to a terminal.
 fn animations_enabled(_common: &CommonArgs) -> bool {
     global().color != ColorChoice::Never && std::env::var_os("NO_COLOR").is_none()
-}
-
-/// Whether any diagnostic across all results is error-severity.
-fn lint_has_errors(results: &[LintResult]) -> bool {
-    results
-        .iter()
-        .any(|r| r.diagnostics.iter().any(|d| d.severity == Severity::Error))
 }
 
 /// Run the format pipeline and map the outcome to a process exit code.
@@ -610,10 +595,10 @@ pub fn run_fmt(args: FmtArgs) -> ExitCode {
     let spinner = progress::Progress::start("formatting", animations_enabled(common));
     let formatted = poly_core::format_run(&paths, &config, &opts, write, flags.debug);
     spinner.finish();
-    let (changed, format_errors, skips_over_budget) = match formatted {
+    let verdict = match formatted {
         Ok(run) => {
-            let errors = run.errors.len() + usize::from(report_blocking_components(&run.components));
-            let changed = match common.format {
+            report_blocking_components(&run.components);
+            let _ = match common.format {
                 OutputFormat::Pretty => report::report_format_pretty_run(&run, !write, verbosity),
                 OutputFormat::Json => {
                     if let Err(code) = emit_structured(report::report_format_json_run(&run)) {
@@ -637,7 +622,8 @@ pub fn run_fmt(args: FmtArgs) -> ExitCode {
                 }
             };
             trust_cmd::eprint_untrusted_note();
-            (changed, errors, report_skip_budget(common, &run.skipped))
+            report_skip_budget(common, &run.skipped);
+            Verdict::of_format(&run, run_request(common).max_skips)
         }
         Err(e) => {
             eprintln!("error: {e:#}");
@@ -659,12 +645,11 @@ pub fn run_fmt(args: FmtArgs) -> ExitCode {
     // never in 1, which callers legitimately treat as success for `--fix`.
     // A skip budget breach lands in 2 for the same reason a parse failure does:
     // those files were not verified, and 1 is a code callers treat as success.
-    if format_errors > 0 || skips_over_budget {
-        ExitCode::from(EXIT_NOT_VERIFIED)
-    } else if changed > 0 && !(write && !args.exit_nonzero_on_fix) {
-        ExitCode::from(1)
-    } else {
-        ExitCode::SUCCESS
+    match verdict {
+        Verdict::NotVerified(_) => ExitCode::from(EXIT_NOT_VERIFIED),
+        // Drift a `--fix` run rewrote is success unless the caller asked otherwise.
+        Verdict::Findings if !(write && !args.exit_nonzero_on_fix) => ExitCode::from(1),
+        Verdict::Clean | Verdict::Findings => ExitCode::SUCCESS,
     }
 }
 
@@ -678,28 +663,31 @@ fn apply_color() {
     }
 }
 
-/// Decide whether `[discovery] exclude` applies to paths named on the command
-/// line, for this run.
-///
-/// This is the one place the question is answered; [`RunOptions`] carries the
-/// resolved `bool` from here down, so nothing below the CLI boundary has to know
-/// there was ever a choice. Precedence, highest first:
-///
-/// 1. **`--include-excluded`** — the explicit "check it anyway" override, for
-///    one-off inspection of a path the repo excludes.
-/// 2. **`[discovery] force_exclude`** — the repo's standing preference, which
-///    `--set discovery.force_exclude=…` overrides for one run before it gets here.
-/// 3. **The built-in default, force-exclude on** — the config key defaults to
-///    `true` in [`poly_config::DiscoveryConfig`], so case 2 already carries this;
-///    an unset key and `force_exclude = true` are the same value on purpose.
-///
-/// A flag beats the config because a flag is typed for one run and the config is
-/// written once for every run.
-fn resolve_force_exclude(common: &CommonArgs, config: &Config) -> bool {
-    if common.include_excluded {
-        return false;
+/// The shared [`RunRequest`] these flags stand for. `poly_host_services::run::run_options`
+/// turns it into the run options, the same way it does for an MCP `check` or `fix` call, so a
+/// flag behaves identically on both surfaces (`tests/mcp_flag_coverage.rs` fails on a flag
+/// that is neither mapped here nor excluded with a reason).
+fn run_request(common: &CommonArgs) -> RunRequest {
+    RunRequest {
+        // The CLI keeps its paths as `PathBuf`s; a non-UTF-8 path must not be re-spelled.
+        paths: Vec::new(),
+        exclude: common.exclude.clone(),
+        config: global().config.as_ref().map(|path| path.display().to_string()),
+        include_excluded: common.include_excluded,
+        only: common.only.clone(),
+        skip: common.skip.clone(),
+        max_skips: if common.deny_skips { Some(0) } else { common.max_skips },
+        // `[components] install` and `--offline` decide; the CLI has no per-run override.
+        install: InstallMode::Config,
+        on_missing: common.on_missing.map(|action| match action {
+            OnMissing::Fail => OnMissingMode::Fail,
+            OnMissing::Skip => OnMissingMode::Skip,
+        }),
+        no_cache: common.no_cache,
+        jobs: common.jobs,
+        fix_generated: common.fix_generated,
+        debug: global().debug,
     }
-    config.force_exclude
 }
 
 /// Resolve paths, load config, and build run options; on config failure return
@@ -738,27 +726,12 @@ fn prepare_with_poly(
         }
     };
     let config = Config::from(poly_config.clone());
-    let opts = RunOptions {
-        no_cache: common.no_cache,
-        jobs: common.jobs,
-        exclude: common.exclude.clone(),
-        force_exclude: resolve_force_exclude(common, &config),
-        fix_generated: common.fix_generated,
-        // `--set discovery.generated=…` reaches every config through `poly_config`,
-        // so a nested config's own value is still the one that governs its subtree
-        // unless the run overrides it.
-        generated: None,
-        explicit_config: global().config.is_some(),
-        config_resolver: Some(resolver),
-        // Filled in by `run_lint` once it knows whether the whole-project phase
-        // runs; `poly fmt` never runs that phase, so it keeps the empty default.
-        externally_linted_languages: Vec::new(),
-        only: common.only.clone(),
-        skip: common.skip.clone(),
-        on_missing: common.on_missing.map(Into::into),
-        timings: timings::requested(common),
-        ..RunOptions::default()
-    };
+    let resolver: std::sync::Arc<dyn BaseConfigResolver> = resolver;
+    let mut opts = run_options(&run_request(common), &config, Some(resolver));
+    // `--set discovery.generated=…` reaches every config through `poly_config`, so `generated`
+    // stays unset here; `externally_linted_languages` is filled in by `run_lint` once it knows
+    // whether the whole-project phase runs.
+    opts.timings = timings::requested(common);
     Ok((paths, config, opts, poly_config))
 }
 
@@ -814,8 +787,8 @@ fn load_poly_config(
 mod tests {
     use super::*;
     use crate::component_notes::component_lines;
-    use poly_core::Diagnostic;
     use poly_core::components::{ComponentsReport, MissingComponent};
+    use poly_core::{Diagnostic, LintResult, Severity};
 
     #[test]
     fn log_lines_are_styled_only_where_the_report_would_be() {
@@ -885,39 +858,6 @@ mod tests {
         }
     }
 
-    #[test]
-    fn no_diagnostics_yields_success() {
-        assert!(!lint_has_errors(&[result(vec![])]));
-    }
-
-    #[test]
-    fn warning_only_diagnostics_yield_success() {
-        let results = vec![result(vec![
-            diag(Severity::Warning),
-            diag(Severity::Info),
-            diag(Severity::Hint),
-        ])];
-        assert!(
-            !lint_has_errors(&results),
-            "warning/info/hint findings must not fail the run"
-        );
-    }
-
-    #[test]
-    fn error_diagnostic_yields_failure() {
-        let results = vec![result(vec![diag(Severity::Warning), diag(Severity::Error)])];
-        assert!(lint_has_errors(&results), "an error-severity finding must fail the run");
-    }
-
-    #[test]
-    fn error_in_any_result_yields_failure() {
-        let results = vec![
-            result(vec![diag(Severity::Warning)]),
-            result(vec![diag(Severity::Error)]),
-        ];
-        assert!(lint_has_errors(&results));
-    }
-
     /// A `LintResult` whose path is valid to the OS but cannot be encoded as
     /// JSON — the real trigger for a render failure, since a Linux checkout may
     /// legally hold a non-UTF-8 filename and poly's discovery walks it.
@@ -947,10 +887,6 @@ mod tests {
     #[test]
     fn structured_render_failure_yields_the_not_verified_exit_code() {
         let results = vec![unrenderable_result()];
-        assert!(
-            !lint_has_errors(&results),
-            "the run itself must be clean, so only the render can fail the process"
-        );
 
         let rendered = report::report_lint_json(&results);
         assert!(rendered.is_err(), "a non-UTF-8 path must fail to render as JSON");

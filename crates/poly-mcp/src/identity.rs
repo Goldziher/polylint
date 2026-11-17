@@ -1,7 +1,7 @@
 //! Who is answering, and is that binary still the one on disk?
 //!
 //! A CLI user can always run `poly --version`. An MCP caller cannot: it sees
-//! only tool results, and a `format_check` returning `{"changed": false}` looks
+//! only tool results, and a format `check` returning `{"changed": false}` looks
 //! identical whether a current build or a known-destructive one produced it.
 //!
 //! Two complementary mechanisms close that gap:

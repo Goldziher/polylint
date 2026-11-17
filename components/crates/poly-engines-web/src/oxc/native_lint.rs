@@ -36,15 +36,29 @@ fn warn_about_js_plugins(file: &Path, config: &Oxlintrc) {
     }
 }
 
-/// The service for `config`, built once per (config file, options table).
-pub(super) fn service_for(cfg: &EngineConfig, config: &Path) -> anyhow::Result<Arc<SourceLinter>> {
-    type Slot = Arc<OnceLock<Result<Arc<SourceLinter>, String>>>;
+type Slot = Arc<OnceLock<Result<Arc<SourceLinter>, String>>>;
+
+/// The built services. Forgotten at every run boundary, since a service holds the parsed
+/// `.oxlintrc.json` and a long-lived process (`poly mcp`) must see an edit to it.
+fn services() -> &'static Mutex<HashMap<String, Slot>> {
     static SERVICES: OnceLock<Mutex<HashMap<String, Slot>>> = OnceLock::new();
+    SERVICES.get_or_init(|| {
+        poly_engine_api::host_hooks::register_run_memo(forget_services);
+        Mutex::default()
+    })
+}
+
+fn forget_services() {
+    services()
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner)
+        .clear();
+}
+
+/// The service for `config`, built once per (config file, options table) and run.
+pub(super) fn service_for(cfg: &EngineConfig, config: &Path) -> anyhow::Result<Arc<SourceLinter>> {
     let slot = {
-        let mut services = SERVICES
-            .get_or_init(Mutex::default)
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        let mut services = services().lock().unwrap_or_else(std::sync::PoisonError::into_inner);
         Arc::clone(
             services
                 .entry(format!("{}\0{}", config.display(), cfg.options))

@@ -1,0 +1,371 @@
+---
+source: crates/poly-mcp/tests/surface.rs
+expression: projection
+---
+[
+  {
+    "name": "check",
+    "description": "Lint, or check formatting (`kind: format`, as `poly fmt`), without writing. `scope: all` is what plain `poly lint` runs; the default `files` is `poly lint --workspace never`. Runs the repository's configured tools.",
+    "inputSchema": {
+      "properties": {
+        "kind": {
+          "description": "`lint` (default) or `format`.",
+          "type": "string",
+          "enum": [
+            "lint",
+            "format"
+          ]
+        },
+        "scope": {
+          "description": "`files` (default): per-file tier over `paths`. `workspace`: whole-project phase (cargo clippy, inline jobs; whole repo, no `paths`). `all`: both. `workspace`/`all` are lint-only.",
+          "type": "string",
+          "enum": [
+            "files",
+            "workspace",
+            "all"
+          ]
+        },
+        "paths": {
+          "description": "Files or directories (default: the current directory).",
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "exclude": {
+          "description": "Gitignore-style globs excluded on top of `[discovery] exclude` (`e2e/**`: any depth; `/e2e/**`: the config root).",
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "config": {
+          "description": "Config file; default: discovered from the working directory.",
+          "type": "string"
+        },
+        "include_excluded": {
+          "description": "Check named paths even when they match the exclude set.",
+          "type": "boolean"
+        },
+        "only": {
+          "description": "Run only these engines (`ruff`, `oxc`, ...). Never enables one the config leaves off.",
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "skip": {
+          "description": "Drop these engines. Not with `only`.",
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "max_skips": {
+          "description": "Not verified when more files than this were skipped (0: any skip).",
+          "type": "integer"
+        },
+        "install": {
+          "description": "Missing engine component: `config` (default, `[components] install`), `auto` download, `never` (skip its files).",
+          "type": "string",
+          "enum": [
+            "config",
+            "auto",
+            "never"
+          ]
+        },
+        "on_missing": {
+          "description": "Missing component: `fail` or `skip` its files; overrides `[components] on_missing`.",
+          "type": "string",
+          "enum": [
+            "fail",
+            "skip"
+          ]
+        },
+        "no_cache": {
+          "description": "Bypass the result cache.",
+          "type": "boolean"
+        },
+        "jobs": {
+          "description": "Worker threads (default: all cores).",
+          "type": "integer"
+        },
+        "format": {
+          "description": "Text block: `json` (default) or `toon`.",
+          "type": "string",
+          "enum": [
+            "json",
+            "toon"
+          ]
+        },
+        "debug": {
+          "description": "Attach per-engine debug records (cache hits, timings).",
+          "type": "boolean"
+        }
+      },
+      "type": "object"
+    },
+    "annotations": {
+      "readOnlyHint": false,
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": true
+    }
+  },
+  {
+    "name": "fix",
+    "description": "Apply lint autofixes or formatting in place, then report what remains. Mirrors `poly lint --fix` and `poly fmt --fix`.",
+    "inputSchema": {
+      "properties": {
+        "kind": {
+          "description": "`lint` (default) or `format`.",
+          "type": "string",
+          "enum": [
+            "lint",
+            "format"
+          ]
+        },
+        "scope": {
+          "description": "`files` (default): per-file tier over `paths`. `workspace`: whole-project phase (cargo clippy, inline jobs; whole repo, no `paths`). `all`: both. `workspace`/`all` are lint-only.",
+          "type": "string",
+          "enum": [
+            "files",
+            "workspace",
+            "all"
+          ]
+        },
+        "paths": {
+          "description": "Files or directories (default: the current directory).",
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "exclude": {
+          "description": "Gitignore-style globs excluded on top of `[discovery] exclude` (`e2e/**`: any depth; `/e2e/**`: the config root).",
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "config": {
+          "description": "Config file; default: discovered from the working directory.",
+          "type": "string"
+        },
+        "include_excluded": {
+          "description": "Check named paths even when they match the exclude set.",
+          "type": "boolean"
+        },
+        "only": {
+          "description": "Run only these engines (`ruff`, `oxc`, ...). Never enables one the config leaves off.",
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "skip": {
+          "description": "Drop these engines. Not with `only`.",
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "max_skips": {
+          "description": "Not verified when more files than this were skipped (0: any skip).",
+          "type": "integer"
+        },
+        "install": {
+          "description": "Missing engine component: `config` (default, `[components] install`), `auto` download, `never` (skip its files).",
+          "type": "string",
+          "enum": [
+            "config",
+            "auto",
+            "never"
+          ]
+        },
+        "on_missing": {
+          "description": "Missing component: `fail` or `skip` its files; overrides `[components] on_missing`.",
+          "type": "string",
+          "enum": [
+            "fail",
+            "skip"
+          ]
+        },
+        "no_cache": {
+          "description": "Bypass the result cache.",
+          "type": "boolean"
+        },
+        "jobs": {
+          "description": "Worker threads (default: all cores).",
+          "type": "integer"
+        },
+        "fix_generated": {
+          "description": "Also rewrite hash-stamped generated files.",
+          "type": "boolean"
+        },
+        "debug": {
+          "description": "Attach per-engine debug records (cache hits, timings).",
+          "type": "boolean"
+        },
+        "format": {
+          "description": "Text block: `json` (default) or `toon`.",
+          "type": "string",
+          "enum": [
+            "json",
+            "toon"
+          ]
+        }
+      },
+      "type": "object"
+    },
+    "annotations": {
+      "readOnlyHint": false,
+      "destructiveHint": true,
+      "idempotentHint": false,
+      "openWorldHint": true
+    }
+  },
+  {
+    "name": "info",
+    "description": "Read poly's state: version, config, validate, rules, components, cache. Never downloads, writes or runs repository tools.",
+    "inputSchema": {
+      "properties": {
+        "topics": {
+          "description": "Topics to report, one result key each. Default `[\"version\"]`.",
+          "type": "array",
+          "items": {
+            "enum": [
+              "version",
+              "config",
+              "validate",
+              "rules",
+              "components",
+              "cache"
+            ],
+            "type": "string"
+          }
+        },
+        "config": {
+          "description": "Config file; default: discovered from the working directory.",
+          "type": "string"
+        },
+        "paths": {
+          "description": "`components`: the paths to judge. `validate`: config files or directories.",
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "install": {
+          "description": "`components`: the install policy `would_download` assumes.",
+          "type": "string",
+          "enum": [
+            "config",
+            "auto",
+            "never"
+          ]
+        },
+        "dirs": {
+          "description": "`rules`: user rule directories (default: the config's).",
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "test": {
+          "description": "`rules`: also run each rule's `*-test.yml` snippets; a failure sets `isError`.",
+          "type": "boolean"
+        },
+        "format": {
+          "description": "Text block: `json` (default) or `toon`.",
+          "type": "string",
+          "enum": [
+            "json",
+            "toon"
+          ]
+        }
+      },
+      "type": "object"
+    },
+    "annotations": {
+      "readOnlyHint": true,
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": false
+    }
+  },
+  {
+    "name": "manage",
+    "description": "Maintain the result cache and the downloadable components. Mirrors `poly cache clean|gc` and `poly components install|uninstall|prune`.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "action": {
+          "description": "The operation.",
+          "type": "string",
+          "enum": [
+            "cache_clean",
+            "cache_gc",
+            "components_install",
+            "components_uninstall",
+            "components_prune"
+          ]
+        },
+        "names": {
+          "description": "`components_install`/`components_uninstall`: components or presets (`all`, a family, a language alias such as `python`).",
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "languages": {
+          "description": "`components_install`: languages whose components to install.",
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "paths": {
+          "description": "`components_install`: install every component these paths need.",
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "config": {
+          "description": "`components_install`: config file used to judge `paths`.",
+          "type": "string"
+        },
+        "dry_run": {
+          "description": "`components_install`: report what would be downloaded, download nothing. No other action has a dry run.",
+          "type": "boolean"
+        },
+        "max_age_days": {
+          "description": "`cache_gc`: evict entries older than this many days.",
+          "type": "integer"
+        },
+        "max_size": {
+          "description": "`cache_gc`: evict oldest-first to this budget (`500M`, `2G`).",
+          "type": "string"
+        },
+        "format": {
+          "description": "Text block: `json` (default) or `toon`.",
+          "type": "string",
+          "enum": [
+            "json",
+            "toon"
+          ]
+        }
+      },
+      "required": [
+        "action"
+      ]
+    },
+    "annotations": {
+      "readOnlyHint": false,
+      "destructiveHint": true,
+      "idempotentHint": false,
+      "openWorldHint": true
+    }
+  }
+]

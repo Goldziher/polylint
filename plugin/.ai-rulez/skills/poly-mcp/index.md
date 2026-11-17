@@ -1,3 +1,3 @@
 # Concepts
 
-- [Poly Mcp](SKILL.md) - The poly MCP server — the fourteen tools and which are read-only vs mutating, the paths/exclude/config/install/format params, component downloads, async Tasks, and the isError contract
+- [Poly Mcp](SKILL.md) - The poly MCP server — the four tools (check, fix, info, manage) split by read/write class, their kind/scope/topics/action params, component downloads, async Tasks, and the isError contract

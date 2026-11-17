@@ -1,8 +1,9 @@
 //! Which languages `poly lint`'s **whole-project phase** lints.
 //!
 //! `poly lint` is two halves — a per-file tier and a whole-project phase
-//! (`cargo clippy` and any configured whole-project analysis job) — and this
-//! crate is the only layer that sees both. Without the mapping below, a run over
+//! (`cargo clippy` and any configured whole-project analysis job) — and the
+//! caller that orchestrates both (the CLI, or the MCP server's `scope: all`) is the only layer
+//! that sees both. Without the mapping below, a run over
 //! poly's own repository printed 229 lines of
 //! `skipped …: no lint rules for Rust` and then, in the same output, `✓
 //! cargo-clippy`. Rust *was* linted; the per-file tier simply had no rules for

@@ -6,13 +6,18 @@
 //! `tokio`. The component ABI's `HostServices` and the in-process (bundled) server both reach it
 //! through [`ServiceCaller`].
 //!
-//! Config resolution is network-free here, as it always was for the MCP server: a remote git
-//! `extends` base is not fetched (see [`ops`]).
+//! Config resolution is network-free here: a remote git `extends` base is read from the local
+//! source cache when the host injects a resolver, and never fetched (see [`ops`]).
 
 pub mod adr;
+pub mod cache;
+pub mod failure;
 pub mod ops;
+pub mod paths;
+pub mod run;
 mod services;
 pub mod state_cache;
+pub mod workspace_coverage;
 mod workspace_guard;
 
 pub use poly_frontend_api::ServiceCaller;

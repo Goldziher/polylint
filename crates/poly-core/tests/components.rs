@@ -839,7 +839,11 @@ impl ComponentTransport for Counting {
 
     fn call(&self, header: &[u8], body: &[u8]) -> anyhow::Result<Vec<u8>> {
         let request = decode_request(header)?;
-        self.calls.lock().unwrap().push(request.variant_name());
+        // The run counter is process-wide: a run another test of this binary starts meanwhile is
+        // announced here too, so the announcement is not part of what a test's own run cost.
+        if !matches!(request, Request::RunBoundary { .. }) {
+            self.calls.lock().unwrap().push(request.variant_name());
+        }
         let payload = match request {
             Request::Format { .. } if body.starts_with(b"{{") => {
                 Payload::Formatted(WireFormatOutput::Declined("templated scala".into()))

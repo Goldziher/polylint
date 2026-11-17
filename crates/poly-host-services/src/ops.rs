@@ -9,26 +9,31 @@
 //! calls those from a blocking task, so the synchronous, rayon-driven engine
 //! never runs on a tokio worker thread.
 //!
-//! Config resolution is **network-free**: local `extends` bases resolve as
-//! usual, but remote **git** `extends` bases are not fetched (the git resolver
-//! lives in `poly-cli`, which this crate cannot depend on without a dependency
-//! cycle). A repo whose config extends a remote git base should be served via
-//! the `poly` CLI. This is a documented v1 limitation (ADR 0020).
+//! Config resolution is **network-free**: local `extends` bases resolve as usual, and a remote
+//! **git** base resolves only through the resolver the host injects
+//! ([`crate::Services::with_config_resolver`]). `poly mcp` injects one that reads the base from
+//! the local source cache at its `poly.lock`-pinned revision and never fetches (ADR 0076), so a
+//! server does not reach the network on a model's behalf; without a resolver a git base is an
+//! error naming the CLI.
 
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
-use poly_cache::{ResultCache, root_from_cwd};
-use poly_config::PolyConfig;
+use poly_cache::ResultCache;
+use poly_config::{BaseConfigResolver, LocalPathResolver, PolyConfig};
 use poly_core::{Config, FormatRun, Kind, Language, LintRun, RunOptions};
 
+use poly_config::effective::EffectiveConfig;
 use poly_config::v2::{ComponentInstallPolicy, OnMissing};
+use poly_frontend_api::dto::FailureKind;
 use poly_frontend_api::dto::{
-    CacheCleanReport, CacheNamespace, CacheStatsReport, ConfigDefaults, ConfigShowReport, RulesReport, WorkspaceReport,
-    WorkspaceToolReport,
+    CacheFreedReport, CacheStatsReport, ConfigProblem, PartialValidation, RulesReport, ValidateReport, ValidatedFile,
+    WorkspaceReport, WorkspaceToolReport,
 };
-use poly_frontend_api::wire::InstallMode;
+use poly_frontend_api::wire::{InstallMode, RunCall, RunRequest};
 
+use crate::cache;
+use crate::failure::RunFailure;
 use crate::state_cache::{self, StateCache, ToolLockGuard};
 
 static CONFIGS: StateCache<Config> = StateCache::new();
@@ -42,6 +47,9 @@ fn config_root(explicit: Option<&Path>) -> (PathBuf, bool) {
     }
 }
 
+/// The `extends` resolver a host injects (see [`crate::Services::with_config_resolver`]).
+pub type Resolver = Arc<dyn BaseConfigResolver>;
+
 /// Resolve the `poly-core` run configuration the way the CLI does, but
 /// network-free (see the module docs): load an explicit file when supplied,
 /// otherwise discover `poly.toml` from the working directory.
@@ -49,12 +57,19 @@ fn config_root(explicit: Option<&Path>) -> (PathBuf, bool) {
 /// The parse is reused across requests while the files it read are unchanged
 /// (see [`crate::state_cache`]).
 pub fn resolve_config(explicit: Option<&Path>) -> anyhow::Result<Arc<Config>> {
+    resolve_config_with(explicit, None)
+}
+
+/// [`resolve_config`], resolving `extends` bases through `resolver` when the host supplied one.
+pub fn resolve_config_with(explicit: Option<&Path>, resolver: Option<&Resolver>) -> anyhow::Result<Arc<Config>> {
     let (root, is_file) = config_root(explicit);
+    let local = LocalPathResolver;
+    let resolver: &dyn BaseConfigResolver = resolver.map_or(&local, |resolver| resolver.as_ref());
     CONFIGS.get_or_load(&root, is_file, || {
         if is_file {
-            Config::load_file(&root)
+            Config::load_file_with(&root, resolver)
         } else {
-            Config::load(&root)
+            Config::load_with(&root, resolver)
         }
     })
 }
@@ -66,53 +81,47 @@ fn tool_lock_scope(explicit: Option<&Path>) -> anyhow::Result<ToolLockGuard> {
     state_cache::enter_repo(&config_root(explicit).0)
 }
 
-/// Resolve the full parsed [`PolyConfig`] (needed by `config_show` and the
-/// whole-project tools), network-free — mirroring [`resolve_config`].
+/// Resolve the full parsed [`PolyConfig`] (needed by the whole-project phase and the cache
+/// root), network-free — mirroring [`resolve_config`].
 pub fn resolve_poly_config(explicit: Option<&Path>) -> anyhow::Result<Arc<PolyConfig>> {
+    resolve_poly_config_with(explicit, None)
+}
+
+/// [`resolve_poly_config`], resolving `extends` bases through `resolver` when the host supplied one.
+pub fn resolve_poly_config_with(
+    explicit: Option<&Path>,
+    resolver: Option<&Resolver>,
+) -> anyhow::Result<Arc<PolyConfig>> {
     let (root, is_file) = config_root(explicit);
+    let local = LocalPathResolver;
+    let resolver: &dyn BaseConfigResolver = resolver.map_or(&local, |resolver| resolver.as_ref());
     POLY_CONFIGS.get_or_load(&root, is_file, || {
         if is_file {
-            PolyConfig::load_file(&root)
+            PolyConfig::load_file_with(&root, resolver)
         } else {
-            PolyConfig::load(&root)
+            PolyConfig::load_with(&root, resolver)
         }
     })
 }
 
-/// Turn the request's path list into concrete paths, defaulting to the current
-/// directory when the caller passes none (matching the CLI default).
-fn resolve_paths(paths: &[String]) -> Vec<PathBuf> {
-    if paths.is_empty() {
-        vec![PathBuf::from(".")]
-    } else {
-        paths.iter().map(PathBuf::from).collect()
+/// The request's paths, defaulting to the current directory, refused when any does not exist
+/// (see [`crate::paths::missing_paths_message`]).
+fn existing_paths(paths: &[String]) -> anyhow::Result<Vec<PathBuf>> {
+    let resolved = crate::run::request_paths(paths);
+    match crate::paths::missing_paths_message(&resolved) {
+        None => Ok(resolved),
+        Some(message) => Err(RunFailure::new(FailureKind::Paths, message).into()),
     }
 }
 
-/// The run options every path-oriented tool uses, differing only in the caller's
-/// exclude globs and whether a config file was named explicitly.
-///
-/// `force_exclude` is read from the resolved config rather than written as a
-/// literal. The CLI resolves the same question in one place — `--include-excluded`,
-/// then `[discovery] force_exclude` (which `--set` can override), then the built-in
-/// default — and this surface has no flags, so only the last two steps can apply.
-/// Reading the key *is* that resolution here: it defaults to `true` in
-/// [`poly_config::DiscoveryConfig`], so an unset key still yields the CLI's
-/// default and only a repo that deliberately turned it off sees a change.
-///
-/// It was previously hardcoded `true`, which made the key inert for every MCP
-/// caller: one `poly.toml` answered differently depending on which surface asked.
-fn run_options(config: &Config, exclude: &[String], explicit_config: bool, install: InstallMode) -> RunOptions {
-    let (install, on_missing) = install_policy(install);
-    RunOptions {
-        exclude: exclude.to_vec(),
-        force_exclude: config.force_exclude,
-        fix_generated: false,
-        explicit_config,
-        install,
-        on_missing,
-        ..RunOptions::default()
-    }
+/// Pin the repository's tool lock and load the run's config, classifying a failure of either as
+/// a config failure.
+fn load_for_run(config: Option<&str>, resolver: Option<&Resolver>) -> anyhow::Result<(ToolLockGuard, Arc<Config>)> {
+    let explicit = config.map(Path::new);
+    let guard = tool_lock_scope(explicit).map_err(|error| RunFailure::from_anyhow(FailureKind::Config, &error))?;
+    let config = resolve_config_with(explicit, resolver)
+        .map_err(|error| RunFailure::from_anyhow(FailureKind::Config, &error))?;
+    Ok((guard, config))
 }
 
 /// The run overrides an `install` parameter stands for. `never` also makes a missing component a
@@ -127,110 +136,122 @@ pub fn install_policy(mode: InstallMode) -> (Option<ComponentInstallPolicy>, Opt
     }
 }
 
-/// Lint `paths`, returning the **whole run** — the per-file results plus the
-/// files the run failed on and the ones it declined. When `fix` is true,
-/// available autofixes are applied in place before the remaining diagnostics are
-/// collected.
+/// What a run needs before it starts: the paths, the config and the options, in the order the
+/// CLI prepares them, so both surfaces refuse the same requests for the same reasons.
+fn prepare(
+    request: &RunRequest,
+    resolver: Option<&Resolver>,
+) -> anyhow::Result<(ToolLockGuard, Vec<PathBuf>, Arc<Config>, RunOptions)> {
+    crate::run::validate(request).map_err(|error| RunFailure::from_anyhow(FailureKind::Usage, &error))?;
+    let paths = existing_paths(&request.paths)?;
+    let (guard, config) = load_for_run(request.config.as_deref(), resolver)?;
+    let options = crate::run::run_options(request, &config, resolver.cloned());
+    Ok((guard, paths, config, options))
+}
+
+/// Lint what `call` names, returning the **whole run** — the per-file results plus the files
+/// the run failed on and the ones it declined. With `call.apply`, available autofixes are
+/// applied in place before the remaining diagnostics are collected.
 ///
-/// Deliberately [`poly_core::lint_run`] rather than `poly_core::lint`: the
-/// latter returns only the results and drops [`LintRun::errors`], which for an
-/// MCP caller — who has no exit code to fall back on — turns a file poly failed
-/// to read into a clean-looking answer.
-pub fn lint_run(paths: &[String], exclude: &[String], config: Option<&str>, fix: bool) -> anyhow::Result<LintRun> {
-    lint_run_with(paths, exclude, config, fix, InstallMode::Config)
+/// Deliberately [`poly_core::lint_run`] rather than `poly_core::lint`: the latter returns only
+/// the results and drops [`LintRun::errors`], which for an MCP caller — who has no exit code to
+/// fall back on — turns a file poly failed to read into a clean-looking answer.
+///
+/// # Errors
+///
+/// A [`RunFailure`] when the run cannot start, else the pipeline's own error.
+pub fn lint(call: &RunCall, resolver: Option<&Resolver>) -> anyhow::Result<LintRun> {
+    lint_with(call, resolver, Vec::new())
 }
 
-/// [`lint_run`] under an explicit component install policy.
-pub fn lint_run_with(
-    paths: &[String],
-    exclude: &[String],
-    config: Option<&str>,
-    fix: bool,
-    install: InstallMode,
+/// [`lint`], declaring the languages another phase of the same run lints (the whole-project
+/// phase), so the per-file tier does not report them as unlinted.
+pub(crate) fn lint_with(
+    call: &RunCall,
+    resolver: Option<&Resolver>,
+    externally_linted: Vec<Language>,
 ) -> anyhow::Result<LintRun> {
-    let explicit_config = config.is_some();
-    let _tool_lock = tool_lock_scope(config.map(Path::new))?;
-    let config = resolve_config(config.map(Path::new))?;
-    let resolved = resolve_paths(paths);
-    poly_core::lint_run(
-        &resolved,
-        &config,
-        &run_options(&config, exclude, explicit_config, install),
-        fix,
-        false,
-    )
+    let (_tool_lock, paths, config, mut options) = prepare(&call.request, resolver)?;
+    options.externally_linted_languages = externally_linted;
+    poly_core::lint_run(&paths, &config, &options, call.apply, call.request.debug)
 }
 
-/// Format `paths`, returning the **whole run** (see [`lint_run`] for why the
-/// run and not just the results). When `write` is true, changed files are
-/// rewritten in place; otherwise this is a dry run.
+/// Format what `call` names, returning the **whole run** (see [`lint`] for why the run and not
+/// just the results). With `call.apply`, changed files are rewritten in place; otherwise this
+/// is a dry run.
+///
+/// # Errors
+///
+/// As [`lint`].
+pub fn format(call: &RunCall, resolver: Option<&Resolver>) -> anyhow::Result<FormatRun> {
+    let (_tool_lock, paths, config, options) = prepare(&call.request, resolver)?;
+    poly_core::format_run(&paths, &config, &options, call.apply, call.request.debug)
+}
+
+fn call_for(paths: &[String], exclude: &[String], config: Option<&str>, apply: bool) -> RunCall {
+    RunCall {
+        request: RunRequest {
+            paths: paths.to_vec(),
+            exclude: exclude.to_vec(),
+            config: config.map(str::to_owned),
+            ..RunRequest::default()
+        },
+        apply,
+        workspace: false,
+    }
+}
+
+/// [`lint`] over `paths` with every other option at its default.
+///
+/// # Errors
+///
+/// As [`lint`].
+pub fn lint_run(paths: &[String], exclude: &[String], config: Option<&str>, fix: bool) -> anyhow::Result<LintRun> {
+    lint(&call_for(paths, exclude, config, fix), None)
+}
+
+/// [`format()`] over `paths` with every other option at its default.
+///
+/// # Errors
+///
+/// As [`format()`].
 pub fn format_run(
     paths: &[String],
     exclude: &[String],
     config: Option<&str>,
     write: bool,
 ) -> anyhow::Result<FormatRun> {
-    format_run_with(paths, exclude, config, write, InstallMode::Config)
-}
-
-/// [`format_run`] under an explicit component install policy.
-pub fn format_run_with(
-    paths: &[String],
-    exclude: &[String],
-    config: Option<&str>,
-    write: bool,
-    install: InstallMode,
-) -> anyhow::Result<FormatRun> {
-    let explicit_config = config.is_some();
-    let _tool_lock = tool_lock_scope(config.map(Path::new))?;
-    let config = resolve_config(config.map(Path::new))?;
-    let resolved = resolve_paths(paths);
-    poly_core::format_run(
-        &resolved,
-        &config,
-        &run_options(&config, exclude, explicit_config, install),
-        write,
-        false,
-    )
+    format(&call_for(paths, exclude, config, write), None)
 }
 
 /// Open the result cache the way `poly cache` does: honor `[cache] dir` from the
 /// resolved config, else fall back to the default per-repo anchor walk (which
-/// respects `POLY_CACHE_HOME`). Network-free, matching the rest of this module.
-fn open_result_cache() -> anyhow::Result<ResultCache> {
-    let root = match resolve_poly_config(None)?.cache.dir.as_deref() {
-        Some(dir) => PathBuf::from(dir),
-        None => root_from_cwd()?,
-    };
-    ResultCache::open(root, true)
+/// respects `POLY_CACHE_HOME`).
+fn open_result_cache(resolver: Option<&Resolver>) -> anyhow::Result<ResultCache> {
+    let config = resolve_poly_config_with(None, resolver)?;
+    cache::open(cache::root(None, config.cache.dir.as_deref())?)
 }
 
-/// Report cache footprint (mirrors `poly cache stats`).
-pub fn cache_stats() -> anyhow::Result<CacheStatsReport> {
-    let cache = open_result_cache()?;
-    let stats = cache.stats()?;
-    let per_namespace = stats
-        .per_namespace
-        .iter()
-        .map(|ns| CacheNamespace {
-            namespace: ns.namespace.as_dir().to_string(),
-            entries: ns.entries,
-            bytes: ns.bytes,
-        })
-        .collect();
-    Ok(CacheStatsReport {
-        format_version: stats.format_version.clone(),
-        on_disk_version: stats.on_disk_version.clone(),
-        total_bytes: stats.total_bytes,
-        per_namespace,
-    })
+/// Report cache footprint: the `poly cache stats --format json` document. Read-only: unlike the
+/// maintenance operations it creates no cache directory (the frontend serves it from a
+/// read-only tool, and `[cache] dir` is the repository's to choose).
+pub fn cache_stats(resolver: Option<&Resolver>) -> anyhow::Result<CacheStatsReport> {
+    let config = resolve_poly_config_with(None, resolver)?;
+    cache::stats(&cache::open_for_stats(config.cache.dir.as_deref())?)
 }
 
-/// Remove every cached entry (mirrors `poly cache clean`) and report freed bytes.
-pub fn cache_clean() -> anyhow::Result<CacheCleanReport> {
-    let cache = open_result_cache()?;
-    let freed = cache.clean()?;
-    Ok(CacheCleanReport { freed_bytes: freed })
+/// Remove every cached entry: the `poly cache clean --format json` document.
+pub fn cache_clean(resolver: Option<&Resolver>) -> anyhow::Result<CacheFreedReport> {
+    cache::clean(&open_result_cache(resolver)?)
+}
+
+/// Evict stale or oversized entries: the `poly cache gc --format json` document.
+pub fn cache_gc(
+    max_age_days: Option<u64>,
+    max_size: Option<&str>,
+    resolver: Option<&Resolver>,
+) -> anyhow::Result<CacheFreedReport> {
+    cache::gc(&open_result_cache(resolver)?, max_age_days, max_size)
 }
 
 /// List (and optionally test) the ast-grep rules a run would apply (mirrors
@@ -244,9 +265,31 @@ pub fn cache_clean() -> anyhow::Result<CacheCleanReport> {
 /// reporting a raw on-disk inventory. A build that links the engine family
 /// answers in-process; a core build asks the `astgrep` component (see
 /// [`rules_report_for`]).
-pub fn rules_report(dirs: &[String], config: Option<&str>, test: bool) -> anyhow::Result<RulesReport> {
-    let resolved = resolve_config(config.map(Path::new))?;
-    rules_report_for(&resolved, dirs, test, None)
+///
+/// Never downloads: a core build without the `astgrep` component reports it as not installed
+/// instead, because the frontend serves this from a read-only, closed-world tool.
+pub fn rules_report(
+    dirs: &[String],
+    config: Option<&str>,
+    test: bool,
+    resolver: Option<&Resolver>,
+) -> anyhow::Result<RulesReport> {
+    rules_report_with(dirs, config, test, resolver, None)
+}
+
+/// [`rules_report`] against an injected component host (tests): the config is loaded and its
+/// install policy overridden exactly as the service does it.
+#[doc(hidden)]
+pub fn rules_report_with(
+    dirs: &[String],
+    config: Option<&str>,
+    test: bool,
+    resolver: Option<&Resolver>,
+    injection: Option<&poly_core::components::ComponentInjection>,
+) -> anyhow::Result<RulesReport> {
+    let mut resolved = (*resolve_config_with(config.map(Path::new), resolver)?).clone();
+    resolved.components.install = ComponentInstallPolicy::Never;
+    rules_report_for(&resolved, dirs, test, injection)
 }
 
 /// [`rules_report`] over an already resolved config.
@@ -366,47 +409,124 @@ pub fn rules_report_from_wire(dirs: Vec<String>, wire: poly_component_protocol::
     report
 }
 
-/// Summarize the effective, merged config (mirrors `poly config show`), resolved
-/// network-free.
-pub fn config_show(config: Option<&str>) -> anyhow::Result<ConfigShowReport> {
-    let resolved = resolve_poly_config(config.map(Path::new))?;
-    let defaults = &resolved.defaults;
-    Ok(ConfigShowReport {
-        config_path: config.unwrap_or("<discovered>").to_string(),
-        defaults: ConfigDefaults {
-            line_length: defaults.line_length,
-            line_ending: format!("{:?}", defaults.line_ending),
-            final_newline: defaults.final_newline,
-            trim_trailing_whitespace: defaults.trim_trailing_whitespace,
-        },
-        lint_keys: resolved.lint.keys().cloned().collect(),
-        fmt_keys: resolved.fmt.keys().cloned().collect(),
-        tools: resolved.tools.iter().map(|(name, _)| name.to_string()).collect(),
-        hooks_present: resolved.hooks.present,
-        rule_dirs: resolved.rules.dirs.clone(),
-    })
+/// The effective, merged config: the `poly config show --format json` document, from the same
+/// [`EffectiveConfig`] the CLI prints.
+pub fn config_show(config: Option<&str>, resolver: Option<&Resolver>) -> anyhow::Result<EffectiveConfig> {
+    let local = LocalPathResolver;
+    let resolver: &dyn BaseConfigResolver = resolver.map_or(&local, |resolver| resolver.as_ref());
+    EffectiveConfig::resolve(config.map(Path::new), resolver)
+}
+
+/// Check config files against poly's static knowledge of every engine, as `poly config validate`
+/// does, without loading or downloading any component. `paths` are config files or directories
+/// holding a `poly.toml`; empty means the nearest `poly.toml`.
+pub fn config_validate(paths: &[String]) -> anyhow::Result<ValidateReport> {
+    use anyhow::Context as _;
+    let files: Vec<PathBuf> = if paths.is_empty() {
+        let cwd = std::env::current_dir().context("reading the current directory")?;
+        vec![poly_config::find_config(&cwd).context("no poly.toml found")?]
+    } else {
+        paths
+            .iter()
+            .map(PathBuf::from)
+            .map(|path| {
+                if path.is_dir() {
+                    path.join(poly_config::CONFIG_FILE_NAMES[0])
+                } else {
+                    path
+                }
+            })
+            .collect()
+    };
+    let mut report = ValidateReport {
+        valid: true,
+        files: Vec::new(),
+        partial: Vec::new(),
+    };
+    let mut partial: std::collections::BTreeMap<String, std::collections::BTreeSet<String>> = Default::default();
+    for file in files {
+        let source = std::fs::read_to_string(&file).with_context(|| format!("reading {}", file.display()))?;
+        let checked = poly_core::config_validate::validate_source(&source);
+        report.valid &= checked.is_valid();
+        report.files.push(ValidatedFile {
+            path: file.display().to_string(),
+            problems: checked
+                .problems
+                .into_iter()
+                .map(|problem| ConfigProblem {
+                    path: problem.path,
+                    key: problem.key,
+                    message: problem.message,
+                })
+                .collect(),
+        });
+        for entry in checked.partial {
+            partial.entry(entry.component).or_default().extend(entry.engines);
+        }
+    }
+    report.partial = partial
+        .into_iter()
+        .map(|(component, engines)| PartialValidation {
+            component,
+            engines: engines.into_iter().collect(),
+        })
+        .collect();
+    Ok(report)
 }
 
 /// Run the whole-project (workspace) lint phase against the live worktree
 /// (mirrors `poly lint`'s whole-project phase). When `fix` is true the tools run
 /// in fix mode. Reporting is captured, never written to stdout, so the caller's
 /// stdio MCP transport stays a clean JSON-RPC stream.
+///
+/// # Errors
+///
+/// A [`RunFailure`] when the phase did not run: the config cannot be loaded, the repository is
+/// not trusted to run its `[hooks]`, or nothing is planned. The caller asked for this phase
+/// alone, so a report with no tools would read as a pass of a check that never happened.
 pub fn workspace_lint(
     config: Option<&str>,
     fix: bool,
     jobs: Option<usize>,
     no_cache: bool,
+    resolver: Option<&Resolver>,
 ) -> anyhow::Result<WorkspaceReport> {
-    let _tool_lock = tool_lock_scope(config.map(Path::new))?;
-    let resolved = resolve_poly_config(config.map(Path::new))?;
-    let outcome = poly_workspace::run_workspace_lint(
-        &resolved,
+    let config_failure = |error: anyhow::Error| RunFailure::from_anyhow(FailureKind::Config, &error);
+    let _tool_lock = tool_lock_scope(config.map(Path::new)).map_err(config_failure)?;
+    let resolved = resolve_poly_config_with(config.map(Path::new), resolver).map_err(config_failure)?;
+    let plan = poly_workspace::plan_workspace_lint(&resolved)?;
+    let planned = plan.is_some();
+    let report = run_planned(&resolved, plan, fix, jobs, no_cache)?;
+    if let Some(untrusted) = &report.untrusted {
+        return Err(RunFailure::new(FailureKind::Untrusted, untrusted).into());
+    }
+    if !planned {
+        return Err(RunFailure::new(FailureKind::NoWorkspaceTools, NOTHING_PLANNED).into());
+    }
+    Ok(report)
+}
+
+/// Why a whole-project phase with nothing planned did not run.
+const NOTHING_PLANNED: &str = "whole-project phase did not run: no whole-project tool is configured, or it is disabled";
+
+fn run_planned(
+    config: &PolyConfig,
+    plan: Option<poly_workspace::PlannedWorkspace>,
+    fix: bool,
+    jobs: Option<usize>,
+    no_cache: bool,
+) -> anyhow::Result<WorkspaceReport> {
+    let planned = plan.is_some();
+    let outcome = poly_workspace::run_planned_workspace_lint(
+        config,
+        plan,
         &poly_workspace::WorkspaceLintOptions {
             fix,
             jobs,
             no_cache,
             report_to_stdout: false,
         },
+        false,
     )?;
     Ok(WorkspaceReport {
         passed: outcome.passed,
@@ -422,7 +542,57 @@ pub fn workspace_lint(
             })
             .collect(),
         untrusted: outcome.untrusted.then(|| poly_workspace::UNTRUSTED_SKIP.to_owned()),
+        // `passed` with no tools reads as a pass; say when nothing ran.
+        notes: if planned || outcome.untrusted {
+            Vec::new()
+        } else {
+            vec![NOTHING_PLANNED.to_owned()]
+        },
     })
+}
+
+/// Lint what `call` names and run the whole-project phase, as `poly lint` does: the per-file
+/// tier is told which languages the phase lints, so it does not report them as unlinted, and
+/// the phase's report comes back beside the run.
+///
+/// As on the CLI, naming engines (`only` / `skip`) skips the phase — it is made of tools, not
+/// engines — and named paths do not narrow it: the tools cover the whole repository. Both
+/// facts are stated in the report's `notes`.
+///
+/// # Errors
+///
+/// As [`lint`], or when the phase cannot be set up.
+pub fn lint_all(call: &RunCall, resolver: Option<&Resolver>) -> anyhow::Result<(LintRun, WorkspaceReport)> {
+    let request = &call.request;
+    if !request.only.is_empty() || !request.skip.is_empty() {
+        let run = lint(call, resolver)?;
+        let report = WorkspaceReport {
+            passed: true,
+            fixed: false,
+            tools: Vec::new(),
+            untrusted: None,
+            notes: vec![
+                "whole-project phase skipped: `only`/`skip` name engines, and that phase runs tools".to_owned(),
+            ],
+        };
+        return Ok((run, report));
+    }
+    let explicit = request.config.as_deref().map(Path::new);
+    let poly_config = resolve_poly_config_with(explicit, resolver)
+        .map_err(|error| RunFailure::from_anyhow(FailureKind::Config, &error))?;
+    let plan = poly_workspace::plan_workspace_lint(&poly_config);
+    let languages = crate::workspace_coverage::workspace_lint_languages(&plan);
+    let run = lint_with(call, resolver, languages)?;
+    let _tool_lock = tool_lock_scope(explicit)?;
+    let mut report = run_planned(&poly_config, plan?, call.apply, request.jobs, request.no_cache)?;
+    if !request.paths.is_empty() {
+        report.notes.push(
+            "whole-project phase covers the entire repository, not just the named paths \
+             (and not filtered by [discovery] exclude)"
+                .to_owned(),
+        );
+    }
+    Ok((run, report))
 }
 
 #[cfg(test)]
@@ -434,7 +604,7 @@ mod tests {
         let _serial = crate::CONFIG_LOADING
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner);
-        let report = cache_stats().unwrap();
+        let report = cache_stats(None).unwrap();
         // The stats always carry the current format version.
         assert!(!report.format_version.is_empty(), "format version is populated");
     }

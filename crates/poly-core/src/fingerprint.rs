@@ -39,6 +39,11 @@ pub struct ConfigFingerprint {
     /// introduces are made relative before hashing, so the same commit hashes
     /// the same on CI and on a laptop.
     pub hash: String,
+    /// The exec-capable keys this config set and poly ignored because the repository is not
+    /// trusted (`poly trust`, ADR 0059). Omitted when nothing was withheld, which is every run
+    /// in a trusted repository and every run outside the MCP server's enforce mode.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub withheld: Vec<String>,
 }
 
 /// Fingerprint every config that governed a file in this run, indexed by the
@@ -70,6 +75,7 @@ pub(crate) fn fingerprints(
                     .map(|dir| relative_to_run(dir, configs))
                     .filter(|root| !root.is_empty()),
                 hash,
+                withheld: configs.config(id).trust.withheld.clone(),
             }
         })
         .collect()

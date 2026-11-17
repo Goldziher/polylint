@@ -93,7 +93,7 @@ is what skips it. `poly fmt` never runs the whole-project phase, and the git-hoo
 requests fix mode.
 
 The orchestration lives in `crates/poly-workspace` (`run_workspace_lint`), shared by `poly-cli`
-and the `poly mcp` `workspace_lint` tools.
+and `poly mcp`.
 
 ## Agent distribution
 

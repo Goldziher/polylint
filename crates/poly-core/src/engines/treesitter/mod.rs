@@ -34,7 +34,7 @@
 //!   unparsable input (it only trims trailing whitespace and fixes line
 //!   endings / the final newline).
 
-mod clang_format;
+pub(crate) mod clang_format;
 mod indent;
 mod kinds;
 

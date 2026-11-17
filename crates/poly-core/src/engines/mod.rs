@@ -61,3 +61,17 @@ pub use poly_engines_prose::harper;
 pub use poly_engines_typos::typos;
 #[cfg(feature = "engine-uncomment")]
 pub use poly_engines_uncomment::uncomment;
+
+/// Forget every memo of a project file's contents before a run reads any config: the host hooks'
+/// (oxlint, oxfmt, editorconfig, `go.mod`, …), the tree-sitter tier's `.clang-format` lookups and
+/// rustfmt's `Cargo.toml` editions.
+///
+/// Within a run they are the point: a tree of files costs one lookup per directory. A long-lived
+/// process (`poly mcp`) starts many runs, and each must see the configs as they are now. An
+/// engine component holds its own copy of the host hooks' memos; starting the run here is what
+/// makes its host announce the run to it before the next request.
+pub(crate) fn forget_run_memos() {
+    poly_engine_api::host_hooks::begin_run();
+    treesitter::clang_format::forget();
+    native_tool::edition::forget();
+}

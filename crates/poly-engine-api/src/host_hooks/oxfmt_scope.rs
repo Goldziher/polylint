@@ -84,11 +84,20 @@ fn compile(patterns: &[String]) -> GlobSet {
     crate::glob_set::build_glob_set_lossy_with(&normalized, crate::glob_set::Separator::Literal)
 }
 
+fn memo() -> &'static Mutex<HashMap<PathBuf, Arc<Scope>>> {
+    static MEMO: OnceLock<Mutex<HashMap<PathBuf, Arc<Scope>>>> = OnceLock::new();
+    MEMO.get_or_init(Mutex::default)
+}
+
+/// Drops every memoised scope so the next run rereads `.oxfmtrc.json[c]` from disk.
+pub fn forget() {
+    memo().lock().unwrap_or_else(std::sync::PoisonError::into_inner).clear();
+}
+
 /// The scope of the nearest oxfmt config at or above `dir`, memoized per directory so a tree of
 /// files costs a couple of `stat`s per directory and one parse per config.
 fn scope_for(dir: &Path) -> Arc<Scope> {
-    static MEMO: OnceLock<Mutex<HashMap<PathBuf, Arc<Scope>>>> = OnceLock::new();
-    let memo = MEMO.get_or_init(Mutex::default);
+    let memo = memo();
     let lock = || memo.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
     if let Some(found) = lock().get(dir) {
         return Arc::clone(found);

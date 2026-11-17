@@ -554,6 +554,15 @@ pub enum Request {
         /// `body`. The lock manifest is the member whose path is the config's `lock` option.
         files: Vec<WireFileSlice>,
     },
+    /// The host started a new run: forget what the component memoised from project files (the
+    /// lookups of `poly_engine_api::host_hooks` and whatever its engines registered there), so
+    /// a long-lived host's next run reads them as they are on disk now. Sent once per run, before
+    /// the run's first request to a component an earlier run loaded; answered with
+    /// [`Payload::Ok`].
+    RunBoundary {
+        /// The host's run counter, for logs: it only ever grows within one host process.
+        run: u64,
+    },
 }
 
 /// Names of every [`Request`] variant, in declaration order.
@@ -575,6 +584,7 @@ pub const REQUEST_VARIANTS: &[&str] = &[
     "FormatInputSalt",
     "Rules",
     "Adr",
+    "RunBoundary",
 ];
 
 impl Request {
@@ -598,6 +608,7 @@ impl Request {
             Request::FormatInputSalt { .. } => "FormatInputSalt",
             Request::Rules { .. } => "Rules",
             Request::Adr { .. } => "Adr",
+            Request::RunBoundary { .. } => "RunBoundary",
         }
     }
 
@@ -620,7 +631,8 @@ impl Request {
             | Request::LintCacheSalt { .. }
             | Request::DerivedOptionKeys { .. }
             | Request::Rules { .. }
-            | Request::Adr { .. } => None,
+            | Request::Adr { .. }
+            | Request::RunBoundary { .. } => None,
         }
     }
 }

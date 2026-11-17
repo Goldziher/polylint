@@ -304,6 +304,12 @@ impl Producer {
                 let plan = guarded("adrlint", || handler(&op, &cfg, &members))?;
                 Ok(Payload::Adr(plan))
             }
+            Request::RunBoundary { run } => {
+                tracing::debug!(run, "host run boundary");
+                // This component's own copy of the memos: the host cleared its copy itself.
+                poly_engine_api::host_hooks::forget_run_memos();
+                Ok(Payload::Ok)
+            }
             Request::FormatInputSalt { engine, config, path } => {
                 let engine = self.engine(&engine, None)?;
                 let cfg = self.config(config)?;

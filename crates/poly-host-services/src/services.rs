@@ -6,17 +6,19 @@ use anyhow::Context;
 use poly_core::report::{FormatDocument, LintDocument};
 use poly_core::{FormatRun, LintRun};
 use poly_frontend_api::ServiceCaller;
-use poly_frontend_api::dto::{ComponentActions, ComponentSummary, ComponentsStatus};
+use poly_frontend_api::dto::{ComponentActions, ComponentSummary, ComponentsStatus, FailureKind};
 use poly_frontend_api::wire::{
-    ComponentsInstallRequest, ComponentsStatusRequest, ComponentsUninstallRequest, ConfigRequest, Engines,
-    PathsRequest, RulesRequest, RunReply, Schemas, WorkspaceRequest, service,
+    CacheGcRequest, ComponentsInstallRequest, ComponentsStatusRequest, ComponentsUninstallRequest, ConfigRequest,
+    Engines, RulesRequest, RunCall, RunReply, RunRequest, Schemas, ValidateRequest, WorkspaceRequest, service,
 };
 use schemars::generate::SchemaSettings;
 use serde::Serialize;
 use serde::de::DeserializeOwned;
 use serde_json::Value;
 
+use crate::failure::{RunFailure, failure_document};
 use crate::ops;
+use crate::run::Verdict;
 use crate::workspace_guard::WorkspaceGuard;
 
 /// Lists the components for the `components.list` service. The core binary supplies it, since
@@ -60,6 +62,7 @@ pub trait ComponentsProvider: Send + Sync {
 pub struct Services {
     components: Option<Arc<dyn ComponentsProvider>>,
     guard: Option<WorkspaceGuard>,
+    resolver: Option<ops::Resolver>,
 }
 
 fn no_manager<T>() -> anyhow::Result<T> {
@@ -87,6 +90,14 @@ impl Services {
         self
     }
 
+    /// Resolve `extends` bases through `resolver` instead of the local-path default. The host
+    /// passes one that never reaches the network: a server stays network-free for config.
+    #[must_use]
+    pub fn with_config_resolver(mut self, resolver: ops::Resolver) -> Self {
+        self.resolver = Some(resolver);
+        self
+    }
+
     /// Apply the workspace guard, if any, to a request's paths and config.
     fn confine(&self, paths: &[String], config: Option<&str>) -> anyhow::Result<()> {
         match &self.guard {
@@ -98,6 +109,12 @@ impl Services {
         }
     }
 
+    /// [`Services::confine`] for a run, classifying a refusal as a workspace failure.
+    fn confine_run(&self, request: &RunRequest) -> anyhow::Result<()> {
+        self.confine(&request.paths, request.config.as_deref())
+            .map_err(|error| RunFailure::from_anyhow(FailureKind::Workspace, &error))
+    }
+
     /// Run `service` on `request` and return the encoded reply.
     ///
     /// # Errors
@@ -107,39 +124,71 @@ impl Services {
     pub fn dispatch(&self, service_name: &str, request: &[u8]) -> anyhow::Result<Vec<u8>> {
         match service_name {
             service::LINT => {
-                let req: PathsRequest = decode(request)?;
-                self.confine(&req.paths, req.config.as_deref())?;
-                let run = ops::lint_run_with(&req.paths, &req.exclude, req.config.as_deref(), req.apply, req.install)?;
-                encode(&lint_reply(&run)?)
+                let call: RunCall = decode(request)?;
+                let reply = self.confine_run(&call.request).and_then(|()| {
+                    if call.workspace {
+                        let (run, workspace) = ops::lint_all(&call, self.resolver.as_ref())?;
+                        lint_reply(&run, call.request.max_skips)?.with_workspace(&workspace)
+                    } else {
+                        lint_reply(&ops::lint(&call, self.resolver.as_ref())?, call.request.max_skips)
+                    }
+                });
+                encode(&reply.unwrap_or_else(|error| failure_reply(&error)))
             }
             service::FORMAT => {
-                let req: PathsRequest = decode(request)?;
-                self.confine(&req.paths, req.config.as_deref())?;
-                let run =
-                    ops::format_run_with(&req.paths, &req.exclude, req.config.as_deref(), req.apply, req.install)?;
-                encode(&format_reply(&run)?)
+                let call: RunCall = decode(request)?;
+                let reply = self
+                    .confine_run(&call.request)
+                    .and_then(|()| ops::format(&call, self.resolver.as_ref()))
+                    .and_then(|run| format_reply(&run, call.request.max_skips));
+                encode(&reply.unwrap_or_else(|error| failure_reply(&error)))
             }
             service::WORKSPACE_LINT => {
                 let req: WorkspaceRequest = decode(request)?;
-                self.confine(&[], req.config.as_deref())?;
-                encode(&ops::workspace_lint(
-                    req.config.as_deref(),
-                    req.fix,
-                    req.jobs,
-                    req.no_cache,
+                let reply = self
+                    .confine(&[], req.config.as_deref())
+                    .map_err(|error| RunFailure::from_anyhow(FailureKind::Workspace, &error))
+                    .and_then(|()| {
+                        ops::workspace_lint(
+                            req.config.as_deref(),
+                            req.fix,
+                            req.jobs,
+                            req.no_cache,
+                            self.resolver.as_ref(),
+                        )
+                    })
+                    .and_then(|report| workspace_reply(&report));
+                encode(&reply.unwrap_or_else(|error| failure_reply(&error)))
+            }
+            service::CACHE_STATS => encode(&ops::cache_stats(self.resolver.as_ref())?),
+            service::CACHE_CLEAN => encode(&ops::cache_clean(self.resolver.as_ref())?),
+            service::CACHE_GC => {
+                let req: CacheGcRequest = decode(request)?;
+                encode(&ops::cache_gc(
+                    req.max_age_days,
+                    req.max_size.as_deref(),
+                    self.resolver.as_ref(),
                 )?)
             }
-            service::CACHE_STATS => encode(&ops::cache_stats()?),
-            service::CACHE_CLEAN => encode(&ops::cache_clean()?),
             service::CONFIG_SHOW => {
                 let req: ConfigRequest = decode(request)?;
                 self.confine(&[], req.config.as_deref())?;
-                encode(&ops::config_show(req.config.as_deref())?)
+                encode(&ops::config_show(req.config.as_deref(), self.resolver.as_ref())?)
+            }
+            service::CONFIG_VALIDATE => {
+                let req: ValidateRequest = decode(request)?;
+                self.confine(&req.paths, None)?;
+                encode(&ops::config_validate(&req.paths)?)
             }
             service::RULES => {
                 let req: RulesRequest = decode(request)?;
                 self.confine(&req.dirs, req.config.as_deref())?;
-                encode(&ops::rules_report(&req.dirs, req.config.as_deref(), req.test)?)
+                encode(&ops::rules_report(
+                    &req.dirs,
+                    req.config.as_deref(),
+                    req.test,
+                    self.resolver.as_ref(),
+                )?)
             }
             service::COMPONENTS => {
                 let listed = match &self.components {
@@ -188,6 +237,7 @@ impl Services {
             service::SCHEMAS => encode(&Schemas {
                 lint: root_schema::<LintDocument>()?,
                 format: root_schema::<FormatDocument>()?,
+                poly_toml: poly_core::config_schema::poly_toml_schema(),
             }),
             other => anyhow::bail!("unknown host service `{other}`"),
         }
@@ -231,15 +281,61 @@ fn root_schema<T: schemars::JsonSchema>() -> anyhow::Result<Value> {
 }
 
 fn render_error(error: impl std::fmt::Display) -> anyhow::Error {
-    anyhow::anyhow!("failed to serialize tool output: {error}")
+    RunFailure::new(FailureKind::Render, format!("failed to serialize tool output: {error}")).into()
+}
+
+/// A run that failed before it reported on any file, as an error reply carrying its
+/// [`FailureDocument`](poly_frontend_api::dto::FailureDocument).
+fn failure_reply(error: &anyhow::Error) -> RunReply {
+    let document = failure_document(error);
+    let json = poly_core::report::render_json(&document).unwrap_or_else(|_| document.error.message.clone());
+    let toon = poly_core::report::render_toon(&document).unwrap_or_else(|_| json.clone());
+    RunReply {
+        document: serde_json::to_value(&document).unwrap_or(Value::Null),
+        json,
+        toon,
+        is_error: true,
+    }
+}
+
+/// Adding the whole-project report to a lint reply, under `workspace` in all three renderings.
+trait WithWorkspace: Sized {
+    fn with_workspace(self, report: &poly_frontend_api::dto::WorkspaceReport) -> anyhow::Result<Self>;
+}
+
+impl WithWorkspace for RunReply {
+    fn with_workspace(mut self, report: &poly_frontend_api::dto::WorkspaceReport) -> anyhow::Result<Self> {
+        // The caller asked for both tiers; an untrusted repository ran only one of them.
+        self.is_error |= report.untrusted.is_some();
+        if let Value::Object(document) = &mut self.document {
+            document.insert(
+                "workspace".to_owned(),
+                serde_json::to_value(report).map_err(render_error)?,
+            );
+        }
+        self.json = poly_core::report::render_json(&self.document).map_err(render_error)?;
+        self.toon = poly_core::report::render_toon(&self.document).map_err(render_error)?;
+        Ok(self)
+    }
+}
+
+/// The whole-project phase's report as a reply. A failing tool is a finding, as on the CLI
+/// (exit 1), not an error: the phase ran and verified what was asked.
+fn workspace_reply(report: &poly_frontend_api::dto::WorkspaceReport) -> anyhow::Result<RunReply> {
+    Ok(RunReply {
+        document: serde_json::to_value(report).map_err(render_error)?,
+        json: poly_core::report::render_json(report).map_err(render_error)?,
+        toon: poly_core::report::render_toon(report).map_err(render_error)?,
+        is_error: false,
+    })
 }
 
 /// A lint run as the three renderings and the error flag. A render failure is an error, never an
 /// empty document: a caller that gets a well-formed empty one cannot tell it from a clean run.
-fn lint_reply(run: &LintRun) -> anyhow::Result<RunReply> {
+fn lint_reply(run: &LintRun, max_skips: Option<usize>) -> anyhow::Result<RunReply> {
     let document = LintDocument::from_run(run);
     Ok(RunReply {
-        is_error: !document.errors.is_empty() || document.components.blocking(),
+        is_error: Verdict::of_lint(run, max_skips).is_error(),
         document: serde_json::to_value(&document).map_err(render_error)?,
         json: poly_core::report::report_lint_json_run(run).map_err(render_error)?,
         toon: poly_core::report::report_lint_toon_run(run).map_err(render_error)?,
@@ -247,10 +343,10 @@ fn lint_reply(run: &LintRun) -> anyhow::Result<RunReply> {
 }
 
 /// A format run, as [`lint_reply`].
-fn format_reply(run: &FormatRun) -> anyhow::Result<RunReply> {
+fn format_reply(run: &FormatRun, max_skips: Option<usize>) -> anyhow::Result<RunReply> {
     let document = FormatDocument::from_run(run);
     Ok(RunReply {
-        is_error: !document.errors.is_empty() || document.components.blocking(),
+        is_error: Verdict::of_format(run, max_skips).is_error(),
         document: serde_json::to_value(&document).map_err(render_error)?,
         json: poly_core::report::report_format_json_run(run).map_err(render_error)?,
         toon: poly_core::report::report_format_toon_run(run).map_err(render_error)?,
@@ -279,11 +375,17 @@ mod tests {
         let outside = tempfile::tempdir().unwrap();
         let guard = WorkspaceGuard::new(root.path(), None, false).unwrap();
         let request = serde_json::json!({ "paths": [outside.path()], "apply": true }).to_string();
-        let error = Services::new()
-            .with_workspace_guard(guard)
-            .dispatch(service::LINT, request.as_bytes())
-            .unwrap_err();
-        assert!(format!("{error:#}").contains("outside the workspace"), "{error:#}");
+        let reply: RunReply = serde_json::from_slice(
+            &Services::new()
+                .with_workspace_guard(guard)
+                .dispatch(service::LINT, request.as_bytes())
+                .unwrap(),
+        )
+        .unwrap();
+        assert!(reply.is_error, "a refused run is an error result");
+        assert_eq!(reply.document["error"]["kind"], "workspace", "{}", reply.document);
+        let message = reply.document["error"]["message"].as_str().unwrap();
+        assert!(message.contains("outside the workspace"), "{message}");
     }
 
     #[test]
@@ -410,9 +512,12 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let file = dir.path().join("a.txt");
         std::fs::write(&file, "hello\n").unwrap();
-        let request = serde_json::to_vec(&PathsRequest {
-            paths: vec![file.display().to_string()],
-            ..PathsRequest::default()
+        let request = serde_json::to_vec(&RunCall {
+            request: RunRequest {
+                paths: vec![file.display().to_string()],
+                ..RunRequest::default()
+            },
+            ..RunCall::default()
         })
         .unwrap();
         let reply: RunReply =

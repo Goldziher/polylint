@@ -98,6 +98,9 @@ pub struct Config {
     /// v2 `[components]` — which downloadable engine components a run may use, whether poly may
     /// install them and what an unavailable one does to the run.
     pub components: poly_config::v2::ComponentsConfig,
+    /// The exec-capable keys trust withheld from this config (ADR 0059), reported with the run's
+    /// config fingerprints so a caller can tell a restricted run from a trusted one.
+    pub trust: poly_config::trust::TrustState,
 }
 
 impl Default for Config {
@@ -124,6 +127,7 @@ impl Default for Config {
             // on unless a user explicitly turns it off.
             rules_builtin_pack: true,
             components: Default::default(),
+            trust: Default::default(),
         }
     }
 }
@@ -513,6 +517,7 @@ impl From<poly_config::PolyConfig> for Config {
             rules_builtin_pack: v2_builtin.unwrap_or(pc.rules.builtin),
             rules_dirs: v2_dirs.unwrap_or(pc.rules.dirs),
             components: pc.components,
+            trust: pc.trust,
         }
     }
 }

@@ -85,29 +85,80 @@ pub enum HostHook {
 }
 
 /// Inputs shared by every file of a run (see [`Engine::run_context`](crate::engine::Engine::run_context)).
+///
+/// Forgets the memos first ([`forget_run_memos`]), so a context computed for a new run never
+/// reads a lookup an earlier one cached. The memos an engine component holds are a separate
+/// copy, cleared when the host announces the run to it ([`begin_run`]).
 #[must_use]
 pub fn run_context(hook: HostHook, cfg: &EngineConfig) -> String {
+    forget_run_memos();
     match hook {
-        HostHook::Editorconfig => {
-            editorconfig::forget();
-            String::new()
-        }
-        HostHook::StyluaConfig | HostHook::SeleneConfig => {
-            native_config::forget();
-            String::new()
-        }
-        HostHook::None | HostHook::OxfmtScope | HostHook::Oxc | HostHook::GoMod | HostHook::GoModLint => String::new(),
-        HostHook::JsonSchema => {
-            jsonschema_source::forget();
-            String::new()
-        }
         HostHook::RuffContext => {
             let src_roots: Vec<std::path::PathBuf> =
                 cfg.options.opt_string_list("src").into_iter().map(Into::into).collect();
-            ruff_context::forget_package_roots();
-            ruff_target::forget_targets();
             ruff_context::module_tree(&src_roots)
         }
+        _ => String::new(),
+    }
+}
+
+/// How many runs this process has started ([`begin_run`]).
+static RUN_EPOCH: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+
+/// Start a run: forget every memo ([`forget_run_memos`]) and advance [`run_epoch`], which is
+/// how a component host learns that the components it loaded in an earlier run hold memos of
+/// their own to forget.
+pub fn begin_run() {
+    RUN_EPOCH.fetch_add(1, std::sync::atomic::Ordering::AcqRel);
+    forget_run_memos();
+}
+
+/// The number of runs this process has started. A component host compares it with the run it
+/// last announced to a component and announces the new one before the next request.
+#[must_use]
+pub fn run_epoch() -> u64 {
+    RUN_EPOCH.load(std::sync::atomic::Ordering::Acquire)
+}
+
+/// A function that clears one memo.
+type Forget = fn();
+
+/// Memo-clearing functions registered by engine crates ([`register_run_memo`]).
+fn registered() -> &'static Mutex<Vec<Forget>> {
+    static REGISTERED: OnceLock<Mutex<Vec<Forget>>> = OnceLock::new();
+    REGISTERED.get_or_init(Mutex::default)
+}
+
+/// Register `forget` to run at every run boundary ([`forget_run_memos`]). An engine crate that
+/// memoises something it read from a project file calls this when it first fills the memo.
+pub fn register_run_memo(forget: fn()) {
+    let mut registered = registered().lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+    if !registered.iter().any(|known| std::ptr::fn_addr_eq(*known, forget)) {
+        registered.push(forget);
+    }
+}
+
+/// Forget every memo of a project file's contents: the oxlint, oxfmt, editorconfig, StyLua and
+/// selene, JSON Schema, `go.mod` and ruff lookups here, and whatever engine crates registered.
+///
+/// They are memoised for the length of a run, which is the point: a tree of files costs one
+/// lookup per directory. A long-lived process (`poly mcp`) runs many times, and each run must see
+/// the configs as they are on disk now, so every run starts here.
+pub fn forget_run_memos() {
+    editorconfig::forget();
+    native_config::forget();
+    jsonschema_source::forget();
+    oxfmt_scope::forget();
+    oxlintrc::forget();
+    go_mod::forget();
+    ruff_context::forget_package_roots();
+    ruff_target::forget_targets();
+    let registered = registered()
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner)
+        .clone();
+    for forget in registered {
+        forget();
     }
 }
 

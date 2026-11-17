@@ -483,12 +483,10 @@ poly mcp --allow-outside-workspace  # let tool calls name paths outside the star
 
 See [Git hooks](/polylint/guides/hooks/) for the full `[hooks]` surface, and
 [Agents and MCP](/polylint/guides/agents-and-mcp/) for the MCP tool reference. In short: the MCP server
-is **stdio-only**; `components`, `cache_stats`, `rules`, `config_show` and
-`version` are read-only (`lint` and `format_check` are not: they run the repository's configured tools); `lint_fix`, `format_write`, `cache_clean`, `components_install` and
-`components_uninstall` are mutating; `workspace_lint` and
-`workspace_lint_fix` run the whole-project phase as async **Tasks** — the call returns a task handle
-and the client polls `tasks/get`, while a client without the tasks capability gets a synchronous
-result instead.
+is **stdio-only** and exposes four tools: `info` is read-only; `check` is not (it runs the
+repository's configured tools) but writes nothing; `fix` and `manage` are destructive. Whole-project
+scopes and downloading runs return async **Tasks** — the call returns a task handle and the client
+polls `tasks/get`, while a client without the tasks capability gets a synchronous result instead.
 
 ## `poly migrate`
 

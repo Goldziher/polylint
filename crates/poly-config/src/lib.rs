@@ -19,6 +19,7 @@ use serde::Deserialize;
 mod cache;
 mod commit;
 mod defaults;
+pub mod effective;
 pub mod extends;
 mod hook_sources;
 mod hooks;
