@@ -450,3 +450,184 @@ fn the_cache_key_tells_a_narrowed_check_from_a_full_one_and_targets_apart() {
     assert_ne!(key(Some(&a)), key(Some(&b)), "nor a run that names other files");
     assert_eq!(key(Some(&a)), key(Some(&a)));
 }
+
+/// A project check that reports one finding per file it is asked about, and counts its runs.
+struct Counting {
+    runs: Arc<std::sync::atomic::AtomicUsize>,
+}
+
+impl Engine for Counting {
+    fn name(&self) -> &'static str {
+        "counting"
+    }
+
+    fn languages(&self) -> &'static [Language] {
+        &[Language::Python]
+    }
+
+    fn capabilities(&self) -> crate::engine::Capabilities {
+        crate::engine::Capabilities {
+            lint: false,
+            format: false,
+            fix: false,
+            project: true,
+        }
+    }
+
+    fn version(&self) -> &str {
+        "1"
+    }
+
+    fn project_analysis(&self) -> Option<&dyn ProjectAnalysis> {
+        Some(self)
+    }
+}
+
+impl ProjectAnalysis for Counting {
+    fn project_check(&self, req: &ProjectRequest<'_>) -> anyhow::Result<Vec<(PathBuf, Vec<Diagnostic>)>> {
+        self.runs.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+        Ok(req
+            .files
+            .iter()
+            .filter(|file| req.targets.is_none_or(|targets| targets.contains(&file.path)))
+            .map(|file| {
+                let finding = Diagnostic {
+                    engine: "counting".to_owned(),
+                    code: Some("C1".to_owned()),
+                    severity: crate::engine::Severity::Error,
+                    title: "counted".to_owned(),
+                    description: None,
+                    span: None,
+                    url: None,
+                    fix: Vec::new(),
+                    metadata: Default::default(),
+                };
+                (file.path.clone(), vec![finding])
+            })
+            .collect())
+    }
+}
+
+/// A checkout under `parent` holding `a.py` and `b.py`, a project check over it, and a result cache
+/// shared by every checkout of the test.
+struct Checked {
+    runs: Arc<std::sync::atomic::AtomicUsize>,
+    plan: ProjectPlan,
+    cache: ResultCache,
+    _dir: tempfile::TempDir,
+    dir: PathBuf,
+}
+
+impl Checked {
+    fn new() -> Self {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let runs = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+        let plan = ProjectPlan {
+            engine: Arc::new(Counting {
+                runs: Arc::clone(&runs),
+            }),
+            config_id: 0,
+            config: EngineConfig {
+                globals: crate::config::GlobalDefaults::default(),
+                indent_width: 4,
+                options: toml::Table::new(),
+            },
+            language: Language::Python,
+            ancestor: false,
+        };
+        let cache = ResultCache::open(dir.path().join("cache"), true).expect("open the cache");
+        Self {
+            runs,
+            plan,
+            cache,
+            dir: std::path::absolute(dir.path()).expect("absolute"),
+            _dir: dir,
+        }
+    }
+
+    /// A checkout named `name`: a `.git` directory, `a.py` and `b.py`.
+    fn checkout(&self, name: &str) -> PathBuf {
+        let root = self.dir.join(name);
+        std::fs::create_dir_all(root.join(".git")).expect("checkout");
+        for file in ["a.py", "b.py"] {
+            std::fs::write(root.join(file), "x = 1\n").expect("write");
+        }
+        root
+    }
+
+    fn files(root: &Path) -> Vec<ProjectFile> {
+        ["a.py", "b.py"]
+            .into_iter()
+            .map(|name| ProjectFile {
+                path: root.join(name),
+                language: Language::Python,
+                content: Arc::from("x = 1\n"),
+            })
+            .collect()
+    }
+
+    /// The paths `report_for` returned, spelled exactly as it returned them.
+    fn report(&self, root: &Path, targets: Option<&[PathBuf]>) -> Vec<std::ffi::OsString> {
+        let files = Self::files(root);
+        let reported = report_for(
+            &self.plan,
+            root,
+            &files,
+            targets,
+            &ProjectEnvironment::default(),
+            &self.cache,
+        )
+        .unwrap_or_else(|error| panic!("{}", error.message));
+        let mut paths: Vec<_> = reported.into_iter().map(|(path, _)| path.into_os_string()).collect();
+        paths.sort();
+        paths
+    }
+
+    fn runs(&self) -> usize {
+        self.runs.load(std::sync::atomic::Ordering::SeqCst)
+    }
+}
+
+/// A full run's stored result answers a narrowed run (a pre-commit hook naming the staged files), and
+/// the paths come back as the narrowed run spells its files, not as the full run did.
+#[test]
+fn a_full_result_answers_a_narrowed_run_in_the_runs_spelling() {
+    let checked = Checked::new();
+    let root = checked.checkout("repo");
+    let full = checked.report(&root, None);
+    assert_eq!(checked.runs(), 1);
+    assert_eq!(full.len(), 2);
+
+    let spelled = root.join(".");
+    let targets = [spelled.join("a.py")];
+    let narrowed = checked.report(&spelled, Some(&targets));
+    assert_eq!(checked.runs(), 1, "the full run's result must answer the narrowed run");
+    assert_eq!(
+        narrowed,
+        Checked::files(&spelled)
+            .into_iter()
+            .map(|file| file.path.into_os_string())
+            .collect::<Vec<_>>()
+    );
+}
+
+/// A narrowed result stored from one checkout answers the same narrowed run in another checkout of the
+/// same files, with that checkout's paths.
+#[test]
+fn a_narrowed_result_replays_under_another_checkout() {
+    let checked = Checked::new();
+    let one = checked.checkout("one");
+    let two = checked.checkout("two");
+    assert_eq!(
+        checked.report(&one, Some(&[one.join("a.py")])),
+        [one.join("a.py").into_os_string()]
+    );
+    assert_eq!(checked.runs(), 1);
+
+    let replayed = checked.report(&two, Some(&[two.join("a.py")]));
+    assert_eq!(checked.runs(), 1, "the other checkout's narrowed result must answer");
+    assert_eq!(replayed, [two.join("a.py").into_os_string()]);
+
+    checked.report(&two, Some(&[two.join("b.py")]));
+    assert_eq!(checked.runs(), 2, "a run naming other files is not answered by it");
+}

@@ -32,11 +32,8 @@ pub fn show_progress() -> bool {
 /// Returns `Err` if the cache directory cannot be opened.
 pub fn open_result_cache(config: &PolyConfig, root: &Path, no_cache: bool) -> Result<Option<ResultCache>> {
     let enabled = config.cache.enabled && !no_cache;
-    let cache = match &config.cache.dir {
-        Some(dir) => ResultCache::open(PathBuf::from(dir), enabled),
-        None => ResultCache::open_from(root, enabled),
-    }
-    .context("failed to open the hook result cache")?;
+    let configured = config.cache.dir.as_deref().map(Path::new);
+    let cache = ResultCache::open_for_run(configured, root, enabled).context("failed to open the hook result cache")?;
     Ok(enabled.then_some(cache))
 }
 

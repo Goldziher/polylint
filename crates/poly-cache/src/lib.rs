@@ -139,8 +139,8 @@ pub use checkout::{checkout_cache_dir, git_common_dir, repository_identity};
 pub use maintenance::{CacheStats, NamespaceStats};
 pub use permissions::{DirOrigin, create_dir_all_private, ensure_private_dir};
 pub use stat_index::{
-    ContentDigest, FileStat, MAX_RETAINED_SEGMENTS, PathKey, PlanKey, PlanKeyBuilder, RACY_WINDOW_NS, Record, Segment,
-    StatIndex, Verdict,
+    ContentDigest, FileStat, MAX_CONFIRMED_SCOPES, MAX_RETAINED_SEGMENTS, PathKey, PlanKey, PlanKeyBuilder,
+    RACY_WINDOW_NS, Record, Segment, StatIndex, Verdict,
 };
 
 /// On-disk format version written to the `VERSION` sentinel file.
@@ -635,6 +635,21 @@ impl ResultCache {
         }
         let mut cache = Self::open_healed(root, enabled, origin)?;
         cache.checkout = Some(Arc::new(checkout::Checkout::new(&anchor)));
+        Ok(cache)
+    }
+
+    /// Open the cache a run from `start` uses: at `configured` (`[cache] dir`) when the config
+    /// names one, else where [`open_from`](Self::open_from) finds it. The one resolver the lint,
+    /// fmt and hook runs share, so a configured directory is the one `poly cache` measures.
+    ///
+    /// A configured directory is opened as a run opens its default one (self-healing, swept),
+    /// with its stat index kept per checkout of `start`'s repository.
+    pub fn open_for_run(configured: Option<&Path>, start: &Path, enabled: bool) -> anyhow::Result<Self> {
+        let Some(root) = configured else {
+            return Self::open_from(start, enabled);
+        };
+        let mut cache = Self::open_healed(root.to_path_buf(), enabled, DirOrigin::UserConfigured)?;
+        cache.checkout = Some(Arc::new(checkout::Checkout::new(&repo_anchor(start))));
         Ok(cache)
     }
 

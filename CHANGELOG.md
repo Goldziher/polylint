@@ -166,6 +166,10 @@ Each item is described in full under the section named in brackets.
   the hook snapshot and an absolute invocation reuse the records of the first (project-check roots, oxc config paths,
   ast-grep rule directories, the Go module root, JSON Schema and recipe digests are keyed checkout-relative), and
   `poly lint --only <engine>` keeps the other engines' records, so the next full run re-runs none of them.
+- **A repeated narrowed lint run is answered from the stat index again.** A second `poly lint --only <engine>` re-read
+  and re-hashed every file the selection had left without an engine, since only the full run's record was kept. A
+  record now also answers for each run scope that found it right for the same bytes, so both the narrowed and the full
+  run are stat hits. The stat index format changes (`PSI5`); an older index is discarded and rebuilt on the next run.
 - **The tsrs type check checks only the named files on a path-scoped run.** The pre-commit hook names the staged files;
   tsrs now builds the whole program but computes diagnostics for those files only, instead of type-checking the whole
   project and discarding the rest. A change that breaks an unstaged importer is caught by `poly lint .` and CI, not by
@@ -196,6 +200,10 @@ Each item is described in full under the section named in brackets.
   run read as a passing check. The project root is now in `skipped` with the reason (`tsrs: no tsconfig.json`),
   counted by `summary.skipped` and charged to `--deny-skips` / `--max-skips`. Component protocol v3 gains the
   `ProjectDeclined` answer; a host built before it reports such a check as failed. (ADR 0079)
+- **`poly lint` and `poly fmt` honour `[cache] dir`.** The per-file runner always used the per-user default cache (or
+  `POLY_CACHE_HOME`), so a configured directory was measured and cleaned by `poly cache` but never written by a lint or
+  fmt run. Runs and hooks now open the cache through one resolver: `[cache] dir` when set, with its stat index kept
+  per checkout, else the default location.
 - **A missing native tool shows in the report.** When `rustfmt`, `gofmt`, `shfmt` or `shellcheck` (or an opt-in
   native tool that is switched on) is not on `PATH`, the summary prints one line per tool (`rustfmt not found on PATH:
   3 Rust files formatted by the generic tier`) and the `json`/`toon` document and MCP results carry

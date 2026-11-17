@@ -3,8 +3,8 @@ use std::path::Path;
 use tempfile::TempDir;
 
 use super::{
-    ContentDigest, FileStat, MAX_RETAINED_SEGMENTS, PathKey, PlanKey, RACY_WINDOW_NS, Record, Segment, StatIndex,
-    Verdict,
+    ContentDigest, FileStat, MAX_CONFIRMED_SCOPES, MAX_RETAINED_SEGMENTS, PathKey, PlanKey, RACY_WINDOW_NS, Record,
+    Segment, StatIndex, Verdict,
 };
 use crate::Namespace;
 
@@ -27,6 +27,7 @@ fn record(stat: FileStat, bytes: &[u8]) -> Record {
     Record {
         stat,
         scope: key("scope"),
+        confirmed: Vec::new(),
         digest: ContentDigest::of(bytes),
         verdict: Verdict::Clean,
         replayable: true,
@@ -52,6 +53,7 @@ fn a_record_survives_a_flush_and_reload_intact() {
     let mut original = record(old_stat(), b"x = 1\n");
     original.verdict = Verdict::Diagnostics;
     original.replayable = false;
+    original.confirmed = vec![key("narrowed"), key("other narrowed")];
     original.segments = vec![
         Segment {
             key: key("ruff"),
@@ -117,6 +119,58 @@ fn a_record_merges_the_segments_of_an_earlier_record_of_the_same_bytes() {
     );
     let edited = record(old_stat(), b"y").merged(Some(&full));
     assert_eq!(edited.segments.len(), 1, "another file's bytes keep nothing");
+}
+
+/// A narrowed run that found a full run's record right for the same bytes answers from it; the
+/// full run keeps its own claim on it.
+#[test]
+fn a_record_answers_for_the_scopes_that_confirmed_it() {
+    let full = record(old_stat(), b"x");
+    assert!(full.answers(&key("scope")));
+    assert!(!full.answers(&key("narrowed")));
+
+    let confirmed = full.clone().confirmed_for(key("narrowed"));
+    assert!(confirmed.answers(&key("narrowed")));
+    assert!(confirmed.answers(&key("scope")));
+    assert_eq!(
+        confirmed.clone().confirmed_for(key("narrowed")),
+        confirmed,
+        "a scope is held once"
+    );
+    assert_eq!(
+        confirmed.clone().confirmed_for(key("scope")),
+        confirmed,
+        "its own scope is not repeated"
+    );
+}
+
+#[test]
+fn confirmed_scopes_are_bounded_and_the_newest_kept() {
+    let mut stored = record(old_stat(), b"x");
+    for index in 0..(MAX_CONFIRMED_SCOPES * 2) {
+        stored = stored.confirmed_for(key(&format!("narrowed {index}")));
+    }
+    assert_eq!(stored.confirmed.len(), MAX_CONFIRMED_SCOPES);
+    assert!(stored.answers(&key(&format!("narrowed {}", MAX_CONFIRMED_SCOPES * 2 - 1))));
+    assert!(!stored.answers(&key("narrowed 0")));
+}
+
+/// A record written under one scope over another's record of the same bytes answers for both, and
+/// for none of the other's once the bytes change.
+#[test]
+fn a_merged_record_keeps_the_scopes_of_an_earlier_record_of_the_same_bytes() {
+    let full = record(old_stat(), b"x").confirmed_for(key("narrowed"));
+    let mut later = record(old_stat(), b"x");
+    later.scope = key("other narrowed");
+    let merged = later.clone().merged(Some(&full));
+    for scope in ["other narrowed", "scope", "narrowed"] {
+        assert!(merged.answers(&key(scope)), "{scope}");
+    }
+    let mut edited = later;
+    edited.digest = ContentDigest::of(b"y");
+    let edited = edited.merged(Some(&full));
+    assert!(edited.confirmed.is_empty(), "another file's bytes keep no scope");
+    assert!(!edited.answers(&key("scope")));
 }
 
 #[test]
@@ -234,6 +288,7 @@ fn a_corrupt_or_foreign_file_loads_as_empty() {
 
     for bytes in [
         &b"garbage"[..],
+        b"PSI5\x01\x02",
         b"PSI4\x01\x02",
         b"PSI3\x01\x02",
         b"PSI2\x01\x02",

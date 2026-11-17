@@ -7,7 +7,7 @@
 //! directly from [`poly_config`] by the `poly commit` / `poly hooks` surfaces.
 
 use std::collections::BTreeMap;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 pub use poly_config::{GlobalDefaults, LineEnding};
 pub use poly_engine_api::config::EngineConfig;
@@ -101,6 +101,9 @@ pub struct Config {
     /// The exec-capable keys trust withheld from this config (ADR 0059), reported with the run's
     /// config fingerprints so a caller can tell a restricted run from a trusted one.
     pub trust: poly_config::trust::TrustState,
+    /// `[cache] dir`: where a run keeps its result cache instead of the per-user default. Relative to
+    /// the working directory, as `poly cache` and the hook runner read it; withheld until trusted.
+    pub cache_dir: Option<PathBuf>,
 }
 
 impl Default for Config {
@@ -128,6 +131,7 @@ impl Default for Config {
             rules_builtin_pack: true,
             components: Default::default(),
             trust: Default::default(),
+            cache_dir: None,
         }
     }
 }
@@ -518,6 +522,7 @@ impl From<poly_config::PolyConfig> for Config {
             rules_dirs: v2_dirs.unwrap_or(pc.rules.dirs),
             components: pc.components,
             trust: pc.trust,
+            cache_dir: pc.cache.dir.map(PathBuf::from),
         }
     }
 }
