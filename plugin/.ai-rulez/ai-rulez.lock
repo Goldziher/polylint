@@ -4,7 +4,7 @@
 version = 1
 ai_rulez_version = '5.13.4'
 scope = 'all'
-tree = 'sha256:ba6dcdd8b69285ad299f2999110807063b937f4e69f80ca42926009d262becb9'
+tree = 'sha256:6210dcf4ab8bd50f6fcee6c5e36efae5ccfbf67f80780a352ac6eb15dbab5592'
 
 [[item]]
 kind = 'command'
@@ -16,7 +16,7 @@ digest = 'sha256:a52a80566b7d70f926bd69fa8c13d485cd730498bf4f5f659b5465bfd91120e
 kind = 'command'
 id = 'poly-fix'
 path = 'commands/poly-fix.md'
-digest = 'sha256:a39409654bea6351cea8ffe9fc58245557bcc2dcfd47e2cbe4e7600b3910c783'
+digest = 'sha256:8706263bd29ee479020cc4dbef32166282ac2857c09d34dd97de92b730494481'
 
 [[item]]
 kind = 'skill'
@@ -40,10 +40,10 @@ digest = 'sha256:90af84a116012f373aebb880bc6ba5850cac15101df3008c282d15fe82bf1b1
 kind = 'skill'
 id = 'poly-overview'
 path = 'skills/poly-overview'
-digest = 'sha256:2efda763883e7cbae6c155e9eddccc25c44f2e86f5b1d67e4b0f422956a7c6a6'
+digest = 'sha256:7355e88d7178fe2ab7dbe319a9c36330a070b4f6c8b5138eb3021d065d5ccc29'
 
 [[item]]
 kind = 'skill'
 id = 'poly-tiers-and-scope'
 path = 'skills/poly-tiers-and-scope'
-digest = 'sha256:a226b2725e47ceffc512694b57f95a7df5d3d9a55cf051456ca36a3b76fee15a'
+digest = 'sha256:3256823ea1b21546655f487d0426981cc130f8b32b25f766e9001cb22b946d7d'
