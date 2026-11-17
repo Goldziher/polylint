@@ -4,7 +4,7 @@
 //!
 //! Driven through the shipped binary, like the parity tests: the resolver, the workspace guard
 //! and enforced trust are wired in `poly mcp`, not in the server crate.
-#![cfg(unix)]
+#![cfg(all(unix, feature = "bundled-mcp"))]
 
 mod mcp_child;
 
