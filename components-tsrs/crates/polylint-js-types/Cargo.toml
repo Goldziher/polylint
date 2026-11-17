@@ -2,7 +2,7 @@
 name = "polylint-js-types"
 # The crate's own version, not poly's lock-step one: it is a library with an API of its own, published to crates.io
 # (ADR 0081), and it moves when that API, the tsrs pin or the polylint-tsrs version does.
-version = "0.1.0"
+version = "0.1.1"
 edition = "2024"
 rust-version = "1.100"
 license = "MIT"
