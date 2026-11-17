@@ -43,14 +43,13 @@
 //!
 //! # Process constraints
 //!
-//! tsrs keeps each program in leaked arenas, which the program owner frees when the check ends; reserves no address
-//! space (the `plain-ptrs` feature); and reads its own `TSRS_*` variables and `RAYON_NUM_THREADS` from the
+//! tsrs keeps each program in leaked arenas, which the program owner of `polylint-tsrs` (ADR 0078) frees when the
+//! check ends; reserves no address space (the `plain-ptrs` feature); and reads its own `TSRS_*` variables and `RAYON_NUM_THREADS` from the
 //! environment, which this crate neither sets nor reads (ADR 0051).
 
 mod engine;
 mod external;
 mod map;
-mod owner;
 mod program;
 mod settings;
 mod vfs;

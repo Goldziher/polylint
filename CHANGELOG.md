@@ -92,6 +92,9 @@ Each item is described in full under the section named in brackets.
 
 ### Changed
 
+- **The tsrs type check builds its program through `polylint-tsrs`.** The engine's own copies of the in-memory file
+  system, the config loading and the program owner are gone; findings are unchanged. The diagnostics the checkers
+  make are now freed with the program instead of staying in the worker threads' arenas (ADR 0078).
 - **The core binary is built for speed.** `--profile core` moves from `opt-level = "s"` to `opt-level = 3` (fat LTO, stripped), and the size gate moves from 14 MiB to 22 MiB (ADR 0065). The `release` profile used by the bundled build and every component also moves to fat LTO with stripped symbols.
 - **Cargo hooks hash their declared inputs once per run.** The clippy, sort, machete and deny hooks share one `git ls-files` listing and one parallel, streamed blake3 pass, and the staged-run mutation probe streams index blobs into hashes instead of holding the tracked tree in memory. (#215)
 - **BREAKING: component protocol v3 (ADR 0058); every engine component and sidecar must be rebuilt.** Requests and responses are

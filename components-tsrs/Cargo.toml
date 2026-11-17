@@ -36,7 +36,6 @@ tsrs_compiler = { version = "=7.1.0-beta.tsrs2", default-features = false }
 tsrs_core = { version = "=7.1.0-beta.tsrs2", default-features = false, features = ["plain-ptrs"] }
 tsrs_diagnostics = { version = "=7.1.0-beta.tsrs2", default-features = false }
 tsrs_tsoptions = { version = "=7.1.0-beta.tsrs2", default-features = false }
-tsrs_vfs = { version = "=7.1.0-beta.tsrs2", default-features = false }
 
 [profile.release]
 lto = "fat"

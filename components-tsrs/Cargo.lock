@@ -918,6 +918,7 @@ dependencies = [
  "poly-component-protocol",
  "poly-engine-api",
  "poly-engines",
+ "polylint-tsrs",
  "serde_json",
  "tempfile",
  "toml",
@@ -927,7 +928,6 @@ dependencies = [
  "tsrs_core",
  "tsrs_diagnostics",
  "tsrs_tsoptions",
- "tsrs_vfs",
 ]
 
 [[package]]

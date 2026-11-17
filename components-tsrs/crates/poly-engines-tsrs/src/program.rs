@@ -6,30 +6,31 @@
 //! the disk and nothing is written. Everything that leaves this module is owned data; the program is freed first.
 //!
 //! The process environment still applies to tsrs, which reads its own `TSRS_*` variables and `RAYON_NUM_THREADS`
-//! (ADR 0051). This module reads none of them and passes the library path and the checker count explicitly.
+//! (ADR 0051). This module reads none of them and passes the checker count explicitly.
+//!
+//! The file system, the config, the program and its owner are `polylint-tsrs`'s (ADR 0078). What stays here is what
+//! a check adds: which `tsconfig` it is, the `extends` it forgives, the files it narrows to, and the copy of every
+//! diagnostic into owned data.
 
 use std::collections::HashMap;
 use std::panic::{self, AssertUnwindSafe};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
-use anyhow::{anyhow, bail, ensure};
+use anyhow::{anyhow, ensure};
 use poly_engine_api::engine::ProjectFile;
 use poly_engine_api::line_index::LineIndex;
-use tsrs_ast::{Diagnostic, SourceFile};
-use tsrs_compiler::{
-    Context, Program, ProgramOptions, ProgramRegions, get_diagnostics_of_any_program, sort_and_deduplicate_diagnostics,
-};
+use polylint_tsrs::{BuildRequest, BuiltProgram, MemoryFs, ProgramFiles, ProgramHost, SharedConfigs, SharedFiles};
+use tsrs_ast::Diagnostic;
+use tsrs_compiler::{Context, Program};
 use tsrs_core::arena::Region;
 use tsrs_core::{CompilerOptions, P, Tristate, tspath};
 use tsrs_diagnostics::Category;
-use tsrs_tsoptions::{ParseConfigHost, ParsedCommandLine};
-use tsrs_vfs::FS;
+use tsrs_tsoptions::ParsedCommandLine;
 
 use crate::external::{Declared, package_name};
-use crate::owner::ProgramOwner;
 use crate::settings::Settings;
-use crate::vfs::{self, MemoryFs, tsrs_name, tsrs_path};
+use crate::vfs::{tsrs_name, tsrs_path};
 
 /// The first chunk of the scratch region configs and program bookkeeping are allocated in.
 const SCRATCH_CHUNK: usize = 1 << 20;
@@ -82,9 +83,9 @@ pub(crate) struct Outcome {
 /// # Errors
 /// A `project` that is not among the files, or a panic inside tsrs.
 pub(crate) fn diagnose(request: &Request<'_>) -> anyhow::Result<Option<Outcome>> {
-    let mut memory = MemoryFs::default();
+    let mut memory = MemoryFs::new();
     for file in request.files {
-        memory.insert(tsrs_name(request.root, &file.path), Arc::clone(&file.content));
+        memory.insert(&tsrs_name(request.root, &file.path), Arc::clone(&file.content));
     }
     let Some(config) = locate(request, &memory)? else {
         return Ok(None);
@@ -94,6 +95,13 @@ pub(crate) fn diagnose(request: &Request<'_>) -> anyhow::Result<Option<Outcome>>
     let targets: Option<Vec<String>> = request
         .targets
         .map(|targets| targets.iter().map(|path| tsrs_name(request.root, path)).collect());
+    // The files and configs of the check, which its one program reads through: dropped last, after everything that
+    // points into them.
+    let (files, configs) = (Arc::<SharedFiles>::default(), Arc::<SharedConfigs>::default());
+    let (fs, boms) = memory.into_fs();
+    let host = ProgramHost::new(fs, boms, cwd, Arc::clone(&files), Arc::clone(&configs));
+    let program_files = Arc::new(ProgramFiles::default());
+    // tsrs allocates the config and the compiler host in the region current on this thread.
     let region = Region::new_scratch(SCRATCH_CHUNK);
     let entered = region.enter();
     let result = panic::catch_unwind(AssertUnwindSafe(|| {
@@ -103,14 +111,19 @@ pub(crate) fn diagnose(request: &Request<'_>) -> anyhow::Result<Option<Outcome>>
                 host_config: &host_config,
                 targets: targets.as_deref(),
             },
-            memory.into_tsrs(),
+            &host,
+            &program_files,
             request.settings,
             request.declared,
-            cwd,
         )
     }));
+    // The program and its loader regions went with `check`; then the scratch region, the program's hold on its
+    // files, and the check's files and configs.
     drop(entered);
     drop(region);
+    drop(program_files);
+    drop(host);
+    drop((files, configs));
     match result {
         Ok(outcome) => outcome.map(Some),
         Err(payload) => Err(anyhow!("tsrs panicked: {}", panic_text(payload.as_ref()))),
@@ -152,82 +165,37 @@ fn locate(request: &Request<'_>, memory: &MemoryFs) -> anyhow::Result<Option<Str
     }
 }
 
-/// The host configs are parsed with: the check's file system and the project directory as the current directory.
-struct ConfigHost {
-    fs: Arc<dyn FS>,
-    cwd: String,
-}
-
-impl ParseConfigHost for ConfigHost {
-    fn fs(&self) -> &dyn FS {
-        &*self.fs
-    }
-
-    fn get_current_directory(&self) -> &str {
-        &self.cwd
-    }
-}
-
 fn tristate(value: Option<bool>) -> Option<Tristate> {
     value.map(|on| if on { Tristate::True } else { Tristate::False })
 }
 
-/// A parsed `tsconfig`, or the diagnostics that say why there is none.
-enum Loaded {
-    Ready(Box<ParsedCommandLine>),
-    Failed(Vec<Raw>),
-}
-
-fn load_config(config_path: &str, host: &ConfigHost, lines: &mut Lines) -> Loaded {
-    let (parsed, diagnostics) =
-        tsrs_tsoptions::get_parsed_command_line_of_config_file(config_path, None, None, host, None);
+/// The diagnostics that say why a `tsconfig` gave no program; `Cannot read file` when tsrs does not say.
+fn config_failure(config_path: &str, diagnostics: &[P<Diagnostic>], lines: &mut Lines) -> Vec<Raw> {
     let mut raw: Vec<Raw> = diagnostics
         .iter()
         .filter_map(|diagnostic| lines.raw(diagnostic))
         .collect();
-    let Some(config) = parsed else {
-        if raw.is_empty() {
-            raw.push(Raw::global(
-                CANNOT_READ_FILE,
-                format!("Cannot read file '{config_path}'."),
-            ));
-        }
-        return Loaded::Failed(raw);
-    };
-    if let Some(file) = config.config_file {
-        raw.extend(
-            file.source_file
-                .diagnostics()
-                .iter()
-                .filter_map(|diagnostic| lines.raw(diagnostic)),
-        );
-    }
     if raw.is_empty() {
-        Loaded::Ready(Box::new(config))
-    } else {
-        Loaded::Failed(raw)
+        raw.push(Raw::global(
+            CANNOT_READ_FILE,
+            format!("Cannot read file '{config_path}'."),
+        ));
     }
+    raw
 }
 
-/// Sets the options the check owns: `tsc --noEmit`, the checker count and the overrides of `settings`.
-fn apply_settings(config: &mut ParsedCommandLine, settings: &Settings, config_path: &str) -> anyhow::Result<()> {
+/// Sets the options the check owns beside the checker count, which the build sets: `tsc --noEmit` and the overrides
+/// of `settings`.
+fn apply_settings(config: &mut ParsedCommandLine, settings: &Settings) {
     let Some(base) = config.compiler_options() else {
-        bail!("`{config_path}` has no compiler options");
+        return;
     };
-    let threads = settings.threads.get();
     config.parsed_config.compiler_options = Some(P::new(CompilerOptions {
-        checkers: Some(i64::try_from(threads).unwrap_or(i64::MAX)),
-        single_threaded: if threads == 1 {
-            Tristate::True
-        } else {
-            base.single_threaded
-        },
         no_emit: Tristate::True,
         strict: tristate(settings.strict).unwrap_or(base.strict),
         skip_lib_check: tristate(settings.skip_lib_check).unwrap_or(base.skip_lib_check),
         ..(*base).clone()
     }));
-    Ok(())
 }
 
 /// Drops the `extends` of a package the project declares but the hermetic run does not have from the config's
@@ -281,74 +249,56 @@ struct Subject<'a> {
 
 fn check(
     subject: &Subject<'_>,
-    fs: Arc<dyn FS>,
+    host: &ProgramHost,
+    files: &Arc<ProgramFiles>,
     settings: &Settings,
     declared: &Declared,
-    cwd: String,
 ) -> anyhow::Result<Outcome> {
     let &Subject {
         config: config_path,
         host_config,
         targets,
     } = subject;
-    let host = ConfigHost {
-        fs: Arc::clone(&fs),
-        cwd,
-    };
+    let threads = settings.threads.get();
     let mut lines = Lines::default();
-    let mut config = match load_config(config_path, &host, &mut lines) {
-        Loaded::Ready(config) => *config,
-        Loaded::Failed(diagnostics) => {
+    let mut warnings = Vec::new();
+    let request = BuildRequest {
+        config_path,
+        checkers: threads,
+        single_threaded: threads == 1,
+        list_files: false,
+        // The findings are copied out before the program is dropped, so the diagnostics go back with it.
+        diagnostics_in_checker_regions: true,
+    };
+    let built = host.build(&request, Arc::clone(files), None, |config| {
+        warnings = forgive_declared_extends(config, config_path, host_config, declared);
+        apply_settings(config, settings);
+    });
+    let BuiltProgram {
+        owner, loader_regions, ..
+    } = match built {
+        Ok(built) => built,
+        Err(diagnostics) => {
             return Ok(Outcome {
                 config: config_path.to_owned(),
                 allow_js: false,
                 jsx: false,
-                diagnostics,
+                diagnostics: config_failure(config_path, &diagnostics, &mut lines),
             });
         }
     };
-    let warnings = forgive_declared_extends(&mut config, config_path, host_config, declared);
-    apply_settings(&mut config, settings, config_path)?;
 
-    let threads = settings.threads.get();
-    let compiler_host = tsrs_compiler::new_compiler_host(
-        &tspath::get_directory_path(config_path),
-        Arc::clone(&fs),
-        &vfs::lib_path(),
-        None,
-        None,
-        None,
-    );
-    let mut options = ProgramOptions::new(P::new(config), compiler_host);
-    // Referenced projects contribute their sources: their declaration outputs are not among the files.
-    options.use_source_of_project_reference = true;
-    // Dropped after the program: nothing that outlives the program points into its loader regions.
-    let loader_regions: Arc<ProgramRegions> = Arc::default();
-    options.regions = Some(Arc::clone(&loader_regions));
-    options.checker_regions = true;
-    if threads == 1 {
-        options.single_threaded = Tristate::True;
-    }
-
-    let owner = ProgramOwner::new(options);
     let program = owner.program();
-    let ctx = Context::default();
-    let narrowed = narrowed(&ctx, program, config_path, targets, threads);
-    let found = get_diagnostics_of_any_program(
-        &ctx,
-        program,
-        narrowed.as_deref(),
-        false,
-        &mut |ctx, file| program.get_bind_diagnostics(ctx, file),
-        &mut |ctx, file| program.get_semantic_diagnostics(ctx, file),
-    );
-    let mut raw: Vec<Raw> = sort_and_deduplicate_diagnostics(&found)
+    let narrowed = narrowed(program, config_path, targets, threads);
+    let mut raw: Vec<Raw> = owner
+        .diagnostics(narrowed.as_deref())
         .iter()
         .filter_map(|diagnostic| lines.raw(diagnostic))
         .collect();
     let allow_js = program.options().allow_js.is_true();
     let jsx = program.options().jsx.0 != 0;
     drop(lines);
+    // Dropped after the program: nothing that outlives the program points into its loader regions.
     drop(owner);
     drop(loader_regions);
 
@@ -372,22 +322,24 @@ fn check(
 /// imports resolve, and its findings are those of the full check.
 ///
 /// Every file it is, too, when the targets are too many for narrowing to pay ([`worth_narrowing`]).
-fn narrowed(
-    ctx: &Context,
-    program: &'static Program,
+fn narrowed<'a>(
+    program: &Program,
     config_path: &str,
-    targets: Option<&[String]>,
+    targets: Option<&'a [String]>,
     threads: usize,
-) -> Option<Vec<P<SourceFile>>> {
+) -> Option<Vec<&'a str>> {
     let targets = targets?;
-    if targets.iter().any(|target| target == config_path) || !program.get_syntactic_diagnostics(ctx, None).is_empty() {
+    if targets.iter().any(|target| target == config_path)
+        || !program.get_syntactic_diagnostics(&Context::default(), None).is_empty()
+    {
         return None;
     }
-    let files: Vec<P<SourceFile>> = targets
+    let files: Vec<&str> = targets
         .iter()
-        .filter_map(|target| program.get_source_file(target))
+        .map(String::as_str)
+        .filter(|target| program.get_source_file(target).is_some())
         .collect();
-    let libraries = vfs::lib_path();
+    let libraries = polylint_tsrs::lib_path();
     let sources = program
         .get_source_files()
         .iter()
