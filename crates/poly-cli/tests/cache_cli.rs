@@ -130,3 +130,78 @@ fn cache_dir_is_accepted_after_the_subcommand() {
     );
     assert!(String::from_utf8_lossy(&output.stdout).contains("2 entries"));
 }
+
+/// Run the built `poly` in `cwd` with a sandboxed cache home and config home, trusting the
+/// repository so `[cache] dir` is honoured.
+fn poly_in(cwd: &Path, home: &Path, args: &[&str]) -> Output {
+    Command::new(POLY)
+        .args(args)
+        .current_dir(cwd)
+        .env("POLY_CACHE_HOME", home.join("cache-home"))
+        .env("POLY_CONFIG_HOME", home.join("config-home"))
+        .env("POLY_TRUST", "1")
+        .env("POLY_OFFLINE", "1")
+        .env("NO_COLOR", "1")
+        .output()
+        .expect("poly invocation")
+}
+
+fn json_of(output: &Output) -> serde_json::Value {
+    assert!(
+        output.status.success(),
+        "stdout: {}\nstderr: {}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+    serde_json::from_slice(&output.stdout).expect("stdout is one JSON document")
+}
+
+/// A relative `[cache] dir` is anchored at the root `poly.toml`: a run from a subdirectory reuses
+/// the cache a run from the root filled, `poly cache stats` there measures it, and a nested config's
+/// own `[cache]` is ignored with a warning naming it.
+#[test]
+fn a_relative_cache_dir_is_one_cache_from_every_directory() {
+    let tmp = TempDir::new().expect("tempdir");
+    let repo = tmp.path().join("repo");
+    let sub = repo.join("pkg");
+    std::fs::create_dir_all(&sub).expect("create the repository");
+    let init = Command::new("git").args(["init", "-q"]).current_dir(&repo).status();
+    assert!(init.expect("git init").success());
+    std::fs::write(repo.join("poly.toml"), "[cache]\ndir = \".poly-cache\"\n").expect("root config");
+    std::fs::write(sub.join("poly.toml"), "[cache]\ndir = \"nested-cache\"\n").expect("nested config");
+    std::fs::write(sub.join("main.py"), "x = 1\n").expect("source");
+    std::fs::write(repo.join(".gitignore"), ".poly-cache/\n").expect("ignore the cache");
+    // Named rather than `.`: the TOML engine is a component this test build has no lock for.
+    let lint = |path| ["lint", "--workspace", "never", "--format", "json", path];
+
+    let from_root = json_of(&poly_in(&repo, tmp.path(), &lint("pkg/main.py")));
+    assert!(from_root["summary"]["checked"].as_u64() >= Some(1), "{from_root}");
+    let stats_from_root = json_of(&poly_in(&repo, tmp.path(), &["cache", "stats", "--format", "json"]));
+    assert!(stats_from_root["total_entries"].as_u64() > Some(0), "{stats_from_root}");
+
+    let output = poly_in(&sub, tmp.path(), &lint("main.py"));
+    let stderr = String::from_utf8_lossy(&output.stderr).into_owned();
+    let from_sub = json_of(&output);
+    assert!(from_sub["summary"]["checked"].as_u64() >= Some(1), "{from_sub}");
+    assert!(
+        stderr.contains(&sub.join("poly.toml").display().to_string()) && stderr.contains("[cache]"),
+        "the nested `[cache]` is reported: {stderr}"
+    );
+
+    let stats_from_sub = json_of(&poly_in(&sub, tmp.path(), &["cache", "stats", "--format", "json"]));
+    assert_eq!(
+        stats_from_sub["total_entries"], stats_from_root["total_entries"],
+        "the subdirectory run neither started a second cache nor grew this one"
+    );
+    assert!(repo.join(".poly-cache").join("VERSION").is_file());
+    for stray in [sub.join(".poly-cache"), sub.join("nested-cache")] {
+        assert!(!stray.exists(), "{} must not exist", stray.display());
+    }
+    let default_slots = std::fs::read_dir(tmp.path().join("cache-home"))
+        .into_iter()
+        .flatten()
+        .flatten()
+        .filter(|slot| slot.path().join("VERSION").is_file())
+        .count();
+    assert_eq!(default_slots, 0, "no result cache in the default location");
+}

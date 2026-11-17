@@ -101,8 +101,9 @@ pub struct Config {
     /// The exec-capable keys trust withheld from this config (ADR 0059), reported with the run's
     /// config fingerprints so a caller can tell a restricted run from a trusted one.
     pub trust: poly_config::trust::TrustState,
-    /// `[cache] dir`: where a run keeps its result cache instead of the per-user default. Relative to
-    /// the working directory, as `poly cache` and the hook runner read it; withheld until trusted.
+    /// `[cache] dir`: where a run keeps its result cache instead of the per-user default. Absolute: the
+    /// loader anchors a relative one at the root `poly.toml` declaring it, so `poly cache`, the hook
+    /// runner and a run from any directory name the same cache. Root-only; withheld until trusted.
     pub cache_dir: Option<PathBuf>,
     /// `[cache] enabled`: `false` runs every engine with no result cache, as `--no-cache` does.
     pub cache_enabled: bool,

@@ -1,5 +1,6 @@
 //! `[cache] dir` pins where a lint or fmt run keeps its result cache, as it does for `poly cache` and
-//! the hook runner. One test per process: `POLY_CACHE_HOME` is process-global.
+//! the hook runner, and a relative one names the same directory whichever directory poly starts in.
+//! One test per process: `POLY_CACHE_HOME` is process-global.
 
 use std::path::{Path, PathBuf};
 
@@ -21,6 +22,26 @@ fn files_under(dir: &Path) -> Vec<PathBuf> {
     found
 }
 
+/// The files a cache at `root` stores results in: everything but its bookkeeping files.
+fn stored_results(root: &Path) -> Vec<PathBuf> {
+    files_under(root)
+        .into_iter()
+        .filter(|path| {
+            !matches!(
+                path.file_name().and_then(|name| name.to_str()),
+                Some("VERSION" | "LAST_SWEEP")
+            )
+        })
+        .collect()
+}
+
+fn options() -> RunOptions {
+    RunOptions {
+        explicit_config: true,
+        ..RunOptions::default()
+    }
+}
+
 #[test]
 fn a_lint_and_a_fmt_run_use_the_configured_cache_dir() {
     let home = tempfile::tempdir().expect("tempdir");
@@ -33,24 +54,63 @@ fn a_lint_and_a_fmt_run_use_the_configured_cache_dir() {
     let file = project.path().join("main.py");
     std::fs::write(&file, "x = 1\n").expect("write");
     let configured = tempfile::tempdir().expect("tempdir");
+    let root = configured.path().join("poly-cache");
     let config = Config {
-        cache_dir: Some(configured.path().join("poly-cache")),
+        cache_dir: Some(root.clone()),
         ..Config::default()
     };
-    let opts = RunOptions {
-        explicit_config: true,
-        ..RunOptions::default()
-    };
 
-    poly_core::lint_run(std::slice::from_ref(&file), &config, &opts, false, false).expect("lint");
-    poly_core::format_run(std::slice::from_ref(&file), &config, &opts, false, false).expect("fmt");
-
-    let root = configured.path().join("poly-cache");
-    assert!(root.join("VERSION").is_file(), "the run must open the configured cache");
-    assert!(root.join("results/lint").is_dir() && root.join("results/fmt").is_dir());
+    let lint = poly_core::lint_run(std::slice::from_ref(&file), &config, &options(), false, false).expect("lint");
+    assert_eq!(lint.checked, 1, "the lint run must check the file: {:?}", lint.skipped);
+    let after_lint = stored_results(&root);
+    assert!(
+        !after_lint.is_empty(),
+        "the lint run stores its results in the configured cache"
+    );
+    let fmt = poly_core::format_run(std::slice::from_ref(&file), &config, &options(), false, false).expect("fmt");
+    assert_eq!(fmt.checked, 1, "the fmt run must check the file: {:?}", fmt.skipped);
+    assert!(
+        stored_results(&root).len() > after_lint.len(),
+        "the fmt run stores its results in the configured cache too"
+    );
     assert_eq!(
         files_under(home.path()),
         Vec::<PathBuf>::new(),
         "nothing may be written to the default location"
+    );
+
+    relative_dir_is_the_same_from_the_root_and_a_subdirectory();
+}
+
+/// A relative `[cache] dir` is anchored at the `poly.toml` that declares it, so a run started in a
+/// subdirectory uses the cache a run from the root filled rather than a second, cold one.
+fn relative_dir_is_the_same_from_the_root_and_a_subdirectory() {
+    let project = tempfile::tempdir().expect("tempdir");
+    std::fs::create_dir(project.path().join(".git")).expect("checkout");
+    std::fs::write(project.path().join("poly.toml"), "[cache]\ndir = \".poly-cache\"\n").expect("config");
+    let sub = project.path().join("pkg");
+    std::fs::create_dir(&sub).expect("subdirectory");
+    let file = sub.join("main.py");
+    std::fs::write(&file, "x = 1\n").expect("write");
+    let expected = project.path().join(".poly-cache");
+
+    for start in [project.path(), sub.as_path()] {
+        let config = Config::from(poly_config::PolyConfig::load(start).expect("load config"));
+        assert_eq!(
+            config.cache_dir.as_deref(),
+            Some(expected.as_path()),
+            "from {}",
+            start.display()
+        );
+        let lint = poly_core::lint_run(std::slice::from_ref(&file), &config, &options(), false, false).expect("lint");
+        assert_eq!(lint.checked, 1, "{:?}", lint.skipped);
+    }
+    assert!(
+        !stored_results(&expected).is_empty(),
+        "both runs share the declared cache"
+    );
+    assert!(
+        !sub.join(".poly-cache").exists(),
+        "no second cache next to the subdirectory"
     );
 }

@@ -453,7 +453,7 @@ diagnostics, and are described in [Tool catalog](/polylint/reference/catalog/#to
 | Key | Type | Default | Meaning |
 | --- | --- | --- | --- |
 | `enabled` | boolean | `true` | Master switch for both cache tiers. |
-| `dir` | string | — | Override the cache root directory. |
+| `dir` | string | — | Override the cache root directory; a relative path is resolved against this `poly.toml`. |
 | `[cache.results] hooks` | string | `"safe"` | `"off"`, `"safe"` or `"aggressive"`. |
 | `[cache.sccache] enabled` | boolean | `false` | Enable tier-2 sccache for compiler hooks. |
 | `[cache.sccache] bin` | string | — | `sccache` binary (bare name or absolute path). |
@@ -462,6 +462,10 @@ diagnostics, and are described in [Tool catalog](/polylint/reference/catalog/#to
 
 `dir`, `[cache.sccache] dir` and a path `[cache.sccache] bin` are honoured only in a
 [trusted](/polylint/guides/trust/) repository.
+
+`[cache]` is read from the root config only: the repository's `poly.toml`, or one marked
+`[workspace] root = true`. A nested `poly.toml` that sets it is ignored with a warning naming the file, so every run,
+whichever directory it starts in, uses one cache.
 
 Without `dir`, the result cache lives in the per-user cache directory (`POLY_CACHE_HOME`, else
 `~/.cache/poly` on Linux, `~/Library/Caches/poly` on macOS, `%LOCALAPPDATA%\poly` on Windows), in a

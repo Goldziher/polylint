@@ -411,7 +411,7 @@ impl PolyConfig {
         match find_config(dir) {
             Some(path) => PolyConfig::load_file_with(&path, resolver),
             // A run-scoped `--set` has to land even when no file governs `dir`.
-            None if run_overrides().is_some() => finalize(toml::Table::new(), dir),
+            None if run_overrides().is_some() => finalize(toml::Table::new(), dir, dir),
             None => {
                 let mut config = PolyConfig::default();
                 config.rules.resolve_relative_to(dir);
@@ -442,7 +442,7 @@ impl PolyConfig {
             start
         };
         let mut table = if git_root(dir).is_some() {
-            cascade_table(dir, resolver)?.map_or_else(toml::Table::new, |(table, _)| table)
+            cascade_table(dir, resolver)?.map_or_else(toml::Table::new, |(table, ..)| table)
         } else {
             match find_config(dir) {
                 Some(path) => read_config_table(&path, resolver, &mut Vec::new())?,
@@ -477,7 +477,7 @@ impl PolyConfig {
         let mut visited = Vec::new();
         let table = read_config_table(path, resolver, &mut visited)?;
         let typos_dir = path.parent().unwrap_or(path);
-        finalize(table, typos_dir)
+        finalize(table, typos_dir, typos_dir)
     }
 
     /// Resolve the effective config for `dir` by cascading the ancestor chain of
@@ -502,9 +502,9 @@ impl PolyConfig {
     /// `extends` bases (with a fresh cycle-detection set) before the ancestor
     /// chain is deep-merged.
     pub fn resolve_for_dir_with(dir: &Path, resolver: &dyn BaseConfigResolver) -> anyhow::Result<PolyConfig> {
-        let Some((merged, nearest_dir)) = cascade_table(dir, resolver)? else {
+        let Some((merged, nearest_dir, root_dir)) = cascade_table(dir, resolver)? else {
             if run_overrides().is_some() {
-                return finalize(toml::Table::new(), dir);
+                return finalize(toml::Table::new(), dir, dir);
             }
             let mut config = PolyConfig {
                 typos_native: resolve_typos_native(dir),
@@ -515,27 +515,32 @@ impl PolyConfig {
             config.rules.resolve_relative_to(dir);
             return Ok(config);
         };
-        finalize(merged, &nearest_dir)
+        finalize(merged, &nearest_dir, &root_dir)
     }
 }
 
 /// Deep-merge the ancestor chain of config files governing `dir` into one raw
 /// table — the workspace root as the base, the nearest config as the final
 /// override (ADR 0018) — paired with the nearest config's directory, which
-/// anchors relative paths.
+/// anchors relative paths, and the root config's, which anchors the root-only `[cache] dir`.
 ///
 /// `None` when no config file governs `dir`.
-fn cascade_table(dir: &Path, resolver: &dyn BaseConfigResolver) -> anyhow::Result<Option<(toml::Table, PathBuf)>> {
+fn cascade_table(
+    dir: &Path,
+    resolver: &dyn BaseConfigResolver,
+) -> anyhow::Result<Option<(toml::Table, PathBuf, PathBuf)>> {
     let chain = config_chain(dir, resolver)?;
     let mut iter = chain.into_iter().rev();
-    let Some((mut nearest_dir, mut merged)) = iter.next() else {
+    let Some((root_dir, mut merged)) = iter.next() else {
         return Ok(None);
     };
-    for (d, table) in iter {
+    let mut nearest_dir = root_dir.clone();
+    for (d, mut table) in iter {
+        cache::ignore_nested(&mut table, &d);
         merge_tables(&mut merged, table);
         nearest_dir = d;
     }
-    Ok(Some((merged, nearest_dir)))
+    Ok(Some((merged, nearest_dir, root_dir)))
 }
 
 /// Apply the raw-table passes [`finalize`] performs before deserialization, so a
@@ -688,16 +693,21 @@ fn resolve_rules_dirs_in_table(table: &mut toml::Table, dir: &Path) {
 
 /// Deserialize a (possibly cascade-merged) config table into a validated
 /// [`PolyConfig`], populating `typos_native` by searching upward from
-/// `typos_dir`.
+/// `typos_dir`. A relative `[cache] dir` is anchored at `cache_anchor`, the root
+/// config's directory, and one a `--set` layer supplies at the working directory.
 ///
 /// The effective `[discovery] exclude` is folded into the file-scoped
 /// `[hooks.builtin]` hooks first (see [`merge::inherit_discovery_excludes`]), and
 /// the merge directives that drove all of it are stripped — they are not part of
 /// the typed schema.
-fn finalize(mut table: toml::Table, typos_dir: &Path) -> anyhow::Result<PolyConfig> {
+fn finalize(mut table: toml::Table, typos_dir: &Path, cache_anchor: &Path) -> anyhow::Result<PolyConfig> {
     // Before the `--set` layer: the user's own command line is not gated.
     let trust = trust::gate(&mut table, typos_dir);
+    cache::anchor_dir_in_table(&mut table, cache_anchor);
     overrides::apply_run_overrides(&mut table);
+    if let Ok(cwd) = std::env::current_dir() {
+        cache::anchor_dir_in_table(&mut table, &cwd);
+    }
     normalize_effective_table(&mut table);
     let raw: RawPolyConfig = table.try_into()?;
     let mut config = PolyConfig { trust, ..raw.into() };

@@ -203,7 +203,10 @@ Each item is described in full under the section named in brackets.
 - **`poly lint` and `poly fmt` honour `[cache] dir`.** The per-file runner always used the per-user default cache (or
   `POLY_CACHE_HOME`), so a configured directory was measured and cleaned by `poly cache` but never written by a lint or
   fmt run. Runs and hooks now open the cache through one resolver: `[cache] dir` when set, with its stat index kept
-  per checkout, else the default location.
+  per checkout, else the default location. A relative `dir` is resolved against the `poly.toml` that declares it, not
+  the working directory, so a run from a subdirectory, `poly cache` and the MCP server use the same cache.
+- **`[cache]` is root-only.** A nested `poly.toml` that sets it is ignored with a warning naming the file; before, a
+  run started in that directory took its cache settings while one from the root did not.
 - **`poly lint` and `poly fmt` honour `[cache] enabled = false`.** Only `--no-cache` turned the result cache off;
   the config key was read by `poly cache` alone. A run with it set now stores and replays nothing.
 - **A missing native tool shows in the report.** When `rustfmt`, `gofmt`, `shfmt` or `shellcheck` (or an opt-in

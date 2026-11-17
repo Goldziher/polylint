@@ -288,7 +288,7 @@ pub fn assess(
 fn assess_config(root: &Path, dir: &Path, resolver: &dyn BaseConfigResolver) -> anyhow::Result<ConfigAssessment> {
     let mut digests = BTreeSet::new();
     let mut names = BTreeSet::new();
-    if let Some((table, nearest)) = super::cascade_table(dir, resolver)? {
+    if let Some((table, nearest, _)) = super::cascade_table(dir, resolver)? {
         let entries = keys::exec_entries(&table);
         if !entries.is_empty() {
             digests.insert(keys::digest(root, &nearest, &entries));
