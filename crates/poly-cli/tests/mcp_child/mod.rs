@@ -23,11 +23,23 @@ pub struct McpChild {
 
 impl McpChild {
     /// Start `poly mcp` in `dir`, offline, with its caches under `cache`, and initialize it.
+    // Each test binary compiles this module on its own, and not every one uses every helper.
+    #[allow(dead_code)]
     pub fn start(dir: &Path, cache: &Path) -> Self {
+        Self::start_with(dir, cache, &[("POLY_OFFLINE", "1".as_ref())])
+    }
+
+    /// Start `poly mcp` in `dir` with its caches under `cache` and `env` set, and initialize it.
+    /// Nothing else is set, so a server started without `POLY_OFFLINE` may reach the network.
+    // Each test binary compiles this module on its own, and not every one uses every helper.
+    #[allow(dead_code)]
+    pub fn start_with(dir: &Path, cache: &Path, env: &[(&str, &std::ffi::OsStr)]) -> Self {
         let mut child = Command::new(POLY)
             .arg("mcp")
             .current_dir(dir)
-            .env("POLY_OFFLINE", "1")
+            .env_remove("POLY_OFFLINE")
+            .env_remove("POLY_TRUST")
+            .envs(env.iter().copied())
             .env("POLY_CACHE_HOME", cache)
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())

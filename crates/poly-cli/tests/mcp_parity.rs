@@ -220,6 +220,122 @@ fn lint_and_format_runs_return_the_cli_document_and_verdict() {
     }
 }
 
+/// Whether any result of `document` is for `path`.
+fn reports(document: &Value, path: &str) -> bool {
+    document["results"]
+        .as_array()
+        .is_some_and(|results| results.iter().any(|result| result["path"] == path))
+}
+
+/// The `cache_hit` flag of every per-engine debug record in `document`.
+fn cache_hits(document: &Value) -> Vec<bool> {
+    document["results"]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .flat_map(|result| result["debug"]["engines"].as_array().into_iter().flatten())
+        .filter_map(|engine| engine["cache_hit"].as_bool())
+        .collect()
+}
+
+/// The options that select the config and shape the run, each with an effect that shows it was
+/// routed: a parameter that merely exists would leave the two documents different.
+#[test]
+fn config_selection_and_run_options_reach_both_surfaces() {
+    const LINT: [&str; 5] = ["lint", "--format", "json", "--workspace", "never"];
+    let fixture = Fixture::new(&[
+        ("ok.py", CLEAN),
+        ("bad.py", UNUSED_IMPORT),
+        ("sub/b.py", UNUSED_IMPORT),
+        ("poly.toml", b""),
+        ("sub/poly.toml", b"[defaults]\nline_length = 100\n"),
+        ("alt.toml", b"[discovery]\nexclude = [\"bad.py\"]\n"),
+    ]);
+    let mut server = fixture.server();
+    let lint = |extra: &[&'static str]| [&LINT[..], extra].concat();
+
+    // A nested `poly.toml` governs its own directory on both surfaces.
+    let nested = assert_same_run(
+        &fixture,
+        &mut server,
+        &lint(&["bad.py", "sub/b.py"]),
+        "check",
+        json!({ "paths": ["bad.py", "sub/b.py"] }),
+    );
+    assert_eq!(nested["configs"].as_array().map(Vec::len), Some(2), "{nested}");
+    assert_eq!(nested["configs"][1]["root"], "sub", "{nested}");
+
+    // An explicit config replaces the discovered one.
+    let explicit = assert_same_run(
+        &fixture,
+        &mut server,
+        &[
+            "--config",
+            "alt.toml",
+            "lint",
+            "--format",
+            "json",
+            "--workspace",
+            "never",
+            "bad.py",
+            "ok.py",
+        ],
+        "check",
+        json!({ "paths": ["bad.py", "ok.py"], "config": "alt.toml" }),
+    );
+    assert!(
+        reports(&nested, "bad.py") && !reports(&explicit, "bad.py"),
+        "{explicit}"
+    );
+    assert_eq!(explicit["discovery"]["excluded_explicit"], 1, "{explicit}");
+
+    // Dropping an engine, a worker count and the missing-component policy.
+    let skipped = assert_same_run(
+        &fixture,
+        &mut server,
+        &lint(&["--skip", "ruff", "-j", "1", "--on-missing", "skip", "bad.py"]),
+        "check",
+        json!({ "paths": ["bad.py"], "skip": ["ruff"], "jobs": 1, "on_missing": "skip" }),
+    );
+    assert!(!reports(&skipped, "bad.py"), "ruff was skipped: {skipped}");
+}
+
+/// Debug records carry timings, which differ between any two runs, so compare what they say
+/// about the cache: a plain run fills it first, and `no_cache` must bypass it on both surfaces.
+#[test]
+fn debug_records_and_the_cache_bypass_reach_both_surfaces() {
+    const LINT: [&str; 5] = ["lint", "--format", "json", "--workspace", "never"];
+    let fixture = Fixture::new(&[("bad.py", UNUSED_IMPORT)]);
+    let mut server = fixture.server();
+    let lint = |extra: &[&'static str]| [&LINT[..], extra].concat();
+    fixture.cli(&lint(&["bad.py"]));
+    for (flags, arguments, hit) in [
+        (
+            &["--debug", "bad.py"][..],
+            json!({ "paths": ["bad.py"], "debug": true }),
+            true,
+        ),
+        (
+            &["--debug", "--no-cache", "bad.py"],
+            json!({ "paths": ["bad.py"], "debug": true, "no_cache": true }),
+            false,
+        ),
+    ] {
+        let (cli_document, _, _) = fixture.cli(&lint(flags));
+        let (mcp_document, _) = mcp(&server.call("check", arguments.clone()));
+        let (cli_hits, mcp_hits) = (cache_hits(&cli_document), cache_hits(&mcp_document));
+        assert!(
+            !cli_hits.is_empty(),
+            "the CLI attached no debug records: {cli_document}"
+        );
+        assert_eq!(cli_hits, mcp_hits, "{arguments}");
+        assert!(
+            mcp_hits.iter().all(|cached| *cached == hit),
+            "{arguments}: {mcp_hits:?}"
+        );
+    }
+}
+
 #[test]
 fn a_run_that_cannot_start_is_not_verified_on_both_surfaces() {
     let fixture = Fixture::new(&[("ok.py", CLEAN)]);
@@ -294,6 +410,11 @@ fn info_topics_are_the_cli_documents() {
     let (rules, _, _) = fixture.cli(&["rules", "list", "--format", "json"]);
     let (info, class) = mcp(&server.call("info", json!({ "topics": ["config", "cache", "rules"] })));
     assert_eq!(class, Class::Verified, "{info}");
+    // Both sides of each comparison below would be null if neither surface answered.
+    for (topic, cli) in [("config", &config), ("cache", &cache), ("rules", &rules)] {
+        assert!(cli.is_object(), "the CLI printed no {topic} document");
+        assert!(info[topic].is_object(), "info has no {topic} document: {info}");
+    }
     assert_eq!(
         info["config"], config,
         "info config is `poly config show --format json`"
