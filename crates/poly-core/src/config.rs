@@ -104,6 +104,8 @@ pub struct Config {
     /// `[cache] dir`: where a run keeps its result cache instead of the per-user default. Relative to
     /// the working directory, as `poly cache` and the hook runner read it; withheld until trusted.
     pub cache_dir: Option<PathBuf>,
+    /// `[cache] enabled`: `false` runs every engine with no result cache, as `--no-cache` does.
+    pub cache_enabled: bool,
 }
 
 impl Default for Config {
@@ -132,6 +134,7 @@ impl Default for Config {
             components: Default::default(),
             trust: Default::default(),
             cache_dir: None,
+            cache_enabled: true,
         }
     }
 }
@@ -523,6 +526,7 @@ impl From<poly_config::PolyConfig> for Config {
             components: pc.components,
             trust: pc.trust,
             cache_dir: pc.cache.dir.map(PathBuf::from),
+            cache_enabled: pc.cache.enabled,
         }
     }
 }

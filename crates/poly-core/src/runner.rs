@@ -746,7 +746,7 @@ fn open_cache(config: &Config, enabled: bool) -> anyhow::Result<ResultCache> {
         Some(root) => root.to_path_buf(),
         None => std::env::current_dir().map_err(|e| anyhow::anyhow!("could not read current directory: {e}"))?,
     };
-    ResultCache::open_for_run(config.cache_dir.as_deref(), &start, enabled)
+    ResultCache::open_for_run(config.cache_dir.as_deref(), &start, enabled && config.cache_enabled)
 }
 
 /// Size the global pool once. A rooted run brings a pool of its own ([`rooted`]).

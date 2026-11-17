@@ -204,6 +204,8 @@ Each item is described in full under the section named in brackets.
   `POLY_CACHE_HOME`), so a configured directory was measured and cleaned by `poly cache` but never written by a lint or
   fmt run. Runs and hooks now open the cache through one resolver: `[cache] dir` when set, with its stat index kept
   per checkout, else the default location.
+- **`poly lint` and `poly fmt` honour `[cache] enabled = false`.** Only `--no-cache` turned the result cache off;
+  the config key was read by `poly cache` alone. A run with it set now stores and replays nothing.
 - **A missing native tool shows in the report.** When `rustfmt`, `gofmt`, `shfmt` or `shellcheck` (or an opt-in
   native tool that is switched on) is not on `PATH`, the summary prints one line per tool (`rustfmt not found on PATH:
   3 Rust files formatted by the generic tier`) and the `json`/`toon` document and MCP results carry
