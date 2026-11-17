@@ -113,10 +113,16 @@ fn the_web_component_rereads_the_oxlintrc_when_the_host_starts_a_run() {
     std::fs::create_dir(repo.path().join(".git")).unwrap();
     let rc = repo.path().join(".oxlintrc.json");
     std::fs::write(&rc, r#"{"rules": {"no-debugger": "error", "eqeqeq": "off"}}"#).unwrap();
+    // The host's config load names the project's root oxlint config in the engine options.
+    let mut options = toml::Table::new();
+    options.insert(
+        poly_engine_api::host_hooks::oxlintrc::RC_KEY.to_owned(),
+        toml::Value::String(rc.to_string_lossy().into_owned()),
+    );
     let cfg = EngineConfig {
         globals: GlobalDefaults::default(),
         indent_width: Language::TypeScript.default_indent_width(),
-        options: toml::Table::new(),
+        options,
     };
     let src = SourceFile {
         path: repo.path().join("a.ts"),
