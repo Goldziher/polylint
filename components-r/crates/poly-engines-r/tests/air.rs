@@ -212,3 +212,37 @@ fn an_invalid_air_toml_is_an_error_naming_the_file() {
     let chain = format!("{:#}", AirEngine.format(&src, &config("")).unwrap_err());
     assert!(chain.contains("invalid air configuration"), "{chain}");
 }
+
+/// The stat fast path keys a file by `file_context`, not `format_input_salt`, so the `air.toml` must reach it too:
+/// otherwise an unchanged `.R` file replays its old verdict after an `air.toml` edit.
+#[test]
+fn the_file_context_follows_the_air_toml_and_declares_its_hook() {
+    use poly_engine_api::desc::hooks;
+    let dir = tempfile::tempdir().unwrap();
+    let file = dir.path().join("a.R");
+    let cfg = config("");
+    std::fs::write(dir.path().join("air.toml"), "[format]\nline-width = 100\n").unwrap();
+    let first = AirEngine
+        .file_context(&file, &cfg)
+        .expect("the air.toml is a per-file input");
+    std::fs::write(dir.path().join("air.toml"), "[format]\nline-width = 90\n").unwrap();
+    assert_ne!(Some(first), AirEngine.file_context(&file, &cfg));
+    assert_ne!(
+        AirEngine.overridden_hooks() & hooks::FILE_CONTEXT,
+        0,
+        "a component host only asks a declared hook"
+    );
+}
+
+/// The key does not depend on where the checkout lives, so a second worktree reuses the first one's results.
+#[test]
+fn the_format_cache_key_does_not_depend_on_the_checkout_location() {
+    let cfg = config("");
+    let salt = || {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::create_dir(dir.path().join("R")).unwrap();
+        std::fs::write(dir.path().join("air.toml"), "[format]\nline-width = 100\n").unwrap();
+        AirEngine.format_input_salt(&dir.path().join("R/a.R"), &cfg)
+    };
+    assert_eq!(salt(), salt());
+}

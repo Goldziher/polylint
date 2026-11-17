@@ -9,7 +9,7 @@ use common::{FakeComponent, config, desc, describe_of, init, source};
 use poly_component_host::{ComponentEngine, ComponentSlot, SlotStatus, component_version};
 use poly_component_protocol::hooks;
 use poly_engine_api::declined::Declined;
-use poly_engine_api::engine::{BatchSupport, Batching, Engine, FormatOutput, PlanPolicy};
+use poly_engine_api::engine::{BatchSupport, Batching, Engine, FormatOutput, PlanPolicy, ProjectAnalysis};
 
 fn engine_with(hooks: u32, host_hook: &str) -> (ComponentEngine, Arc<FakeComponent>) {
     let wire = desc(hooks, host_hook);
@@ -96,10 +96,10 @@ fn error_keeps_message_and_chain() {
     assert_eq!(chain, ["parse failed", "bad token", "at byte 3"]);
 }
 
+/// An undeclared cache-path hook is the host hook's answer, without loading the component.
 #[test]
-fn cache_path_hooks_never_reach_the_component() {
-    let all = hooks::RUN_CONTEXT | hooks::FILE_CONTEXT | hooks::LINT_INPUT_SALT | hooks::FORMAT_INPUT_SALT;
-    let (engine, fake) = engine_with(all, "none");
+fn undeclared_cache_path_hooks_never_reach_the_component() {
+    let (engine, fake) = engine_with(hooks::PROVIDES_LANGUAGE, "none");
     let cfg = config(4);
     let path = Path::new("q.sql");
     assert_eq!(engine.run_context(&cfg), "");
@@ -113,10 +113,108 @@ fn cache_path_hooks_never_reach_the_component() {
     ));
     assert_eq!(engine.name(), "demo");
     assert!(engine.capabilities().lint);
-    assert!(engine.provides_language_lint(&src.language, &cfg));
     assert!(engine.skip_reason(&src).is_none());
     assert!(fake.calls().is_empty(), "{:?}", fake.calls());
     assert_eq!(engine.slot().status(), SlotStatus::Unloaded);
+}
+
+/// A component engine that overrides a cache-path hook computes an input the host hook cannot
+/// know (air digests `air.toml`), so the host asks the component, and its answer reaches the key.
+#[test]
+fn declared_cache_path_hooks_are_answered_by_the_component() {
+    let all = hooks::RUN_CONTEXT | hooks::FILE_CONTEXT | hooks::LINT_INPUT_SALT | hooks::FORMAT_INPUT_SALT;
+    let (engine, fake) = engine_with(all, "none");
+    let cfg = config(4);
+    let path = Path::new("q.sql");
+    assert_eq!(engine.run_context(&cfg), "component run context");
+    assert_eq!(engine.file_context(path, &cfg).as_deref(), Some("FileContext:q.sql"));
+    assert_eq!(
+        engine.lint_input_salt(path, &cfg).as_deref(),
+        Some("LintInputSalt:q.sql")
+    );
+    assert_eq!(
+        engine.format_input_salt(path, &cfg).as_deref(),
+        Some("FormatInputSalt:q.sql")
+    );
+    for request in ["RunContext", "FileContext", "LintInputSalt", "FormatInputSalt"] {
+        assert_eq!(fake.count(request), 1, "{request}: {:?}", fake.calls());
+    }
+}
+
+/// A component that cannot answer a declared salt never yields the trait default, which would key
+/// the result as if the input did not exist.
+#[test]
+fn a_failed_declared_salt_is_not_the_default() {
+    let wire = desc(hooks::FORMAT_INPUT_SALT, "none");
+    let engine = ComponentEngine::new(
+        "demo-component",
+        &wire,
+        "ab",
+        ComponentSlot::failed("demo-component", "x"),
+    )
+    .unwrap();
+    let salt = engine.format_input_salt(Path::new("q.sql"), &config(4));
+    assert!(salt.is_some_and(|salt| salt.contains("hook-failed")));
+}
+
+/// Every method `coverage.rs` says is carried by a request is sent as that request by the host,
+/// for an engine that declares every hook.
+#[test]
+fn every_request_covered_method_reaches_the_component() {
+    use poly_component_protocol::coverage::{Coverage, ENGINE_METHODS};
+    let all = hooks::RUN_CONTEXT
+        | hooks::FILE_CONTEXT
+        | hooks::PROVIDES_LANGUAGE
+        | hooks::SKIP_REASON
+        | hooks::LINT_INPUT_SALT
+        | hooks::FORMAT_INPUT_SALT
+        | hooks::LINT_CACHE_SALT
+        | hooks::BATCH_SUPPORT;
+    let path = Path::new("q.sql");
+    for (method, coverage) in ENGINE_METHODS {
+        let Coverage::Request(request) = coverage else {
+            continue;
+        };
+        let (engine, fake) = engine_with(all, "none");
+        let cfg = config(4);
+        let src = source("x");
+        match *method {
+            "run_context" => drop(engine.run_context(&cfg)),
+            "file_context" => drop(engine.file_context(path, &cfg)),
+            "lint_input_salt" => drop(engine.lint_input_salt(path, &cfg)),
+            "format_input_salt" => drop(engine.format_input_salt(path, &cfg)),
+            "lint_cache_salt" => drop(engine.lint_cache_salt(&src)),
+            "provides_language_lint" => drop(engine.provides_language_lint(&src.language, &cfg)),
+            "provides_language_format" => drop(engine.provides_language_format(&src.language, &cfg)),
+            "skip_reason" | "format" => drop(engine.format(&src, &cfg)),
+            "lint" => drop(engine.lint(&src, &cfg)),
+            "batch_support" => drop(engine.batch_support(&cfg)),
+            "format_batch" => drop(engine.format_batch(std::slice::from_ref(&src), &cfg)),
+            "lint_batch" => drop(engine.lint_batch(std::slice::from_ref(&src), &cfg)),
+            "project_check" => {
+                let files = [poly_engine_api::project::ProjectFile {
+                    path: path.to_path_buf(),
+                    language: src.language.clone(),
+                    content: src.content.clone(),
+                }];
+                let environment = poly_engine_api::project::ProjectEnvironment::default();
+                let request = poly_engine_api::project::ProjectRequest {
+                    root: Path::new(""),
+                    files: &files,
+                    config: &cfg,
+                    environment: &environment,
+                    threads: None,
+                };
+                drop(engine.project_check(&request));
+            }
+            other => panic!("no exercise for `{other}`, which coverage.rs says is carried by {request}"),
+        }
+        assert!(
+            fake.count(request) >= 1,
+            "{method} did not send {request}: {:?}",
+            fake.calls()
+        );
+    }
 }
 
 #[test]

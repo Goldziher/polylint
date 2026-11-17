@@ -69,7 +69,11 @@ pub fn component_version(index_version: &str, lock_sha256: &str) -> String {
 ///
 /// Three sources answer its methods: the index (static metadata, decided at construction), the
 /// host-side cache hooks of [`poly_engine_api::host_hooks`] (never a transport call, so a warm
-/// run does not load the component) and the component itself (everything per file).
+/// run does not load the component) and the component itself (everything per file). A cache-path
+/// hook (`run_context`, `file_context`, `lint_input_salt`, `format_input_salt`) is asked of the
+/// component only when its index `hooks` bit says the engine overrides the method: the host hook
+/// cannot know an input the engine computes itself (air's `air.toml`), and a key without it would
+/// replay results computed under another config.
 ///
 /// The name, languages and option keys are leaked: an engine is built once per component per
 /// process and lives for the rest of it, and the [`Engine`] trait demands `'static` data.
@@ -345,6 +349,39 @@ impl ComponentEngine {
             self.name
         )
     }
+
+    /// Whether a cache-path hook is asked of the component: it declared overriding the method
+    /// (its index `hooks` bit), so the host hook cannot answer for it, and the component is usable.
+    fn forwards(&self, bit: u32) -> bool {
+        self.unavailable.is_none() && self.hook(bit)
+    }
+
+    /// Ask the component a per-path cache-path hook (`FileContext`, `LintInputSalt`, `FormatInputSalt`).
+    fn path_hook(&self, name: &str, cfg: &EngineConfig, request: Request) -> Option<String> {
+        match self.connect().and_then(|c| c.call(self.name, cfg, request, &[])) {
+            Ok(Payload::OptString(answer)) => answer,
+            Ok(_) => Some(self.hook_failed(name, &self.unexpected(name))),
+            Err(error) => Some(self.hook_failed(name, &error)),
+        }
+    }
+
+    /// The cache input to use when the component could not answer a cache-path hook.
+    ///
+    /// Not the trait default: that would key the result as if the input the engine declared did not
+    /// exist, and could replay a result computed under another value of it. A marker unique to this
+    /// process keys a result no other run can hit.
+    fn hook_failed(&self, request: &str, error: &anyhow::Error) -> String {
+        tracing::warn!(engine = self.name, "{request} unavailable: {error:#}");
+        static NONCE: std::sync::OnceLock<String> = std::sync::OnceLock::new();
+        NONCE
+            .get_or_init(|| {
+                let now = std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .map_or(0, |elapsed| elapsed.as_nanos());
+                format!("\u{0}hook-failed:{}:{now}", std::process::id())
+            })
+            .clone()
+    }
 }
 
 fn wire_file(src: &SourceFile) -> WireFile {
@@ -473,6 +510,61 @@ impl Engine for ComponentEngine {
             }),
             _ => Err(self.unexpected("Format")),
         }
+    }
+
+    /// The component's answer when it declares `RUN_CONTEXT`, else the host hook's.
+    fn run_context(&self, cfg: &EngineConfig) -> String {
+        if !self.forwards(hooks::RUN_CONTEXT) {
+            return poly_engine_api::host_hooks::run_context(self.host_hook, cfg);
+        }
+        let request = Request::RunContext {
+            engine: self.name.to_owned(),
+            config: 0,
+        };
+        match self.connect().and_then(|c| c.call(self.name, cfg, request, &[])) {
+            Ok(Payload::Text(context)) => context,
+            Ok(_) => self.hook_failed("RunContext", &self.unexpected("RunContext")),
+            Err(error) => self.hook_failed("RunContext", &error),
+        }
+    }
+
+    /// The component's answer when it declares `FILE_CONTEXT`, else the host hook's.
+    fn file_context(&self, path: &Path, cfg: &EngineConfig) -> Option<String> {
+        if !self.forwards(hooks::FILE_CONTEXT) {
+            return poly_engine_api::host_hooks::file_context(self.host_hook, path, cfg);
+        }
+        let request = Request::FileContext {
+            engine: self.name.to_owned(),
+            config: 0,
+            path: path_string(path),
+        };
+        self.path_hook("FileContext", cfg, request)
+    }
+
+    /// The component's answer when it declares `LINT_INPUT_SALT`, else the host hook's.
+    fn lint_input_salt(&self, path: &Path, cfg: &EngineConfig) -> Option<String> {
+        if !self.forwards(hooks::LINT_INPUT_SALT) {
+            return poly_engine_api::host_hooks::lint_input_salt(self.host_hook, path, cfg);
+        }
+        let request = Request::LintInputSalt {
+            engine: self.name.to_owned(),
+            config: 0,
+            path: path_string(path),
+        };
+        self.path_hook("LintInputSalt", cfg, request)
+    }
+
+    /// The component's answer when it declares `FORMAT_INPUT_SALT`, else the host hook's.
+    fn format_input_salt(&self, path: &Path, cfg: &EngineConfig) -> Option<String> {
+        if !self.forwards(hooks::FORMAT_INPUT_SALT) {
+            return poly_engine_api::host_hooks::format_input_salt(self.host_hook, path, cfg);
+        }
+        let request = Request::FormatInputSalt {
+            engine: self.name.to_owned(),
+            config: 0,
+            path: path_string(path),
+        };
+        self.path_hook("FormatInputSalt", cfg, request)
     }
 
     fn lint_cache_salt(&self, src: &SourceFile) -> Option<String> {

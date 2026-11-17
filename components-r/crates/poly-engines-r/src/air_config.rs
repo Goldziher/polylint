@@ -182,10 +182,18 @@ pub(crate) fn excluded_by(settings: &Settings, file: &Path) -> Option<String> {
 }
 
 /// A digest of the project `air.toml` governing `file`, for the cache key; `None` without one.
+///
+/// The config is named by how many directories above `file` it sits, not by its absolute path, so the same tree in
+/// another checkout (a second worktree, the hook snapshot) keys the same.
 pub(crate) fn digest(file: &Path) -> Option<String> {
     let found = find(file).ok().flatten()?;
+    let directory = absolute(file);
+    let levels = found
+        .root()
+        .and_then(|root| directory.parent()?.strip_prefix(root).ok())
+        .map_or(usize::MAX, |below| below.components().count());
     let mut hasher = blake3::Hasher::new();
-    hasher.update(found.path.to_string_lossy().as_bytes());
+    hasher.update(&levels.to_le_bytes());
     hasher.update(&[0]);
     hasher.update(found.text.as_bytes());
     Some(hasher.finalize().to_hex().to_string())
