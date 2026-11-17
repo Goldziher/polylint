@@ -1,6 +1,6 @@
 //! One analysis: plan the programs, build a few at a time (the largest first, each with checkers in proportion to its
 //! share of the judged files), walk their judged files on their checkers, copy the facts out and free each program as
-//! soon as its walk ends (skif ADR 0010).
+//! soon as its walk ends.
 //!
 //! The programs can start before the host knows its query ([`start`]): they are planned from the files that may be
 //! judged, and the first ones build while the host works the query out. Each waits, built, until
@@ -296,7 +296,7 @@ fn types_pool(threads: Option<NonZeroUsize>) -> Option<Arc<rayon::ThreadPool>> {
     rayon::ThreadPoolBuilder::new()
         .num_threads(cores_of(threads))
         .stack_size(PROGRAM_STACK_SIZE)
-        .thread_name(|index| format!("js-types-{index}"))
+        .thread_name(|index| format!("js-types-check-{index}"))
         .build()
         .ok()
         .map(Arc::new)

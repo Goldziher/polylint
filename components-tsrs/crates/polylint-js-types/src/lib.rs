@@ -1,13 +1,13 @@
 //! Type-aware facts about JavaScript and TypeScript class, enum and namespace members, from the TypeScript checker of
 //! tsrs.
 //!
-//! A host's module graph and syntax facts come from its own parser (skif's from oxc). Where a project has types,
+//! A host's module graph and syntax facts come from its own parser (oxc, for one). Where a project has types,
 //! [`analyze`] answers what syntax alone cannot: which member a read reaches through a typed receiver, an override or
 //! an implemented interface. The answer is owned data ([`TypeFacts`]). The programs are built, shared and freed
 //! through `polylint-tsrs`.
 //!
-//! The crate was skif's `skif-js-types` (skif ADR 0010 records its design); polylint ADR 0081 records why it is
-//! published from polylint. The known false findings of the typed run are listed in `KNOWN-DEFECTS.md`.
+//! polylint ADR 0081 records where the crate came from and why it is published on its own. The known false findings
+//! of the typed run are listed in `KNOWN-DEFECTS.md`.
 
 mod coverage;
 mod error;

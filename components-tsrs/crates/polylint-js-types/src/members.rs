@@ -1,4 +1,4 @@
-//! The declarations the host asks about and how what the checker found credits their members (skif ADR 0010): a read credits
+//! The declarations the host asks about and how what the checker found credits their members: a read credits
 //! the member of the declaration it lands on, and a read of a base class's or an interface's member also credits the
 //! member each class that extends or implements it has under that name: its own, or the one it inherits.
 

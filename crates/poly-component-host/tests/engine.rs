@@ -222,6 +222,33 @@ fn every_request_covered_method_reaches_the_component() {
     }
 }
 
+/// A component's decline reaches the host as a decline (ADR 0079). `project_check` flattens it into no findings, the
+/// same as a clean pass, so a comparison that must tell the two apart compares `project_report`.
+#[test]
+fn a_declined_project_crosses_the_proxy_as_a_decline() {
+    use poly_engine_api::project::{ProjectEnvironment, ProjectRequest};
+    let (engine, _) = engine_with(0, "none");
+    let cfg = config(4);
+    let environment = ProjectEnvironment::default();
+    let request = |root: &'static str| ProjectRequest {
+        root: Path::new(root),
+        files: &[],
+        config: &cfg,
+        environment: &environment,
+        threads: None,
+        targets: None,
+    };
+    let declined = engine.project_report(&request("declined")).unwrap();
+    let clean = engine.project_report(&request("clean")).unwrap();
+    assert_eq!(format!("{declined:?}"), r#"Declined("nothing to check")"#);
+    assert_eq!(format!("{clean:?}"), "Checked([])");
+    assert_eq!(
+        format!("{:?}", engine.project_check(&request("declined")).unwrap()),
+        format!("{:?}", engine.project_check(&request("clean")).unwrap()),
+        "project_check cannot tell a decline from a clean pass"
+    );
+}
+
 #[test]
 fn per_file_hooks_are_called_only_when_the_bit_is_set() {
     let (engine, fake) = engine_with(hooks::PROVIDES_LANGUAGE, "none");

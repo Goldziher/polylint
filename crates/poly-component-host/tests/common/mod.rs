@@ -78,6 +78,7 @@ struct State {
 /// by `Format` / `FormatBatch` (`templated input`), anything else lints to one diagnostic titled
 /// with the body length and formats to upper case. `BatchSupport` answers format-only. The
 /// cache-path hooks answer `<request>:<path>` (`RunContext` a fixed text, `LintCacheSalt` the length).
+/// `ProjectCheck` declines a project whose root is `declined` and finds nothing in any other.
 pub struct FakeComponent {
     describe: Describe,
     state: Mutex<State>,
@@ -191,6 +192,10 @@ impl FakeComponent {
                 ok(Payload::OptString(Some(format!("{}:{path}", request.variant_name()))))
             }
             Request::LintCacheSalt { .. } => ok(Payload::OptString(Some(format!("{} bytes", body.len())))),
+            Request::ProjectCheck { root, .. } if root == "declined" => {
+                ok(Payload::ProjectDeclined("nothing to check".into()))
+            }
+            Request::ProjectCheck { .. } => ok(Payload::Project(Vec::new())),
             other => fail(WireErrorKind::Protocol, other.variant_name(), &[]),
         }
     }

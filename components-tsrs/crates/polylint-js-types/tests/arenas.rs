@@ -1,9 +1,9 @@
-//! Repeated analyses free the memory of their programs (skif ADR 0010). The arena counter is process-wide, so this file
+//! Repeated analyses free the memory of their programs. The arena counter is process-wide, so this file
 //! holds the only test of its binary: no other analysis runs beside it.
 //!
 //! The analysis runs on one thread, as a long-lived host would run it per request: the first run leaves the calling
 //! thread's own arena behind, which later runs reuse, and nothing else may stay. With several checker threads, the
-//! tsrs worker threads keep arenas of their own, which is why long-lived hosts run without types (skif ADR 0010).
+//! tsrs worker threads keep arenas of their own, which is why long-lived hosts run without types.
 
 #![allow(clippy::unwrap_used, clippy::expect_used)]
 

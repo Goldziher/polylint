@@ -18,9 +18,11 @@ pub mod service {
     /// The whole-project lint phase ([`super::WorkspaceRequest`] -> [`super::RunReply`] whose document is a
     /// `WorkspaceReport`, or a failure document when the phase did not run).
     pub const WORKSPACE_LINT: &str = "workspace.lint";
-    /// Result-cache footprint ([`super::CacheRequest`] -> `CacheStatsReport`).
+    /// Result-cache footprint ([`super::CacheRequest`] -> `CacheStatsReport`). A host also reads
+    /// `null`, the body a frontend sent before the request existed, as the default request.
     pub const CACHE_STATS: &str = "cache.stats";
-    /// Empty the result cache ([`super::CacheRequest`] -> `CacheFreedReport`).
+    /// Empty the result cache ([`super::CacheRequest`] -> `CacheFreedReport`); `null` as for
+    /// [`CACHE_STATS`].
     pub const CACHE_CLEAN: &str = "cache.clean";
     /// Evict stale or oversized cache entries ([`super::CacheGcRequest`] -> `CacheFreedReport`).
     pub const CACHE_GC: &str = "cache.gc";
@@ -346,6 +348,29 @@ pub fn encode_failure(failure: &Failure) -> String {
     serde_json::to_string(failure).unwrap_or_else(|_| failure.message.clone())
 }
 
+/// The classified failure a host's error string carries, if any. A kind this frontend does not
+/// know (a newer host's) reads as [`FailureKind::Pipeline`], keeping the host's message.
+///
+/// [`FailureKind::Pipeline`]: crate::dto::FailureKind::Pipeline
+fn decode_failure(message: &str) -> Option<Failure> {
+    /// A [`Failure`] whose kind is not checked against this frontend's classes.
+    #[derive(Deserialize)]
+    struct AnyFailure {
+        #[serde(rename = "kind")]
+        _kind: serde::de::IgnoredAny,
+        message: String,
+    }
+
+    if let Ok(failure) = serde_json::from_str::<Failure>(message) {
+        return Some(failure);
+    }
+    let AnyFailure { message, .. } = serde_json::from_str(message).ok()?;
+    Some(Failure {
+        kind: crate::dto::FailureKind::Pipeline,
+        message,
+    })
+}
+
 /// Encode `request`, call `service` and decode the reply.
 ///
 /// # Errors
@@ -360,12 +385,12 @@ pub fn call<Req: Serialize, Rep: DeserializeOwned>(
     let bytes = serde_json::to_vec(request).with_context(|| format!("cannot encode the `{service}` request"))?;
     let reply = caller
         .call(service, &bytes)
-        .map_err(|message| match serde_json::from_str::<Failure>(&message) {
-            Ok(failure) => anyhow::Error::new(ServiceFailure {
+        .map_err(|message| match decode_failure(&message) {
+            Some(failure) => anyhow::Error::new(ServiceFailure {
                 service: service.to_owned(),
                 failure,
             }),
-            Err(_) => anyhow::anyhow!("host service `{service}` failed: {message}"),
+            None => anyhow::anyhow!("host service `{service}` failed: {message}"),
         })?;
     serde_json::from_slice(&reply).with_context(|| format!("cannot decode the `{service}` reply"))
 }
@@ -394,6 +419,48 @@ mod tests {
         let decoded = error.downcast_ref::<ServiceFailure>().expect("a classified failure");
         assert_eq!(decoded.failure, failure);
         assert_eq!(format!("{error:#}"), "host service `config.show` failed: bad toml");
+    }
+
+    /// A newer host may classify a failure with a kind this frontend does not know: the call
+    /// still fails with the host's message, as the generic `pipeline` class, not the raw JSON.
+    #[test]
+    fn a_failure_of_an_unknown_kind_keeps_its_message_as_a_pipeline_failure() {
+        let message = r#"{"kind":"some_future_kind","message":"cache unreadable"}"#;
+        let error = call::<_, Value>(&Failing(message.to_owned()), service::CACHE_STATS, &()).unwrap_err();
+        let decoded = error.downcast_ref::<ServiceFailure>().expect("a classified failure");
+        assert_eq!(decoded.failure.kind, FailureKind::Pipeline);
+        assert_eq!(
+            format!("{error:#}"),
+            "host service `cache.stats` failed: cache unreadable"
+        );
+    }
+
+    /// The `cache.gc` body before e366526e, which had no `config`: a host built then must still
+    /// decode what this frontend sends, losing only `config`.
+    #[derive(Deserialize)]
+    struct CacheGcRequestWithoutConfig {
+        #[serde(default)]
+        max_age_days: Option<u64>,
+        #[serde(default)]
+        max_size: Option<String>,
+    }
+
+    #[test]
+    fn a_cache_request_decodes_on_a_host_that_predates_config() {
+        let request = CacheGcRequest {
+            config: Some("poly.toml".to_owned()),
+            max_age_days: Some(7),
+            max_size: Some("2G".to_owned()),
+        };
+        let bytes = serde_json::to_vec(&request).unwrap();
+        assert_eq!(
+            bytes, br#"{"config":"poly.toml","max_age_days":7,"max_size":"2G"}"#,
+            "the wire shape an old host decodes"
+        );
+        let old: CacheGcRequestWithoutConfig = serde_json::from_slice(&bytes).unwrap();
+        assert_eq!((old.max_age_days, old.max_size.as_deref()), (Some(7), Some("2G")));
+        let stats = serde_json::to_vec(&CacheRequest::default()).unwrap();
+        assert_eq!(stats, br#"{"config":null}"#, "an old host ignores the cache.stats body");
     }
 
     #[test]

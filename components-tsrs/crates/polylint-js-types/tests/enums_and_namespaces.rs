@@ -1,4 +1,4 @@
-//! Typed enum and namespace reads (skif ADR 0010): reads through aliases, `this` and qualified names credit the member they
+//! Typed enum and namespace reads: reads through aliases, `this` and qualified names credit the member they
 //! reach, and a declaration that escapes so that any member may be read is used as a whole.
 
 #![allow(clippy::unwrap_used, clippy::expect_used)]
