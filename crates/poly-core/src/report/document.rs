@@ -18,6 +18,7 @@ use serde::Serialize;
 
 use crate::ConfigFingerprint;
 use crate::components::ComponentsReport;
+use crate::discover::DiscoveryReport;
 use crate::runner::{
     DegradedTool, FormatError, FormatResult, FormatRun, LintError, LintResult, LintRun, SkippedFile,
     SuppressedDiagnostic,
@@ -61,6 +62,10 @@ fn no_components(report: &ComponentsReport) -> bool {
     report.is_empty()
 }
 
+fn no_discovery_notes(report: &DiscoveryReport) -> bool {
+    !report.has_notes()
+}
+
 /// A whole lint run, as a machine consumer sees it.
 #[derive(Debug, Clone, Serialize)]
 #[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
@@ -75,6 +80,11 @@ pub struct LintDocument {
     /// Files nothing inspected, each with the reason. Redundant with the
     /// `skipped`-carrying entries in `results` for the same reason `errors` is.
     pub skipped: Vec<SkippedFile>,
+    /// What discovery left out of the walk: excluded files and directories, the paths the caller
+    /// named that matched an exclusion, pruned directories and unidentified files — the note the
+    /// CLI otherwise prints only to stderr. Omitted when discovery has nothing to say.
+    #[serde(skip_serializing_if = "no_discovery_notes")]
+    pub discovery: DiscoveryReport,
     /// Diagnostics the run found and then dropped, one entry per finding, each
     /// naming the mechanism responsible.
     ///
@@ -125,6 +135,7 @@ impl LintDocument {
             results: super::structured::lint_results_for_output(run),
             errors: run.errors.clone(),
             skipped: run.skipped.clone(),
+            discovery: run.discovery.clone(),
             suppressed: run.suppressed.clone(),
             degraded: run.degraded.clone(),
             summary: RunSummary {
@@ -156,6 +167,11 @@ pub struct FormatDocument {
     /// [`LintDocument::degraded`].
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub degraded: Vec<DegradedTool>,
+    /// What discovery left out of the walk: excluded files and directories, the paths the caller
+    /// named that matched an exclusion, pruned directories and unidentified files — the note the
+    /// CLI otherwise prints only to stderr. Omitted when discovery has nothing to say.
+    #[serde(skip_serializing_if = "no_discovery_notes")]
+    pub discovery: DiscoveryReport,
     /// The run's own account of what it covered.
     pub summary: RunSummary,
     /// The configurations that governed this run, indexed by each result's
@@ -182,6 +198,7 @@ impl FormatDocument {
             errors: run.errors.clone(),
             skipped: run.skipped.clone(),
             degraded: run.degraded.clone(),
+            discovery: run.discovery.clone(),
             summary: RunSummary {
                 checked: run.checked,
                 skipped: run.skipped.len(),
