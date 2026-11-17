@@ -43,7 +43,10 @@ fn the_skip_budget_charges_only_unannounced_skips() {
         skip("b.py", poly_core::runner::FILTERED_SKIP),
     ];
     assert!(over_budget(&skipped, None).is_empty(), "no budget, no charge");
-    assert!(over_budget(&skipped, Some(1)).is_empty(), "one charged skip fits a budget of one");
+    assert!(
+        over_budget(&skipped, Some(1)).is_empty(),
+        "one charged skip fits a budget of one"
+    );
     let charged = over_budget(&skipped, Some(0));
     assert_eq!(charged.len(), 1, "{charged:?}");
     assert_eq!(charged[0].path, PathBuf::from("a.csproj"));
@@ -69,7 +72,10 @@ fn the_request_maps_onto_the_run_options() {
     let options = run_options(&request, &config, None);
     assert_eq!(options.exclude, ["gen/**"]);
     assert_eq!(options.only, ["ruff"]);
-    assert!(!options.force_exclude, "include_excluded beats [discovery] force_exclude");
+    assert!(
+        !options.force_exclude,
+        "include_excluded beats [discovery] force_exclude"
+    );
     assert!(options.no_cache && options.fix_generated && options.explicit_config);
     assert_eq!(options.jobs, Some(3));
     assert_eq!(

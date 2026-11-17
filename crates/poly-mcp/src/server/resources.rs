@@ -35,10 +35,22 @@ pub fn install_host_schemas(schemas: Schemas) {
 
 /// `(name, what it describes)` for every schema resource.
 const RESOURCES: &[(&str, &str)] = &[
-    ("lint", "`check`/`fix` with `kind: lint`: the `poly lint --format json` document."),
-    ("format", "`check`/`fix` with `kind: format`: the `poly fmt --format json` document."),
-    ("failure", "A run that could not start: `{error: {kind, message}, summary: null}`."),
-    ("workspace", "`scope: workspace`, and the `workspace` key of `scope: all`."),
+    (
+        "lint",
+        "`check`/`fix` with `kind: lint`: the `poly lint --format json` document.",
+    ),
+    (
+        "format",
+        "`check`/`fix` with `kind: format`: the `poly fmt --format json` document.",
+    ),
+    (
+        "failure",
+        "A run that could not start: `{error: {kind, message}, summary: null}`.",
+    ),
+    (
+        "workspace",
+        "`scope: workspace`, and the `workspace` key of `scope: all`.",
+    ),
     ("info/version", "`info` topic `version`."),
     ("info/rules", "`info` topic `rules`."),
     ("info/components", "`info` topic `components`."),
@@ -47,7 +59,10 @@ const RESOURCES: &[(&str, &str)] = &[
     ("manage/cache", "`manage` actions `cache_clean` and `cache_gc`."),
     ("manage/components", "`manage` component actions."),
     ("identity", "The `poly` block every result carries."),
-    ("poly.toml", "The `poly.toml` configuration schema (`poly config schema`)."),
+    (
+        "poly.toml",
+        "The `poly.toml` configuration schema (`poly config schema`).",
+    ),
 ];
 
 /// The resource listing.
