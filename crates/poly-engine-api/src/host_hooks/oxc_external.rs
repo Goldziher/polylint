@@ -2,7 +2,8 @@
 //!
 //! `[lint.<lang>.oxc] js_plugins = "external"` hands files governed by a config with `jsPlugins` to the
 //! project's own `oxlint`, and `[fmt.<lang>.oxc] external = true` hands files needing JavaScript-side
-//! options to `oxfmt`, each found in the nearest `node_modules/.bin` or on `PATH`. The answer then
+//! options to `oxfmt`, each found in the nearest `node_modules/.bin` or on `PATH`: nearest to the
+//! governing config for `oxlint`, to the file for `oxfmt`, and the key looks where the engine does. The answer then
 //! depends on which binary that is and, for lint, on the plugin modules, none of which is in the
 //! file, its options or the config digest. This keys them:
 //!
@@ -27,40 +28,51 @@ pub fn lint_salt(cfg: &EngineConfig, path: &Path) -> Option<String> {
     if cfg.options.opt_str("js_plugins") != Some("external") {
         return None;
     }
-    let config = super::oxlintrc::governing_for(cfg, path).map(|governing| governing.nearest.clone());
-    let plugins = config.as_deref().map(plugins_digest).unwrap_or_default();
-    Some(format!("oxlint-ext:{}:{plugins}", binary_digest("oxlint", path)))
+    // Without a governing config nothing is handed to `oxlint`, so no binary is an input.
+    let Some(governing) = super::oxlintrc::governing_for(cfg, path) else {
+        return Some("oxlint-ext:unconfigured".to_owned());
+    };
+    let config = governing.nearest.as_path();
+    static BINARIES: OnceLock<Memo> = OnceLock::new();
+    let binary = binary_digest(&BINARIES, "oxlint", config.parent().unwrap_or(Path::new("")));
+    Some(format!("oxlint-ext:{binary}:{}", plugins_digest(config)))
 }
 
 /// The extra format key input for `path` in external mode, `None` when the mode is off.
 #[must_use]
 pub fn format_salt(cfg: &EngineConfig, path: &Path) -> Option<String> {
-    cfg.options
-        .opt_bool("external")
-        .unwrap_or(false)
-        .then(|| format!("oxfmt-ext:{}", binary_digest("oxfmt", path)))
+    static BINARIES: OnceLock<Memo> = OnceLock::new();
+    cfg.options.opt_bool("external").unwrap_or(false).then(|| {
+        let dir = path.parent().unwrap_or(Path::new(""));
+        format!("oxfmt-ext:{}", binary_digest(&BINARIES, "oxfmt", dir))
+    })
 }
 
 type Memo = Mutex<HashMap<PathBuf, String>>;
 
-fn memoised(memo: &'static OnceLock<Memo>, key: PathBuf, compute: impl FnOnce() -> String) -> String {
+fn memoised(memo: &'static OnceLock<Memo>, key: &Path, compute: impl FnOnce() -> String) -> String {
     let memo = memo.get_or_init(Memo::default);
-    if let Some(known) = memo.lock().unwrap_or_else(PoisonError::into_inner).get(&key) {
+    if let Some(known) = memo.lock().unwrap_or_else(PoisonError::into_inner).get(key) {
         return known.clone();
     }
     let value = compute();
     memo.lock()
         .unwrap_or_else(PoisonError::into_inner)
-        .insert(key, value.clone());
+        .insert(key.to_path_buf(), value.clone());
     value
 }
 
-/// The binary `name` the engine would run for `path` (the nearest `node_modules/.bin`, else `PATH`).
-fn locate(name: &str, path: &Path) -> Option<PathBuf> {
-    let start = std::path::absolute(path).ok()?;
+/// The binary `name` the engine runs from the directory `dir`: the nearest `node_modules/.bin` at
+/// or above it, else `PATH`.
+fn locate(name: &str, dir: &Path) -> Option<PathBuf> {
+    let dir = if dir.as_os_str().is_empty() {
+        Path::new(".")
+    } else {
+        dir
+    };
+    let start = std::path::absolute(dir).ok()?;
     start
         .ancestors()
-        .skip(1)
         .map(|dir| dir.join("node_modules").join(".bin").join(name))
         .find(|candidate| candidate.is_file())
         .or_else(|| {
@@ -72,12 +84,13 @@ fn locate(name: &str, path: &Path) -> Option<PathBuf> {
         })
 }
 
-fn binary_digest(name: &str, path: &Path) -> String {
-    static MEMO: OnceLock<Memo> = OnceLock::new();
-    let Some(binary) = locate(name, path) else {
-        return "absent".to_owned();
-    };
-    memoised(&MEMO, binary.clone(), || {
+/// What identifies the binary `name` found from `dir`, located and read once per directory (`memo`
+/// is the caller's, one per binary name).
+fn binary_digest(memo: &'static OnceLock<Memo>, name: &str, dir: &Path) -> String {
+    memoised(memo, dir, || {
+        let Some(binary) = locate(name, dir) else {
+            return "absent".to_owned();
+        };
         let real = std::fs::canonicalize(&binary).unwrap_or(binary);
         match owning_package(&real) {
             Some(manifest) => blake3::hash(&super::file_bytes::for_digest(&manifest))
@@ -113,7 +126,7 @@ fn owning_package(file: &Path) -> Option<PathBuf> {
 /// A digest of the `jsPlugins` modules the oxlint config at `config` names.
 fn plugins_digest(config: &Path) -> String {
     static MEMO: OnceLock<Memo> = OnceLock::new();
-    memoised(&MEMO, config.to_path_buf(), || {
+    memoised(&MEMO, config, || {
         let dir = config.parent().unwrap_or(Path::new(""));
         let mut hasher = blake3::Hasher::new();
         for specifier in plugin_specifiers(config) {
@@ -196,10 +209,9 @@ mod tests {
         );
         let salt = lint_salt(&cfg(&options), &file).expect("external mode is keyed");
         assert!(!salt.contains("absent"), "{salt}");
-        assert_eq!(binary_digest("oxlint", &file), {
-            let manifest = repo.path().join("node_modules/oxlint/package.json");
-            blake3::hash(&std::fs::read(manifest).unwrap()).to_hex().to_string()
-        });
+        let manifest = repo.path().join("node_modules/oxlint/package.json");
+        let version = blake3::hash(&std::fs::read(manifest).unwrap()).to_hex().to_string();
+        assert!(salt.contains(&version), "{salt}");
         assert_ne!(plugins_digest(&rc), {
             let other = repo.path().join("other.json");
             std::fs::write(&other, r#"{"jsPlugins": ["./missing.js"]}"#).unwrap();
@@ -207,5 +219,40 @@ mod tests {
         });
         assert_eq!(format_salt(&cfg(""), &file), None);
         assert!(format_salt(&cfg("external = true"), &file).is_some());
+    }
+
+    #[cfg(unix)]
+    fn install_oxlint(dir: &Path, version: &str) {
+        let package = dir.join("node_modules/oxlint");
+        std::fs::create_dir_all(&package).unwrap();
+        std::fs::create_dir_all(dir.join("node_modules/.bin")).unwrap();
+        std::fs::write(package.join("package.json"), format!(r#"{{"version": "{version}"}}"#)).unwrap();
+        std::fs::write(package.join("oxlint"), "#!/bin/sh\n").unwrap();
+        std::os::unix::fs::symlink("../oxlint/oxlint", dir.join("node_modules/.bin/oxlint")).unwrap();
+    }
+
+    /// The engine runs the `oxlint` nearest the governing config, not the one nearest the file, so
+    /// that is the one the key reads.
+    #[cfg(unix)]
+    #[test]
+    fn the_lint_salt_reads_the_binary_nearest_the_governing_config() {
+        let salt_with = |root_version: &str, package_version: &str| {
+            let repo = tempfile::tempdir().unwrap();
+            let rc = repo.path().join(".oxlintrc.json");
+            std::fs::write(&rc, r#"{"jsPlugins": []}"#).unwrap();
+            let package = repo.path().join("packages/a");
+            std::fs::create_dir_all(package.join("src")).unwrap();
+            install_oxlint(repo.path(), root_version);
+            install_oxlint(&package, package_version);
+            let options = format!("js_plugins = \"external\"\noxlintrc = {:?}", rc.to_string_lossy());
+            lint_salt(&cfg(&options), &package.join("src/a.ts")).expect("external mode is keyed")
+        };
+        let base = salt_with("1.0.0", "1.0.0");
+        assert_ne!(
+            base,
+            salt_with("2.0.0", "1.0.0"),
+            "the root oxlint is the one that runs"
+        );
+        assert_eq!(base, salt_with("1.0.0", "2.0.0"), "the package's own oxlint is not run");
     }
 }
