@@ -17,6 +17,8 @@ use poly_frontend_api::wire::{
 use poly_host_services::ComponentsProvider;
 use sha2::{Digest, Sha256};
 
+use crate::config_sources::{RemoteExtendsResolver, repo_root};
+
 use super::ops::{self, Actions, DEFAULT_KEEP_DAYS, Env, Listing, State};
 use super::{cache_root_of, component_summaries, needed_with, open_host};
 
@@ -58,12 +60,22 @@ fn may_download(mode: InstallMode, config: ComponentInstallPolicy) -> bool {
     }
 }
 
+/// The components `paths` need, for a host service. A service answers a model, so the configs'
+/// remote `extends` bases come from the source cache and are never fetched (ADR 0076).
+fn needed_for(
+    paths: &[PathBuf],
+    config: Option<&str>,
+) -> anyhow::Result<(Vec<String>, poly_config::v2::ComponentsConfig)> {
+    let resolver = RemoteExtendsResolver::cache_only(&repo_root()?);
+    needed_with(paths, config.map(Path::new), &resolver)
+}
+
 fn status_of(request: &ComponentsStatusRequest) -> anyhow::Result<ComponentsStatus> {
     let paths = to_paths(&request.paths);
     let needed = if paths.is_empty() {
         None
     } else {
-        Some(needed_with(&paths, request.config.as_deref().map(Path::new))?)
+        Some(needed_for(&paths, request.config.as_deref())?)
     };
     Ok(with_env(true, |env, lock_sha| {
         let listing = match &needed {
@@ -182,7 +194,7 @@ fn install_of(request: &ComponentsInstallRequest) -> anyhow::Result<ComponentAct
     let needed = if paths.is_empty() {
         Vec::new()
     } else {
-        needed_with(&paths, request.config.as_deref().map(Path::new))?.0
+        needed_for(&paths, request.config.as_deref())?.0
     };
     with_env(crate::offline(), |env, _| {
         let mut picked = select(env.index, &request.names, &request.languages)?;

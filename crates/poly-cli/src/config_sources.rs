@@ -29,7 +29,9 @@ const ROOT_CONFIG_NAME: &str = "poly.toml";
 /// (symbolic) revision must have been locked by `poly lock` first.
 #[derive(Debug)]
 pub struct RemoteExtendsResolver {
-    lock: PolyLock,
+    /// The `poly.lock` read when the resolver was built, or `None` to read it at every
+    /// resolution; see [`RemoteExtendsResolver::cache_only`].
+    lock: Option<PolyLock>,
     root: PathBuf,
     /// Resolve git bases from the source cache only; see [`RemoteExtendsResolver::cache_only`].
     cache_only: bool,
@@ -50,7 +52,7 @@ impl RemoteExtendsResolver {
     /// load the config against the extends it has just resolved.
     pub fn from_lock(root: &Path, lock: PolyLock) -> Self {
         RemoteExtendsResolver {
-            lock,
+            lock: Some(lock),
             root: root.to_path_buf(),
             cache_only: false,
         }
@@ -60,10 +62,26 @@ impl RemoteExtendsResolver {
     /// source cache already holds at its pinned revision. `poly mcp` uses it, so the server
     /// honours remote `extends` bases the way the CLI's locked resolution does without fetching
     /// on behalf of a model.
-    pub fn cache_only(root: &Path) -> anyhow::Result<Self> {
-        let mut resolver = Self::new(root)?;
-        resolver.cache_only = true;
-        Ok(resolver)
+    ///
+    /// It outlives many runs, so it holds no copy of `poly.lock`: the file is read at each
+    /// resolution, a `poly lock` run beside the server takes effect on the next call, and a
+    /// lock that does not parse fails the config load that needed it rather than the server.
+    /// It never installs the lock's tool pins either; a run pins those for its own duration.
+    #[must_use]
+    pub fn cache_only(root: &Path) -> Self {
+        RemoteExtendsResolver {
+            lock: None,
+            root: root.to_path_buf(),
+            cache_only: true,
+        }
+    }
+
+    /// The lock to resolve against: the one held, else `poly.lock` as it is on disk now.
+    fn lock(&self) -> anyhow::Result<std::borrow::Cow<'_, PolyLock>> {
+        match &self.lock {
+            Some(lock) => Ok(std::borrow::Cow::Borrowed(lock)),
+            None => Ok(std::borrow::Cow::Owned(polylock::read(&self.root)?.unwrap_or_default())),
+        }
     }
 }
 
@@ -80,7 +98,7 @@ impl BaseConfigResolver for RemoteExtendsResolver {
         let oid = if validate_locked_revision(revision).is_ok() {
             revision.to_string()
         } else {
-            match self.lock.locked_oid(git, file, revision) {
+            match self.lock()?.locked_oid(git, file, revision) {
                 Some(oid) => oid.to_string(),
                 None => bail!(
                     "remote config base {} pinned to a symbolic ref has no lock entry; \
@@ -107,7 +125,8 @@ impl BaseConfigResolver for RemoteExtendsResolver {
         if validate_locked_revision(revision).is_ok() {
             return Some(revision.to_string());
         }
-        self.lock
+        self.lock()
+            .ok()?
             .locked_oid(git, source.file_or_default(), revision)
             .map(str::to_string)
     }

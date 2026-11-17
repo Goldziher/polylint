@@ -147,6 +147,15 @@ fn key(root: &Path) -> String {
     root.to_string_lossy().into_owned()
 }
 
+/// The store file, `trust.json` in [`store_dir`].
+///
+/// # Errors
+///
+/// As [`store_dir`].
+pub fn store_file() -> anyhow::Result<PathBuf> {
+    Ok(store_dir()?.join(STORE_FILE))
+}
+
 /// The directory holding `trust.json`.
 ///
 /// # Errors

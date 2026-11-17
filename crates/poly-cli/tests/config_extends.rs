@@ -380,3 +380,61 @@ fn legacy_lock_file_is_ignored_with_a_hint() {
     assert!(chain.contains("poly-config.lock is no longer read"), "{chain}");
     assert!(chain.contains("`poly lock`"), "{chain}");
 }
+
+/// The server's resolver outlives many runs, so a `poly lock` beside it must take effect on the
+/// next resolution: first a ref locked after the resolver was built, then a moved pin.
+#[test]
+fn a_cache_only_resolver_follows_the_lock_on_disk() {
+    init_cache_home();
+    let (base, url, _first_oid) = create_git_base("[defaults]\nline_length = 55\n");
+    let (consumer_dir, config_path) = consumer(&format!(
+        "extends = [{{ git = \"{url}\", revision = \"HEAD\", file = \"poly.toml\" }}]\n"
+    ));
+    let root = consumer_dir.path();
+    let resolver = RemoteExtendsResolver::cache_only(root);
+
+    let unlocked = PolyConfig::load_file_with(&config_path, &resolver).unwrap_err();
+    assert!(
+        format!("{unlocked:#}").contains("run `poly lock` first"),
+        "{unlocked:#}"
+    );
+
+    sync(root, &config_path, false, false).expect("lock the ref");
+    let locked = PolyConfig::load_file_with(&config_path, &resolver).expect("the lock written after the resolver");
+    assert_eq!(locked.defaults.line_length, 55);
+
+    commit_base(base.path(), "[defaults]\nline_length = 56\n");
+    sync(root, &config_path, true, false).expect("move the pin");
+    let moved = PolyConfig::load_file_with(&config_path, &resolver).expect("the moved pin");
+    assert_eq!(moved.defaults.line_length, 56, "the resolver must not keep the old pin");
+}
+
+/// A `poly.lock` that does not parse fails the load that needed it, not the resolver's
+/// construction: `poly mcp` builds the resolver before the handshake.
+#[test]
+fn a_cache_only_resolver_reports_a_malformed_lock_at_resolution() {
+    init_cache_home();
+    let (_base, url, _oid) = create_git_base("[defaults]\nline_length = 40\n");
+    let (consumer_dir, config_path) = consumer(&format!(
+        "extends = [{{ git = \"{url}\", revision = \"HEAD\", file = \"poly.toml\" }}]\n"
+    ));
+    std::fs::write(consumer_dir.path().join(polylock::LOCK_FILE_NAME), "<<<<<<< HEAD\n").unwrap();
+
+    let resolver = RemoteExtendsResolver::cache_only(consumer_dir.path());
+    let error = PolyConfig::load_file_with(&config_path, &resolver).unwrap_err();
+    assert!(format!("{error:#}").contains("parsing"), "{error:#}");
+}
+
+/// A base the source cache does not hold is an error naming the fix, never a fetch.
+#[test]
+fn a_cache_only_resolver_never_fetches() {
+    init_cache_home();
+    let (_base, url, oid) = create_git_base("[defaults]\nline_length = 40\n");
+    let (consumer_dir, config_path) = consumer(&format!(
+        "extends = [{{ git = \"{url}\", revision = \"{oid}\", file = \"poly.toml\" }}]\n"
+    ));
+
+    let resolver = RemoteExtendsResolver::cache_only(consumer_dir.path());
+    let error = PolyConfig::load_file_with(&config_path, &resolver).unwrap_err();
+    assert!(format!("{error:#}").contains("does not fetch"), "{error:#}");
+}
