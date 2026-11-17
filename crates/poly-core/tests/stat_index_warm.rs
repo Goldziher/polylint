@@ -621,6 +621,36 @@ fn an_absolute_and_a_relative_format_check_share_a_rust_files_record() {
     assert_eq!(absolute.resolution.misses, 0, "{:?}", absolute.resolution);
 }
 
+/// The same for a Python file after a run started in another directory: a format plan resets no
+/// run-scoped memo, so the directory a previous run of the process keyed package roots against must
+/// not outlive it.
+#[test]
+fn an_absolute_format_check_after_a_run_elsewhere_shares_a_python_files_record() {
+    let project = located_project();
+    // A format run records no empty file, so the empty marker would miss whatever its key.
+    project.write("pkg/__init__.py", "\"\"\"Package.\"\"\"\n");
+    settle();
+    let elsewhere = project.lint();
+    assert!(elsewhere.errors.is_empty(), "{:?}", elsewhere.errors);
+    let (cold, relative_warm, absolute) = in_dir(project.dir.path(), |here| {
+        let relative = || {
+            let config = Config::load_file(Path::new("poly.toml")).unwrap();
+            fmt_at(Path::new("."), Path::new("."), &config)
+        };
+        let config = Config::load_file(&here.join("poly.toml")).unwrap();
+        (relative(), relative(), fmt_at(here, here, &config))
+    });
+
+    assert!(cold.errors.is_empty(), "{:?}", cold.errors);
+    assert!(
+        cold.changed.is_empty(),
+        "the premise: formatted files, which are recorded: {:?}",
+        cold.changed
+    );
+    assert_eq!(relative_warm.resolution.misses, 0, "{:?}", relative_warm.resolution);
+    assert_eq!(absolute.resolution.misses, 0, "{:?}", absolute.resolution);
+}
+
 /// M5: a run narrowed with `--only` keeps the other engines' records, so the next full run is
 /// answered from the index instead of re-running every other engine.
 #[test]
