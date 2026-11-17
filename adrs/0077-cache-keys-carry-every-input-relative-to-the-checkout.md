@@ -1,4 +1,4 @@
-# 0074 — Cache Keys Carry Every Input, Relative to the Checkout
+# 0077 — Cache Keys Carry Every Input, Relative to the Checkout
 
 - Status: Accepted
 - Date: 2026-11-17
@@ -34,7 +34,8 @@ the cache held; and a run narrowed with `--only` replaced each file's record wit
 - **A Python project check keys what it reads from disk.** For a plan that serves Python, the key folds in a
   fingerprint of each `site-packages` directory (every top-level name, the bytes of top-level files and of each
   `*.dist-info/RECORD`) and a digest of every `.py` / `.pyi` under the project root that was not served, ignored files
-  included, virtual environments not walked. Keying was chosen over making the checkers read only the served files:
+  included. Virtual and conda environments and nested checkouts (a directory holding `.git`: a submodule, a worktree
+  under `.worktrees/`) are not walked, so an edit in a sibling worktree does not invalidate the check. Keying was chosen over making the checkers read only the served files:
   that would turn every import of an unserved module (a gitignored generated module, any other module of
   `poly lint a.py`) into an error, and pyrefly resolves modules without a filesystem abstraction poly could restrict.
 - **A component's own cache-path hooks are asked of it.** The host sends `RunContext`, `FileContext`, `LintInputSalt`
@@ -45,23 +46,30 @@ the cache held; and a run narrowed with `--only` replaced each file's record wit
 - **Native tools run in the file's directory key per file.** `rustfmt`'s and `swift-format`'s `file_context` and
   format salt carry the fingerprint of their config files (and for `rustfmt` the `rust-toolchain[.toml]` files) from
   the file's directory upward, and `rustfmt`'s the edition poly passes, memoised per directory.
-- **A plain catalog tool keys the config-like files** (dotfiles, `*rc`, and config-format extensions) of the file's
-  directory and of the tool's working directory, and their ancestors up to the repository root, since the catalog
-  names no config files for it.
+- **A plain catalog tool keys the files named like a config** (dotfiles, `*rc`, `*.config.*` and the manifests tools
+  keep a section in, such as `pyproject.toml` and `package.json`) of the file's directory and of the tool's working
+  directory, and their ancestors up to the checkout root, since the catalog names no config files for it. Matching
+  is by name, never by extension alone, so the files a tool lints are not each other's inputs. Outside a checkout the
+  walk ends at the run root.
 - **The `cargo` group** declares the clippy and cargo config files as inputs, and each cached tool's key carries a salt
   of `rustc -vV`, `cargo -V` and the tool's own version (run once per repository per process), the `CARGO_*` /
-  `RUSTFLAGS` / `CLIPPY_*` environment, and the content of every clippy and cargo config file in the tree (tracked or
-  not), above it and in `$CARGO_HOME`. **`cargo deny` is never result-cached**: no local input tells a cached pass from
+  `RUSTFLAGS` / `CLIPPY_*` environment less what changes no verdict (`CARGO_TARGET_DIR`, the job count), and the
+  content of every clippy, cargo and cargo-sort (`tomlfmt.toml`) config file in the tree (tracked or not), above it
+  and in `$CARGO_HOME`. **`cargo deny` is never result-cached**: no local input tells a cached pass from
   an advisory published since.
 - **oxc's external mode** keys the binary's npm `package.json` (else its size and modification time) and the
-  `jsPlugins` modules of the governing config.
+  `jsPlugins` modules of the governing config. The binary is looked up where the engine looks: from the governing
+  config's directory for `oxlint`, from the file's for `oxfmt`.
 - **An engine's own `<NAME>_*` environment** is part of its project-check key (tsrs reads `TSRS_*`, ADR 0051).
 - **Keys are checkout-relative.** A path in a key is relative to the checkout holding it (the nearest `.git`) or to the
   config, rule directory or project root it belongs to; a path outside keeps its full form. A project check stores
-  its findings relative to the project root and replays them under the replaying root.
-- **A narrowed run keeps the other engines' records.** A file's record keeps the segments of earlier plans for the
-  same bytes, and is answered by engine key when another plan wrote it, so `--only` and a full run do not evict each
-  other.
+  its findings relative to the project root and replays each one spelled as the replaying run spells that file, which
+  is what a cold run reports.
+- **A narrowed lint run keeps the other engines' records.** A file's lint record keeps the segments of earlier plans
+  for the same bytes, and is answered by engine key when another plan wrote it, so `--only` and a full run do not
+  evict each other; the verdict is read from the planned engines' segments, not from the plan that last wrote the
+  record. A fmt record is not shared between plans: it says that the whole chain left the bytes unchanged, not what
+  each engine did (one may have declined the file), so only the same chain reads it.
 
 ## Consequences
 
@@ -77,7 +85,9 @@ Negative / risks:
   `site-packages` on every run, hit or miss. A file edited by hand inside an installed package is not seen.
 - A component that declares a cache-path hook is loaded on a warm run (air, for R files).
 - The `cargo` group pays a few `--version` spawns per run, and `cargo deny` runs on every commit.
-- A plain catalog tool re-runs when any config-like file near it changes, related to it or not.
+- A plain catalog tool re-runs when any file named like a config near it changes, related to it or not, and a config
+  under a name the rule does not match is not keyed.
+- A narrowed `poly fmt` and a full one still replace each other's records.
 - `extra_paths` and `src` entries outside the project root are still read from disk without being keyed.
 
 ## Alternatives considered

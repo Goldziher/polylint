@@ -108,7 +108,7 @@ Each item is described in full under the section named in brackets.
 
 ### Performance
 
-- **Cache keys no longer hold a checkout's location, and a narrowed run evicts nothing** (ADR 0074). A second worktree,
+- **Cache keys no longer hold a checkout's location, and a narrowed lint run evicts nothing** (ADR 0077). A second worktree,
   the hook snapshot and an absolute invocation reuse the records of the first (project-check roots, oxc config paths,
   ast-grep rule directories, the Go module root, JSON Schema and recipe digests are keyed checkout-relative), and
   `poly lint --only <engine>` keeps the other engines' records, so the next full run re-runs none of them.
@@ -136,7 +136,7 @@ Each item is described in full under the section named in brackets.
   `degraded: [{tool, language, reason, files}]`, omitted when empty. `poly fmt` used to print `All formatted.` with
   nothing to say rustfmt never ran. The files still count as checked, not skipped, and exit codes do not change.
   (ADR 0075, #230)
-- **Result-cache keys carry inputs they missed** (ADR 0074). An edit to any of these now re-runs the work instead of
+- **Result-cache keys carry inputs they missed** (ADR 0077). An edit to any of these now re-runs the work instead of
   replaying the previous result: a package installed into `site-packages` or an unserved first-party module, for the
   `python-types` checks; `air.toml`, in a component build; the crate edition and a nested `rustfmt.toml` /
   `rust-toolchain.toml`, for `rustfmt` (and a nested `.swift-format`); a plain catalog tool's own config file;
