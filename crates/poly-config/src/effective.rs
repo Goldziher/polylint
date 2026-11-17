@@ -1,4 +1,5 @@
-//! The effective-config document behind `poly config show`.
+//! The effective-config document behind `poly config show` and the MCP `info` tool's `config`
+//! topic: one type, so the two surfaces answer "what did poly resolve" identically.
 //!
 //! `poly config show` used to print a section *summary* — `[lint]  python` named
 //! the language and stopped — which left a user with no way to ask poly what it
@@ -22,11 +23,10 @@
 use std::path::{Path, PathBuf};
 
 use anyhow::{Context, Result};
-use poly_config::extends::ExtendsSource;
-use poly_config::{LOCAL_OVERRIDE_NAME, LineEnding, PolyConfig};
 use serde::Serialize;
 
-use crate::config_sources::{self, RemoteExtendsResolver};
+use crate::extends::{self, BaseConfigResolver, ExtendsSource};
+use crate::{LOCAL_OVERRIDE_NAME, LineEnding, PolyConfig};
 
 /// One `extends` base a config in the merge chain declared.
 #[derive(Debug, Serialize)]
@@ -67,7 +67,14 @@ pub struct EffectiveConfig {
 impl EffectiveConfig {
     /// Resolve the effective config for `explicit` (or, when `None`, for the
     /// working directory) and describe how it was merged.
-    pub fn resolve(explicit: Option<&Path>, resolver: &RemoteExtendsResolver) -> Result<Self> {
+    ///
+    /// `resolver` is the one the caller loads configs with; a git base's resolved revision is
+    /// what its [`BaseConfigResolver::resolved_oid`] reports.
+    ///
+    /// # Errors
+    ///
+    /// When the config, or a base it extends, cannot be loaded.
+    pub fn resolve(explicit: Option<&Path>, resolver: &dyn BaseConfigResolver) -> Result<Self> {
         let (config, mut table, sources) = match explicit {
             Some(path) => (
                 PolyConfig::load_file_with(path, resolver)?,
@@ -106,6 +113,10 @@ impl EffectiveConfig {
 
     /// Render as a TOML document: the resolution block as leading comments, the
     /// effective config as the body. Deterministic — the table is key-sorted.
+    ///
+    /// # Errors
+    ///
+    /// When the config holds a value TOML cannot render.
     pub fn to_toml(&self) -> Result<String> {
         let mut out = String::new();
         for line in self.header_lines() {
@@ -265,11 +276,11 @@ fn single_source(path: &Path) -> Vec<PathBuf> {
 /// one only the nearest `poly.toml` is loaded. Listing the chain is file-level
 /// attribution — it names what *could* have contributed a value, not which file
 /// each key came from.
-fn merged_sources(dir: &Path, resolver: &RemoteExtendsResolver) -> Result<Vec<PathBuf>> {
+fn merged_sources(dir: &Path, resolver: &dyn BaseConfigResolver) -> Result<Vec<PathBuf>> {
     let dirs = if git_root(dir).is_some() {
-        poly_config::config_chain_dirs_with(dir, resolver)?
+        crate::config_chain_dirs_with(dir, resolver)?
     } else {
-        match poly_config::find_config(dir) {
+        match crate::find_config(dir) {
             Some(path) => vec![path.parent().unwrap_or(&path).to_path_buf()],
             None => Vec::new(),
         }
@@ -277,7 +288,7 @@ fn merged_sources(dir: &Path, resolver: &RemoteExtendsResolver) -> Result<Vec<Pa
     let mut sources = Vec::new();
     // The chain is nearest-first; the weakest layer reads first in a merge list.
     for config_dir in dirs.into_iter().rev() {
-        for name in [poly_config::CONFIG_FILE_NAMES[0], LOCAL_OVERRIDE_NAME] {
+        for name in [crate::CONFIG_FILE_NAMES[0], LOCAL_OVERRIDE_NAME] {
             let candidate = config_dir.join(name);
             if candidate.is_file() {
                 sources.push(candidate);
@@ -303,10 +314,10 @@ fn git_root(dir: &Path) -> Option<PathBuf> {
 /// they are merged. A base whose declaration cannot be parsed is skipped: the
 /// loader already succeeded, so a failure here is about a file that no longer
 /// exists, not about the config poly acted on.
-fn extends_entries(sources: &[PathBuf], resolver: &RemoteExtendsResolver) -> Vec<ExtendsEntry> {
+fn extends_entries(sources: &[PathBuf], resolver: &dyn BaseConfigResolver) -> Vec<ExtendsEntry> {
     let mut entries = Vec::new();
     for source in sources {
-        let Ok(declared) = config_sources::declared_extends(source) else {
+        let Ok(declared) = declared_extends(source) else {
             continue;
         };
         entries.extend(declared.iter().map(|base| entry_for(base, resolver)));
@@ -314,7 +325,7 @@ fn extends_entries(sources: &[PathBuf], resolver: &RemoteExtendsResolver) -> Vec
     entries
 }
 
-fn entry_for(source: &ExtendsSource, resolver: &RemoteExtendsResolver) -> ExtendsEntry {
+fn entry_for(source: &ExtendsSource, resolver: &dyn BaseConfigResolver) -> ExtendsEntry {
     if source.git.is_some() {
         ExtendsEntry {
             kind: "git",
@@ -332,4 +343,16 @@ fn entry_for(source: &ExtendsSource, resolver: &RemoteExtendsResolver) -> Extend
             resolved: None,
         }
     }
+}
+
+/// Parse `config_path`'s top-level `extends` list without resolving it, to list the declared
+/// bases alongside their resolved revisions.
+///
+/// # Errors
+///
+/// When the file cannot be read or parsed, or its `extends` list is malformed.
+pub fn declared_extends(config_path: &Path) -> Result<Vec<ExtendsSource>> {
+    let text = std::fs::read_to_string(config_path).with_context(|| format!("reading {}", config_path.display()))?;
+    let mut table: toml::Table = toml::from_str(&text).with_context(|| format!("parsing {}", config_path.display()))?;
+    extends::take_extends(&mut table).with_context(|| format!("parsing `extends` in {}", config_path.display()))
 }

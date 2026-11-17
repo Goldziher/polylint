@@ -11,7 +11,8 @@ use std::path::{Path, PathBuf};
 
 use anyhow::{Context, bail};
 use fs2::FileExt;
-use poly_config::extends::{self, ExtendsSource};
+pub use poly_config::effective::declared_extends;
+use poly_config::extends::ExtendsSource;
 use poly_config::{BaseConfigResolver, LocalPathResolver, PolyConfig};
 
 use crate::polylock::{self, LockedExtends, PolyLock};
@@ -30,6 +31,8 @@ const ROOT_CONFIG_NAME: &str = "poly.toml";
 pub struct RemoteExtendsResolver {
     lock: PolyLock,
     root: PathBuf,
+    /// Resolve git bases from the source cache only; see [`RemoteExtendsResolver::cache_only`].
+    cache_only: bool,
 }
 
 impl RemoteExtendsResolver {
@@ -49,20 +52,18 @@ impl RemoteExtendsResolver {
         RemoteExtendsResolver {
             lock,
             root: root.to_path_buf(),
+            cache_only: false,
         }
     }
 
-    /// The object ID a git `source` resolves to for display: the revision itself
-    /// when it is already a full OID, else its locked OID (if any).
-    pub fn resolved_oid(&self, source: &ExtendsSource) -> Option<String> {
-        let git = source.git.as_deref()?;
-        let revision = source.revision.as_deref().unwrap_or_default();
-        if validate_locked_revision(revision).is_ok() {
-            return Some(revision.to_string());
-        }
-        self.lock
-            .locked_oid(git, source.file_or_default(), revision)
-            .map(str::to_string)
+    /// A resolver that never reaches the network: a git base resolves only from a checkout the
+    /// source cache already holds at its pinned revision. `poly mcp` uses it, so the server
+    /// honours remote `extends` bases the way the CLI's locked resolution does without fetching
+    /// on behalf of a model.
+    pub fn cache_only(root: &Path) -> anyhow::Result<Self> {
+        let mut resolver = Self::new(root)?;
+        resolver.cache_only = true;
+        Ok(resolver)
     }
 }
 
@@ -91,10 +92,42 @@ impl BaseConfigResolver for RemoteExtendsResolver {
         };
 
         let cache_root = poly_cache::remote_sources_dir()?;
-        let checkout = materialize_locked(git, &oid, &cache_root, false)
-            .with_context(|| format!("materializing remote config base {}", source.display_id()))?;
+        let checkout = if self.cache_only {
+            cached_checkout(git, &oid, &cache_root, source)?
+        } else {
+            materialize_locked(git, &oid, &cache_root, false)
+                .with_context(|| format!("materializing remote config base {}", source.display_id()))?
+        };
         contained_base_file(&checkout, file, source)
     }
+
+    fn resolved_oid(&self, source: &ExtendsSource) -> Option<String> {
+        let git = source.git.as_deref()?;
+        let revision = source.revision.as_deref().unwrap_or_default();
+        if validate_locked_revision(revision).is_ok() {
+            return Some(revision.to_string());
+        }
+        self.lock
+            .locked_oid(git, source.file_or_default(), revision)
+            .map(str::to_string)
+    }
+}
+
+/// The checkout of `url` at `oid` the source cache already holds, without fetching.
+fn cached_checkout(url: &str, oid: &str, cache_root: &Path, source: &ExtendsSource) -> anyhow::Result<PathBuf> {
+    validate_locked_revision(oid)?;
+    let checkout = cache_root
+        .join(poly_cache::remote_source_key(url))
+        .join("checkouts")
+        .join(oid);
+    if !remote::checkout_is_valid(&checkout, oid) {
+        bail!(
+            "remote config base {} at {oid} is not in the local source cache, and this command does not \
+             fetch; run `poly lock` (or any `poly lint`) in the repository once, then retry",
+            source.display_id()
+        );
+    }
+    Ok(checkout)
 }
 
 /// Resolve `<checkout>/<file>` and confirm it is a regular file that stays inside
@@ -289,13 +322,6 @@ pub fn review_merged(config_path: &Path, resolver: &RemoteExtendsResolver) {
         "note: remote bases are trusted transitively — a pinned base may itself `extends` \
          further bases whose [hooks]/[tools] would run on your machine."
     );
-}
-
-/// Parse `config_path`'s top-level `extends` list without resolving it — used by
-/// `poly config show` to list the declared bases alongside their resolved OIDs.
-pub fn declared_extends(config_path: &Path) -> anyhow::Result<Vec<ExtendsSource>> {
-    let mut table = parse_table(config_path)?;
-    extends::take_extends(&mut table).with_context(|| format!("parsing `extends` in {}", config_path.display()))
 }
 
 /// The default top-level config file for `root` (`<root>/poly.toml`).

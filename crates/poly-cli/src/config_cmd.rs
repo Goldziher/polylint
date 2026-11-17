@@ -2,8 +2,6 @@
 //! config (`poly config show`) and the `poly.toml` JSON Schema. Locking remote
 //! `extends` bases is `poly lock`.
 
-mod effective;
-
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
@@ -13,7 +11,7 @@ use poly_core::report::{render_json, render_toon};
 
 use crate::config_sources::{self, RemoteExtendsResolver};
 
-pub use effective::EffectiveConfig;
+pub use poly_config::effective::EffectiveConfig;
 
 /// `poly config` argument surface.
 #[derive(Args)]

@@ -1,13 +1,12 @@
 //! `poly-mcp` — an [MCP](https://modelcontextprotocol.io) server, over stdio,
-//! that mirrors the `poly` CLI's lint/format/cache capabilities.
+//! that mirrors the `poly` CLI's lint, format, config, rules, cache and component capabilities.
 //!
-//! The server exposes one tool per CLI capability (see [`server`]). Because MCP
-//! tool annotations are static, read-only and mutating operations are split
-//! into separate tools (`lint` vs `lint_fix`, `format_check` vs
-//! `format_write`, `cache_stats` vs `cache_clean`) rather than gated behind a
-//! boolean. Each tool runs the synchronous, rayon-driven `poly-core`
-//! pipeline on a blocking task and returns the **same JSON** the CLI emits
-//! under `--format json`.
+//! The server exposes four tools (see [`server`]). MCP tool annotations are static and clients
+//! grant permissions per tool name, so the tools are split along the annotation boundary —
+//! `check` (no writes), `fix` (writes), `info` (read-only state) and `manage` (cache and
+//! component maintenance) — and everything inside one class is a parameter (ADR 0076). Each
+//! runs the synchronous, rayon-driven `poly-core` pipeline on a blocking task and returns the
+//! **same JSON** the CLI emits under `--format json`.
 //!
 //! The server links no engine. Every tool is a call to a **host service** (see
 //! [`backend::Backend`] and `poly_frontend_api::wire::service`): the host (the `poly` binary)
@@ -23,6 +22,7 @@
 pub mod backend;
 pub mod dto;
 pub mod identity;
+pub mod schema;
 pub mod server;
 
 use std::path::PathBuf;

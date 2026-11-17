@@ -21,6 +21,8 @@ pub enum FailureKind {
     Pipeline,
     /// The run finished but its document could not be serialized.
     Render,
+    /// The request combines arguments that do not go together.
+    Usage,
 }
 
 /// A run's failure: its class and the message the CLI prints.
@@ -47,7 +49,7 @@ pub struct FailureDocument {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 pub struct CacheNamespace {
-    /// Namespace directory name (e.g. `results`, `hooks`).
+    /// Namespace directory name (e.g. `lint`, `hooks`).
     pub namespace: String,
     /// Number of cached entries in this namespace.
     pub entries: u64,
@@ -55,27 +57,76 @@ pub struct CacheNamespace {
     pub bytes: u64,
 }
 
-/// Result-cache footprint (mirrors `poly cache stats`).
+/// Result-cache footprint: the `poly cache stats --format json` document.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 pub struct CacheStatsReport {
     /// Cache format version this binary writes.
     pub format_version: String,
     /// Cache format version found on disk, if any.
-    #[serde(skip_serializing_if = "Option::is_none")]
     pub on_disk_version: Option<String>,
+    /// Per-namespace footprint.
+    pub namespaces: Vec<CacheNamespace>,
+    /// Entries across all namespaces.
+    pub total_entries: u64,
     /// Total on-disk size across all namespaces, in bytes.
     pub total_bytes: u64,
-    /// Per-namespace footprint.
-    pub per_namespace: Vec<CacheNamespace>,
 }
 
-/// Freed-byte report for `poly cache clean`.
+/// Freed-byte report: the `poly cache clean` / `poly cache gc --format json` document.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
-pub struct CacheCleanReport {
-    /// Bytes reclaimed by removing every cached entry.
+pub struct CacheFreedReport {
+    /// `clean` or `gc`.
+    pub command: String,
+    /// Bytes reclaimed.
     pub freed_bytes: u64,
+}
+
+/// One problem `poly config validate` found.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
+pub struct ConfigProblem {
+    /// The dotted table path the problem is at; empty for the document root.
+    pub path: String,
+    /// The offending key, when the problem is about one.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub key: Option<String>,
+    /// What is wrong.
+    pub message: String,
+}
+
+/// One validated config file.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
+pub struct ValidatedFile {
+    /// The config file.
+    pub path: String,
+    /// Its problems; empty when it is valid.
+    pub problems: Vec<ConfigProblem>,
+}
+
+/// A component whose engines derive further keys at run time, so only part of its keys was judged.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
+pub struct PartialValidation {
+    /// The component.
+    pub component: String,
+    /// Its engines with derived keys.
+    pub engines: Vec<String>,
+}
+
+/// What `poly config validate` reports, as a document.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
+pub struct ValidateReport {
+    /// Whether every file is valid.
+    pub valid: bool,
+    /// The files checked.
+    pub files: Vec<ValidatedFile>,
+    /// Components only partially validated.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub partial: Vec<PartialValidation>,
 }
 
 /// One resolved ast-grep rule — from poly's built-in pack or a user rule dir.
@@ -145,41 +196,6 @@ pub struct RulesReport {
     pub ok: Option<bool>,
 }
 
-/// Effective `[defaults]` section (mirrors `poly config show`).
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
-pub struct ConfigDefaults {
-    /// Opinionated line length.
-    pub line_length: usize,
-    /// Line ending policy (debug rendering of the enum).
-    pub line_ending: String,
-    /// Whether a trailing final newline is enforced.
-    pub final_newline: bool,
-    /// Whether trailing whitespace is trimmed.
-    pub trim_trailing_whitespace: bool,
-}
-
-/// The effective, merged config summary (mirrors `poly config show`, without
-/// remote-`extends` fetching — see the network-free `ops::resolve_poly_config`).
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
-pub struct ConfigShowReport {
-    /// Resolved config file path.
-    pub config_path: String,
-    /// Effective defaults.
-    pub defaults: ConfigDefaults,
-    /// Configured `[lint.<lang>.<tool>]` top-level keys.
-    pub lint_keys: Vec<String>,
-    /// Configured `[fmt.<lang>.<tool>]` top-level keys.
-    pub fmt_keys: Vec<String>,
-    /// Opted-in catalog tool names.
-    pub tools: Vec<String>,
-    /// Whether a `[hooks]` section is present.
-    pub hooks_present: bool,
-    /// Custom ast-grep rule directories.
-    pub rule_dirs: Vec<String>,
-}
-
 /// One whole-project tool's outcome.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
@@ -195,14 +211,13 @@ pub struct WorkspaceToolReport {
 }
 
 /// Whole-project (workspace) lint outcome (mirrors `poly lint`'s whole-project
-/// phase). Produced by the long-running `workspace_lint` / `workspace_lint_fix`
-/// Task tools.
+/// phase). Produced by the `check` / `fix` tools' `workspace` and `all` scopes.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 pub struct WorkspaceReport {
     /// Overall pass/fail: `false` means a whole-project tool reported failures.
     pub passed: bool,
-    /// Whether autofixes were applied (`workspace_lint_fix`).
+    /// Whether the tools ran in fix mode.
     pub fixed: bool,
     /// Per-tool results, in run order. Empty when the phase did not run.
     pub tools: Vec<WorkspaceToolReport>,
@@ -210,6 +225,10 @@ pub struct WorkspaceReport {
     /// run its `[hooks]` (ADR 0059): why, and how the user allows it.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub untrusted: Option<String>,
+    /// What a caller should know about the phase's coverage: that it was skipped because the run
+    /// named engines, or that it covered the whole repository rather than the named paths.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub notes: Vec<String>,
 }
 
 /// One downloadable component as the host sees it (the `components` host service).

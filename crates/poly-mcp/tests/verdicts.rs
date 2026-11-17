@@ -49,8 +49,8 @@ fn failure(result: &CallToolResult) -> &Value {
 async fn a_missing_path_is_an_error_naming_it_not_a_clean_run() {
     let dir = tempfile::tempdir().unwrap();
     let missing = dir.path().join("nope.py").display().to_string();
-    for kind in ["lint", "format_check"] {
-        let result = call(kind, serde_json::json!({ "paths": [missing] })).await;
+    for kind in ["lint", "format"] {
+        let result = call("check", serde_json::json!({ "kind": kind, "paths": [missing] })).await;
         let error = failure(&result);
         assert_eq!(error["kind"], "paths", "{kind}: {error}");
         assert!(
@@ -67,7 +67,7 @@ async fn a_broken_config_is_an_error_result_not_a_protocol_error() {
     std::fs::write(&config, "[discovery\nexclude = 3\n").unwrap();
     std::fs::write(dir.path().join("a.py"), "x = 1\n").unwrap();
     let result = call(
-        "lint",
+        "check",
         serde_json::json!({
             "paths": [dir.path().join("a.py")],
             "config": config,
@@ -102,8 +102,9 @@ async fn a_failing_rule_test_sets_is_error() {
     let config = dir.path().join("poly.toml");
     std::fs::write(&config, "").unwrap();
     let result = call(
-        "rules",
+        "info",
         serde_json::json!({
+            "topics": ["rules"],
             "dirs": [rules],
             "test": true,
             "config": config,
@@ -112,5 +113,51 @@ async fn a_failing_rule_test_sets_is_error() {
     .await;
     assert_eq!(result.is_error, Some(true), "{result:?}");
     let structured = result.structured_content.as_ref().expect("structured content");
-    assert_eq!(structured["ok"], Value::Bool(false), "{structured}");
+    assert_eq!(structured["rules"]["ok"], Value::Bool(false), "{structured}");
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn arguments_that_do_not_go_together_are_a_usage_error_result() {
+    let result = call("check", serde_json::json!({ "kind": "format", "scope": "workspace" })).await;
+    assert_eq!(failure(&result)["kind"], "usage");
+    let dir = tempfile::tempdir().unwrap();
+    std::fs::write(dir.path().join("a.py"), "x = 1\n").unwrap();
+    let result = call(
+        "check",
+        serde_json::json!({ "paths": [dir.path().join("a.py")], "only": ["ruff"], "skip": ["typos"] }),
+    )
+    .await;
+    assert_eq!(failure(&result)["kind"], "usage");
+}
+
+/// A skip is coverage information until the caller sets a budget for it; then exceeding it is
+/// the CLI's exit 2.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn skips_over_the_budget_set_is_error() {
+    let dir = tempfile::tempdir().unwrap();
+    let file = dir.path().join("App.csproj");
+    std::fs::write(&file, "<Project></Project>\n").unwrap();
+    let within = call("check", serde_json::json!({ "paths": [file] })).await;
+    assert_eq!(within.is_error, Some(false), "a skip alone is not an error");
+    let over = call("check", serde_json::json!({ "paths": [file], "max_skips": 0 })).await;
+    assert_eq!(over.is_error, Some(true), "the budget makes it one");
+}
+
+/// The schemas the tools no longer declare are readable as resources.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn info_answers_one_key_per_topic_and_validates_configs() {
+    let dir = tempfile::tempdir().unwrap();
+    let config = dir.path().join("poly.toml");
+    std::fs::write(&config, "[engines.ruff]\nno_such_key = 1\n").unwrap();
+    let result = call(
+        "info",
+        serde_json::json!({ "topics": ["version", "validate", "cache"], "paths": [config] }),
+    )
+    .await;
+    let structured = result.structured_content.as_ref().unwrap();
+    for topic in ["version", "validate", "cache"] {
+        assert!(structured[topic].is_object(), "{topic}: {structured}");
+    }
+    assert_eq!(structured["validate"]["valid"], Value::Bool(false), "{structured}");
+    assert_eq!(result.is_error, Some(true), "an invalid config is the CLI's exit 2");
 }

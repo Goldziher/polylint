@@ -186,13 +186,17 @@ async fn connect() -> (
     (client, server_task)
 }
 
-/// Call `tool` over the three fixture paths and return the raw result.
-async fn call(tool: &str, dir: &TempDir) -> rmcp::model::CallToolResult {
+/// `check` with `kind` over the three fixture paths, returning the raw result.
+async fn call(kind: &str, dir: &TempDir) -> rmcp::model::CallToolResult {
     let (client, server_task) = connect().await;
-    let arguments: serde_json::Map<String, Value> =
-        [("paths".to_string(), Value::from(paths(dir)))].into_iter().collect();
+    let arguments: serde_json::Map<String, Value> = [
+        ("kind".to_string(), Value::from(kind)),
+        ("paths".to_string(), Value::from(paths(dir))),
+    ]
+    .into_iter()
+    .collect();
     let result = client
-        .call_tool(CallToolRequestParams::new(tool.to_string()).with_arguments(arguments))
+        .call_tool(CallToolRequestParams::new("check").with_arguments(arguments))
         .await
         .unwrap();
     client.cancel().await.unwrap();
@@ -239,9 +243,9 @@ async fn lint_names_invalid_utf8_as_a_structured_finding() {
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn format_check_names_the_errored_file_and_does_not_report_success() {
+async fn a_format_check_names_the_errored_file_and_does_not_report_success() {
     let dir = repo();
-    let result = call("format_check", &dir).await;
+    let result = call("format", &dir).await;
 
     assert_eq!(
         result.is_error,
@@ -281,7 +285,7 @@ async fn format_check_names_the_errored_file_and_does_not_report_success() {
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn the_text_block_carries_the_errored_file_too() {
     let dir = repo();
-    for tool in ["lint", "format_check"] {
+    for tool in ["lint", "format"] {
         let result = call(tool, &dir).await;
         let text = result.content[0].as_text().expect("text content").text.clone();
         let parsed: Value = serde_json::from_str(&text).unwrap_or_else(|e| panic!("{tool} text is JSON ({e}): {text}"));
@@ -315,12 +319,16 @@ async fn a_clean_run_gains_no_error_fields() {
     std::fs::write(dir.path().join("ok.py"), "print(\"hi\")\n").expect("write ok.py");
     let only = vec![dir.path().join("ok.py").display().to_string()];
 
-    for tool in ["lint", "format_check"] {
+    for tool in ["lint", "format"] {
         let (client, server_task) = connect().await;
-        let arguments: serde_json::Map<String, Value> =
-            [("paths".to_string(), Value::from(only.clone()))].into_iter().collect();
+        let arguments: serde_json::Map<String, Value> = [
+            ("kind".to_string(), Value::from(tool)),
+            ("paths".to_string(), Value::from(only.clone())),
+        ]
+        .into_iter()
+        .collect();
         let result = client
-            .call_tool(CallToolRequestParams::new(tool.to_string()).with_arguments(arguments))
+            .call_tool(CallToolRequestParams::new("check").with_arguments(arguments))
             .await
             .unwrap();
         client.cancel().await.unwrap();

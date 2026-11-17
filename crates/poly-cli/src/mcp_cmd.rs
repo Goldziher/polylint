@@ -27,10 +27,14 @@ const COMPONENT: &str = "mcp";
 /// `allow_outside_workspace` is set.
 fn services(config: Option<&std::path::Path>, allow_outside_workspace: bool) -> anyhow::Result<Arc<Services>> {
     let guard = WorkspaceGuard::for_cwd(config, allow_outside_workspace)?;
+    // Remote `extends` bases resolve from the source cache at their `poly.lock` revision and are
+    // never fetched: the server does not reach the network for config on a model's behalf.
+    let resolver = crate::config_sources::RemoteExtendsResolver::cache_only(&crate::config_sources::repo_root()?)?;
     Ok(Arc::new(
         Services::new()
             .with_components(Arc::new(HostComponents))
-            .with_workspace_guard(guard),
+            .with_workspace_guard(guard)
+            .with_config_resolver(Arc::new(resolver)),
     ))
 }
 

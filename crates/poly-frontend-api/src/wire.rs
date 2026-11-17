@@ -11,17 +11,21 @@ use crate::dto::ComponentSummary;
 
 /// Names of the services a host answers.
 pub mod service {
-    /// Lint paths ([`super::PathsRequest`] -> [`super::RunReply`]).
+    /// Lint paths ([`super::RunCall`] -> [`super::RunReply`]).
     pub const LINT: &str = "lint.run";
-    /// Check or apply formatting ([`super::PathsRequest`] -> [`super::RunReply`]).
+    /// Check or apply formatting ([`super::RunCall`] -> [`super::RunReply`]).
     pub const FORMAT: &str = "format.run";
     /// The whole-project lint phase ([`super::WorkspaceRequest`] -> `WorkspaceReport`).
     pub const WORKSPACE_LINT: &str = "workspace.lint";
     /// Result-cache footprint (no request -> `CacheStatsReport`).
     pub const CACHE_STATS: &str = "cache.stats";
-    /// Empty the result cache (no request -> `CacheCleanReport`).
+    /// Empty the result cache (no request -> `CacheFreedReport`).
     pub const CACHE_CLEAN: &str = "cache.clean";
-    /// The effective config ([`super::ConfigRequest`] -> `ConfigShowReport`).
+    /// Evict stale or oversized cache entries ([`super::CacheGcRequest`] -> `CacheFreedReport`).
+    pub const CACHE_GC: &str = "cache.gc";
+    /// Validate config files statically ([`super::ValidateRequest`] -> `ValidateReport`).
+    pub const CONFIG_VALIDATE: &str = "config.validate";
+    /// The effective config ([`super::ConfigRequest`] -> the `poly config show --format json` document).
     pub const CONFIG_SHOW: &str = "config.show";
     /// The ast-grep rule inventory ([`super::RulesRequest`] -> `RulesReport`).
     pub const RULES: &str = "rules.report";
@@ -61,24 +65,79 @@ pub enum InstallMode {
     Never,
 }
 
-/// Request body of `lint.run` and `format.run`.
+/// What a run does when a file needs an engine component that is not installed.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
+#[serde(rename_all = "lowercase")]
+pub enum OnMissingMode {
+    /// The run fails.
+    Fail,
+    /// The files are skipped and charged to the skip budget.
+    Skip,
+}
+
+/// The run options the CLI and a frontend share: one field per `poly lint` / `poly fmt` flag that
+/// shapes the run. The CLI maps its flags onto it and the MCP server derives its `check` / `fix`
+/// input schema from it, so a new run option reaches both surfaces by construction.
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
-pub struct PathsRequest {
-    /// Files or directories; empty means the current directory.
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
+pub struct RunRequest {
+    /// Files or directories (default: the current directory).
     #[serde(default)]
     pub paths: Vec<String>,
-    /// Gitignore-style globs to exclude.
+    /// Gitignore-style globs excluded on top of `[discovery] exclude`; `e2e/**` matches at any depth, `/e2e/**`
+    /// only at the config root.
     #[serde(default)]
     pub exclude: Vec<String>,
-    /// Config file to use instead of discovery.
+    /// Config file (`poly.toml`); default: discovered from the working directory.
     #[serde(default)]
     pub config: Option<String>,
+    /// Check named paths even when they match the exclude set.
+    #[serde(default)]
+    pub include_excluded: bool,
+    /// Run only these engines (tool ids: `ruff`, `oxc`, ...). Never enables one the config leaves off.
+    #[serde(default)]
+    pub only: Vec<String>,
+    /// Drop these engines. Not with `only`.
+    #[serde(default)]
+    pub skip: Vec<String>,
+    /// Not verified when more files than this were skipped (0: any skip).
+    #[serde(default)]
+    pub max_skips: Option<usize>,
+    /// Missing engine component: `config` (default, `[components] install`), `auto` download, `never` (skip its
+    /// files).
+    #[serde(default)]
+    pub install: InstallMode,
+    /// Missing component: `fail` or `skip` its files; overrides `[components] on_missing`.
+    #[serde(default)]
+    pub on_missing: Option<OnMissingMode>,
+    /// Bypass the result cache.
+    #[serde(default)]
+    pub no_cache: bool,
+    /// Worker threads (default: all cores).
+    #[serde(default)]
+    pub jobs: Option<usize>,
+    /// Also rewrite hash-stamped generated files (fix only).
+    #[serde(default)]
+    pub fix_generated: bool,
+    /// Attach per-engine debug records (cache hits, timings).
+    #[serde(default)]
+    pub debug: bool,
+}
+
+/// Request body of `lint.run` and `format.run`.
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct RunCall {
+    /// The run options.
+    #[serde(flatten)]
+    pub request: RunRequest,
     /// Apply fixes (`lint.run`) or write files (`format.run`).
     #[serde(default)]
     pub apply: bool,
-    /// Whether a missing component may be downloaded.
+    /// Also run the whole-project phase, as `poly lint` does (`lint.run` only). Its report rides in
+    /// the reply document under `workspace`.
     #[serde(default)]
-    pub install: InstallMode,
+    pub workspace: bool,
 }
 
 /// Request body of `components.status`.
@@ -134,6 +193,25 @@ pub struct ConfigRequest {
     pub config: Option<String>,
 }
 
+/// Request body of `cache.gc`.
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct CacheGcRequest {
+    /// Evict entries older than this many days.
+    #[serde(default)]
+    pub max_age_days: Option<u64>,
+    /// Evict oldest-first until under this budget (`500M`, `2G`).
+    #[serde(default)]
+    pub max_size: Option<String>,
+}
+
+/// Request body of `config.validate`.
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct ValidateRequest {
+    /// Config files, or directories holding a `poly.toml`; empty means the nearest `poly.toml`.
+    #[serde(default)]
+    pub paths: Vec<String>,
+}
+
 /// Request body of `rules.report`.
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct RulesRequest {
@@ -175,7 +253,8 @@ pub struct RunReply {
     pub json: String,
     /// The document as the CLI prints it with `--format toon`.
     pub toon: String,
-    /// Whether the run failed on a file or a component blocks it (the tool's `isError`).
+    /// Whether the run did not verify what it was asked to (the tool's `isError`): it failed on a
+    /// file, a component blocks it, its skips exceed the budget, or it could not start.
     pub is_error: bool,
 }
 
@@ -203,6 +282,9 @@ pub struct Schemas {
     pub lint: Value,
     /// Schema of the format document.
     pub format: Value,
+    /// The `poly.toml` schema (`poly config schema`).
+    #[serde(default)]
+    pub poly_toml: Value,
 }
 
 /// Reply of `components.list`.

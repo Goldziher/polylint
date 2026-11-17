@@ -7,12 +7,12 @@
 use std::sync::Arc;
 
 use poly_frontend_api::dto::{
-    CacheCleanReport, CacheStatsReport, ComponentActions, ComponentSummary, ComponentsStatus, ConfigShowReport,
-    RulesReport, WorkspaceReport,
+    CacheFreedReport, CacheStatsReport, ComponentActions, ComponentSummary, ComponentsStatus, RulesReport,
+    ValidateReport, WorkspaceReport,
 };
 use poly_frontend_api::wire::{
-    ComponentsInstallRequest, ComponentsStatusRequest, ComponentsUninstallRequest, ConfigRequest, Engines,
-    PathsRequest, RulesRequest, RunReply, Schemas, WorkspaceRequest, service,
+    CacheGcRequest, ComponentsInstallRequest, ComponentsStatusRequest, ComponentsUninstallRequest, ConfigRequest,
+    Engines, RulesRequest, RunCall, RunReply, Schemas, ValidateRequest, WorkspaceRequest, service,
 };
 use poly_frontend_api::{ServiceCaller, call};
 
@@ -34,7 +34,7 @@ impl Backend {
     /// # Errors
     ///
     /// When the host fails the run or the reply does not decode.
-    pub fn lint(&self, request: &PathsRequest) -> anyhow::Result<RunReply> {
+    pub fn lint(&self, request: &RunCall) -> anyhow::Result<RunReply> {
         call(&*self.caller, service::LINT, request)
     }
 
@@ -43,7 +43,7 @@ impl Backend {
     /// # Errors
     ///
     /// As [`Backend::lint`].
-    pub fn format(&self, request: &PathsRequest) -> anyhow::Result<RunReply> {
+    pub fn format(&self, request: &RunCall) -> anyhow::Result<RunReply> {
         call(&*self.caller, service::FORMAT, request)
     }
 
@@ -70,16 +70,34 @@ impl Backend {
     /// # Errors
     ///
     /// As [`Backend::lint`].
-    pub fn cache_clean(&self) -> anyhow::Result<CacheCleanReport> {
+    pub fn cache_clean(&self) -> anyhow::Result<CacheFreedReport> {
         call(&*self.caller, service::CACHE_CLEAN, &())
     }
 
-    /// The effective config.
+    /// Evict stale or oversized cache entries.
     ///
     /// # Errors
     ///
     /// As [`Backend::lint`].
-    pub fn config_show(&self, request: &ConfigRequest) -> anyhow::Result<ConfigShowReport> {
+    pub fn cache_gc(&self, request: &CacheGcRequest) -> anyhow::Result<CacheFreedReport> {
+        call(&*self.caller, service::CACHE_GC, request)
+    }
+
+    /// Validate config files statically.
+    ///
+    /// # Errors
+    ///
+    /// As [`Backend::lint`].
+    pub fn config_validate(&self, request: &ValidateRequest) -> anyhow::Result<ValidateReport> {
+        call(&*self.caller, service::CONFIG_VALIDATE, request)
+    }
+
+    /// The effective config, as the `poly config show --format json` document.
+    ///
+    /// # Errors
+    ///
+    /// As [`Backend::lint`].
+    pub fn config_show(&self, request: &ConfigRequest) -> anyhow::Result<serde_json::Value> {
         call(&*self.caller, service::CONFIG_SHOW, request)
     }
 

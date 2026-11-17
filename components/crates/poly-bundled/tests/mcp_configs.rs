@@ -77,7 +77,7 @@ fn an_oxlintrc_edit_between_two_calls_changes_the_findings() {
     )
     .unwrap();
 
-    let call = json!({ "name": "lint", "arguments": { "paths": ["a.ts"] } });
+    let call = json!({ "name": "check", "arguments": { "paths": ["a.ts"] } });
     let before = codes(&request(&mut stdin, &mut stdout, 2, "tools/call", call.clone()));
     write_rc(dir.path(), r#"{"no-debugger": "off", "eqeqeq": "error"}"#);
     let after = codes(&request(&mut stdin, &mut stdout, 3, "tools/call", call));
