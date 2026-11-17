@@ -66,7 +66,7 @@ use poly_engine_api::{
 };
 
 /// The taplo crate version this backend wraps; used as part of the cache key.
-const TAPLO_VERSION: &str = "0.14.0+opts-2+oxc_formatter_toml-74e5e66+oxfmtrc-scope-1";
+const TAPLO_VERSION: &str = "0.14.0+opts-2+oxc_formatter_toml-d948351+oxfmtrc-scope-1";
 
 /// Keys that only the taplo formatter understands; setting one selects it over `oxc_formatter_toml`.
 const TAPLO_LAYOUT_KEYS: &[&str] = &[
