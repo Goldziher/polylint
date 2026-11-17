@@ -594,7 +594,7 @@ fn cache_key(
     );
     args.insert(
         "__engine_env".to_string(),
-        toml::Value::String(key_inputs::engine_env_text(plan.engine.name(), std::env::vars())),
+        toml::Value::String(key_inputs::engine_env_text(plan.engine.name(), std::env::vars_os())),
     );
     let names: Vec<String> = files.iter().map(|f| key_inputs::relative_text(&f.path, root)).collect();
     let digest = ResultCache::file_set_digest(

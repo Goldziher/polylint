@@ -17,6 +17,7 @@
 //! - **An engine's own environment namespace is keyed.** A component may read `<NAME>_*` variables
 //!   (tsrs reads `TSRS_*`, ADR 0051); poly never sets them, so they are folded in as found.
 
+use std::ffi::OsString;
 use std::path::{Path, PathBuf};
 
 use ignore::WalkBuilder;
@@ -200,9 +201,20 @@ pub(super) fn unserved_python(root: &Path, served: &[ProjectFile]) -> String {
 
 /// The `<NAME>_*` environment variables of the engine named `engine` (`tsrs` reads `TSRS_*`), as key
 /// text independent of their order.
-pub(super) fn engine_env_text(engine: &str, vars: impl Iterator<Item = (String, String)>) -> String {
+///
+/// Takes [`std::env::vars_os`]: `vars` panics on a variable that is not Unicode. Such a name is in
+/// no engine's namespace; such a value is keyed by a digest of its bytes.
+pub(super) fn engine_env_text(engine: &str, vars: impl Iterator<Item = (OsString, OsString)>) -> String {
     let prefix = format!("{}_", engine.to_ascii_uppercase().replace('-', "_"));
-    let mut found: Vec<(String, String)> = vars.filter(|(name, _)| name.starts_with(&prefix)).collect();
+    let mut found: Vec<(String, String)> = vars
+        .filter_map(|(name, value)| {
+            let name = name.into_string().ok().filter(|name| name.starts_with(&prefix))?;
+            let value = value
+                .into_string()
+                .unwrap_or_else(|raw| format!("bytes:{}", blake3::hash(raw.as_encoded_bytes()).to_hex()));
+            Some((name, value))
+        })
+        .collect();
     found.sort();
     found
         .iter()
@@ -336,10 +348,27 @@ mod tests {
         let vars = || {
             [("TSRS_TRACE", "1"), ("PATH", "/bin"), ("TSRSX", "y")]
                 .into_iter()
-                .map(|(name, value)| (name.to_owned(), value.to_owned()))
+                .map(|(name, value)| (OsString::from(name), OsString::from(value)))
         };
         assert_eq!(engine_env_text("tsrs", vars()), "TSRS_TRACE=1");
         assert_eq!(engine_env_text("python-types", vars()), "");
+    }
+
+    /// A variable that is not Unicode is keyed, not a panic.
+    #[cfg(unix)]
+    #[test]
+    fn engine_env_text_keys_a_value_that_is_not_unicode() {
+        use std::os::unix::ffi::OsStringExt;
+        let vars = |value: &[u8]| {
+            [
+                (OsString::from("TSRS_PATH"), OsString::from_vec(value.to_vec())),
+                (OsString::from_vec(vec![0xff, b'_', b'X']), OsString::from("1")),
+            ]
+            .into_iter()
+        };
+        let one = engine_env_text("tsrs", vars(&[0xff, 0x01]));
+        assert!(one.starts_with("TSRS_PATH=bytes:"), "{one}");
+        assert_ne!(one, engine_env_text("tsrs", vars(&[0xff, 0x02])));
     }
 
     #[test]
