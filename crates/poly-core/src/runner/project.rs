@@ -16,10 +16,12 @@
 //! Results are cached under [`Namespace::Lint`] with the engine id `project:<engine>`, keyed on
 //! the engine version, a fingerprint of its resolved config, the host environment, and the sorted
 //! `(path, content digest)` list of the files it saw — any change to one file, the set, the config
-//! or the interpreter re-runs the whole check, and nothing else does.
+//! or the interpreter re-runs the whole check, and nothing else does. Paths in the key are
+//! checkout-relative, and a Python check's key also covers what it reads from disk (see [`key_inputs`]).
 
 mod fixes;
 mod inputs;
+mod key_inputs;
 mod merge;
 mod schedule;
 mod scope;
@@ -577,17 +579,24 @@ fn cache_key(
         .map(|b| format!("{b:02x}"))
         .collect::<String>();
     args.insert("__config".to_string(), toml::Value::String(fingerprint));
+    let checkout = key_inputs::checkout_of(root);
     args.insert(
         "__root".to_string(),
-        toml::Value::String(root.to_string_lossy().into_owned()),
+        toml::Value::String(key_inputs::relative_text(root, &checkout)),
     );
-    let env_pairs: Vec<String> = environment
-        .to_wire_pairs()
-        .into_iter()
-        .map(|(k, v)| format!("{k}={v}"))
-        .collect();
-    args.insert("__environment".to_string(), toml::Value::String(env_pairs.join("\0")));
-    let names: Vec<std::borrow::Cow<'_, str>> = files.iter().map(|f| f.path.to_string_lossy()).collect();
+    args.insert(
+        "__environment".to_string(),
+        toml::Value::String(key_inputs::environment_text(environment, &checkout)),
+    );
+    args.insert(
+        "__disk".to_string(),
+        toml::Value::String(key_inputs::python_disk_inputs(environment, root, files)),
+    );
+    args.insert(
+        "__engine_env".to_string(),
+        toml::Value::String(key_inputs::engine_env_text(plan.engine.name(), std::env::vars_os())),
+    );
+    let names: Vec<String> = files.iter().map(|f| key_inputs::relative_text(&f.path, root)).collect();
     let digest = ResultCache::file_set_digest(
         names
             .iter()
@@ -650,7 +659,8 @@ fn report_for(
     let cached = key
         .as_ref()
         .and_then(|key| cache.get(Namespace::Lint, key))
-        .and_then(|bytes| serde_json::from_slice::<Vec<(PathBuf, Vec<Diagnostic>)>>(&bytes).ok());
+        .and_then(|bytes| serde_json::from_slice::<Vec<(PathBuf, Vec<Diagnostic>)>>(&bytes).ok())
+        .map(|stored| key_inputs::from_stored(root, loaded, stored));
     if let Some(reported) = cached {
         return Ok(reported);
     }
@@ -669,7 +679,7 @@ fn report_for(
             }
         })?;
     if let Some(key) = &key
-        && let Ok(bytes) = serde_json::to_vec(&reported)
+        && let Ok(bytes) = serde_json::to_vec(&key_inputs::to_stored(root, &reported))
         && let Err(error) = cache.put(Namespace::Lint, key, &bytes)
     {
         tracing::debug!(%error, "project check: result not cached");

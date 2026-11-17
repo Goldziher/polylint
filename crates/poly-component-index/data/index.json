@@ -2256,7 +2256,7 @@
               "note": null
             }
           ],
-          "hooks": 40,
+          "hooks": 42,
           "takes_over_tier_one": false,
           "claimed_paths": [],
           "host_hook": "none",

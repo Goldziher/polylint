@@ -46,6 +46,7 @@ use crate::engine::{
 };
 use crate::language::Language;
 
+mod config_salt;
 mod lock;
 mod recipe;
 
@@ -532,6 +533,8 @@ impl Engine for CatalogToolEngine {
     fn run_context(&self, _cfg: &EngineConfig) -> String {
         if self.recipe.is_some() {
             recipe::forget_run_memos();
+        } else {
+            config_salt::forget();
         }
         String::new()
     }
@@ -605,8 +608,19 @@ impl Engine for CatalogToolEngine {
         self.recipe.as_ref().and_then(|recipe| recipe.cache_salt(&src.path))
     }
 
+    /// A recipe's dependency digest; for a plain tool, the config files it may read ([`config_salt`]).
     fn file_context(&self, path: &Path, _cfg: &EngineConfig) -> Option<String> {
-        self.recipe.as_ref().and_then(|recipe| recipe.cache_salt(path))
+        match &self.recipe {
+            Some(recipe) => recipe.cache_salt(path),
+            None => Some(config_salt::salt(path, self.root.as_deref())),
+        }
+    }
+
+    /// The format result's key carries a plain tool's config too ([`config_salt`]); a recipe's is in its version.
+    fn format_input_salt(&self, path: &Path, _cfg: &EngineConfig) -> Option<String> {
+        self.recipe
+            .is_none()
+            .then(|| config_salt::salt(path, self.root.as_deref()))
     }
 
     fn batching(&self) -> Option<&dyn Batching> {

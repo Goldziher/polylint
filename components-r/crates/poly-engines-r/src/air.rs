@@ -44,8 +44,12 @@ pub struct AirEngine;
 
 impl Engine for AirEngine {
     /// The format cache key folds in the project's `air.toml`, and `skip_reason` leaves out what its patterns name.
+    ///
+    /// `file_context` repeats the salt because the stat fast path keys a file by it, and a component host asks the
+    /// component only the hooks declared here.
     fn overridden_hooks(&self) -> u32 {
-        poly_engine_api::desc::hooks::FORMAT_INPUT_SALT | poly_engine_api::desc::hooks::SKIP_REASON
+        use poly_engine_api::desc::hooks;
+        hooks::FILE_CONTEXT | hooks::FORMAT_INPUT_SALT | hooks::SKIP_REASON
     }
 
     fn name(&self) -> &'static str {
@@ -79,6 +83,10 @@ impl Engine for AirEngine {
 
     fn format_input_salt(&self, path: &std::path::Path, _cfg: &EngineConfig) -> Option<String> {
         air_config::digest(path)
+    }
+
+    fn file_context(&self, path: &std::path::Path, cfg: &EngineConfig) -> Option<String> {
+        self.format_input_salt(path, cfg)
     }
 
     /// Files air's own `exclude` and `default-exclude` patterns leave out (`renv/`, `RcppExports.R`, ...), as

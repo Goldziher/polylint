@@ -13,6 +13,7 @@
   `CACHE_FORMAT_VERSION` (now `4`), and the run path sweeps stranded entries automatically.
 - Updated: 2026-08-25: cache misses use an open-time presence index, engine results are
   persisted only when computation takes at least 5 ms, and disabled caches skip key work.
+- Amended by: ADR 0077 (cache keys carry every input, relative to the checkout)
 
 ## Context
 

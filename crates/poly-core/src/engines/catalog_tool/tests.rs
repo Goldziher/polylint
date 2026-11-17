@@ -607,3 +607,35 @@ fn an_absent_enabled_linter_claims_no_coverage() {
     let diagnostics = engine.lint(&make_src("m.py", "x = 1\n"), &cfg()).unwrap();
     assert!(diagnostics.is_empty());
 }
+
+/// S5: a plain catalog tool reads its own config (`yamllint` its `.yamllint`), so editing it must change the file's
+/// cache key, for lint (the stat index keys by `file_context`) and format (the content key by `format_input_salt`).
+#[test]
+fn a_plain_tool_s_config_edit_changes_the_cache_key() {
+    let dir = tempfile::tempdir().expect("tempdir");
+    std::fs::create_dir(dir.path().join(".git")).expect("git");
+    let file = dir.path().join("c.yaml");
+    std::fs::write(&file, "a: 1\n").expect("file");
+    std::fs::write(dir.path().join(".yamllint"), "extends: default\n").expect("config");
+    let tool = leak_tool(
+        "plain-config-tool",
+        "plain-config-tool",
+        "linter",
+        vec!["$PATH".to_string()],
+    );
+    let engine = CatalogToolEngine::lint_engine(tool, None, None, BTreeMap::new(), Some(dir.path().to_path_buf()))
+        .expect("a non-mutating linter wires");
+    let keys = |engine: &CatalogToolEngine| {
+        engine.run_context(&cfg());
+        (
+            engine.file_context(&file, &cfg()),
+            engine.format_input_salt(&file, &cfg()),
+        )
+    };
+    let before = keys(&engine);
+    std::fs::write(dir.path().join(".yamllint"), "extends: relaxed\n").expect("edit config");
+    let after = keys(&engine);
+    assert!(before.0.is_some(), "the config is part of the key");
+    assert_ne!(before.0, after.0, "lint key");
+    assert_ne!(before.1, after.1, "format key");
+}

@@ -257,6 +257,9 @@ fn hook_version(hook: &Hook) -> String {
     if matches!(hook.cache, HookCache::DeclaredInputs(_)) {
         let _ = write!(version, "\0{DECLARED_DIGEST_LAYOUT}");
     }
+    if !hook.cache_salt.is_empty() {
+        let _ = write!(version, "\0salt={}", hook.cache_salt);
+    }
     version
 }
 

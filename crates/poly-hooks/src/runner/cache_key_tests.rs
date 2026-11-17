@@ -118,3 +118,19 @@ fn a_dirty_but_unchanged_worktree_is_not_reported_as_modified() {
     let probe = declared_modified(&memo, dir.path(), dir.path(), &txt()).expect("probe");
     assert_eq!(probe, Vec::<PathBuf>::new());
 }
+
+/// A hook's cache salt (its toolchain's version, the environment) is part of the key: a `rustup update` that adds
+/// clippy lints must not replay the previous toolchain's pass.
+#[test]
+fn the_cache_salt_is_part_of_the_key() {
+    let dir = repo(&[("a.txt", "a")]);
+    let mut hook = Hook::run("clippy", "cargo clippy");
+    hook.cache = HookCache::DeclaredInputs(txt());
+    let key = |hook: &Hook| cache_key(&DeclaredMemo::default(), dir.path(), dir.path(), hook, &[]).expect("cacheable");
+    let plain = key(&hook);
+    hook.cache_salt = "rustc 1.90.0".to_owned();
+    let salted = key(&hook);
+    hook.cache_salt = "rustc 1.91.0".to_owned();
+    assert_ne!(plain, salted);
+    assert_ne!(salted, key(&hook));
+}

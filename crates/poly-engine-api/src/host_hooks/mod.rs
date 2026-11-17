@@ -34,6 +34,7 @@ pub mod file_bytes;
 pub mod go_mod;
 pub mod jsonschema_source;
 pub mod native_config;
+pub mod oxc_external;
 pub mod oxfmt_native;
 pub mod oxfmt_scope;
 pub mod oxlintrc;
@@ -136,7 +137,10 @@ pub fn file_context(hook: HostHook, path: &Path, cfg: &EngineConfig) -> Option<S
 #[must_use]
 pub fn lint_input_salt(hook: HostHook, path: &Path, cfg: &EngineConfig) -> Option<String> {
     match hook {
-        HostHook::Oxc => oxlintrc::governing_for(cfg, path).map(|governing| governing.digest.clone()),
+        HostHook::Oxc => join_salts(
+            oxlintrc::governing_for(cfg, path).map(|governing| governing.digest.clone()),
+            oxc_external::lint_salt(cfg, path),
+        ),
         HostHook::JsonSchema => jsonschema_source::salt(cfg, path),
         HostHook::GoModLint => go_mod::lint_salt(path),
         HostHook::SeleneConfig => selene_config::salt(path),
@@ -154,7 +158,8 @@ pub fn lint_input_salt(hook: HostHook, path: &Path, cfg: &EngineConfig) -> Optio
 #[must_use]
 pub fn format_input_salt(hook: HostHook, path: &Path, cfg: &EngineConfig) -> Option<String> {
     match hook {
-        HostHook::OxfmtScope | HostHook::Oxc => oxfmt_scope::input_salt(cfg, path),
+        HostHook::OxfmtScope => oxfmt_scope::input_salt(cfg, path),
+        HostHook::Oxc => join_salts(oxfmt_scope::input_salt(cfg, path), oxc_external::format_salt(cfg, path)),
         HostHook::Editorconfig => {
             let dialect = shell_dialect::salt(path);
             Some(match editorconfig::salt(cfg, path) {
@@ -169,6 +174,15 @@ pub fn format_input_salt(hook: HostHook, path: &Path, cfg: &EngineConfig) -> Opt
         | HostHook::JsonSchema
         | HostHook::GoModLint
         | HostHook::SeleneConfig => None,
+    }
+}
+
+/// Two optional salts as one: `None` only when both are.
+fn join_salts(first: Option<String>, second: Option<String>) -> Option<String> {
+    match (first, second) {
+        (None, None) => None,
+        (first, None) => first,
+        (first, Some(second)) => Some(format!("{}|{second}", first.unwrap_or_default())),
     }
 }
 
@@ -194,6 +208,44 @@ pub fn format_config<'a>(
     }
 }
 
+/// The ast-grep rule directories the host resolves into the engine's options.
+pub const RULES_DIRS_KEY: &str = "rules_dirs";
+
+/// `table` with the paths the host itself set ([`oxlintrc::RC_KEY`], [`oxfmt_scope::RC_KEY`],
+/// [`RULES_DIRS_KEY`]) rewritten for a cache key: relative to the checkout holding them (the nearest
+/// directory with a `.git`), so two worktrees of a repository, or an absolute and a relative
+/// invocation, key alike. The engine still reads the table it was given; only the key text changes.
+pub fn key_options(table: &mut toml::Table) {
+    for key in [oxlintrc::RC_KEY, oxfmt_scope::RC_KEY] {
+        if let Some(toml::Value::String(path)) = table.get_mut(key) {
+            *path = checkout_relative(Path::new(path.as_str()));
+        }
+    }
+    if let Some(toml::Value::Array(dirs)) = table.get_mut(RULES_DIRS_KEY) {
+        for dir in dirs {
+            if let toml::Value::String(path) = dir {
+                *path = checkout_relative(Path::new(path.as_str()));
+            }
+        }
+    }
+}
+
+/// `path` relative to the nearest ancestor holding `.git`, else to its own directory.
+fn checkout_relative(path: &Path) -> String {
+    let absolute = std::path::absolute(path).unwrap_or_else(|_| path.to_path_buf());
+    let base = absolute
+        .ancestors()
+        .skip(1)
+        .find(|dir| dir.join(".git").exists())
+        .or_else(|| absolute.parent())
+        .unwrap_or(Path::new(""));
+    absolute
+        .strip_prefix(base)
+        .unwrap_or(&absolute)
+        .to_string_lossy()
+        .replace('\\', "/")
+}
+
 /// Run `report` the first time `key` is seen in this process, and never again.
 ///
 /// One static for the whole host: warnings raised while translating a native tool config (oxfmt
@@ -208,6 +260,35 @@ pub fn warn_once(key: String, report: impl FnOnce()) {
         .insert(key);
     if first {
         report();
+    }
+}
+
+#[cfg(test)]
+mod key_options_tests {
+    use super::*;
+
+    /// M3/M4: the oxc config paths and the ast-grep rule directories are keyed checkout-relative.
+    #[test]
+    fn rc_paths_are_keyed_relative_to_their_checkout() {
+        let keyed = |checkout: &Path| {
+            std::fs::create_dir_all(checkout.join(".git")).unwrap();
+            std::fs::create_dir_all(checkout.join("web")).unwrap();
+            let mut table = toml::Table::new();
+            let rc = |name: &str| toml::Value::String(checkout.join(name).to_string_lossy().into_owned());
+            table.insert(oxlintrc::RC_KEY.to_owned(), rc(".oxlintrc.json"));
+            table.insert(oxfmt_scope::RC_KEY.to_owned(), rc("web/.oxfmtrc.json"));
+            table.insert(RULES_DIRS_KEY.to_owned(), toml::Value::Array(vec![rc(".poly/rules")]));
+            key_options(&mut table);
+            table
+        };
+        let (one, two) = (tempfile::tempdir().unwrap(), tempfile::tempdir().unwrap());
+        let first = keyed(one.path());
+        assert_eq!(first, keyed(two.path()));
+        assert_eq!(first[oxfmt_scope::RC_KEY].as_str(), Some("web/.oxfmtrc.json"));
+        assert_eq!(
+            first[RULES_DIRS_KEY].as_array().unwrap()[0].as_str(),
+            Some(".poly/rules")
+        );
     }
 }
 

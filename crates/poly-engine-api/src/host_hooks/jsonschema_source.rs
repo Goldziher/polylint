@@ -391,7 +391,8 @@ pub fn salt(cfg: &EngineConfig, path: &Path) -> Option<String> {
         hasher.update(b"\0");
     }
     for file in seen {
-        hasher.update(file.to_string_lossy().as_bytes());
+        let name = file.strip_prefix(&scope.root).unwrap_or(file);
+        hasher.update(name.to_string_lossy().as_bytes());
         hasher.update(b"\0");
         hasher.update(file_digest(file).as_bytes());
     }
@@ -779,6 +780,18 @@ k = 1
         std::fs::write(dir.path().join("part.yaml"), "type: integer\n").expect("part");
         let after = salt(&cfg(""), &dir.path().join("f.yaml")).expect("salt");
         assert_ne!(before, after);
+    }
+
+    /// M4: the salt names schema files relative to the project, so two checkouts salt alike.
+    #[test]
+    fn salt_does_not_depend_on_the_checkout_location() {
+        let salt_in = || {
+            let dir = project();
+            std::fs::write(dir.path().join("s.json"), r#"{"type": "object"}"#).expect("s");
+            std::fs::write(dir.path().join("f.json"), r#"{"$schema": "./s.json"}"#).expect("f");
+            salt(&cfg(""), &dir.path().join("f.json"))
+        };
+        assert!(salt_in().is_some_and(|first| Some(first) == salt_in()));
     }
 
     #[test]

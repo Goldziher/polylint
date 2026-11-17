@@ -447,7 +447,7 @@ impl Engine for NativeToolEngine {
     fn format_input_salt(&self, path: &std::path::Path, cfg: &EngineConfig) -> Option<String> {
         match self.role {
             NativeRole::Shfmt => poly_engine_api::host_hooks::editorconfig::salt(cfg, path),
-            _ => None,
+            _ => tool_config::file_salt(self.role.spec(), path),
         }
     }
 

@@ -2,7 +2,10 @@ use std::path::Path;
 
 use tempfile::TempDir;
 
-use super::{ContentDigest, FileStat, PathKey, PlanKey, RACY_WINDOW_NS, Record, Segment, StatIndex, Verdict};
+use super::{
+    ContentDigest, FileStat, MAX_RETAINED_SEGMENTS, PathKey, PlanKey, RACY_WINDOW_NS, Record, Segment, StatIndex,
+    Verdict,
+};
 use crate::Namespace;
 
 const HOUR_NS: i64 = 3_600 * 1_000_000_000;
@@ -82,12 +85,51 @@ fn every_stat_field_is_compared() {
 }
 
 #[test]
-fn engine_keys_must_match_in_order_and_count() {
+fn engine_keys_must_match_the_leading_segments_in_order() {
     let stored = record(old_stat(), b"x");
     assert!(stored.has_keys(&[key("ruff")]));
     assert!(!stored.has_keys(&[key("other")]));
-    assert!(!stored.has_keys(&[]));
     assert!(!stored.has_keys(&[key("ruff"), key("typos")]));
+    let mut two = record(old_stat(), b"x");
+    two.segments.push(Segment {
+        key: key("typos"),
+        payload: Vec::new(),
+    });
+    assert!(two.has_keys(&[key("ruff"), key("typos")]));
+    assert!(!two.has_keys(&[key("typos"), key("ruff")]));
+}
+
+/// M5: a narrowed plan's record keeps the other engines' segments for the same bytes, and drops
+/// them once the bytes change.
+#[test]
+fn a_record_merges_the_segments_of_an_earlier_record_of_the_same_bytes() {
+    let mut full = record(old_stat(), b"x");
+    full.segments.push(Segment {
+        key: key("typos"),
+        payload: b"[found]".to_vec(),
+    });
+    let narrowed = record(old_stat(), b"x").merged(Some(&full));
+    assert_eq!(narrowed.segments.len(), 2, "ruff's own, then typos' retained");
+    assert!(narrowed.has_keys(&[key("ruff")]));
+    assert_eq!(
+        narrowed.segment(&key("typos")).map(|s| s.payload.as_slice()),
+        Some(&b"[found]"[..])
+    );
+    let edited = record(old_stat(), b"y").merged(Some(&full));
+    assert_eq!(edited.segments.len(), 1, "another file's bytes keep nothing");
+}
+
+#[test]
+fn retained_segments_are_bounded() {
+    let mut earlier = record(old_stat(), b"x");
+    for index in 0..(MAX_RETAINED_SEGMENTS * 2) {
+        earlier.segments.push(Segment {
+            key: key(&format!("engine {index}")),
+            payload: Vec::new(),
+        });
+    }
+    let merged = record(old_stat(), b"x").merged(Some(&earlier));
+    assert_eq!(merged.segments.len(), 1 + MAX_RETAINED_SEGMENTS);
 }
 
 #[test]

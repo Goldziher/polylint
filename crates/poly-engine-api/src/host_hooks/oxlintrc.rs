@@ -103,7 +103,13 @@ fn compute(root: &Path, dir: &Path) -> Governing {
     let mut hasher = blake3::Hasher::new();
     let mut ignores = Vec::new();
     for file in &chain {
-        hasher.update(file.as_os_str().as_encoded_bytes());
+        // Relative to the root config's directory, so another checkout of the tree digests alike.
+        hasher.update(
+            file.strip_prefix(root_dir)
+                .unwrap_or(file)
+                .as_os_str()
+                .as_encoded_bytes(),
+        );
         hasher.update(&super::file_bytes::for_digest(file));
         if let (Some(parent), Some(patterns)) = (file.parent(), ignore_patterns(file)) {
             ignores.push((parent.to_path_buf(), patterns));
@@ -179,6 +185,21 @@ mod tests {
         assert!(ignore.is_ignored(&repo.path().join("a/dist/x.js")));
         assert!(ignore.is_ignored(&nested_dir.join("gen.ts")));
         assert!(!ignore.is_ignored(&repo.path().join("other/gen.ts")));
+    }
+
+    /// M3: the chain digest names configs relative to the root config, so another checkout of the
+    /// same tree digests alike.
+    #[test]
+    fn the_chain_digest_does_not_depend_on_the_checkout_location() {
+        let digest = || {
+            let repo = tempfile::tempdir().unwrap();
+            let root = repo.path().join(".oxlintrc.json");
+            std::fs::write(&root, "{}").unwrap();
+            std::fs::create_dir_all(repo.path().join("pkg")).unwrap();
+            std::fs::write(repo.path().join("pkg/.oxlintrc.json"), r#"{"rules": {}}"#).unwrap();
+            governing(&root, &repo.path().join("pkg")).digest.clone()
+        };
+        assert_eq!(digest(), digest());
     }
 
     #[test]

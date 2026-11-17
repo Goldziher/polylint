@@ -543,6 +543,7 @@ pub(super) fn build_severity_remap(cfg: &EngineConfig) -> SeverityRemap {
 /// read those from globals rather than their own options table.
 fn cache_args(cfg: &EngineConfig) -> toml::Table {
     let mut table = cfg.options.clone();
+    poly_engine_api::host_hooks::key_options(&mut table);
     // Batching changes how a formatter is invoked, never what it produces —
     // output is byte-identical either way. Leaving it in the key would throw
     // away every cached result on a toggle, and make a batched and an

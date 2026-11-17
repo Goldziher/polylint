@@ -26,11 +26,16 @@ use tracing::info;
 
 use super::{builtin_runs_on, shell_quote};
 
+mod cargo_salt;
+
 /// Input globs the `cargo` group is result-cached on: any change to Rust
-/// sources, a manifest, the lockfile, the `cargo deny` policy, or the toolchain
-/// pin re-runs the whole group. Conservative on purpose — it never yields a
-/// false hit, at the cost of occasionally re-running when an unrelated one of
-/// these changes.
+/// sources, a manifest, the lockfile, the `cargo deny` policy, the toolchain
+/// pin, or a clippy or cargo config file re-runs the whole group. Conservative
+/// on purpose — it never yields a false hit, at the cost of occasionally
+/// re-running when an unrelated one of these changes. What lives outside the
+/// tracked tree (tool versions, environment, untracked and out-of-tree config)
+/// is each hook's [`Hook::cache_salt`](poly_hooks::model::Hook::cache_salt),
+/// from [`cargo_salt`].
 const CARGO_CACHE_INPUTS: &[&str] = &[
     "**/*.rs",
     "**/Cargo.toml",
@@ -38,7 +43,17 @@ const CARGO_CACHE_INPUTS: &[&str] = &[
     "deny.toml",
     "rust-toolchain.toml",
     "rust-toolchain",
+    "**/clippy.toml",
+    "**/.clippy.toml",
+    "**/.cargo/config.toml",
+    "**/.cargo/config",
 ];
+
+/// The cargo builtin that is never result-cached: `cargo deny check` judges the
+/// lockfile against the advisory database it fetches on every run, so a cached
+/// pass would hide an advisory published since. Keying the local database's
+/// state would not help, since the run itself refreshes it after the key is taken.
+const UNCACHED_CARGO_TOOL: &str = "cargo-deny";
 
 /// Resolve the result-cache policy for the whole `cargo` group: declared-inputs
 /// caching by default, disabled when the group opts out (`cargo = { cache =
@@ -74,6 +89,13 @@ pub(super) trait ToolProbe {
     /// never actually evaluated is the defect this method exists to prevent, and
     /// a stub makes that testable without spawning a shell.
     fn guard_passes(&self, command: &str) -> bool;
+
+    /// The [`Hook::cache_salt`](poly_hooks::model::Hook::cache_salt) of the
+    /// cached cargo builtin `tool`: the inputs its declared files do not carry.
+    /// Empty by default, for a probe that knows nothing of the host.
+    fn cargo_cache_salt(&self, _tool: &str) -> String {
+        String::new()
+    }
 }
 
 /// The production probe: resolves a tool against `PATH` (and Windows `PATHEXT`)
@@ -111,6 +133,10 @@ impl ToolProbe for PathProbe<'_> {
             .stderr(std::process::Stdio::null())
             .status()
             .is_ok_and(|status| status.success())
+    }
+
+    fn cargo_cache_salt(&self, tool: &str) -> String {
+        cargo_salt::salt(self.root, tool)
     }
 }
 
@@ -329,8 +355,9 @@ fn resolve_cargo_group(hooks: &HooksConfig, cargo_project: bool) -> Option<Cargo
 ///
 /// Each tool is capability-probed: an absent tool is skipped with a
 /// `tracing::info!` notice rather than failing the run. The hooks run
-/// project-wide (`always_run`, no `pass_filenames`) and are not result-cached,
-/// since a whole-workspace tool depends on far more than the matched file set.
+/// project-wide (`always_run`, no `pass_filenames`) and are result-cached on
+/// [`CARGO_CACHE_INPUTS`] plus each tool's salt, except `cargo deny`
+/// ([`UNCACHED_CARGO_TOOL`]).
 pub(super) fn append_cargo(
     hooks: &HooksConfig,
     config_stage: ConfigStage,
@@ -370,7 +397,10 @@ pub(super) fn append_cargo(
         // when the tool does, while non-cargo hooks still run alongside.
         hook.serial_group = Some(CARGO_SERIAL_GROUP.to_string());
         hook.skip_in_lint = !cargo.lint;
-        hook.cache = cache.clone();
+        if cache.is_enabled() && tool.id != UNCACHED_CARGO_TOOL {
+            hook.cache = cache.clone();
+            hook.cache_salt = probe.cargo_cache_salt(tool.id);
+        }
         out.push(hook);
     }
     Ok(())

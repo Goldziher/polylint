@@ -361,9 +361,15 @@ pub struct Record {
     /// Whether the verdict can be replayed without reading the file: no inline
     /// suppression directives, whose handling needs the content.
     pub replayable: bool,
-    /// One per engine, in plan order.
+    /// One per engine of the plan that wrote the record, in plan order, followed by segments
+    /// retained from earlier records of the same bytes whose engines that plan did not run (see
+    /// [`Record::merged`]).
     pub segments: Vec<Segment>,
 }
+
+/// How many segments of earlier plans a record keeps beyond its own plan's, so a record whose
+/// content never changes cannot grow without bound across config edits.
+pub const MAX_RETAINED_SEGMENTS: usize = 32;
 
 impl Record {
     /// Whether a recorded `stat` vouches for a file that now looks like `stat`.
@@ -371,9 +377,35 @@ impl Record {
         self.stat == *stat
     }
 
-    /// Whether the segments were made under exactly these engine keys.
+    /// Whether the plan that wrote this record ran exactly these engine keys, in order: its leading
+    /// segments are theirs. Segments retained after them belong to other plans and do not count.
     pub fn has_keys(&self, keys: &[PlanKey]) -> bool {
-        self.segments.len() == keys.len() && self.segments.iter().zip(keys).all(|(s, k)| s.key == *k)
+        self.segments.len() >= keys.len() && self.segments.iter().zip(keys).all(|(s, k)| s.key == *k)
+    }
+
+    /// The segment recorded under `key`, wherever it sits.
+    pub fn segment(&self, key: &PlanKey) -> Option<&Segment> {
+        self.segments.iter().find(|segment| segment.key == *key)
+    }
+
+    /// This record with the segments of `earlier` it does not have appended, when `earlier`
+    /// judged the same bytes, so a run with a narrower plan (`--only ruff`) does not discard what
+    /// the other engines found. At most [`MAX_RETAINED_SEGMENTS`] are kept beyond this record's own.
+    #[must_use]
+    pub fn merged(mut self, earlier: Option<&Record>) -> Self {
+        let Some(earlier) = earlier.filter(|earlier| earlier.digest == self.digest) else {
+            return self;
+        };
+        let own = self.segments.len();
+        for segment in &earlier.segments {
+            if self.segments.len() - own >= MAX_RETAINED_SEGMENTS {
+                break;
+            }
+            if self.segment(&segment.key).is_none() {
+                self.segments.push(segment.clone());
+            }
+        }
+        self
     }
 }
 

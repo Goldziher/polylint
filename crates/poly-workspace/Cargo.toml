@@ -16,6 +16,7 @@ path = "src/lib.rs"
 
 [dependencies]
 anyhow.workspace = true
+blake3.workspace = true
 console.workspace = true
 owo-colors.workspace = true
 poly-cache.workspace = true

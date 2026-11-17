@@ -215,3 +215,14 @@ fn a_plain_venv_named_package_is_still_walked() {
     let digest = digest_of(dir.path());
     assert!(digest.contains("d:venv") && digest.contains("f:venv/__init__.py"));
 }
+
+/// A file reached as `./pkg/m.py` and by its absolute path has one package-root key.
+#[test]
+fn a_relative_and_an_absolute_package_root_key_alike() {
+    let base = Path::new("/work/repo");
+    assert_eq!(super::checkout_relative(Path::new("./pkg"), base), "pkg");
+    assert_eq!(super::checkout_relative(&base.join("pkg"), base), "pkg");
+    assert_eq!(super::checkout_relative(Path::new("."), base), ".");
+    let outside = Path::new("/elsewhere/pkg");
+    assert_eq!(super::checkout_relative(outside, base), outside.to_string_lossy());
+}

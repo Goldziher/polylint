@@ -4,6 +4,7 @@
 - Date: 2026-11-03
 - Supersedes: ADR 0015
 - Amends: ADR 0002
+- Amended by: ADR 0077 (a component's declared cache-path hooks are asked of it)
 
 ## Context
 

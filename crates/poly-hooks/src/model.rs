@@ -173,6 +173,10 @@ pub struct Hook {
     pub fail_text: Option<String>,
     /// Tier-1 result-cache policy (default [`HookCache::Disabled`]).
     pub cache: HookCache,
+    /// Inputs outside the files the cache policy digests that still decide the hook's verdict (a toolchain's
+    /// version, the environment it reads, config files the file listing cannot see), folded into the cache key.
+    /// Empty when the policy's files say everything.
+    pub cache_salt: String,
     /// Opt into tier-2 sccache env injection (`RUSTC_WRAPPER`, …). Only honoured
     /// when the run carries [`HookRunRequest::sccache`]; default `false`.
     pub compiler: bool,

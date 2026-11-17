@@ -68,23 +68,31 @@
 //!   — the overwhelmingly common `poly fmt .` at the repo root. For
 //!   `shellcheck` this is *exactly* right: poly does not re-anchor the child, so
 //!   shellcheck resolves `.shellcheckrc` from poly's own cwd.
-//! - **Not covered:** a config file in a subdirectory *below* the invocation
-//!   directory that only governs part of a monorepo. Editing it does not
-//!   invalidate the cache. Scanning the whole tree for them would cost a full
-//!   directory walk on every run, and a single run-wide hash still could not
-//!   tell the runner which files it governs.
+//! - **Not covered by `version()`:** a config file in a subdirectory *below*
+//!   the invocation directory that only governs part of a monorepo. For the
+//!   tools poly runs in the file's own directory (`rustfmt`, `swift-format`)
+//!   that gap is closed per file instead: [`file_salt`] fingerprints the config
+//!   files from the file's directory upward — the files the tool itself
+//!   resolves — plus, for `rustfmt`, the `--edition` poly passes and the
+//!   `rust-toolchain[.toml]` that picks which `rustfmt` the rustup proxy runs
+//!   there. It is the engine's `format_input_salt` and `file_context`, so both
+//!   the content key and the stat fast path carry it, memoised per directory.
+//!   `shellcheck` runs in poly's own directory and resolves `.shellcheckrc`
+//!   from there, which `version()` covers exactly.
 //! - **Not covered:** an edit made during the lifetime of one process. The
 //!   fingerprint is computed once per process (it lives inside the `OnceLock`
-//!   behind [`Engine::version`]), so a long-lived host — `poly mcp` — keeps the
-//!   fingerprint it read at startup. Every `poly` CLI invocation is a fresh
-//!   process and so always reads fresh.
+//!   behind [`Engine::version`]; [`file_salt`] memoises per directory), so a
+//!   long-lived host — `poly mcp` — keeps the fingerprint it read first. Every
+//!   `poly` CLI invocation is a fresh process and so always reads fresh.
 //!
 //! [`Engine::version`]: crate::engine::Engine::version
 //! [`Engine`]: crate::engine::Engine
 
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
-use std::sync::{OnceLock, PoisonError, RwLock};
+use std::sync::{Arc, OnceLock, PoisonError, RwLock};
+
+use super::spec::ToolSpec;
 
 /// Config files `rustfmt` reads, in the order it probes them within one
 /// directory (the dot form wins on a tie). Both names are hashed when both
@@ -97,6 +105,66 @@ pub(crate) const SHELLCHECK_CONFIG_FILES: &[&str] = &[".shellcheckrc", "shellche
 
 /// Config file `swift-format` reads.
 pub(crate) const SWIFT_FORMAT_CONFIG_FILES: &[&str] = &[".swift-format"];
+
+/// The rustup toolchain files that select which `rustfmt` the proxy runs in a directory, so a nested one can pick
+/// another `rustfmt` than the one `--version` was probed from.
+pub(crate) const RUST_TOOLCHAIN_FILES: &[&str] = &["rust-toolchain.toml", "rust-toolchain"];
+
+/// The per-file cache input of a tool poly runs in the file's own directory: the fingerprint of the config files the
+/// tool resolves from there, and for `rustfmt` the edition poly passes and the toolchain file. `None` for a tool run
+/// in poly's own directory, whose config [`fingerprint`] already covers.
+///
+/// Memoised per directory, so it costs a map lookup per file once a directory has been seen.
+pub(crate) fn file_salt(spec: &ToolSpec, path: &Path) -> Option<String> {
+    let runs_in_file_dir = spec.rustfmt_config_flag || spec.run_in_file_dir;
+    if !runs_in_file_dir || spec.config_files.is_empty() {
+        return None;
+    }
+    // Absolute, as the tool sees its working directory: the ancestors of a relative `./a` end at the
+    // run root, and count it twice (`.` and the empty path), so a relative and an absolute run of one
+    // tree would otherwise key apart.
+    let dir = absolute_dir(path.parent().unwrap_or(path));
+    let config = dir_fingerprint(spec.engine_name, dir, |dir| {
+        let mut fingerprint = fingerprint_at(dir, spec.config_files);
+        if spec.edition_flag {
+            fingerprint.push_str("|toolchain:");
+            fingerprint.push_str(&fingerprint_at(dir, RUST_TOOLCHAIN_FILES));
+        }
+        fingerprint
+    });
+    Some(if spec.edition_flag {
+        format!("edition:{}|cfg:{config}", super::edition::resolve_edition(path))
+    } else {
+        format!("cfg:{config}")
+    })
+}
+
+/// `dir` under the run root (ADR 0073), else under the process directory; unchanged when it is absolute already or
+/// the process directory cannot be read.
+fn absolute_dir(dir: &Path) -> PathBuf {
+    if dir.is_absolute() {
+        return dir.to_path_buf();
+    }
+    poly_engine_api::run_root::current_dir().map_or_else(|_| dir.to_path_buf(), |base| base.join(dir))
+}
+
+type DirFingerprints = RwLock<HashMap<(&'static str, PathBuf), Arc<str>>>;
+
+/// The fingerprint of `tool`'s config as seen from `dir`, built by `build` the first time this process sees the pair.
+fn dir_fingerprint(tool: &'static str, dir: PathBuf, build: impl FnOnce(&Path) -> String) -> Arc<str> {
+    static SEEN: OnceLock<DirFingerprints> = OnceLock::new();
+    let seen = SEEN.get_or_init(DirFingerprints::default);
+    let key = (tool, dir);
+    if let Some(known) = seen.read().unwrap_or_else(PoisonError::into_inner).get(&key) {
+        return Arc::clone(known);
+    }
+    let built: Arc<str> = Arc::from(build(&key.1));
+    seen.write()
+        .unwrap_or_else(PoisonError::into_inner)
+        .entry(key)
+        .or_insert(built)
+        .clone()
+}
 
 /// Fingerprint returned when no candidate config file exists anywhere on the
 /// search path.
@@ -341,6 +409,106 @@ mod tests {
     fn no_config_anywhere_finds_nothing() {
         let dir = tempfile::tempdir().expect("tempdir");
         assert_eq!(nearest_config_at(dir.path(), &["poly-test-no-such-config-file"]), None);
+    }
+
+    /// What the stat fast path and the format content key fold in for a Rust file: the engine's `file_context`, which
+    /// must equal its `format_input_salt`.
+    fn rustfmt_file_context(path: &Path) -> Option<String> {
+        use crate::engine::Engine;
+        let engine = super::super::NativeToolEngine::for_language(crate::language::Language::Rust);
+        let cfg = crate::config::EngineConfig {
+            globals: crate::config::GlobalDefaults::default(),
+            indent_width: 4,
+            options: toml::Table::new(),
+        };
+        let context = engine.file_context(path, &cfg);
+        assert_eq!(context, engine.format_input_salt(path, &cfg));
+        context
+    }
+
+    /// S1: the `--edition` poly passes rustfmt is part of the file's key, so a crate moving to another edition does
+    /// not replay the previous edition's formatting.
+    #[test]
+    fn the_rustfmt_file_salt_carries_the_crate_edition() {
+        let salt_for = |edition: &str| {
+            let dir = tempfile::tempdir().expect("tempdir");
+            fs::create_dir(dir.path().join("src")).expect("mkdir");
+            fs::write(
+                dir.path().join("Cargo.toml"),
+                format!("[package]\nname = \"x\"\nversion = \"0.1.0\"\nedition = \"{edition}\"\n"),
+            )
+            .expect("write manifest");
+            rustfmt_file_context(&dir.path().join("src/lib.rs"))
+        };
+        let (old, new) = (salt_for("2021"), salt_for("2024"));
+        assert!(
+            old.as_deref().is_some_and(|salt| salt.contains("edition:2021")),
+            "{old:?}"
+        );
+        assert_ne!(old, new);
+    }
+
+    /// S2: a `rustfmt.toml` below the invocation directory governs the files under it, and keys them; so does a
+    /// nested `rust-toolchain.toml`, which picks another `rustfmt`.
+    #[test]
+    fn the_rustfmt_file_salt_carries_nested_config_and_toolchain_files() {
+        let salt_with = |file: Option<(&str, &str)>| {
+            let dir = tempfile::tempdir().expect("tempdir");
+            let crate_dir = dir.path().join("rs");
+            fs::create_dir_all(crate_dir.join("src")).expect("mkdir");
+            if let Some((name, text)) = file {
+                fs::write(crate_dir.join(name), text).expect("write config");
+            }
+            rustfmt_file_context(&crate_dir.join("src/main.rs"))
+        };
+        let plain = salt_with(None);
+        let narrow = salt_with(Some(("rustfmt.toml", "max_width = 40\n")));
+        let wide = salt_with(Some(("rustfmt.toml", "max_width = 100\n")));
+        let toolchain = salt_with(Some(("rust-toolchain.toml", "[toolchain]\nchannel = \"nightly\"\n")));
+        assert_ne!(plain, narrow);
+        assert_ne!(narrow, wide);
+        assert_ne!(plain, toolchain);
+        assert_eq!(
+            narrow,
+            salt_with(Some(("rustfmt.toml", "max_width = 40\n"))),
+            "checkout-independent"
+        );
+    }
+
+    /// A relative and an absolute spelling of one file key alike, with a config file at the run root. (`swift-format`
+    /// has the salt without an edition, which is resolved from the process directory.)
+    #[test]
+    fn the_file_salt_is_the_same_for_a_relative_and_an_absolute_path() {
+        use std::sync::Arc;
+
+        use super::super::spec::SWIFT_FORMAT_SPEC;
+        let dir = tempfile::tempdir().expect("tempdir");
+        fs::create_dir_all(dir.path().join("a")).expect("mkdir");
+        fs::write(dir.path().join(".swift-format"), "{}\n").expect("config");
+        let _entered = poly_engine_api::run_root::enter(Some(Arc::from(dir.path())));
+        let salt = |path: &Path| file_salt(&SWIFT_FORMAT_SPEC, path);
+        let absolute = salt(&dir.path().join("a/b.swift"));
+        assert!(
+            absolute.as_deref().is_some_and(|salt| !salt.contains(NO_CONFIG)),
+            "{absolute:?}"
+        );
+        assert_eq!(salt(Path::new("./a/b.swift")), absolute);
+        assert_eq!(salt(Path::new("a/b.swift")), absolute);
+        assert_ne!(salt(Path::new("./c.swift")), absolute, "the config is one level nearer");
+        assert_eq!(salt(Path::new("./c.swift")), salt(&dir.path().join("c.swift")));
+        assert_eq!(salt(Path::new("c.swift")), salt(&dir.path().join("c.swift")));
+    }
+
+    /// `swift-format` runs in the file's directory too; `shellcheck` and the tools without config files have no
+    /// per-file salt.
+    #[test]
+    fn only_tools_run_in_the_file_directory_have_a_file_salt() {
+        use super::super::spec::{GOFMT_SPEC, SHELLCHECK_SPEC, SWIFT_FORMAT_SPEC};
+        let dir = tempfile::tempdir().expect("tempdir");
+        let file = dir.path().join("a");
+        assert!(file_salt(&SWIFT_FORMAT_SPEC, &file).is_some());
+        assert_eq!(file_salt(&SHELLCHECK_SPEC, &file), None);
+        assert_eq!(file_salt(&GOFMT_SPEC, &file), None);
     }
 
     /// A tool with no config files is a constant: no filesystem access, always

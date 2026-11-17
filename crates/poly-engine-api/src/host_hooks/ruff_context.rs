@@ -64,11 +64,22 @@ fn is_virtualenv(dir: &Path) -> bool {
 /// `path` as the text folded into a cache key: relative to `base` (the checkout the run started
 /// in) when it lies beneath it, so two worktrees of one repository key alike; the full path
 /// otherwise, which can never collide with a relative one since it starts at the filesystem root.
+///
+/// A relative `path` is already relative to `base`; its `.` components are dropped, so `./pkg` (a
+/// run that named `.`) and `pkg` (the same file reached by its absolute path) key alike.
 fn checkout_relative(path: &Path, base: &Path) -> String {
-    match path.strip_prefix(base) {
-        Ok(rest) if rest.as_os_str().is_empty() => ".".to_owned(),
-        Ok(rest) => rest.to_string_lossy().into_owned(),
-        Err(_) => path.to_string_lossy().into_owned(),
+    let beneath = match path.strip_prefix(base) {
+        Ok(rest) => rest.to_path_buf(),
+        Err(_) if path.has_root() || path.is_absolute() => return path.to_string_lossy().into_owned(),
+        Err(_) => path
+            .components()
+            .filter(|part| !matches!(part, std::path::Component::CurDir))
+            .collect::<PathBuf>(),
+    };
+    if beneath.as_os_str().is_empty() {
+        ".".to_owned()
+    } else {
+        beneath.to_string_lossy().into_owned()
     }
 }
 
@@ -110,15 +121,10 @@ impl PackageRoots {
 
 static PACKAGE_ROOTS: LazyLock<PackageRoots> = LazyLock::new(PackageRoots::default);
 
-/// The run's checkout root (the current directory), read once per plan rather than per file.
-static RUN_BASE: Mutex<Option<PathBuf>> = Mutex::new(None);
-
-/// Drop every remembered package root and the remembered checkout root. Called when a run is
-/// planned, so an `__init__.py` added or removed, or a changed current directory, between runs of
-/// a long-lived process is seen.
+/// Drop every remembered package root. Called when a lint run is planned, so an `__init__.py` added
+/// or removed between runs of a long-lived process is seen.
 pub fn forget_package_roots() {
     PACKAGE_ROOTS.clear();
-    *RUN_BASE.lock().unwrap_or_else(PoisonError::into_inner) = None;
 }
 
 /// The package root of `dir`, remembered until the next plan.
@@ -130,15 +136,13 @@ pub fn cached_package_root(dir: &Path) -> Option<PathBuf> {
 /// checkout so another worktree of the repository shares the result.
 pub fn run_package_root(path: &Path) -> String {
     let root = path.parent().and_then(cached_package_root);
-    // A rooted run keys against its own root, never against the process directory another run
-    // remembered.
     if let Some(text) = crate::run_root::with(|run_root| run_root.map(|base| package_root_text(root.as_deref(), base)))
     {
         return text;
     }
-    let mut base = RUN_BASE.lock().unwrap_or_else(PoisonError::into_inner);
-    let base = base.get_or_insert_with(|| std::env::current_dir().unwrap_or_default());
-    package_root_text(root.as_deref(), base)
+    // Read per file, not remembered: only a lint plan forgets run-scoped state, so a remembered
+    // directory would outlive a format run that started somewhere else.
+    package_root_text(root.as_deref(), &std::env::current_dir().unwrap_or_default())
 }
 
 /// A digest of the module tree isort probes: the resolved source roots (ruff

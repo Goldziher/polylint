@@ -76,7 +76,8 @@ struct State {
 
 /// Behaviour by body: `panic` panics, `error` fails with a chain, a body starting `{{` is declined
 /// by `Format` / `FormatBatch` (`templated input`), anything else lints to one diagnostic titled
-/// with the body length and formats to upper case. `BatchSupport` answers format-only.
+/// with the body length and formats to upper case. `BatchSupport` answers format-only. The
+/// cache-path hooks answer `<request>:<path>` (`RunContext` a fixed text, `LintCacheSalt` the length).
 pub struct FakeComponent {
     describe: Describe,
     state: Mutex<State>,
@@ -174,6 +175,21 @@ impl FakeComponent {
                 ok(batch_payload(request, body))
             }
             Request::ProvidesLanguage { language, .. } => ok(Payload::Bool(language == "sql")),
+            Request::RunContext { config, .. } => {
+                if !state.registered.contains(config) {
+                    return fail(WireErrorKind::UnknownConfig, "no such config", &[]);
+                }
+                ok(Payload::Text("component run context".into()))
+            }
+            Request::FileContext { config, path, .. }
+            | Request::LintInputSalt { config, path, .. }
+            | Request::FormatInputSalt { config, path, .. } => {
+                if !state.registered.contains(config) {
+                    return fail(WireErrorKind::UnknownConfig, "no such config", &[]);
+                }
+                ok(Payload::OptString(Some(format!("{}:{path}", request.variant_name()))))
+            }
+            Request::LintCacheSalt { .. } => ok(Payload::OptString(Some(format!("{} bytes", body.len())))),
             other => fail(WireErrorKind::Protocol, other.variant_name(), &[]),
         }
     }
