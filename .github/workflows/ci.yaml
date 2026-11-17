@@ -551,6 +551,19 @@ jobs:
           passed="$(grep -Eo "test result: ok\. [0-9]+ passed" tsrs-test.log | awk '{ n += $4 } END { print n + 0 }')"
           echo "tsrs tests passed: $passed"
           test "$passed" -gt 0
+      # The published crate (ADR 0078) must be correct whichever pointers its dependent picks, and a run with the
+      # engine beside it unifies `plain-ptrs` on: each mode is its own invocation.
+      - name: polylint-tsrs tests, without and with plain-ptrs
+        run: |
+          set -euo pipefail
+          for features in "" "--features plain-ptrs"; do
+            # shellcheck disable=SC2086 # the empty feature set must expand to no argument
+            cargo test --locked --manifest-path components-tsrs/Cargo.toml -p polylint-tsrs $features --no-fail-fast 2>&1 | tee polylint-tsrs-test.log
+            if grep -q "test result: FAILED" polylint-tsrs-test.log; then echo "::error::a polylint-tsrs test binary failed"; exit 1; fi
+            passed="$(grep -Eo "test result: ok\. [0-9]+ passed" polylint-tsrs-test.log | awk '{ n += $4 } END { print n + 0 }')"
+            echo "polylint-tsrs tests passed ($features): $passed"
+            test "$passed" -gt 0
+          done
       - name: Build the component cdylib
         run: cargo build --locked --release --manifest-path components-tsrs/Cargo.toml -p poly-engines-tsrs-component
 
