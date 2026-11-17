@@ -170,7 +170,9 @@ Each item is described in full under the section named in brackets.
 - **skif keeps its module parses in poly's cache** (ADR 0080). An edit anywhere in a JavaScript workspace still re-runs
   the `skif` project check, but skif now parses only the modules that changed: the rest come from the result cache's new
   `engine` namespace, which `poly cache stats`, `clean` and `gc` cover and `[cache] dir` and `POLY_CACHE_HOME` move.
-  `--no-cache` and `[cache] enabled = false` give skif no store. In the core build the host passes the cache to the
+  `--no-cache` and `[cache] enabled = false` give skif no store. A hit refreshes a day-old entry's mtime so the sweep
+  evicts unused parses rather than those in steady use; `-j` and `threads` changes reuse the entries, and the
+  open-time presence scan skips the namespace. In the core build the host passes the cache to the
   `web` component as two project-check environment pairs (`poly.cache.dir`, `poly.cache.salt`); protocol v3 is
   unchanged, and a component or host that predates them ignores or omits them.
 - **Cache keys no longer hold a checkout's location, and a narrowed lint run evicts nothing** (ADR 0077). A second worktree,
