@@ -11,8 +11,11 @@
 //! that runs the engine, the preamble of every result-cache key, so another layout or another build never reads an
 //! entry. The host's own identity reaches the engine as a salt ([`engine_data_salt`]).
 
+use std::fs::{File, OpenOptions};
+use std::io::Read;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::Ordering;
+use std::time::{Duration, SystemTime};
 
 use crate::{CacheKey, InputDigest, Namespace, ResultCache, SerializedArgs, TMP_COUNTER};
 
@@ -21,6 +24,22 @@ use crate::{CacheKey, InputDigest, Namespace, ResultCache, SerializedArgs, TMP_C
 #[must_use]
 pub fn engine_data_salt() -> String {
     format!("{}\0{}", crate::CACHE_FORMAT_VERSION, crate::build_identity())
+}
+
+/// How old an entry's mtime must be before a hit refreshes it. Well inside the sweep's age limit, and coarse enough
+/// that a run reads most entries without writing any metadata.
+const REFRESH_AFTER: Duration = Duration::from_secs(24 * 60 * 60);
+
+/// Moves the mtime of the entry at `path` to now. A failure only leaves the entry to age out sooner.
+fn refresh(path: &Path) {
+    // Reopened for writing, since setting a file's times needs write access on Windows; nothing is written.
+    let result = OpenOptions::new()
+        .write(true)
+        .open(path)
+        .and_then(|file| file.set_modified(SystemTime::now()));
+    if let Err(error) = result {
+        tracing::debug!("engine cache entry {} not refreshed: {error}", path.display());
+    }
 }
 
 /// An engine's view of the result cache's `results/engine/` directory.
@@ -56,9 +75,23 @@ impl EngineDataStore {
     }
 
     /// The bytes stored under `key` in `id`, or `None` when there are none or they cannot be read.
+    ///
+    /// A hit on an entry last written or refreshed more than a day ago moves its mtime to now, best effort: the sweep evicts by mtime, and an unchanged module's entry is read on every run but never rewritten,
+    /// so without it the entries in steady use would be the first to age out.
     #[must_use]
     pub fn get(&self, id: &str, key: &[u8; 32]) -> Option<Vec<u8>> {
-        std::fs::read(self.dir.join(Self::key(id, key).as_str())).ok()
+        let path = self.dir.join(Self::key(id, key).as_str());
+        let mut file = File::open(&path).ok()?;
+        let mut bytes = Vec::new();
+        file.read_to_end(&mut bytes).ok()?;
+        let stale = file
+            .metadata()
+            .and_then(|meta| meta.modified())
+            .is_ok_and(|modified| modified.elapsed().is_ok_and(|age| age >= REFRESH_AFTER));
+        if stale {
+            refresh(&path);
+        }
+        Some(bytes)
     }
 
     /// Stores `bytes` under `key` in `id` with an atomic sibling-tmp + rename, so a concurrent reader sees the old
@@ -108,6 +141,36 @@ mod tests {
         assert_eq!((engine.entries, engine.bytes), (1, 6));
         assert_eq!(cache.clean().unwrap(), 6);
         assert!(store.get("skif.modules", &key).is_none(), "clean removes it");
+    }
+
+    #[test]
+    fn a_hit_refreshes_the_mtime_of_a_stale_entry_so_the_age_sweep_keeps_it() {
+        use std::fs::FileTimes;
+
+        let dir = tempfile::tempdir().unwrap();
+        let cache = ResultCache::open(dir.path().to_path_buf(), true).unwrap();
+        let store = EngineDataStore::open(cache.root()).unwrap();
+        let (hot, cold) = ([1u8; 32], [2u8; 32]);
+        store.put("skif.modules", &hot, b"hot").unwrap();
+        store.put("skif.modules", &cold, b"cold").unwrap();
+        let month_ago = SystemTime::now() - Duration::from_secs(30 * 86_400);
+        for key in [&hot, &cold] {
+            std::fs::OpenOptions::new()
+                .write(true)
+                .open(store.dir.join(EngineDataStore::key("skif.modules", key).as_str()))
+                .unwrap()
+                .set_times(FileTimes::new().set_modified(month_ago))
+                .unwrap();
+        }
+
+        assert_eq!(store.get("skif.modules", &hot).as_deref(), Some(&b"hot"[..]));
+        assert_eq!(
+            cache.gc(Some(Duration::from_secs(14 * 86_400)), None).unwrap(),
+            4,
+            "only the entry nothing read is evicted"
+        );
+        assert_eq!(store.get("skif.modules", &hot).as_deref(), Some(&b"hot"[..]));
+        assert!(store.get("skif.modules", &cold).is_none());
     }
 
     #[test]
