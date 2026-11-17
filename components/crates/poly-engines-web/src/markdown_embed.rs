@@ -3,9 +3,8 @@
 //! `oxc_formatter_markdown` hands every fence and the front matter to a [`FormatDispatcher`]
 //! installed on its session; with none, they stay as written. This module is poly's dispatcher,
 //! the counterpart of oxfmt's: the languages poly formats in process (JavaScript, TypeScript,
-//! JSON, YAML, CSS, SCSS, Less, TOML, nested Markdown) are formatted, and any other fence, one
-//! that fails to parse, or a Markdown fence holding an empty footnote definition (which crashes the
-//! Markdown formatter) is kept verbatim.
+//! JSON, YAML, CSS, SCSS, Less, TOML, nested Markdown) are formatted, and any other fence, or one
+//! that fails to parse, is kept verbatim.
 //!
 //! Children inherit the host's table, as in oxfmt. The family options oxfmt reads from one shared
 //! config (`semi`, `singleQuote` for JavaScript, `trailingComma` for JSON, ...) arrive in the
@@ -156,10 +155,6 @@ fn build(configs: Arc<ChildConfigs>) -> FormatDispatcher {
             }
             Target::Toml => {
                 oxc_formatter_toml::format_to_ir(session, text, super::taplo::build_oxc_options(&configs.toml))
-            }
-            // An empty footnote definition crashes the Markdown formatter; the fence stays as written.
-            Target::Markdown if super::markdown_fmt::has_empty_footnote_definition(text) => {
-                return Ok(DispatchResponse::PreserveOriginal);
             }
             Target::Markdown => {
                 let in_js_template = request

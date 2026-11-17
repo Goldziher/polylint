@@ -19,7 +19,6 @@ adrlint.workspace = true
 anyhow.workspace = true
 malva = { workspace = true, features = ["config_serde"] }
 markup_fmt = { workspace = true, features = ["config_serde"] }
-oxc-markdown-parser.workspace = true
 oxc_allocator.workspace = true
 oxc_diagnostics.workspace = true
 oxc_formatter.workspace = true

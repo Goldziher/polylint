@@ -1,22 +1,19 @@
 //! Empty footnote definitions and the Markdown formatter (oxc-project/oxc#29733).
 //!
-//! `oxc_formatter_markdown` panics on a footnote definition with no content. poly declines a file
-//! holding one instead of reporting it as an error, and keeps a fenced Markdown example holding one
-//! as written while formatting the rest of the document.
+//! `oxc_formatter_markdown` used to panic on a footnote definition with no content; the pinned oxc
+//! revision carries the fix (oxc-project/oxc#29735). Such a definition is formatted like any other
+//! Markdown and printed as written, at the top level and inside a fenced Markdown example.
 
 use std::fs;
 use std::path::PathBuf;
 
 use poly_core::{Config, RunOptions};
 use poly_engine_api::config::{EngineConfig, GlobalDefaults};
-use poly_engine_api::declined::Declined;
 use poly_engine_api::engine::{Engine, FormatOutput, SourceFile};
 use poly_engine_api::language::Language;
 use poly_engines_web::rumdl::RumdlEngine;
 
 mod common;
-
-const ISSUE: &str = "https://github.com/oxc-project/oxc/issues/29733";
 
 /// No rumdl rule key set, so Markdown goes through `oxc_formatter_markdown`.
 fn oxfmt_cfg() -> EngineConfig {
@@ -40,15 +37,18 @@ fn format(content: &str) -> anyhow::Result<FormatOutput> {
 }
 
 #[test]
-fn an_empty_footnote_definition_declines_the_file_with_the_upstream_issue() {
-    let error = format("[^1]:\n").expect_err("an empty footnote definition must decline the file");
-    let reason = Declined::reason(&error).unwrap_or_else(|| panic!("expected a decline, got the error {error:#}"));
-    assert!(reason.contains("empty footnote definition"), "{reason}");
-    assert!(reason.contains(ISSUE), "{reason}");
+fn an_empty_footnote_definition_is_printed_unchanged() {
+    for src in ["[^1]:\n", "Text[^1].\n\n[^1]:\n", "> [^1]:\n"] {
+        assert!(
+            matches!(format(src), Ok(FormatOutput::Unchanged)),
+            "{src:?} must format without an error and stay as written, got {:?}",
+            format(src)
+        );
+    }
 }
 
 #[test]
-fn an_empty_footnote_definition_in_a_markdown_fence_keeps_the_fence_and_formats_the_rest() {
+fn an_empty_footnote_definition_in_a_markdown_fence_is_printed_unchanged_and_the_rest_is_formatted() {
     let src = "# T\n* a\n\n```markdown\n[^1]:\n```\n";
     match format(src).expect("the document is formatted") {
         FormatOutput::Formatted(out) => assert_eq!(out, "# T\n\n- a\n\n```markdown\n[^1]:\n```\n"),
@@ -73,9 +73,9 @@ fn ordinary_footnotes_are_unaffected() {
     );
 }
 
-/// Through the runner the decline is a skip carrying the reason, not a failed file.
+/// Through the runner the file is formatted and found clean: neither failed nor skipped.
 #[test]
-fn the_runner_reports_the_file_as_skipped_not_errored() {
+fn the_runner_checks_the_file_and_leaves_it_unchanged() {
     common::register();
     let dir = tempfile::tempdir().expect("tempdir");
     fs::write(dir.path().join("empty-footnote.md"), "[^1]:\n").expect("write fixture");
@@ -98,9 +98,9 @@ fn the_runner_reports_the_file_as_skipped_not_errored() {
         .find(|r| r.path.file_name().is_some_and(|f| f == "empty-footnote.md"))
         .unwrap_or_else(|| panic!("no result for empty-footnote.md, got {:?}", run.results));
     assert!(
-        result.skipped.as_deref().is_some_and(|reason| reason.contains(ISSUE)),
-        "the file must be reported as skipped with the reason, got {:?}",
+        result.skipped.is_none(),
+        "the file must be formatted, not skipped: {:?}",
         result.skipped
     );
-    assert!(!result.changed, "a declined file must not be reformatted");
+    assert!(!result.changed, "an empty footnote definition is printed as written");
 }

@@ -2030,7 +2030,7 @@ checksum = "fe6d2e5af09e8c8ad56c969f2157a3d4238cebc7c55f0a517728c38f7b200f81"
 dependencies = [
  "serde",
  "termcolor",
- "unicode-width 0.2.3",
+ "unicode-width 0.1.14",
 ]
 
 [[package]]
@@ -2041,7 +2041,7 @@ checksum = "af491d569909a7e4dee0ad7db7f5341fef5c614d5b8ec8cf765732aba3cff681"
 dependencies = [
  "serde",
  "termcolor",
- "unicode-width 0.2.3",
+ "unicode-width 0.1.14",
 ]
 
 [[package]]
@@ -2072,7 +2072,7 @@ version = "3.1.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "faf9468729b8cbcea668e36183cb69d317348c2e08e994829fb56ebfdfbaac34"
 dependencies = [
- "windows-sys 0.61.2",
+ "windows-sys 0.48.0",
 ]
 
 [[package]]
@@ -3156,7 +3156,7 @@ dependencies = [
  "libc",
  "option-ext",
  "redox_users 0.5.3",
- "windows-sys 0.61.2",
+ "windows-sys 0.59.0",
 ]
 
 [[package]]
@@ -3563,7 +3563,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e35d6e78f4cebb90e51d543db8fe41528851d6deeef6ef21ebd4bfdc1e784776"
 dependencies = [
  "libc",
- "windows-sys 0.61.2",
+ "windows-sys 0.52.0",
 ]
 
 [[package]]
@@ -4722,7 +4722,7 @@ dependencies = [
  "js-sys",
  "log",
  "wasm-bindgen",
- "windows-core 0.62.2",
+ "windows-core 0.58.0",
 ]
 
 [[package]]
@@ -5077,7 +5077,7 @@ checksum = "3640c1c38b8e4e43584d8df18be5fc6b0aa314ce6ebf51b53313d4306cca8e46"
 dependencies = [
  "hermit-abi 0.5.3",
  "libc",
- "windows-sys 0.61.2",
+ "windows-sys 0.52.0",
 ]
 
 [[package]]
@@ -6335,7 +6335,7 @@ version = "0.50.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7957b9740744892f114936ab4a57b3f487491bbeafaf8083688b16841a4240e5"
 dependencies = [
- "windows-sys 0.61.2",
+ "windows-sys 0.59.0",
 ]
 
 [[package]]
@@ -6683,7 +6683,7 @@ dependencies = [
 [[package]]
 name = "oxc_allocator"
 version = "0.159.0"
-source = "git+https://github.com/oxc-project/oxc?rev=d9483516f84068f867e0a3949ac0ec53ef82aa63#d9483516f84068f867e0a3949ac0ec53ef82aa63"
+source = "git+https://github.com/oxc-project/oxc?rev=7053128a91256840128ad1e9f9c26cae9daf0adc#7053128a91256840128ad1e9f9c26cae9daf0adc"
 dependencies = [
  "allocator-api2",
  "hashbrown 0.17.1",
@@ -6698,7 +6698,7 @@ dependencies = [
 [[package]]
 name = "oxc_ast"
 version = "0.159.0"
-source = "git+https://github.com/oxc-project/oxc?rev=d9483516f84068f867e0a3949ac0ec53ef82aa63#d9483516f84068f867e0a3949ac0ec53ef82aa63"
+source = "git+https://github.com/oxc-project/oxc?rev=7053128a91256840128ad1e9f9c26cae9daf0adc#7053128a91256840128ad1e9f9c26cae9daf0adc"
 dependencies = [
  "bitflags 2.13.2",
  "oxc_allocator",
@@ -6715,7 +6715,7 @@ dependencies = [
 [[package]]
 name = "oxc_ast_macros"
 version = "0.159.0"
-source = "git+https://github.com/oxc-project/oxc?rev=d9483516f84068f867e0a3949ac0ec53ef82aa63#d9483516f84068f867e0a3949ac0ec53ef82aa63"
+source = "git+https://github.com/oxc-project/oxc?rev=7053128a91256840128ad1e9f9c26cae9daf0adc#7053128a91256840128ad1e9f9c26cae9daf0adc"
 dependencies = [
  "phf 0.14.0",
  "proc-macro2",
@@ -6726,7 +6726,7 @@ dependencies = [
 [[package]]
 name = "oxc_ast_visit"
 version = "0.159.0"
-source = "git+https://github.com/oxc-project/oxc?rev=d9483516f84068f867e0a3949ac0ec53ef82aa63#d9483516f84068f867e0a3949ac0ec53ef82aa63"
+source = "git+https://github.com/oxc-project/oxc?rev=7053128a91256840128ad1e9f9c26cae9daf0adc#7053128a91256840128ad1e9f9c26cae9daf0adc"
 dependencies = [
  "oxc_allocator",
  "oxc_ast",
@@ -6737,7 +6737,7 @@ dependencies = [
 [[package]]
 name = "oxc_cfg"
 version = "0.159.0"
-source = "git+https://github.com/oxc-project/oxc?rev=d9483516f84068f867e0a3949ac0ec53ef82aa63#d9483516f84068f867e0a3949ac0ec53ef82aa63"
+source = "git+https://github.com/oxc-project/oxc?rev=7053128a91256840128ad1e9f9c26cae9daf0adc#7053128a91256840128ad1e9f9c26cae9daf0adc"
 dependencies = [
  "bitflags 2.13.2",
  "itertools 0.15.0",
@@ -6750,7 +6750,7 @@ dependencies = [
 [[package]]
 name = "oxc_codegen"
 version = "0.159.0"
-source = "git+https://github.com/oxc-project/oxc?rev=d9483516f84068f867e0a3949ac0ec53ef82aa63#d9483516f84068f867e0a3949ac0ec53ef82aa63"
+source = "git+https://github.com/oxc-project/oxc?rev=7053128a91256840128ad1e9f9c26cae9daf0adc#7053128a91256840128ad1e9f9c26cae9daf0adc"
 dependencies = [
  "bitflags 2.13.2",
  "cow-utils",
@@ -6770,7 +6770,7 @@ dependencies = [
 [[package]]
 name = "oxc_compat"
 version = "0.159.0"
-source = "git+https://github.com/oxc-project/oxc?rev=d9483516f84068f867e0a3949ac0ec53ef82aa63#d9483516f84068f867e0a3949ac0ec53ef82aa63"
+source = "git+https://github.com/oxc-project/oxc?rev=7053128a91256840128ad1e9f9c26cae9daf0adc#7053128a91256840128ad1e9f9c26cae9daf0adc"
 dependencies = [
  "cow-utils",
  "oxc-browserslist",
@@ -6782,7 +6782,7 @@ dependencies = [
 [[package]]
 name = "oxc_config"
 version = "0.0.0"
-source = "git+https://github.com/oxc-project/oxc?rev=d9483516f84068f867e0a3949ac0ec53ef82aa63#d9483516f84068f867e0a3949ac0ec53ef82aa63"
+source = "git+https://github.com/oxc-project/oxc?rev=7053128a91256840128ad1e9f9c26cae9daf0adc#7053128a91256840128ad1e9f9c26cae9daf0adc"
 dependencies = [
  "fast-glob",
  "ignore",
@@ -6795,12 +6795,12 @@ dependencies = [
 [[package]]
 name = "oxc_data_structures"
 version = "0.159.0"
-source = "git+https://github.com/oxc-project/oxc?rev=d9483516f84068f867e0a3949ac0ec53ef82aa63#d9483516f84068f867e0a3949ac0ec53ef82aa63"
+source = "git+https://github.com/oxc-project/oxc?rev=7053128a91256840128ad1e9f9c26cae9daf0adc#7053128a91256840128ad1e9f9c26cae9daf0adc"
 
 [[package]]
 name = "oxc_diagnostics"
 version = "0.159.0"
-source = "git+https://github.com/oxc-project/oxc?rev=d9483516f84068f867e0a3949ac0ec53ef82aa63#d9483516f84068f867e0a3949ac0ec53ef82aa63"
+source = "git+https://github.com/oxc-project/oxc?rev=7053128a91256840128ad1e9f9c26cae9daf0adc#7053128a91256840128ad1e9f9c26cae9daf0adc"
 dependencies = [
  "bytecount",
  "cow-utils",
@@ -6817,7 +6817,7 @@ dependencies = [
 [[package]]
 name = "oxc_ecmascript"
 version = "0.159.0"
-source = "git+https://github.com/oxc-project/oxc?rev=d9483516f84068f867e0a3949ac0ec53ef82aa63#d9483516f84068f867e0a3949ac0ec53ef82aa63"
+source = "git+https://github.com/oxc-project/oxc?rev=7053128a91256840128ad1e9f9c26cae9daf0adc#7053128a91256840128ad1e9f9c26cae9daf0adc"
 dependencies = [
  "itoa",
  "memchr",
@@ -6837,7 +6837,7 @@ dependencies = [
 [[package]]
 name = "oxc_estree"
 version = "0.159.0"
-source = "git+https://github.com/oxc-project/oxc?rev=d9483516f84068f867e0a3949ac0ec53ef82aa63#d9483516f84068f867e0a3949ac0ec53ef82aa63"
+source = "git+https://github.com/oxc-project/oxc?rev=7053128a91256840128ad1e9f9c26cae9daf0adc#7053128a91256840128ad1e9f9c26cae9daf0adc"
 dependencies = [
  "itoa",
  "oxc_data_structures",
@@ -6847,7 +6847,7 @@ dependencies = [
 [[package]]
 name = "oxc_estree_tokens"
 version = "0.159.0"
-source = "git+https://github.com/oxc-project/oxc?rev=d9483516f84068f867e0a3949ac0ec53ef82aa63#d9483516f84068f867e0a3949ac0ec53ef82aa63"
+source = "git+https://github.com/oxc-project/oxc?rev=7053128a91256840128ad1e9f9c26cae9daf0adc#7053128a91256840128ad1e9f9c26cae9daf0adc"
 dependencies = [
  "itoa",
  "oxc_ast",
@@ -6860,8 +6860,8 @@ dependencies = [
 
 [[package]]
 name = "oxc_formatter"
-version = "0.78.0"
-source = "git+https://github.com/oxc-project/oxc?rev=d9483516f84068f867e0a3949ac0ec53ef82aa63#d9483516f84068f867e0a3949ac0ec53ef82aa63"
+version = "0.79.0"
+source = "git+https://github.com/oxc-project/oxc?rev=7053128a91256840128ad1e9f9c26cae9daf0adc#7053128a91256840128ad1e9f9c26cae9daf0adc"
 dependencies = [
  "cow-utils",
  "fast-glob",
@@ -6888,8 +6888,8 @@ dependencies = [
 
 [[package]]
 name = "oxc_formatter_core"
-version = "0.78.0"
-source = "git+https://github.com/oxc-project/oxc?rev=d9483516f84068f867e0a3949ac0ec53ef82aa63#d9483516f84068f867e0a3949ac0ec53ef82aa63"
+version = "0.79.0"
+source = "git+https://github.com/oxc-project/oxc?rev=7053128a91256840128ad1e9f9c26cae9daf0adc#7053128a91256840128ad1e9f9c26cae9daf0adc"
 dependencies = [
  "cow-utils",
  "memchr",
@@ -6902,8 +6902,8 @@ dependencies = [
 
 [[package]]
 name = "oxc_formatter_css"
-version = "0.78.0"
-source = "git+https://github.com/oxc-project/oxc?rev=d9483516f84068f867e0a3949ac0ec53ef82aa63#d9483516f84068f867e0a3949ac0ec53ef82aa63"
+version = "0.79.0"
+source = "git+https://github.com/oxc-project/oxc?rev=7053128a91256840128ad1e9f9c26cae9daf0adc#7053128a91256840128ad1e9f9c26cae9daf0adc"
 dependencies = [
  "cow-utils",
  "oxc-css-parser",
@@ -6918,8 +6918,8 @@ dependencies = [
 
 [[package]]
 name = "oxc_formatter_json"
-version = "0.78.0"
-source = "git+https://github.com/oxc-project/oxc?rev=d9483516f84068f867e0a3949ac0ec53ef82aa63#d9483516f84068f867e0a3949ac0ec53ef82aa63"
+version = "0.79.0"
+source = "git+https://github.com/oxc-project/oxc?rev=7053128a91256840128ad1e9f9c26cae9daf0adc#7053128a91256840128ad1e9f9c26cae9daf0adc"
 dependencies = [
  "oxc_allocator",
  "oxc_ast",
@@ -6935,8 +6935,8 @@ dependencies = [
 
 [[package]]
 name = "oxc_formatter_markdown"
-version = "0.78.0"
-source = "git+https://github.com/oxc-project/oxc?rev=d9483516f84068f867e0a3949ac0ec53ef82aa63#d9483516f84068f867e0a3949ac0ec53ef82aa63"
+version = "0.79.0"
+source = "git+https://github.com/oxc-project/oxc?rev=7053128a91256840128ad1e9f9c26cae9daf0adc#7053128a91256840128ad1e9f9c26cae9daf0adc"
 dependencies = [
  "cow-utils",
  "oxc-markdown-parser",
@@ -6950,7 +6950,7 @@ dependencies = [
 [[package]]
 name = "oxc_formatter_tests"
 version = "0.62.0"
-source = "git+https://github.com/oxc-project/oxc?rev=d9483516f84068f867e0a3949ac0ec53ef82aa63#d9483516f84068f867e0a3949ac0ec53ef82aa63"
+source = "git+https://github.com/oxc-project/oxc?rev=7053128a91256840128ad1e9f9c26cae9daf0adc#7053128a91256840128ad1e9f9c26cae9daf0adc"
 dependencies = [
  "cow-utils",
  "oxc_formatter_core",
@@ -6959,8 +6959,8 @@ dependencies = [
 
 [[package]]
 name = "oxc_formatter_toml"
-version = "0.78.0"
-source = "git+https://github.com/oxc-project/oxc?rev=d9483516f84068f867e0a3949ac0ec53ef82aa63#d9483516f84068f867e0a3949ac0ec53ef82aa63"
+version = "0.79.0"
+source = "git+https://github.com/oxc-project/oxc?rev=7053128a91256840128ad1e9f9c26cae9daf0adc#7053128a91256840128ad1e9f9c26cae9daf0adc"
 dependencies = [
  "oxc-toml",
  "oxc_allocator",
@@ -6972,8 +6972,8 @@ dependencies = [
 
 [[package]]
 name = "oxc_formatter_yaml"
-version = "0.78.0"
-source = "git+https://github.com/oxc-project/oxc?rev=d9483516f84068f867e0a3949ac0ec53ef82aa63#d9483516f84068f867e0a3949ac0ec53ef82aa63"
+version = "0.79.0"
+source = "git+https://github.com/oxc-project/oxc?rev=7053128a91256840128ad1e9f9c26cae9daf0adc#7053128a91256840128ad1e9f9c26cae9daf0adc"
 dependencies = [
  "cow-utils",
  "oxc-yaml-parser",
@@ -6997,7 +6997,7 @@ dependencies = [
 [[package]]
 name = "oxc_jsdoc"
 version = "0.159.0"
-source = "git+https://github.com/oxc-project/oxc?rev=d9483516f84068f867e0a3949ac0ec53ef82aa63#d9483516f84068f867e0a3949ac0ec53ef82aa63"
+source = "git+https://github.com/oxc-project/oxc?rev=7053128a91256840128ad1e9f9c26cae9daf0adc#7053128a91256840128ad1e9f9c26cae9daf0adc"
 dependencies = [
  "oxc_ast",
  "oxc_span",
@@ -7007,8 +7007,8 @@ dependencies = [
 
 [[package]]
 name = "oxc_linter"
-version = "1.93.0"
-source = "git+https://github.com/oxc-project/oxc?rev=d9483516f84068f867e0a3949ac0ec53ef82aa63#d9483516f84068f867e0a3949ac0ec53ef82aa63"
+version = "1.94.0"
+source = "git+https://github.com/oxc-project/oxc?rev=7053128a91256840128ad1e9f9c26cae9daf0adc#7053128a91256840128ad1e9f9c26cae9daf0adc"
 dependencies = [
  "bitflags 2.13.2",
  "constcat",
@@ -7063,7 +7063,7 @@ dependencies = [
 [[package]]
 name = "oxc_macros"
 version = "0.0.0"
-source = "git+https://github.com/oxc-project/oxc?rev=d9483516f84068f867e0a3949ac0ec53ef82aa63#d9483516f84068f867e0a3949ac0ec53ef82aa63"
+source = "git+https://github.com/oxc-project/oxc?rev=7053128a91256840128ad1e9f9c26cae9daf0adc#7053128a91256840128ad1e9f9c26cae9daf0adc"
 dependencies = [
  "convert_case 0.12.0",
  "itertools 0.15.0",
@@ -7075,7 +7075,7 @@ dependencies = [
 [[package]]
 name = "oxc_parser"
 version = "0.159.0"
-source = "git+https://github.com/oxc-project/oxc?rev=d9483516f84068f867e0a3949ac0ec53ef82aa63#d9483516f84068f867e0a3949ac0ec53ef82aa63"
+source = "git+https://github.com/oxc-project/oxc?rev=7053128a91256840128ad1e9f9c26cae9daf0adc#7053128a91256840128ad1e9f9c26cae9daf0adc"
 dependencies = [
  "bitflags 2.13.2",
  "cow-utils",
@@ -7098,7 +7098,7 @@ dependencies = [
 [[package]]
 name = "oxc_react_compiler"
 version = "0.159.0"
-source = "git+https://github.com/oxc-project/oxc?rev=d9483516f84068f867e0a3949ac0ec53ef82aa63#d9483516f84068f867e0a3949ac0ec53ef82aa63"
+source = "git+https://github.com/oxc-project/oxc?rev=7053128a91256840128ad1e9f9c26cae9daf0adc#7053128a91256840128ad1e9f9c26cae9daf0adc"
 dependencies = [
  "cow-utils",
  "indexmap 2.14.2",
@@ -7120,7 +7120,7 @@ dependencies = [
 [[package]]
 name = "oxc_regular_expression"
 version = "0.159.0"
-source = "git+https://github.com/oxc-project/oxc?rev=d9483516f84068f867e0a3949ac0ec53ef82aa63#d9483516f84068f867e0a3949ac0ec53ef82aa63"
+source = "git+https://github.com/oxc-project/oxc?rev=7053128a91256840128ad1e9f9c26cae9daf0adc#7053128a91256840128ad1e9f9c26cae9daf0adc"
 dependencies = [
  "bitflags 2.13.2",
  "oxc_allocator",
@@ -7176,7 +7176,7 @@ dependencies = [
 [[package]]
 name = "oxc_semantic"
 version = "0.159.0"
-source = "git+https://github.com/oxc-project/oxc?rev=d9483516f84068f867e0a3949ac0ec53ef82aa63#d9483516f84068f867e0a3949ac0ec53ef82aa63"
+source = "git+https://github.com/oxc-project/oxc?rev=7053128a91256840128ad1e9f9c26cae9daf0adc#7053128a91256840128ad1e9f9c26cae9daf0adc"
 dependencies = [
  "itertools 0.15.0",
  "memchr",
@@ -7200,7 +7200,7 @@ dependencies = [
 [[package]]
 name = "oxc_span"
 version = "0.159.0"
-source = "git+https://github.com/oxc-project/oxc?rev=d9483516f84068f867e0a3949ac0ec53ef82aa63#d9483516f84068f867e0a3949ac0ec53ef82aa63"
+source = "git+https://github.com/oxc-project/oxc?rev=7053128a91256840128ad1e9f9c26cae9daf0adc#7053128a91256840128ad1e9f9c26cae9daf0adc"
 dependencies = [
  "oxc-schemars",
  "oxc_allocator",
@@ -7212,7 +7212,7 @@ dependencies = [
 [[package]]
 name = "oxc_str"
 version = "0.159.0"
-source = "git+https://github.com/oxc-project/oxc?rev=d9483516f84068f867e0a3949ac0ec53ef82aa63#d9483516f84068f867e0a3949ac0ec53ef82aa63"
+source = "git+https://github.com/oxc-project/oxc?rev=7053128a91256840128ad1e9f9c26cae9daf0adc#7053128a91256840128ad1e9f9c26cae9daf0adc"
 dependencies = [
  "compact_str",
  "hashbrown 0.17.1",
@@ -7227,7 +7227,7 @@ dependencies = [
 [[package]]
 name = "oxc_syntax"
 version = "0.159.0"
-source = "git+https://github.com/oxc-project/oxc?rev=d9483516f84068f867e0a3949ac0ec53ef82aa63#d9483516f84068f867e0a3949ac0ec53ef82aa63"
+source = "git+https://github.com/oxc-project/oxc?rev=7053128a91256840128ad1e9f9c26cae9daf0adc#7053128a91256840128ad1e9f9c26cae9daf0adc"
 dependencies = [
  "bitflags 2.13.2",
  "cow-utils",
@@ -8076,7 +8076,6 @@ dependencies = [
  "insta",
  "malva",
  "markup_fmt",
- "oxc-markdown-parser",
  "oxc_allocator",
  "oxc_diagnostics",
  "oxc_formatter",
@@ -8634,7 +8633,7 @@ dependencies = [
  "once_cell",
  "socket2",
  "tracing",
- "windows-sys 0.61.2",
+ "windows-sys 0.52.0",
 ]
 
 [[package]]
@@ -9682,7 +9681,7 @@ dependencies = [
  "errno",
  "libc",
  "linux-raw-sys",
- "windows-sys 0.61.2",
+ "windows-sys 0.52.0",
 ]
 
 [[package]]
@@ -9740,7 +9739,7 @@ dependencies = [
  "security-framework",
  "security-framework-sys",
  "webpki-root-certs",
- "windows-sys 0.61.2",
+ "windows-sys 0.52.0",
 ]
 
 [[package]]
@@ -9967,7 +9966,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "5b55fb86dfd3a2f5f76ea78310a88f96c4ea21a3031f8d212443d56123fd0521"
 dependencies = [
  "libc",
- "windows-sys 0.61.2",
+ "windows-sys 0.52.0",
 ]
 
 [[package]]
@@ -10996,7 +10995,7 @@ dependencies = [
  "getrandom 0.4.3",
  "once_cell",
  "rustix",
- "windows-sys 0.61.2",
+ "windows-sys 0.52.0",
 ]
 
 [[package]]
@@ -11024,7 +11023,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "230a1b821ccbd75b185820a1f1ff7b14d21da1e442e22c0863ea5f08771a8874"
 dependencies = [
  "rustix",
- "windows-sys 0.61.2",
+ "windows-sys 0.59.0",
 ]
 
 [[package]]
@@ -12592,7 +12591,7 @@ version = "0.1.11"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c2a7b1c03c876122aa43f3020e6c3c3ee5c05081c9a00739faf7503aeba10d22"
 dependencies = [
- "windows-sys 0.61.2",
+ "windows-sys 0.48.0",
 ]
 
 [[package]]
