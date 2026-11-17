@@ -108,6 +108,10 @@ Each item is described in full under the section named in brackets.
 
 ### Performance
 
+- **Cache keys no longer hold a checkout's location, and a narrowed run evicts nothing** (ADR 0074). A second worktree,
+  the hook snapshot and an absolute invocation reuse the records of the first (project-check roots, oxc config paths,
+  ast-grep rule directories, the Go module root, JSON Schema and recipe digests are keyed checkout-relative), and
+  `poly lint --only <engine>` keeps the other engines' records, so the next full run re-runs none of them.
 - **Fewer component round trips per file.** An engine's decline of a file now arrives in its `Format` reply, so a
   component no longer receives every file twice (a `SkipReason` request, then `Format`), and a component is not loaded
   just to ask. `BatchSupport` is asked once per engine and config instead of once per file. The `uncomment`, `ini`,
@@ -132,6 +136,13 @@ Each item is described in full under the section named in brackets.
   `degraded: [{tool, language, reason, files}]`, omitted when empty. `poly fmt` used to print `All formatted.` with
   nothing to say rustfmt never ran. The files still count as checked, not skipped, and exit codes do not change.
   (ADR 0075, #230)
+- **Result-cache keys carry inputs they missed** (ADR 0074). An edit to any of these now re-runs the work instead of
+  replaying the previous result: a package installed into `site-packages` or an unserved first-party module, for the
+  `python-types` checks; `air.toml`, in a component build; the crate edition and a nested `rustfmt.toml` /
+  `rust-toolchain.toml`, for `rustfmt` (and a nested `.swift-format`); a plain catalog tool's own config file;
+  `clippy.toml`, `.clippy.toml`, `.cargo/config.toml`, the toolchain and tool versions and the `RUSTFLAGS` / `CARGO_*`
+  environment, for the `cargo` group; the external `oxlint` / `oxfmt` binary and `jsPlugins`; `TSRS_*` variables.
+  `cargo deny` is no longer result-cached, since a cached pass cannot see a newly published advisory.
 - **An invalid glob is reported instead of silently dropped.** A malformed pattern in ruff's `exclude`, typos' `extend_exclude`, an `.oxfmtrc` `overrides[].files`/`excludeFiles` entry, a jsonschema `schemas` glob or a recipe's dependency globs now logs a warning naming it, and the valid patterns beside it stay in force. (#217)
 - **Hook sources recover from a damaged cached mirror.** A mirror holding a locked commit without its tree is refetched, then re-cloned, instead of failing with `unable to read tree`; the final error names the cache directory to remove.
 - **golangci-lint no longer fails beside another golangci-lint, or times out a cold module and reruns it.** poly
