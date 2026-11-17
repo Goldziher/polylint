@@ -1,7 +1,7 @@
 ---
 title: Agents and MCP
 description: >-
-  The Claude Code, Codex, OpenCode, Pi and Hermes plugins, poly's fourteen MCP tools, the async whole-project tasks, and the isError
+  The Claude Code, Codex, OpenCode, Pi and Hermes plugins, poly's four MCP tools, the async whole-project tasks, and the isError
   contract an agent must gate on.
 ---
 
@@ -72,7 +72,7 @@ Install `poly-hermes-plugin` from PyPI into the Python environment Hermes runs i
 uv pip install --python /path/to/hermes/venv/bin/python poly-hermes-plugin
 ```
 
-Hermes gets one `poly_call` tool that bridges all fourteen MCP tools (`list_tools` shows their
+Hermes gets one `poly_call` tool that bridges all four MCP tools (`list_tools` shows their
 schemas), and the skills load by namespace, e.g. `poly:poly-mcp`.
 
 ### Other runtimes
@@ -107,104 +107,133 @@ first use (unless `--offline` or `[components] install = "never"` forbids it) an
 the component does its work through services the `poly` binary provides, so that binary carries no
 async runtime.
 
-## The fourteen tools
+## The four tools
 
-Every tool returns typed `structured_content` against a declared output schema, plus one text
-block mirroring the CLI's `--format json` — or the compact TOON encoding when asked for it.
+The tools are split along the annotation boundary (ADR 0076): clients grant permissions per tool
+name, so read-only and mutating operations are separate tools, and everything within one class is one
+tool with parameters. Each returns typed `structured_content` plus one text block mirroring the CLI's
+`--format json` — or the compact TOON encoding when asked for it. Tools declare no `outputSchema`;
+the output schemas are MCP resources under `poly://schema/` (`lint`, `format`, `failure`,
+`workspace`, `info/version`, `info/rules`, `info/components`, `info/cache`, `info/validate`,
+`manage/cache`, `manage/components`, `identity`, `poly.toml`).
 
-### Check-only — apply no fixes, but run repository config
-
-| Tool | Mirrors | Returns |
+| Tool | Does | Annotations |
 | --- | --- | --- |
-| `lint` | `poly lint --workspace never` | Diagnostics per file (per-file tier only; the whole-project phase is `workspace_lint`). May download a component. |
-| `format_check` | `poly fmt` | Formatting drift, without writing. May download a component. |
+| `check` | Lint or check formatting; writes nothing. | Not read-only, not destructive, idempotent, open-world |
+| `fix` | Apply lint autofixes or formatting in place. | Destructive, open-world |
+| `info` | Read-only introspection: version, config, validate, rules, components, cache. | Read-only, idempotent, closed-world |
+| `manage` | Cache and component maintenance. | Destructive, open-world |
 
-<Aside type="caution" title="`lint` and `format_check` are not read-only">
-    They run the tools and hooks the repository's own `poly.toml` configures (`[tools.*]` `bin`,
-    `args`, `env`), so a cloned repository can make them execute its programs. They are therefore not
-    annotated read-only, and a client should not auto-approve them. Only run them against
-    repositories you trust.
+<Aside type="caution" title="`check` is not read-only">
+    It runs the tools and hooks the repository's own `poly.toml` configures (`[tools.*]` `bin`,
+    `args`, `env`), so a cloned repository can make it execute its programs, and it may download an
+    engine component. It is therefore not annotated read-only, and a client should not auto-approve
+    it for repositories it does not trust.
 </Aside>
 
-### Read-only — cannot execute repository config
-
-| Tool | Mirrors | Returns |
-| --- | --- | --- |
-| `components` | `poly components list` / `status` | The downloadable engine components and where each stands; with `paths`, which ones they need, which are missing and which a run would download. Never downloads. |
-| `cache_stats` | `poly cache stats` | Result-cache footprint per namespace: entries, bytes, format version. |
-| `rules` | `poly rules list` / `test` | Every ast-grep rule a run would apply — the built-in pack plus `[engines.astgrep] rule_dirs` — with language, `source` (`builtin`/`user`), `default_severity`, the `severity` under the resolved config, and `enabled`. Optionally runs the `*-test.yml` snippets. |
-| `config_show` | `poly config show` | The merged effective configuration. **Network-free**: remote `extends` bases are not fetched. |
-| `version` | `poly --version` | Which binary is serving this session — version, build id, channel, executable, pid, uptime — whether that executable is still the file on disk, and the full engine→version map (host-toolchain backends excluded). |
-
-### Mutating — writes to the tree
-
-| Tool | Mirrors |
-| --- | --- |
-| `lint_fix` | `poly lint --fix` (may download a component) |
-| `format_write` | `poly fmt --fix` (may download a component) |
-| `cache_clean` | `poly cache clean` |
-| `components_install` | `poly components install` (downloads; writes only the component cache) |
-| `components_uninstall` | `poly components uninstall` / `prune` (refuses a component loaded in this process) |
-
-### Whole-project — long-running async tasks
-
-| Tool | Mirrors |
-| --- | --- |
-| `workspace_lint` | the whole-project phase, check mode |
-| `workspace_lint_fix` | the whole-project phase, fix mode |
-
-Both run `cargo clippy` / `cargo-sort` / `cargo-machete` / `cargo-deny` and any configured inline
-whole-project jobs over the whole repository — they take no `paths`. Because that is a multi-minute
-operation, both are exposed as async **Tasks**: the call returns a task handle and the client polls
-`tasks/get`, optionally `tasks/cancel`, with an unlimited TTL. A client that does not declare the
-tasks capability gets a synchronous, blocking result from the same call instead, so the tools work
-either way.
-
-<Aside type="caution" title="`workspace_lint` is not in the read-only group">
-    It applies no fixes, but it *executes* those tools against the live worktree, and their own side
-    effects — a refreshed lock file, a populated build or type-checker cache — are not poly's to
-    control.
+<Aside type="note" title="Upgrading from the fourteen-tool surface">
+    The old names — `lint`, `lint_fix`, `format_check`, `format_write`, `workspace_lint`,
+    `workspace_lint_fix`, `cache_stats`, `cache_clean`, `rules`, `config_show`, `components`,
+    `components_install`, `components_uninstall`, `version` — are removed, with no aliases. Update
+    client permission allowlists (for example `mcp__poly__lint` becomes `mcp__poly__check`) and any
+    saved prompts.
 </Aside>
+
+### `check` and `fix`
+
+`check` mirrors `poly lint` / `poly fmt`; `fix` mirrors `poly lint --fix` / `poly fmt --fix`, and
+runs the whole-project phase in fix mode. Both take the same parameters:
+
+- `kind` — `lint` (the default) or `format`.
+- `scope` — `files` (the default) runs the per-file tier over `paths`, like `poly lint --workspace
+  never` or `poly fmt`. `workspace` runs only the whole-project phase (`cargo clippy` / `cargo-sort` /
+  `cargo-machete` / `cargo-deny` and configured inline whole-project jobs) over the whole repository;
+  it takes no `paths` and is lint only. `all` runs both, as `poly lint` does; lint only.
+- `paths` (files or directories; empty means the current directory), `exclude` (gitignore-style globs
+  merged with `[discovery] exclude`; unanchored globs match at any depth), `config` (path to a
+  `poly.toml`), `include_excluded`, `only` / `skip` (mutually exclusive engine selection),
+  `max_skips` (`0` is `--deny-skips`), `install` (`config` by default, `auto` or `never`),
+  `on_missing` (`fail` or `skip`), `no_cache`, `jobs`, `fix_generated`, `debug`.
+- `format` — `json` (the default) or `toon`. It selects only the paired **text** block;
+  `structured_content` is always JSON.
+
+The result is the CLI's `--format json` document — `results`, `errors`, `skipped`, `summary`,
+`configs`, and optionally `suppressed`, `components` and `discovery` — plus a `poly` identity block.
+`scope: workspace` returns the whole-project report (`passed`, `fixed`, `tools[]`, optional
+`untrusted`); `scope: all` returns the lint document with that report under a `workspace` key.
+Arguments that do not go together, such as `kind: format` with `scope: workspace`, fail with a
+`usage` error.
+
+<Aside type="caution" title="Whole-project scopes execute tools against the live worktree">
+    A `workspace` or `all` scope applies no fixes under `check`, but it *executes* those tools
+    against the live worktree, and their own side effects — a refreshed lock file, a populated build
+    or type-checker cache — are not poly's to control.
+</Aside>
+
+### `info`
+
+Read-only: it never downloads and never runs repository tools. `topics` is an array of `version`,
+`config`, `validate`, `rules`, `components` and `cache` (default `["version"]`); the result has one key
+per topic.
+
+| Topic | Mirrors | Returns |
+| --- | --- | --- |
+| `version` | `poly --version` | Binary health: `executable_current`, `executable_status`, `uptime_seconds`, the full engine→version map (host-toolchain backends excluded) and `components`. |
+| `config` | `poly config show --format json` | `{config, resolution}`: the merged effective configuration. |
+| `validate` | `poly config validate` | `{valid, files: [{path, problems: [{path, key?, message}]}], partial: [{component, engines}]}`. |
+| `rules` | `poly rules list --format json` | Every ast-grep rule a run would apply. With `test: true`, also runs the `*-test.yml` snippets; a failing test sets `isError`. |
+| `components` | `poly components status` | The downloadable engine components and where each stands; with `paths`, which ones they need, which are missing and which a run would download. |
+| `cache` | `poly cache stats --format json` | `{format_version, on_disk_version, namespaces[], total_entries, total_bytes}`. |
+
+Besides `topics`, `info` takes `config`, `paths` (for `components`, the paths to judge; for
+`validate`, config files or directories), `install` (the policy `would_download` assumes), `dirs` and
+`test` (for `rules`) and `format`.
+
+`info {topics: ["version"]}` still answers when the server's executable was replaced or deleted;
+every other call fails until the server restarts. The `rules` topic never downloads: a core build
+without the `astgrep` component reports it as missing. A topic the host cannot answer carries
+`{error: {message}}` under its key and sets `isError`.
+
+Remote git `extends` bases are resolved from the local source cache at the `poly.lock`-pinned
+revision and never fetched, so the server stays network-free for config. A base that is not cached
+is a `config` error telling you to run `poly lock` or a CLI `poly lint` once.
+
+### `manage`
+
+`action` selects the operation:
+
+| Action | Mirrors | Parameters |
+| --- | --- | --- |
+| `cache_clean` | `poly cache clean` | |
+| `cache_gc` | `poly cache gc` | `max_age_days`, `max_size` (for example `500M`, `2G`) |
+| `components_install` | `poly components install` | `names` (components or presets), `languages`, `paths`, `config`, `dry_run`. Downloads; writes only the component cache. |
+| `components_uninstall` | `poly components uninstall` | `names`. Refuses a component loaded in this process (`isError`). |
+| `components_prune` | `poly components prune` | Removes cached archives nothing references or used recently. |
+
+The cache actions return `{command, freed_bytes}`, like `poly cache clean|gc --format json`.
 
 There is no `hooks` tool: `poly hooks` is CLI-only.
+
+### Async tasks
+
+Whole-project scopes, and runs or installs that must download a component, return an async
+**Task** (SEP-2663) when the client declares the tasks capability: the call returns a task handle and
+the client polls `tasks/get`, optionally `tasks/cancel`. The status message names the components;
+there is no byte-level progress and no `notifications/progress`, because the core can only answer a
+frontend's call, not report during it. A client that does not declare the capability gets a
+synchronous, blocking result from the same call, so the tools work either way.
 
 ### Components and downloads
 
 In a core build the engines are downloadable components; a bundled build links them in and
-nothing is ever missing. `lint`, `format_check`, `lint_fix` and `format_write` are **open-world**:
-a run that needs a missing component downloads it first, governed by their `install` parameter —
-`config` (the default, following `[components] install`), `auto`, or `never` (download nothing and
-skip the files a missing component would have handled). A server started with `--offline` never
-downloads, whatever `install` says.
+nothing is ever missing. `check` and `fix` are **open-world**: a run that needs a missing component
+downloads it first, governed by their `install` parameter — `config` (the default, following
+`[components] install`), `auto`, or `never` (download nothing and skip the files a missing component
+would have handled). A server started with `--offline` never downloads, whatever `install` says.
 
 A run that needed any downloadable component carries a `components` block (`used`,
 `installed_now`, `missing`). A missing component that fails the run sets `isError`; one skipped
 under `install: "never"` does not, but still appears in `skipped` and `components.missing`.
-
-When the client declares the tasks capability and the call would download — a run, or
-`components_install` — it returns a Task and the client polls `tasks/get`; the status message
-names the components. There is no byte-level progress and no `notifications/progress`, because the
-core can only answer a frontend's call, not report during it. Otherwise the call blocks and
-returns the result.
-
-## Parameters
-
-- `lint` / `format_check` / `lint_fix` / `format_write` — `paths` (files or directories; empty
-  means the current directory), `exclude` (gitignore-style globs merged with `[discovery] exclude`;
-  unanchored globs match at any depth), `config` (path to a `poly.toml`), `install` (`"config"` by
-  default, `"auto"` or `"never"`), `format` (`"json"` by default, or `"toon"`).
-- `components` — `paths`, `config`, `install` (the policy `would_download` is judged under), `format`.
-- `components_install` — `names` (components or presets), `languages`, `paths`, `config`, `dry_run`, `format`.
-- `components_uninstall` — `names`, `stale` (also remove unreferenced, long-unused archives), `format`.
-- `rules` — `dirs` (empty means `rule_dirs` from the config), `config`, `test` (bool), `format`.
-- `config_show` — `config`, `format`.
-- `cache_stats` / `cache_clean` / `version` — `format` only.
-- `workspace_lint` / `workspace_lint_fix` — `config`, `format`, `jobs`, `no_cache`. No `paths`.
-
-`format` selects only the paired **text** block; `structured_content` is always JSON.
-
-Treat only the read-only tools as safe to call freely; gate `lint`, `format_check` and the
-mutating tools behind trust in the repository and explicit intent.
 
 ### Workspace confinement
 
@@ -219,14 +248,14 @@ Each result carries a `poly` block (version, build id, channel, executable, pid,
 `bundled`, `core` or `partial` — `components_lock` — a digest of the embedded component lock, or
 null — and `engines`, a blake3 digest of every engine linked into the binary and the upstream version it wraps) in
 `structured_content` and in `_meta`, because an MCP caller has no `poly --version` to fall back on.
-The `version` tool returns the full engine→version map the digest summarizes.
+The `info` `version` topic returns the full engine→version map the digest summarizes.
 The server fingerprints its own executable at startup and re-checks it per request: if the binary is
-replaced or deleted underneath a long-lived server, every tool but `version` fails rather than
-answering with superseded behaviour.
+replaced or deleted underneath a long-lived server, every call but `info {topics: ["version"]}`
+fails rather than answering with superseded behaviour.
 
 ## Three per-file outcomes, not two
 
-`lint` / `lint_fix` / `format_check` / `format_write` results tell three outcomes apart:
+`check` and `fix` results tell three outcomes apart:
 
 - **Checked** — counted in `summary.checked`. A checked file with findings has a `results` entry;
   a checked, clean file has **no** entry at all, so absence from `results` alone proves nothing.
@@ -249,9 +278,12 @@ Each result also carries run-level `errors` and `skipped` arrays and a `summary`
 ```
 
 `configs` fingerprints every configuration that governed the run; each result's `config` field
-indexes into it (omitted when `0`). It is what tells a caller whether two clean reports from
+indexes into it (omitted when `0`). An entry also carries `withheld` when the config's exec-capable
+keys were withheld by trust (ADR 0059). It is what tells a caller whether two clean reports from
 different calls are actually comparable — a `poly.toml`, a `poly.local.toml`, a nested config or an
-`extends` base can move underneath an identical-looking request.
+`extends` base can move underneath an identical-looking request. When discovery left something out —
+excluded files and directories, named paths that matched an exclusion (`excluded_explicit`), pruned
+directories, unrecognized files — the document also carries a `discovery` object saying so.
 
 A `degraded` array (omitted when empty) lists `{tool, language, reason, files}` for each native tool
 that is on by default or switched on and was not found on `PATH`: its files were formatted by the
@@ -259,14 +291,11 @@ tree-sitter tier, or linted without it. They are still checked, and `degraded` d
 `isError`.
 
 `errors` and `skipped` duplicate the corresponding records in `results` on purpose, so a caller can
-gate on "did this run actually check what I gave it" without scanning every record. When `errors` is
-non-empty the tool result's `CallToolResult.is_error` (`isError` over the wire) is set `true`.
-**`skipped` deliberately does not set it** — a skip is coverage information, not a failure, and
-flagging it would make the error signal useless.
-
-That is exactly why `summary` matters: a run where everything was skipped reports no diagnostics and
-is not an error, so `isError` alone cannot tell it apart from a clean pass. **Gate on
-`summary.checked`.**
+gate on "did this run actually check what I gave it" without scanning every record.
+**`skipped` deliberately does not set `isError`** — a skip is coverage information, not a failure, and
+flagging it would make the error signal useless. That is exactly why `summary` matters: a run where
+everything was skipped reports no diagnostics and is not an error, so `isError` alone cannot tell it
+apart from a clean pass. **Gate on `summary.checked`.**
 
 The counts are not a partition of `results` and cannot be derived from it — a file checked and found
 clean produces no record at all, and a file poly has no rules for can be both a skip and a result,
@@ -274,6 +303,29 @@ since the cross-cutting backends still run over it.
 
 This is the same document `poly lint --format json` prints, so an agent and a CI script read
 coverage the same way.
+
+### When `isError` is set
+
+`isError: true` means the run did not verify what was asked:
+
+- a file poly failed on (non-empty `errors`);
+- a blocking missing component;
+- skips over `max_skips`;
+- a run that could not start.
+
+A run that could not start returns `{error: {kind, message}, summary: null}`, where `kind` is one of:
+
+| `kind` | Meaning |
+| --- | --- |
+| `paths` | A named path does not exist. Over MCP this used to read as a clean pass. |
+| `workspace` | A path lies outside the server's directory. |
+| `config` | The config or `poly.lock` failed to load. This used to be a JSON-RPC error. |
+| `pipeline` | The run failed to plan, for example an unknown `only` engine. |
+| `render` | The result could not be serialized. |
+| `usage` | Arguments that do not go together. |
+
+Error-severity findings and formatting drift are **not** errors: they are the CLI's exit 1 and
+appear in `results`.
 
 <Aside type="danger" title="Check `isError` before trusting the result">
     Before this shape existed, a file poly failed to process was absent from the output entirely —

@@ -181,8 +181,8 @@ is there when you want a document to parse.
 
 ![poly emitting TOON output](docs/media/toon.gif)
 
-**An agent can skip the terminal entirely.** `poly mcp` speaks MCP over stdio and advertises fourteen tools that
-mirror the CLI.
+**An agent can skip the terminal entirely.** `poly mcp` speaks MCP over stdio and advertises four tools
+(`check`, `fix`, `info`, `manage`) that mirror the CLI.
 
 ![the poly MCP server listing its tools](docs/media/agent.gif)
 
@@ -300,8 +300,9 @@ again. See [Git hooks](https://polylint.github.io/polylint/guides/hooks/).
 
 ## Agents and MCP
 
-`poly mcp` is a stdio MCP server with fourteen tools that mirror the CLI (`lint`, `format_check`, `lint_fix`,
-`format_write`, `components`, `workspace_lint`, …). Every result identifies the binary that answered and separates
+`poly mcp` is a stdio MCP server with four tools that mirror the CLI: `check` (lint or format
+check, writes nothing), `fix`, `info` (version, config, rules, components, cache; read-only) and `manage` (cache and
+component maintenance). Every result identifies the binary that answered and separates
 checked, skipped and errored files, so an agent can gate on what was actually verified.
 
 ```text

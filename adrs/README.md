@@ -89,6 +89,7 @@ Context, Decision, Consequences (positive and negative/risks), and Alternatives 
 | [0072](0072-engine-facets.md) | Optional Engine Concerns as Facets of the Engine Trait | Accepted |
 | [0073](0073-root-a-lint-or-fmt-run-at-the-staged-snapshot.md) | Root an In-Process lint or fmt Run at the Staged Snapshot | Accepted |
 | [0075](0075-report-files-a-missing-native-tool-left-to-the-generic-tier.md) | Report the Files a Missing Native Tool Left to the Generic Tier | Accepted |
+| [0076](0076-four-mcp-tools-split-by-annotation.md) | Four MCP Tools, Split by Annotation Class | Accepted |
 
 ## Conventions
 

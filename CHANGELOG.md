@@ -84,9 +84,26 @@ Each item is described in full under the section named in brackets.
 - **`.editorconfig` conformance:** `editorconfig-checker` as a pinned release recipe, opt-in under
   `[tools.editorconfig-checker]`. (#176)
 - **Makefile linting:** `checkmake` as a pinned release recipe, opt-in under `[tools.checkmake]`. (#175)
+- **`discovery` and `configs[].withheld` in the JSON document.** `poly lint` and `poly fmt` `--format json` now carry a
+  `discovery` object when discovery left something out (excluded files and directories, `excluded_explicit` named paths
+  that matched an exclusion, pruned directories, unrecognized files), which was previously stderr only. Each `configs[]`
+  entry lists `withheld` when exec-capable keys were withheld from that config by trust (ADR 0059). (ADR 0076)
+- **MCP `info` topic `validate`, and `manage` actions `cache_gc` and `components_prune`.** `validate` answers
+  `poly config validate` as `{valid, files, partial}`; `cache_gc` takes `max_age_days` and `max_size` like `poly cache
+  gc`; `components_prune` removes cached archives nothing references or used recently. (ADR 0076)
 
 ### Changed
 
+- **Breaking: `poly mcp` exposes four tools instead of fourteen.** `check` (lint or check formatting, writes nothing),
+  `fix`, `info` (read-only: `version`, `config`, `validate`, `rules`, `components`, `cache`) and `manage` (cache and
+  component maintenance) replace `lint`, `lint_fix`, `format_check`, `format_write`, `workspace_lint`,
+  `workspace_lint_fix`, `cache_stats`, `cache_clean`, `rules`, `config_show`, `components`, `components_install`,
+  `components_uninstall` and `version`, split along the annotation boundary so clients can still approve checks and
+  prompt on writes. The old names are removed with no aliases: update client permission allowlists (`mcp__poly__lint`
+  becomes `mcp__poly__check`, and so on) and saved prompts. `check` and `fix` take `kind` (`lint`|`format`) and `scope`
+  (`files`|`workspace`|`all`). Tools no longer declare an `outputSchema`; the schemas are MCP resources under
+  `poly://schema/`. `info`'s `config` topic is now exactly `poly config show --format json`, and its `cache` topic
+  matches `poly cache stats --format json`. (ADR 0076)
 - **The core binary is built for speed.** `--profile core` moves from `opt-level = "s"` to `opt-level = 3` (fat LTO, stripped), and the size gate moves from 14 MiB to 22 MiB (ADR 0065). The `release` profile used by the bundled build and every component also moves to fat LTO with stripped symbols.
 - **Cargo hooks hash their declared inputs once per run.** The clippy, sort, machete and deny hooks share one `git ls-files` listing and one parallel, streamed blake3 pass, and the staged-run mutation probe streams index blobs into hashes instead of holding the tracked tree in memory. (#215)
 - **BREAKING: component protocol v3 (ADR 0058); every engine component and sidecar must be rebuilt.** Requests and responses are
@@ -185,6 +202,19 @@ Each item is described in full under the section named in brackets.
 - **`poly cache <subcommand> --cache-dir <dir>` is accepted**, and a large `--max-age` no longer overflows.
 - **`poly doctor` no longer warns that a mise shim shadows poly.**
 - **The installers find the installed version.** `install.sh` and `install.ps1` read the wrong token of `poly --version`, so an up-to-date install was never recognised. Linux musl aarch64 and Windows arm64, which have no release binary, are rejected with a message, and a download error names the URL.
+- **A missing path no longer reads as a clean pass over MCP.** A named path that does not exist now answers
+  `isError: true` with `{error: {kind: "paths", message}, summary: null}`. A config or `poly.lock` that fails to load
+  (`config`), an unknown `only` engine (`pipeline`) and a path outside the server's directory (`workspace`) answer the
+  same way instead of a JSON-RPC error. (ADR 0076)
+- **The MCP `rules` topic claimed to be read-only and closed-world but could download.** `info` never downloads: a core
+  build without the `astgrep` component reports it as missing. A failing `*-test.yml` rule test now sets `isError`.
+  (ADR 0076)
+- **A repository with a remote `extends` base no longer fails every MCP tool.** The server resolves the base from the
+  local source cache at the `poly.lock`-pinned revision and never fetches; a base that is not cached is a `config`
+  error telling you to run `poly lock` or a CLI `poly lint` once. (ADR 0076)
+- **The MCP server accepts the run options the CLI has.** `check` and `fix` take `only`, `skip`, `include_excluded`,
+  `no_cache`, `jobs`, `max_skips`, `fix_generated`, `on_missing` and `debug`, built from the same request the CLI
+  fills, so a new CLI run option reaches the server by construction. (ADR 0076)
 
 ### Security
 

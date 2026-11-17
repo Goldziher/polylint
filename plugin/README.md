@@ -44,10 +44,9 @@ For Hermes, install the package into the Python environment Hermes runs in —
 `./plugin/.hermes/package` from a repository checkout — then explicitly enable `poly` in that
 Hermes installation's `config.yaml` under `plugins.enabled`. Skills are opt-in namespace loads,
 such as `poly:poly-mcp`; they do not enter the flat system skill listing. The `poly_call` tool bridges
-all fourteen native MCP tools. Choose `list_tools` to inspect their request schemas, then pass
-`tool_arguments` to the selected tool. Checking workspace lint can compile dependencies;
-mutating tools (`lint_fix`, `format_write`, `cache_clean`, `components_install`,
-`components_uninstall`, `workspace_lint_fix`) modify files or caches and should only be used when the current task authorizes those changes.
+all four native MCP tools (`check`, `fix`, `info`, `manage`). Choose `list_tools` to inspect their request schemas, then pass
+`tool_arguments` to the selected tool. A whole-project `check` (`scope: workspace`) can compile dependencies;
+`fix` and `manage` modify files or caches and should only be used when the current task authorizes those changes.
 
 Public skills install independently with `npx skills add polylint/polylint --skill poly-mcp`.
 Their source is `plugin/.ai-rulez/skills`; `mise run plugin:sync-skills --check` verifies the
