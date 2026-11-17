@@ -653,6 +653,60 @@ fn a_binary_skif_knows_by_name_is_not_reported_when_the_rule_is_asked_for() {
     assert_eq!(rules_found(&root, &files, &cfg(&[select("unlisted-binaries")])), []);
 }
 
+/// `Local` and `Derived` are used classes of a module that is not an entry; nothing reads `unused` or `render`.
+/// `@acme/base` is listed but, the run being hermetic, never installed.
+fn class_members(shapes: &'static str) -> Vec<(&'static str, &'static str)> {
+    vec![
+        ("package.json", ROOT),
+        ("pnpm-workspace.yaml", PACKAGES),
+        (
+            "packages/app/package.json",
+            r#"{"name":"app","version":"1.0.0","main":"src/index.ts","dependencies":{"@acme/base":"1.0.0"}}"#,
+        ),
+        (
+            "packages/app/src/index.ts",
+            "import { Derived, Local } from \"./shapes\";\nconsole.log(new Local().used(), new Derived().used());\n",
+        ),
+        ("packages/app/src/shapes.ts", shapes),
+    ]
+}
+
+const SHAPES: &str = "import { Base } from \"@acme/base\";\n\
+export class Local {\n  used() {\n    return 1;\n  }\n  unused() {\n    return 2;\n  }\n}\n\
+export class Derived extends Base {\n  used() {\n    return 1;\n  }\n  render() {\n    return 2;\n  }\n}\n";
+
+#[test]
+fn an_unread_class_member_is_a_warning_but_not_under_a_base_class_of_an_uninstalled_package() {
+    let (root, files) = inline(&class_members(SHAPES));
+    let row = |rule: &str, line| {
+        (
+            "packages/app/src/shapes.ts".to_owned(),
+            rule.to_owned(),
+            "Warning".to_owned(),
+            Some(line),
+        )
+    };
+    assert_eq!(
+        summary(&root, &run(&root, &files, &cfg(&[]))),
+        [row("unused-class-members", 6)],
+        "`Local.unused` is reported; `Derived.render` may override a member of the base skif cannot see"
+    );
+}
+
+/// The same `Derived` without the base class: the member is judged, so the exemption above is the base class's.
+#[test]
+fn the_same_member_is_reported_once_the_class_has_no_base() {
+    let shapes = "export class Local {\n  used() {\n    return 1;\n  }\n}\n\
+export class Derived {\n  used() {\n    return 1;\n  }\n  render() {\n    return 2;\n  }\n}\n";
+    let mut members = class_members(shapes);
+    members[2].1 = r#"{"name":"app","version":"1.0.0","main":"src/index.ts"}"#;
+    let (root, files) = inline(&members);
+    assert_eq!(
+        rules_found(&root, &files, &cfg(&[])),
+        [pair("packages/app/src/shapes.ts", "unused-class-members")]
+    );
+}
+
 #[test]
 fn a_tsconfig_extending_into_a_package_does_not_make_types_unused() {
     let (root, files) = inline(&[
