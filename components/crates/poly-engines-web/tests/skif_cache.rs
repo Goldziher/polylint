@@ -1,5 +1,6 @@
 //! skif's own cache in poly's result cache (ADR 0080): a second identical run serves skif's module parses from the
-//! store, a run without a cache uses no store, and a change to the engine options or the host's salt misses.
+//! store, a run without a cache uses no store, and a change to a result-affecting engine option or the host's salt
+//! misses while a `threads` change hits.
 #![allow(
     unsafe_code,
     reason = "POLY_CACHE_HOME is set once, before any run in this binary reads it"
@@ -160,7 +161,7 @@ fn a_run_without_a_cache_uses_no_store() {
 }
 
 #[test]
-fn a_change_to_the_options_or_the_hosts_salt_misses() {
+fn a_change_to_a_result_option_or_the_hosts_salt_misses_and_threads_hits() {
     let dir = tempfile::tempdir().unwrap();
     let cache = cache_in(dir.path(), "host");
     let first = modules(&run(&cfg(""), Some(&cache)));
@@ -178,6 +179,17 @@ fn a_change_to_the_options_or_the_hosts_salt_misses() {
         (other_host.hits, other_host.misses),
         (0, first.misses),
         "the host's salt is in every key"
+    );
+
+    let mut more_threads = cfg("");
+    more_threads
+        .options
+        .insert("threads".to_owned(), toml::Value::Integer(4));
+    let rethreaded = modules(&run(&more_threads, Some(&cache)));
+    assert_eq!(
+        (rethreaded.hits, rethreaded.misses),
+        (first.misses, 0),
+        "threads changes no result, so it is not in the salt"
     );
 
     let again = modules(&run(&cfg(""), Some(&cache)));

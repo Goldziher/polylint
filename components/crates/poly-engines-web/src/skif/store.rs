@@ -45,9 +45,15 @@ impl CacheStore for PolyStore {
     }
 }
 
+/// Engine options that change how a run executes, never what it finds: left out of the salt, so `-j` or a `threads`
+/// change still reads every entry. `enabled` is always `true` when a store is used at all.
+const OPERATIONAL: &[&str] = &["enabled", "threads"];
+
 /// The salt of every key a run writes: the host's (cache format version and build identity), this backend's
-/// [`VERSION`](super::VERSION) and the engine options, so a different skif, mapping or configuration never reads
-/// an entry another wrote.
+/// [`VERSION`](super::VERSION) and the engine options that can change a result, so a different skif, mapping or
+/// configuration never reads an entry another wrote.
 pub(super) fn salt(cache: &EngineCache, options: &toml::Table) -> Vec<u8> {
+    let mut options = options.clone();
+    options.retain(|key, _| !OPERATIONAL.contains(&key));
     format!("{}\0{}\0{options}", cache.salt, super::VERSION).into_bytes()
 }

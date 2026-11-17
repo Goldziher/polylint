@@ -25,7 +25,8 @@
 //! A project check is cached as a whole, so an edit anywhere re-runs skif over the workspace. When the run caches
 //! ([`ProjectRequest::cache`]), skif is also given a store in poly's result cache ([`store`]) and keeps each module's
 //! parse there, so the re-run parses only what changed (ADR 0080). The store never changes a finding; its keys carry
-//! the host's salt, [`VERSION`] and the engine options, and `--no-cache` gives skif no store at all.
+//! the host's salt, [`VERSION`] and the engine options except the operational `enabled` and `threads`, and
+//! `--no-cache` gives skif no store at all.
 //!
 //! # Activation
 //!
