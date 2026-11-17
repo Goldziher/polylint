@@ -109,28 +109,30 @@ fn lint_at(base: &Path, paths_root: &Path, config: &Config, opts: &RunOptions) -
 
 impl Project {
     fn fmt_changed(&self) -> FmtOutcome {
-        let (run, log) = capture(|| {
-            poly_core::format_run(
-                &[self.dir.path().to_path_buf()],
-                &self.config(),
-                &Self::opts(),
-                false,
-                false,
+        fmt_at(self.dir.path(), self.dir.path(), &self.config())
+    }
+}
+
+/// Check the formatting of `paths_root` under `config`, naming changed files relative to `base`.
+fn fmt_at(base: &Path, paths_root: &Path, config: &Config) -> FmtOutcome {
+    let (run, log) =
+        capture(|| poly_core::format_run(&[paths_root.to_path_buf()], config, &Project::opts(), false, false).unwrap());
+    let mut changed: Vec<String> = run
+        .results
+        .iter()
+        .filter(|r| r.changed)
+        .map(|r| {
+            relative(
+                &std::path::absolute(base).unwrap(),
+                &std::path::absolute(&r.path).unwrap(),
             )
-            .unwrap()
-        });
-        let mut changed: Vec<String> = run
-            .results
-            .iter()
-            .filter(|r| r.changed)
-            .map(|r| relative(self.dir.path(), &r.path))
-            .collect();
-        changed.sort();
-        FmtOutcome {
-            changed,
-            errors: run.errors.iter().map(|e| e.message.clone()).collect(),
-            resolution: Resolution::parse(&log),
-        }
+        })
+        .collect();
+    changed.sort();
+    FmtOutcome {
+        changed,
+        errors: run.errors.iter().map(|e| e.message.clone()).collect(),
+        resolution: Resolution::parse(&log),
     }
 }
 
@@ -585,6 +587,37 @@ fn an_absolute_and_a_relative_invocation_share_records() {
         "the premise: the relative run is warm"
     );
     assert_eq!(absolute.findings, cold.findings);
+    assert_eq!(absolute.resolution.misses, 0, "{:?}", absolute.resolution);
+}
+
+/// The same for `poly fmt` of a Rust file (rustfmt is in no lint plan): its per-file key reads the
+/// `rustfmt.toml` and `rust-toolchain.toml` above the file, found alike from `./rs` and from the
+/// absolute directory.
+#[test]
+fn an_absolute_and_a_relative_format_check_share_a_rust_files_record() {
+    let project = Project::new("INP001");
+    project.write("rs/a.rs", "pub fn a() -> u8 {\n    1\n}\n");
+    project.write("rustfmt.toml", "max_width = 100\n");
+    project.write("rust-toolchain.toml", "[toolchain]\nchannel = \"stable\"\n");
+    git(project.dir.path(), &["init", "-q"]);
+    settle();
+    let (cold, relative_warm, absolute) = in_dir(project.dir.path(), |here| {
+        let relative = || {
+            let config = Config::load_file(Path::new("poly.toml")).unwrap();
+            fmt_at(Path::new("."), Path::new("."), &config)
+        };
+        let config = Config::load_file(&here.join("poly.toml")).unwrap();
+        (relative(), relative(), fmt_at(here, here, &config))
+    });
+
+    assert!(cold.errors.is_empty(), "{:?}", cold.errors);
+    assert!(
+        cold.changed.is_empty(),
+        "the premise: formatted files, which are recorded"
+    );
+    assert!(cold.resolution.misses >= 4, "{:?}", cold.resolution);
+    assert_eq!(relative_warm.resolution.misses, 0, "{:?}", relative_warm.resolution);
+    assert!(absolute.changed.is_empty());
     assert_eq!(absolute.resolution.misses, 0, "{:?}", absolute.resolution);
 }
 

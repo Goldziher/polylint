@@ -120,8 +120,11 @@ pub(crate) fn file_salt(spec: &ToolSpec, path: &Path) -> Option<String> {
     if !runs_in_file_dir || spec.config_files.is_empty() {
         return None;
     }
-    let dir = path.parent().unwrap_or(path);
-    let config = dir_fingerprint(spec.engine_name, dir, || {
+    // Absolute, as the tool sees its working directory: the ancestors of a relative `./a` end at the
+    // run root, and count it twice (`.` and the empty path), so a relative and an absolute run of one
+    // tree would otherwise key apart.
+    let dir = absolute_dir(path.parent().unwrap_or(path));
+    let config = dir_fingerprint(spec.engine_name, dir, |dir| {
         let mut fingerprint = fingerprint_at(dir, spec.config_files);
         if spec.edition_flag {
             fingerprint.push_str("|toolchain:");
@@ -136,17 +139,26 @@ pub(crate) fn file_salt(spec: &ToolSpec, path: &Path) -> Option<String> {
     })
 }
 
+/// `dir` under the run root (ADR 0073), else under the process directory; unchanged when it is absolute already or
+/// the process directory cannot be read.
+fn absolute_dir(dir: &Path) -> PathBuf {
+    if dir.is_absolute() {
+        return dir.to_path_buf();
+    }
+    poly_engine_api::run_root::current_dir().map_or_else(|_| dir.to_path_buf(), |base| base.join(dir))
+}
+
 type DirFingerprints = RwLock<HashMap<(&'static str, PathBuf), Arc<str>>>;
 
 /// The fingerprint of `tool`'s config as seen from `dir`, built by `build` the first time this process sees the pair.
-fn dir_fingerprint(tool: &'static str, dir: &Path, build: impl FnOnce() -> String) -> Arc<str> {
+fn dir_fingerprint(tool: &'static str, dir: PathBuf, build: impl FnOnce(&Path) -> String) -> Arc<str> {
     static SEEN: OnceLock<DirFingerprints> = OnceLock::new();
     let seen = SEEN.get_or_init(DirFingerprints::default);
-    let key = (tool, dir.to_path_buf());
+    let key = (tool, dir);
     if let Some(known) = seen.read().unwrap_or_else(PoisonError::into_inner).get(&key) {
         return Arc::clone(known);
     }
-    let built: Arc<str> = Arc::from(build());
+    let built: Arc<str> = Arc::from(build(&key.1));
     seen.write()
         .unwrap_or_else(PoisonError::into_inner)
         .entry(key)
@@ -461,6 +473,30 @@ mod tests {
             salt_with(Some(("rustfmt.toml", "max_width = 40\n"))),
             "checkout-independent"
         );
+    }
+
+    /// A relative and an absolute spelling of one file key alike, with a config file at the run root. (`swift-format`
+    /// has the salt without an edition, which is resolved from the process directory.)
+    #[test]
+    fn the_file_salt_is_the_same_for_a_relative_and_an_absolute_path() {
+        use std::sync::Arc;
+
+        use super::super::spec::SWIFT_FORMAT_SPEC;
+        let dir = tempfile::tempdir().expect("tempdir");
+        fs::create_dir_all(dir.path().join("a")).expect("mkdir");
+        fs::write(dir.path().join(".swift-format"), "{}\n").expect("config");
+        let _entered = poly_engine_api::run_root::enter(Some(Arc::from(dir.path())));
+        let salt = |path: &Path| file_salt(&SWIFT_FORMAT_SPEC, path);
+        let absolute = salt(&dir.path().join("a/b.swift"));
+        assert!(
+            absolute.as_deref().is_some_and(|salt| !salt.contains(NO_CONFIG)),
+            "{absolute:?}"
+        );
+        assert_eq!(salt(Path::new("./a/b.swift")), absolute);
+        assert_eq!(salt(Path::new("a/b.swift")), absolute);
+        assert_ne!(salt(Path::new("./c.swift")), absolute, "the config is one level nearer");
+        assert_eq!(salt(Path::new("./c.swift")), salt(&dir.path().join("c.swift")));
+        assert_eq!(salt(Path::new("c.swift")), salt(&dir.path().join("c.swift")));
     }
 
     /// `swift-format` runs in the file's directory too; `shellcheck` and the tools without config files have no
