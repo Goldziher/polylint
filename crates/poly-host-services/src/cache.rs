@@ -36,6 +36,25 @@ pub fn open(root: PathBuf) -> Result<ResultCache> {
     ResultCache::open(root, true).context("failed to open the result cache")
 }
 
+/// A handle on the cache a run in the working directory would use, for reading its footprint:
+/// nothing is created, so a cache that was never written (or a repository-chosen `[cache] dir`)
+/// stays absent. `configured` is `[cache] dir`.
+///
+/// # Errors
+///
+/// When the default anchor cannot be resolved.
+pub fn open_for_stats(configured: Option<&str>) -> Result<ResultCache> {
+    let root = match configured {
+        Some(dir) => PathBuf::from(dir),
+        None => {
+            let cwd = std::env::current_dir().context("failed to resolve the working directory")?;
+            poly_cache::existing_root_from(&cwd).context("failed to resolve the cache directory")?
+        }
+    };
+    // A disabled handle: `stats` reads the entry tree either way, and opening creates nothing.
+    ResultCache::open(root, false).context("failed to open the result cache")
+}
+
 /// The `poly cache stats --format json` document.
 ///
 /// # Errors
@@ -131,7 +150,17 @@ pub fn parse_size(value: &str) -> Result<u64> {
 mod tests {
     use std::time::Duration;
 
-    use super::{max_age_duration, parse_size};
+    use super::{max_age_duration, open_for_stats, parse_size, stats};
+
+    #[test]
+    fn reading_the_stats_of_an_absent_cache_creates_nothing() {
+        let parent = tempfile::tempdir().unwrap();
+        let root = parent.path().join("never-written");
+        let report = stats(&open_for_stats(root.to_str()).unwrap()).unwrap();
+        assert_eq!((report.total_entries, report.total_bytes), (0, 0));
+        assert_eq!(report.on_disk_version, None);
+        assert!(!root.exists(), "a read must not create the cache directory");
+    }
 
     #[test]
     fn parse_size_handles_suffixes_and_bare_bytes() {

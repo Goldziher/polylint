@@ -232,9 +232,12 @@ fn open_result_cache(resolver: Option<&Resolver>) -> anyhow::Result<ResultCache>
     cache::open(cache::root(None, config.cache.dir.as_deref())?)
 }
 
-/// Report cache footprint: the `poly cache stats --format json` document.
+/// Report cache footprint: the `poly cache stats --format json` document. Read-only: unlike the
+/// maintenance operations it creates no cache directory (the frontend serves it from a
+/// read-only tool, and `[cache] dir` is the repository's to choose).
 pub fn cache_stats(resolver: Option<&Resolver>) -> anyhow::Result<CacheStatsReport> {
-    cache::stats(&open_result_cache(resolver)?)
+    let config = resolve_poly_config_with(None, resolver)?;
+    cache::stats(&cache::open_for_stats(config.cache.dir.as_deref())?)
 }
 
 /// Remove every cached entry: the `poly cache clean --format json` document.
