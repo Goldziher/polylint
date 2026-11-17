@@ -451,7 +451,10 @@ pub enum Request {
         /// Registered config.
         config: ConfigId,
         /// The host-resolved environment as flat pairs (`python.interpreter`,
-        /// `python.site_packages`, `python.version`); the component never probes the system.
+        /// `python.site_packages`, `python.version`); the component never probes the system. A run that caches
+        /// adds `poly.cache.dir` and `poly.cache.salt`, the host's cache for an engine that keeps entries of its
+        /// own (ADR 0080). A component ignores a key it does not know, so a key is added here rather than as a
+        /// field: an older component still decodes the request, and an older host's request decodes as no cache.
         environment: Vec<(String, String)>,
         /// The worker threads the host's run budgets for the check; `None` is the component's choice.
         threads: Option<u32>,

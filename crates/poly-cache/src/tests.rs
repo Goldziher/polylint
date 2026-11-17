@@ -163,6 +163,21 @@ fn presence_scan_ignores_temporary_files_and_directories() {
 }
 
 #[test]
+fn presence_scan_skips_the_engine_namespace() {
+    let dir = tempfile::tempdir().unwrap();
+    let root = dir.path().join("cache");
+    let cache = ResultCache::open(root.clone(), true).unwrap();
+    let store = EngineDataStore::open(cache.root()).unwrap();
+    store.put("skif.modules.1", &[3u8; 32], b"sealed").unwrap();
+    drop(cache);
+
+    let reopened = ResultCache::open(root, true).unwrap();
+    let key = EngineDataStore::key("skif.modules.1", &[3u8; 32]);
+    assert!(!reopened.present.contains(Namespace::Engine, &key));
+    assert_eq!(store.get("skif.modules.1", &[3u8; 32]).as_deref(), Some(&b"sealed"[..]));
+}
+
+#[test]
 fn miss_when_content_changes() {
     let tmp = tempfile::tempdir().unwrap();
     let cache = cache_at(&tmp);

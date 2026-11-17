@@ -78,6 +78,7 @@ fn run_for(
         environment: &ProjectEnvironment::default(),
         threads,
         targets,
+        cache: None,
     })
 }
 
@@ -480,6 +481,7 @@ fn a_project_without_a_tsconfig_is_declined() {
             environment: &ProjectEnvironment::default(),
             threads: Some(1),
             targets: None,
+            cache: None,
         })
         .expect("tsrs runs");
     let ProjectReport::Declined(reason) = report else {

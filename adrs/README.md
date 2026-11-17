@@ -94,6 +94,7 @@ Context, Decision, Consequences (positive and negative/risks), and Alternatives 
 | [0077](0077-cache-keys-carry-every-input-relative-to-the-checkout.md) | Cache Keys Carry Every Input, Relative to the Checkout | Accepted |
 | [0078](0078-polylint-tsrs-published-program-layer.md) | The tsrs Program Layer Is the Published Crate `polylint-tsrs` | Accepted |
 | [0079](0079-a-project-check-may-decline-the-project.md) | A Project Check May Decline the Project | Accepted |
+| [0080](0080-engines-keep-their-own-cache-in-polys-cache.md) | Engines Keep Their Own Cache in poly's Cache | Accepted |
 | [0081](0081-polylint-js-types-published-type-facts.md) | skif's Type-Aware Analysis Is the Published Crate `polylint-js-types` | Accepted |
 
 ## Conventions

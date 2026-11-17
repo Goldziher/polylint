@@ -62,6 +62,7 @@ fn the_pyrefly_component_checks_like_the_in_process_engine() {
         environment: &ProjectEnvironment::default(),
         threads: Some(2),
         targets: None,
+        cache: None,
     };
     // `project_report`, not `project_check`: the latter flattens a decline into no findings (ADR 0079), so a
     // component that declined where the in-process engine checked would compare equal to a clean pass.

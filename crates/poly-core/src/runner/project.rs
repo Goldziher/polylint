@@ -45,8 +45,8 @@ use crate::components::ResolvedComponents;
 use crate::config::{EngineConfig, Kind};
 use crate::discover::DiscoveredFile;
 use crate::engine::{
-    Diagnostic, ENABLED_OPTION_KEY, Engine, ProjectEnvironment, ProjectFile, ProjectReport, ProjectRequest,
-    WireSelection,
+    Diagnostic, ENABLED_OPTION_KEY, Engine, EngineCache, ProjectEnvironment, ProjectFile, ProjectReport,
+    ProjectRequest, WireSelection,
 };
 use crate::engine_guard::guard_engine_panic;
 use crate::filter::{PerFileIgnores, is_binary, is_generated_source};
@@ -687,6 +687,11 @@ fn report_for(
     if let Some(reported) = cached {
         return Ok(ProjectReport::Checked(reported));
     }
+    // The engine's own cache lives in this run's cache, so `--no-cache` and `[cache] dir` reach it too (ADR 0080).
+    let engine_cache = cache.enabled().then(|| EngineCache {
+        dir: std::path::absolute(cache.root()).unwrap_or_else(|_| cache.root().to_path_buf()),
+        salt: poly_cache::engine_data_salt(),
+    });
     let request = ProjectRequest {
         root,
         files: loaded,
@@ -694,6 +699,7 @@ fn report_for(
         environment,
         threads: Some(rayon::current_num_threads()),
         targets,
+        cache: engine_cache.as_ref(),
     };
     let report =
         guard_engine_panic(plan.engine.name(), root, || plan.engine.project_report(&request)).map_err(|error| {

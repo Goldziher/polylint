@@ -573,6 +573,7 @@ mod tests {
                     environment: &environment,
                     threads: None,
                     targets: None,
+                    cache: None,
                 };
                 let _ = engine.project_check(&request);
             }
@@ -585,6 +586,7 @@ mod tests {
                     environment: &environment,
                     threads: None,
                     targets: None,
+                    cache: None,
                 };
                 let _ = engine.project_report(&request);
             }

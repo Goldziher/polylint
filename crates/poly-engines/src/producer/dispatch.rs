@@ -10,7 +10,7 @@ use poly_engine_api::component_wire::wire_diagnostic;
 use poly_engine_api::config::EngineConfig;
 use poly_engine_api::declined::Declined;
 use poly_engine_api::engine::{
-    Engine, FormatOutput, ProjectEnvironment, ProjectFile, ProjectReport, ProjectRequest, SourceFile,
+    Engine, EngineCache, FormatOutput, ProjectEnvironment, ProjectFile, ProjectReport, ProjectRequest, SourceFile,
 };
 
 use super::describe::TABLES;
@@ -196,6 +196,7 @@ impl Producer {
                         content: src.content,
                     })
                     .collect();
+                let cache = EngineCache::from_wire_pairs(&environment);
                 let environment = ProjectEnvironment::from_wire_pairs(&environment);
                 let root = PathBuf::from(root);
                 let targets: Option<Vec<PathBuf>> =
@@ -207,6 +208,7 @@ impl Producer {
                     environment: &environment,
                     threads: threads.map(|n| n as usize),
                     targets: targets.as_deref(),
+                    cache: cache.as_ref(),
                 };
                 let per_file = match guarded(engine.name(), || engine.project_report(&request))? {
                     ProjectReport::Checked(per_file) => per_file,

@@ -59,6 +59,7 @@ fn run(
         environment,
         threads: None,
         targets: None,
+        cache: None,
     })
 }
 
@@ -256,6 +257,7 @@ fn parallel_check_reports_exactly_as_the_serial_one() {
                 environment: &ProjectEnvironment::default(),
                 threads: Some(threads),
                 targets: None,
+                cache: None,
             })
             .unwrap()
     };

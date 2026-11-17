@@ -17,8 +17,8 @@ use crate::{CacheKey, Namespace};
 /// treats deletion or corruption as a miss.
 #[derive(Debug)]
 pub(crate) struct PresenceIndex {
-    snapshot: [HashSet<String>; 3],
-    added: [RwLock<HashSet<String>>; 3],
+    snapshot: [HashSet<String>; Namespace::ALL.len()],
+    added: [RwLock<HashSet<String>>; Namespace::ALL.len()],
     any_added: AtomicBool,
 }
 
@@ -31,9 +31,12 @@ impl PresenceIndex {
         }
     }
 
+    /// Inventory every namespace but [`Namespace::Engine`]: its entries are read by
+    /// [`EngineDataStore`](crate::EngineDataStore), which never consults this index, and
+    /// it holds one file per engine module, so scanning it would only slow every open.
     pub(crate) fn scan(root: &Path) -> Self {
         let mut index = Self::empty();
-        for namespace in Namespace::ALL {
+        for namespace in Namespace::ALL.into_iter().filter(|ns| *ns != Namespace::Engine) {
             let directory = root.join("results").join(namespace.as_dir());
             let Ok(entries) = std::fs::read_dir(directory) else {
                 continue;
