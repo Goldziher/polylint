@@ -169,7 +169,8 @@ fn plugin_specifiers(config: &Path) -> Vec<String> {
         .collect()
 }
 
-#[cfg(test)]
+// Every test installs `oxlint` as a `node_modules/.bin` symlink, which only unix can create unprivileged.
+#[cfg(all(test, unix))]
 mod tests {
     use super::*;
     use crate::config::GlobalDefaults;
@@ -183,7 +184,6 @@ mod tests {
     }
 
     /// The plugin module's bytes and the binary's package are part of the external-mode key.
-    #[cfg(unix)]
     #[test]
     fn plugin_and_binary_edits_change_the_external_lint_salt() {
         let repo = tempfile::tempdir().unwrap();
@@ -221,7 +221,6 @@ mod tests {
         assert!(format_salt(&cfg("external = true"), &file).is_some());
     }
 
-    #[cfg(unix)]
     fn install_oxlint(dir: &Path, version: &str) {
         let package = dir.join("node_modules/oxlint");
         std::fs::create_dir_all(&package).unwrap();
@@ -233,7 +232,6 @@ mod tests {
 
     /// The engine runs the `oxlint` nearest the governing config, not the one nearest the file, so
     /// that is the one the key reads.
-    #[cfg(unix)]
     #[test]
     fn the_lint_salt_reads_the_binary_nearest_the_governing_config() {
         let salt_with = |root_version: &str, package_version: &str| {
