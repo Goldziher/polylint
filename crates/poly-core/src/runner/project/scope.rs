@@ -4,14 +4,15 @@
 //! Such an engine judges the whole tree whatever paths the run named, because a verdict over one
 //! file of a log is not the verdict over the log. The run's paths then decide only which of its
 //! findings are reported, so `poly lint docs/adr/0003-x.md` reports on that record and not on its
-//! siblings, and a run that names nothing near the tree does not read it at all.
+//! siblings, and a run that names nothing near the tree does not read it at all. The engine is told
+//! which files those are ([`RunScope::targets`]) and may compute findings for them alone.
 
 use std::path::{Path, PathBuf};
 
 use rustc_hash::{FxHashMap, FxHashSet};
 
 use crate::discover::DiscoveredFile;
-use crate::engine::Diagnostic;
+use crate::engine::{Diagnostic, ProjectFile};
 
 /// The paths a run named: directories (everything beneath them is in scope) and files.
 pub(super) struct RunScope {
@@ -79,13 +80,58 @@ impl RunScope {
             || self.files.keys().any(|file| file.starts_with(&dir))
     }
 
+    /// The files among `loaded` whose findings the run reports, for a check over the directories `dirs`: the
+    /// request's [`targets`](crate::engine::ProjectRequest::targets). `None` when the run reports on every one
+    /// of them, because it named each directory or one above it (`poly lint .`) or named every file.
+    ///
+    /// A run naming only files, as a pre-commit hook does, resolves only the loaded files that share a name with
+    /// one of them, for the reason [`covered`] gives.
+    pub(super) fn targets(
+        &self,
+        mut dirs: impl Iterator<Item = PathBuf>,
+        loaded: &[ProjectFile],
+    ) -> Option<Vec<PathBuf>> {
+        if dirs.all(|dir| {
+            let dir = canonical(&dir);
+            self.dirs.iter().any(|(named, _)| dir.starts_with(named))
+        }) {
+            return None;
+        }
+        let names: FxHashSet<&std::ffi::OsStr> = self.files.keys().filter_map(|path| path.file_name()).collect();
+        // With a directory named every loaded file is a candidate. A loaded file is a regular file (the walk
+        // yields no symlink), so it resolves as its directory does: one resolution per directory, not per file.
+        let mut parents: FxHashMap<&Path, PathBuf> = FxHashMap::default();
+        let targets: Vec<PathBuf> = loaded
+            .iter()
+            .filter(|file| {
+                let Some(name) = file.path.file_name() else {
+                    return false;
+                };
+                if self.dirs.is_empty() {
+                    return names.contains(name) && self.admit(&file.path).is_some();
+                }
+                let resolved = match file.path.parent().filter(|parent| !parent.as_os_str().is_empty()) {
+                    Some(parent) => parents.entry(parent).or_insert_with(|| canonical(parent)).join(name),
+                    None => canonical(&file.path),
+                };
+                self.spelling(&resolved).is_some()
+            })
+            .map(|file| file.path.clone())
+            .collect();
+        (targets.len() < loaded.len()).then_some(targets)
+    }
+
     /// The path to report `finding` under, or `None` when the run did not name it or a directory
     /// above it. It is spelled as the run spelled it: the named file, or the named directory joined
     /// with the rest, which is how discovery spells a file it walked to, so the finding joins that
     /// file's per-file result instead of standing beside it under another spelling.
     pub(super) fn admit(&self, finding: &Path) -> Option<PathBuf> {
-        let resolved = canonical(finding);
-        if let Some(spelled) = self.files.get(&resolved) {
+        self.spelling(&canonical(finding))
+    }
+
+    /// [`admit`](Self::admit) for a path that is already canonical.
+    fn spelling(&self, resolved: &Path) -> Option<PathBuf> {
+        if let Some(spelled) = self.files.get(resolved) {
             return Some(spelled.clone());
         }
         self.dirs
@@ -132,6 +178,58 @@ mod tests {
         assert_eq!(
             scope.admit(&dir.path().join("./log/0001.md")),
             Some(roundabout.join("0001.md"))
+        );
+    }
+
+    fn loaded(paths: &[PathBuf]) -> Vec<ProjectFile> {
+        paths
+            .iter()
+            .map(|path| ProjectFile {
+                path: path.clone(),
+                language: crate::language::Language::TypeScript,
+                content: "".into(),
+            })
+            .collect()
+    }
+
+    #[test]
+    fn targets_are_the_named_files_and_none_when_the_run_covers_the_tree() {
+        let dir = tempfile::tempdir().unwrap();
+        let (src, other) = (dir.path().join("src"), dir.path().join("other"));
+        for sub in [&src, &other] {
+            std::fs::create_dir_all(sub).unwrap();
+        }
+        let (a, b, c) = (src.join("a.ts"), src.join("b.ts"), other.join("a.ts"));
+        for file in [&a, &b, &c] {
+            std::fs::write(file, "x").unwrap();
+        }
+        let files = loaded(&[a.clone(), b.clone(), c.clone()]);
+        let tree = || std::iter::once(dir.path().to_path_buf());
+        let targets = |paths: &[PathBuf]| RunScope::new(paths).targets(tree(), &files);
+
+        assert_eq!(targets(&[dir.path().to_path_buf()]), None, "the run names the tree");
+        assert_eq!(
+            targets(std::slice::from_ref(&a)),
+            Some(vec![a.clone()]),
+            "a staged file, not its namesake"
+        );
+        assert_eq!(targets(std::slice::from_ref(&src)), Some(vec![a.clone(), b.clone()]));
+        assert_eq!(
+            targets(&[dir.path().join("other/../src"), c.clone()]),
+            None,
+            "a directory spelled another way and a file beside it name every file"
+        );
+        assert_eq!(
+            targets(&[dir.path().join("src/../other")]),
+            Some(vec![c.clone()]),
+            "a directory spelled another way"
+        );
+        assert_eq!(targets(&[a.clone(), b.clone(), c.clone()]), None, "every file is named");
+        let parent = dir.path().parent().unwrap().to_path_buf();
+        assert_eq!(
+            RunScope::new(&[parent]).targets(tree(), &files),
+            None,
+            "a directory above the tree"
         );
     }
 

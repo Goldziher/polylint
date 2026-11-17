@@ -10,12 +10,15 @@ use std::path::Path;
 use poly_engine_api::engine::Engine;
 use poly_engines_tsrs::TsrsEngine;
 
-/// Every tsrs crate the engine links, which must resolve to one version.
+/// Every tsrs crate the engine links, itself or through `polylint-tsrs`, which must resolve to one version.
 const TSRS_CRATES: &[&str] = &[
     "tsrs_ast",
+    "tsrs_binder",
     "tsrs_compiler",
+    "tsrs_contentmapper",
     "tsrs_core",
     "tsrs_diagnostics",
+    "tsrs_module",
     "tsrs_tsoptions",
     "tsrs_vfs",
 ];

@@ -69,6 +69,7 @@ impl ProjectAnalysis for LogCheck {
                 whole_tree: false,
                 file_names: Vec::new(),
                 list_unserved: false,
+                narrows_to_targets: false,
             }),
         }
     }

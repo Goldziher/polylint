@@ -62,12 +62,22 @@ fn options(extra: &str) -> EngineConfig {
 }
 
 fn run(files: &[ProjectFile], config: &EngineConfig, threads: Option<usize>) -> anyhow::Result<Findings> {
+    run_for(files, config, threads, None)
+}
+
+fn run_for(
+    files: &[ProjectFile],
+    config: &EngineConfig,
+    threads: Option<usize>,
+    targets: Option<&[PathBuf]>,
+) -> anyhow::Result<Findings> {
     TsrsEngine.project_check(&ProjectRequest {
         root: &root(),
         files,
         config,
         environment: &ProjectEnvironment::default(),
         threads,
+        targets,
     })
 }
 
@@ -498,4 +508,147 @@ fn the_engine_describes_a_gated_whole_tree_project_check() {
     assert!(dirs.whole_tree && dirs.recursive_default);
     assert_eq!(dirs.dir_key, "dir");
     assert_eq!(dirs.file_names, ["tsconfig.json", "jsconfig.json", "package.json"]);
+}
+
+/// A project whose three sources each have a type error, `main.ts`'s through the signature `util.ts` exports.
+fn three_bad_files(util: &str) -> Vec<ProjectFile> {
+    let config = tsconfig("");
+    project(&[
+        ("tsconfig.json", config.as_str()),
+        ("src/util.ts", util),
+        (
+            "src/main.ts",
+            "import { twice } from \"./util\";\nexport const m: string = twice(2);\nexport const n: number = \"x\";\n",
+        ),
+        ("src/other.ts", "export const o: number = \"x\";\n"),
+    ])
+}
+
+const UTIL: &str = "export function twice(n: number): number { return n * 2; }\nexport const u: number = \"x\";\n";
+
+/// `targets` as the host spells them.
+fn targets(names: &[&str]) -> Vec<PathBuf> {
+    names.iter().map(|name| root().join(name)).collect()
+}
+
+/// The findings of `found` on `name`, rendered whole so they compare field by field.
+fn on(found: &Findings, name: &str) -> Vec<String> {
+    found
+        .iter()
+        .filter(|(path, _)| slashed(path) == name)
+        .flat_map(|(_, diagnostics)| diagnostics)
+        .map(|diagnostic| format!("{diagnostic:?}"))
+        .collect()
+}
+
+#[test]
+fn a_path_scoped_check_finds_in_its_targets_what_the_full_check_finds_and_checks_no_other_file() {
+    let files = three_bad_files(UTIL);
+    let full = run(&files, &options(""), Some(1)).expect("tsrs runs");
+    assert_eq!(
+        triples(&full),
+        [
+            triple("src/main.ts", "TS2322", 2),
+            triple("src/main.ts", "TS2322", 3),
+            triple("src/other.ts", "TS2322", 1),
+            triple("src/util.ts", "TS2322", 2),
+        ]
+    );
+    let main = targets(&["src/main.ts"]);
+    let scoped = run_for(&files, &options(""), Some(1), Some(&main)).expect("tsrs runs");
+    // The engine returns what it computed, unfiltered: findings missing from the other files mean they were not
+    // checked, while `main.ts` still sees the signature `util.ts` declares.
+    assert_eq!(
+        triples(&scoped),
+        [triple("src/main.ts", "TS2322", 2), triple("src/main.ts", "TS2322", 3)]
+    );
+    assert_eq!(on(&scoped, "src/main.ts"), on(&full, "src/main.ts"));
+}
+
+#[test]
+fn a_syntax_error_outside_the_targets_ends_the_check_there_as_the_full_check_does() {
+    let files = three_bad_files("export function twice(n: number): number { return n * 2; \n");
+    let full = run(&files, &options(""), Some(1)).expect("tsrs runs");
+    assert!(
+        on(&full, "src/main.ts").is_empty(),
+        "tsc stops at the syntax errors: {full:?}"
+    );
+    let main = targets(&["src/main.ts"]);
+    let scoped = run_for(&files, &options(""), Some(1), Some(&main)).expect("tsrs runs");
+    assert_eq!(on(&scoped, "src/main.ts"), on(&full, "src/main.ts"));
+}
+
+#[test]
+fn a_targeted_tsconfig_checks_the_whole_program_and_no_target_checks_nothing() {
+    let files = three_bad_files(UTIL);
+    let full = run(&files, &options(""), Some(1)).expect("tsrs runs");
+    let config = targets(&["tsconfig.json", "src/main.ts"]);
+    let with_config = run_for(&files, &options(""), Some(1), Some(&config)).expect("tsrs runs");
+    assert_eq!(triples(&with_config), triples(&full));
+    let none = run_for(&files, &options(""), Some(1), Some(&[])).expect("tsrs runs");
+    assert!(none.is_empty(), "{none:?}");
+    let outside = targets(&["package.json", "src/missing.ts"]);
+    let unknown = run_for(&files, &options(""), Some(1), Some(&outside)).expect("tsrs runs");
+    assert!(unknown.is_empty(), "{unknown:?}");
+}
+
+/// The files as a component receives them: spelled from the project root.
+fn from_the_root(files: &[ProjectFile]) -> Vec<ProjectFile> {
+    files
+        .iter()
+        .map(|file| ProjectFile {
+            path: file.path.strip_prefix(root()).expect("inside the root").to_path_buf(),
+            ..file.clone()
+        })
+        .collect()
+}
+
+/// Every finding with the path it is reported under, rendered whole.
+fn spelled(found: &Findings) -> Vec<(PathBuf, String)> {
+    found
+        .iter()
+        .flat_map(|(path, diagnostics)| diagnostics.iter().map(move |d| (path.clone(), format!("{d:?}"))))
+        .collect()
+}
+
+#[test]
+fn paths_spelled_from_the_root_are_checked_when_the_root_is_not_the_working_directory() {
+    assert_ne!(std::env::current_dir().expect("a working directory"), root());
+    let absolute = three_bad_files(UTIL);
+    let relative = from_the_root(&absolute);
+    let full = run(&absolute, &options(""), Some(1)).expect("tsrs runs");
+    let expected: Vec<(PathBuf, String)> = spelled(&full)
+        .into_iter()
+        .map(|(path, diagnostic)| {
+            (
+                path.strip_prefix(root()).expect("inside the root").to_path_buf(),
+                diagnostic,
+            )
+        })
+        .collect();
+    assert_eq!(expected.len(), 4, "{full:?}");
+    let found = run(&relative, &options(""), Some(1)).expect("tsrs runs");
+    assert_eq!(spelled(&found), expected, "reported under the paths handed over");
+
+    let main = [PathBuf::from("src/main.ts")];
+    let scoped = run_for(&relative, &options(""), Some(1), Some(&main)).expect("tsrs runs");
+    let on_main: Vec<_> = expected.iter().filter(|(path, _)| path == &main[0]).cloned().collect();
+    assert_eq!(on_main.len(), 2);
+    assert_eq!(spelled(&scoped), on_main);
+}
+
+/// One target of three sources: one checker narrows (1 x 1 < 3), four check every file (1 x 4 >= 3). The engine
+/// returns what it computed, so findings on the other files tell the two apart.
+#[test]
+fn a_target_has_the_same_findings_whether_the_check_narrows_or_checks_every_file() {
+    let files = three_bad_files(UTIL);
+    let main = targets(&["src/main.ts"]);
+    let full = run(&files, &options(""), Some(1)).expect("tsrs runs");
+    let narrowed = run_for(&files, &options(""), Some(1), Some(&main)).expect("tsrs runs");
+    let unnarrowed = run_for(&files, &options(""), Some(4), Some(&main)).expect("tsrs runs");
+    assert!(on(&narrowed, "src/other.ts").is_empty(), "narrowed: {narrowed:?}");
+    assert_eq!(triples(&unnarrowed), triples(&full), "every file was checked");
+    assert_eq!(on(&full, "src/main.ts").len(), 2);
+    assert_eq!(on(&narrowed, "src/main.ts"), on(&full, "src/main.ts"));
+    assert_eq!(on(&unnarrowed, "src/main.ts"), on(&full, "src/main.ts"));
 }

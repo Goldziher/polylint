@@ -108,7 +108,8 @@
               "recursive_default": false,
               "whole_tree": false,
               "file_names": [],
-              "list_unserved": true
+              "list_unserved": true,
+              "narrows_to_targets": false
             }
           }
         },
@@ -575,7 +576,8 @@
               "recursive_default": true,
               "whole_tree": true,
               "file_names": [],
-              "list_unserved": false
+              "list_unserved": false,
+              "narrows_to_targets": false
             }
           }
         },
@@ -716,7 +718,8 @@
               "recursive_default": true,
               "whole_tree": true,
               "file_names": [".gitignore", ".ignore"],
-              "list_unserved": false
+              "list_unserved": false,
+              "narrows_to_targets": false
             }
           }
         },
@@ -1768,7 +1771,7 @@
             "fix": false,
             "project": true
           },
-          "version": "tsrs-7.1.0-beta.tsrs1+proj3",
+          "version": "tsrs-7.1.0-beta.tsrs2+proj6",
           "option_keys": [
             {
               "table": "Lint",
@@ -1843,7 +1846,8 @@
               "recursive_default": true,
               "whole_tree": true,
               "file_names": ["tsconfig.json", "jsconfig.json", "package.json"],
-              "list_unserved": false
+              "list_unserved": false,
+              "narrows_to_targets": true
             }
           }
         }

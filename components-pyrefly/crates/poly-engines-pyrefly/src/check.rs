@@ -243,6 +243,7 @@ mod tests {
             config: &cfg,
             environment: &ProjectEnvironment::default(),
             threads,
+            targets: None,
         })
     }
 

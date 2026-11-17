@@ -88,8 +88,10 @@ Context, Decision, Consequences (positive and negative/risks), and Alternatives 
 | [0071](0071-lint-fmt-and-commit-hooks-in-process.md) | Run the lint, fmt and commit Hooks In Process Where the Child Can Be Reproduced | Accepted |
 | [0072](0072-engine-facets.md) | Optional Engine Concerns as Facets of the Engine Trait | Accepted |
 | [0073](0073-root-a-lint-or-fmt-run-at-the-staged-snapshot.md) | Root an In-Process lint or fmt Run at the Staged Snapshot | Accepted |
+| [0074](0074-tsrs-checks-only-the-named-files.md) | tsrs Checks Only the Files a Path-Scoped Run Names | Accepted |
 | [0075](0075-report-files-a-missing-native-tool-left-to-the-generic-tier.md) | Report the Files a Missing Native Tool Left to the Generic Tier | Accepted |
 | [0077](0077-cache-keys-carry-every-input-relative-to-the-checkout.md) | Cache Keys Carry Every Input, Relative to the Checkout | Accepted |
+| [0078](0078-polylint-tsrs-published-program-layer.md) | The tsrs Program Layer Is the Published Crate `polylint-tsrs` | Accepted |
 
 ## Conventions
 

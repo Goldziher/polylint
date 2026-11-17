@@ -231,6 +231,10 @@ pub struct WireProjectDirs {
     pub file_names: Vec<String>,
     /// Whether the host also lists the files the engine does not serve (names only).
     pub list_unserved: bool,
+    /// Whether the check computes findings only for the request's `targets`, which the host then sends. Absent
+    /// reads as `false`: the host sends no targets.
+    #[serde(default)]
+    pub narrows_to_targets: bool,
 }
 
 /// `Engine::project_inputs`: what a project check needs from the host besides its own files.
@@ -451,6 +455,12 @@ pub enum Request {
         environment: Vec<(String, String)>,
         /// The worker threads the host's run budgets for the check; `None` is the component's choice.
         threads: Option<u32>,
+        /// The files whose findings the host reports, spelled as in `files`; `None` is every file (see
+        /// `ProjectRequest::targets`). The last field, so a request one element shorter, from a host that
+        /// predates it, decodes as `None`; and left out when `None`, so a component that predates it, which
+        /// rejects a longer request, still decodes a check of every file.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        targets: Option<Vec<String>>,
     },
     /// `Engine::lint_cache_salt` for one file (content in `body`).
     LintCacheSalt {

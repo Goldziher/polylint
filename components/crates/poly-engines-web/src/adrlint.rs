@@ -195,6 +195,7 @@ impl ProjectAnalysis for AdrlintEngine {
                 whole_tree: false,
                 file_names: Vec::new(),
                 list_unserved: true,
+                narrows_to_targets: false,
             }),
         }
     }

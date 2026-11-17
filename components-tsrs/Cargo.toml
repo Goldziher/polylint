@@ -23,18 +23,19 @@ poly-component-protocol = { path = "../crates/poly-component-protocol" }
 poly-engine-api = { path = "../crates/poly-engine-api" }
 poly-engines = { path = "../crates/poly-engines", default-features = false }
 poly-engines-tsrs = { path = "crates/poly-engines-tsrs" }
+# The published program layer (ADR 0078), versioned on its own; `plain-ptrs` as for `tsrs_core` below.
+polylint-tsrs = { path = "crates/polylint-tsrs", version = "0.1.0", features = ["plain-ptrs"] }
 serde_json = { version = "1", features = ["preserve_order"] }
 tempfile = "3"
 toml = "1"
 tracing = "0.1"
 # tsrs, the Rust port of the TypeScript 7 compiler: an exact pin on every crate, like the other unsemvered
 # internals (ADR 0051). `plain-ptrs` avoids the fixed 32 GiB address-space reservation of its compressed pointers.
-tsrs_ast = { version = "=7.1.0-beta.tsrs1", default-features = false }
-tsrs_compiler = { version = "=7.1.0-beta.tsrs1", default-features = false }
-tsrs_core = { version = "=7.1.0-beta.tsrs1", default-features = false, features = ["plain-ptrs"] }
-tsrs_diagnostics = { version = "=7.1.0-beta.tsrs1", default-features = false }
-tsrs_tsoptions = { version = "=7.1.0-beta.tsrs1", default-features = false }
-tsrs_vfs = { version = "=7.1.0-beta.tsrs1", default-features = false }
+tsrs_ast = { version = "=7.1.0-beta.tsrs2", default-features = false }
+tsrs_compiler = { version = "=7.1.0-beta.tsrs2", default-features = false }
+tsrs_core = { version = "=7.1.0-beta.tsrs2", default-features = false, features = ["plain-ptrs"] }
+tsrs_diagnostics = { version = "=7.1.0-beta.tsrs2", default-features = false }
+tsrs_tsoptions = { version = "=7.1.0-beta.tsrs2", default-features = false }
 
 [profile.release]
 lto = "fat"

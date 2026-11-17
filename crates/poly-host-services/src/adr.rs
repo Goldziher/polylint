@@ -166,6 +166,7 @@ impl AdrLog {
             whole_tree: declared.whole_tree,
             file_names: declared.file_names,
             list_unserved: declared.list_unserved,
+            narrows_to_targets: declared.narrows_to_targets,
         };
         Ok(Self {
             root,

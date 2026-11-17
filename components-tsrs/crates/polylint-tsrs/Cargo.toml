@@ -1,0 +1,55 @@
+[package]
+name = "polylint-tsrs"
+# The crate's own version, not poly's lock-step one: it is a library with an API of its own, published to crates.io
+# (ADR 0078), and it moves when that API or the tsrs pin does.
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.100"
+license = "MIT"
+authors = ["Na'aman Hirschfeld <nhirschfeld@gmail.com>"]
+description = "Programs of the TypeScript checker of tsrs over a host file system: shared parses, owners and observation."
+repository = "https://github.com/polylint/polylint"
+homepage = "https://github.com/polylint/polylint/tree/main/components-tsrs/crates/polylint-tsrs"
+documentation = "https://docs.rs/polylint-tsrs"
+readme = "README.md"
+keywords = ["typescript", "tsrs", "type-checker", "compiler", "polylint"]
+categories = ["development-tools", "compilers"]
+include = ["src/**/*.rs", "tests/**/*.rs", "README.md", "LICENSE", "Cargo.toml"]
+
+[lib]
+name = "polylint_tsrs"
+path = "src/lib.rs"
+
+[features]
+# tsrs with plain pointers instead of compressed ones, which reserve 32 GiB of address space for the process. The
+# crate is correct either way. Off by default: a feature of tsrs is the choice of the binary that links it.
+plain-ptrs = ["tsrs_core/plain-ptrs"]
+
+# The tsrs crates move together and only at an exact version, each named here with its registry version: a published
+# crate cannot take them from the workspace table, whose `tsrs_core` turns `plain-ptrs` on. No other dependency may be
+# added.
+[dependencies]
+tsrs_ast = { version = "=7.1.0-beta.tsrs2", default-features = false }
+tsrs_binder = { version = "=7.1.0-beta.tsrs2", default-features = false }
+tsrs_compiler = { version = "=7.1.0-beta.tsrs2", default-features = false }
+tsrs_contentmapper = { version = "=7.1.0-beta.tsrs2", default-features = false }
+tsrs_core = { version = "=7.1.0-beta.tsrs2", default-features = false }
+tsrs_diagnostics = { version = "=7.1.0-beta.tsrs2", default-features = false }
+tsrs_module = { version = "=7.1.0-beta.tsrs2", default-features = false }
+tsrs_tsoptions = { version = "=7.1.0-beta.tsrs2", default-features = false }
+tsrs_vfs = { version = "=7.1.0-beta.tsrs2", default-features = false }
+
+# Unsafe code is denied, not forbidden: freeing a program's arenas (`free_unshared_program`) is the one unsafe call,
+# allowed where it is made.
+[lints.rust]
+unsafe_code = "deny"
+missing_docs = "warn"
+
+[lints.rustdoc]
+broken_intra_doc_links = "warn"
+
+[lints.clippy]
+pedantic = { level = "warn", priority = -1 }
+all = { level = "warn", priority = -1 }
+unwrap_used = "warn"
+expect_used = "warn"

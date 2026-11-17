@@ -26,6 +26,7 @@ fn log_with_lock(lock: &str) -> (TempDir, AdrLog) {
             whole_tree: false,
             file_names: Vec::new(),
             list_unserved: true,
+            narrows_to_targets: false,
         },
         lock: inside_root(lock).expect("a relative lock path"),
     };

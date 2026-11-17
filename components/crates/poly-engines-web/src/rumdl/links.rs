@@ -55,6 +55,7 @@ pub(super) fn project_inputs() -> ProjectInputs {
             whole_tree: true,
             file_names: Vec::new(),
             list_unserved: false,
+            narrows_to_targets: false,
         }),
     }
 }

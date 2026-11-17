@@ -32,16 +32,24 @@
 //! are reported like any source (ADR 0055). Findings the host did
 //! not hand over a path for, such as the bundled `lib.*.d.ts`, are dropped.
 //!
+//! # Path-scoped runs
+//!
+//! When the request names `targets` (a run over some files, such as the pre-commit hook over the staged ones), the
+//! program is built from every file as before, but diagnostics are computed for the target sources only, through the
+//! same file filter `tsc` applies. A target the program does not hold is not checked. The whole program is checked
+//! when the `tsconfig` is a target, since it carries the program's file-less diagnostics, and when any file has a
+//! syntax error, since `tsc` then stops at the syntax errors (ADR 0074). A change that breaks a file outside the
+//! targets is therefore not reported by such a run; a run over the whole tree reports it.
+//!
 //! # Process constraints
 //!
-//! tsrs keeps each program in leaked arenas, which the program owner frees when the check ends; reserves no address
-//! space (the `plain-ptrs` feature); and reads its own `TSRS_*` variables and `RAYON_NUM_THREADS` from the
+//! tsrs keeps each program in leaked arenas, which the program owner of `polylint-tsrs` (ADR 0078) frees when the
+//! check ends; reserves no address space (the `plain-ptrs` feature); and reads its own `TSRS_*` variables and `RAYON_NUM_THREADS` from the
 //! environment, which this crate neither sets nor reads (ADR 0051).
 
 mod engine;
 mod external;
 mod map;
-mod owner;
 mod program;
 mod settings;
 mod vfs;

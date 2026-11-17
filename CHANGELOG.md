@@ -27,6 +27,11 @@ Each item is described in full under the section named in brackets.
 
 ### Added
 
+- **`polylint-tsrs`, a published crate.** The layer poly builds its TypeScript programs on is now a library on
+  crates.io, versioned on its own (`0.1.0`): programs of the tsrs checker over a host file system, files and configs
+  parsed once per run, an owner that frees a program, an observer of what a program reads, and a cache seam. It was
+  imported from skif's `skif-tsrs` and depends on the `tsrs_*` crates alone, at `=7.1.0-beta.tsrs2`; the `plain-ptrs`
+  feature is off by default. It is the one crate poly publishes (ADR 0078).
 - **Prose and grammar checks with harper.** The opt-in `harper` engine (`[engines.harper] enabled = true`, component `prose`) reads Markdown and the comments of every language with a loaded grammar, and reports repeated words, wrong articles and other grammar and style findings as warnings. Rules go through `select`/`extend_select`/`ignore`; `SpellCheck` is off unless selected, and `dictionary`, `dialect` and `comments` are the engine's own keys (ADR 0068).
 - **Lua formatting and linting.** `.lua` files format through StyLua and lint through selene, both in-process engines in
   the new `lua` component. `stylua.toml` / `.stylua.toml` and `selene.toml` are read from the nearest directory up to the
@@ -87,6 +92,9 @@ Each item is described in full under the section named in brackets.
 
 ### Changed
 
+- **The tsrs type check builds its program through `polylint-tsrs`.** The engine's own copies of the in-memory file
+  system, the config loading and the program owner are gone; findings are unchanged. The diagnostics the checkers
+  make are now freed with the program instead of staying in the worker threads' arenas (ADR 0078).
 - **The core binary is built for speed.** `--profile core` moves from `opt-level = "s"` to `opt-level = 3` (fat LTO, stripped), and the size gate moves from 14 MiB to 22 MiB (ADR 0065). The `release` profile used by the bundled build and every component also moves to fat LTO with stripped symbols.
 - **Cargo hooks hash their declared inputs once per run.** The clippy, sort, machete and deny hooks share one `git ls-files` listing and one parallel, streamed blake3 pass, and the staged-run mutation probe streams index blobs into hashes instead of holding the tracked tree in memory. (#215)
 - **BREAKING: component protocol v3 (ADR 0058); every engine component and sidecar must be rebuilt.** Requests and responses are
@@ -128,6 +136,13 @@ Each item is described in full under the section named in brackets.
   the hook snapshot and an absolute invocation reuse the records of the first (project-check roots, oxc config paths,
   ast-grep rule directories, the Go module root, JSON Schema and recipe digests are keyed checkout-relative), and
   `poly lint --only <engine>` keeps the other engines' records, so the next full run re-runs none of them.
+- **The tsrs type check checks only the named files on a path-scoped run.** The pre-commit hook names the staged files;
+  tsrs now builds the whole program but computes diagnostics for those files only, instead of type-checking the whole
+  project and discarding the rest. A change that breaks an unstaged importer is caught by `poly lint .` and CI, not by
+  the hook. A run naming most of the program keeps the parallel check of every file. The host passes the reported
+  files to a project check that declares `ProjectDirs::narrows_to_targets` (`ProjectRequest::targets`, a trailing
+  `ProjectCheck` field on the component wire) and keys its cache on them; other tree checks run once for every run
+  (ADR 0074).
 - **Fewer component round trips per file.** An engine's decline of a file now arrives in its `Format` reply, so a
   component no longer receives every file twice (a `SkipReason` request, then `Format`), and a component is not loaded
   just to ask. `BatchSupport` is asked once per engine and config instead of once per file. The `uncomment`, `ini`,
@@ -159,6 +174,11 @@ Each item is described in full under the section named in brackets.
   `clippy.toml`, `.clippy.toml`, `.cargo/config.toml`, the toolchain and tool versions and the `RUSTFLAGS` / `CARGO_*`
   environment, for the `cargo` group; the external `oxlint` / `oxfmt` binary and `jsPlugins`; `TSRS_*` variables.
   `cargo deny` is no longer result-cached, since a cached pass cannot see a newly published advisory.
+- **The tsrs type check reported nothing when poly ran from outside the project root.** The host hands a component
+  paths relative to the project root, and the tsrs component resolved them against its working directory, so
+  `cd src && poly lint .`, `cd src && poly lint a.ts` and `poly lint /abs/project` from elsewhere found no
+  `tsconfig.json` and printed "No issues found" over real type errors. The paths are now resolved against the root.
+  Shipped in 0.35.0.
 - **An invalid glob is reported instead of silently dropped.** A malformed pattern in ruff's `exclude`, typos' `extend_exclude`, an `.oxfmtrc` `overrides[].files`/`excludeFiles` entry, a jsonschema `schemas` glob or a recipe's dependency globs now logs a warning naming it, and the valid patterns beside it stay in force. (#217)
 - **Hook sources recover from a damaged cached mirror.** A mirror holding a locked commit without its tree is refetched, then re-cloned, instead of failing with `unable to read tree`; the final error names the cache directory to remove.
 - **golangci-lint no longer fails beside another golangci-lint, or times out a cold module and reruns it.** poly

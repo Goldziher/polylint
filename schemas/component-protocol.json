@@ -254,6 +254,13 @@
                   "type": ["integer", "null"],
                   "format": "uint32",
                   "minimum": 0
+                },
+                "targets": {
+                  "description": "The files whose findings the host reports, spelled as in `files`; `None` is every file (see\n`ProjectRequest::targets`). The last field, so a request one element shorter, from a host that\npredates it, decodes as `None`; and left out when `None`, so a component that predates it, which\nrejects a longer request, still decodes a check of every file.",
+                  "type": ["array", "null"],
+                  "items": {
+                    "type": "string"
+                  }
                 }
               },
               "required": ["engine", "root", "files", "config", "environment"]
@@ -1829,6 +1836,11 @@
         "list_unserved": {
           "description": "Whether the host also lists the files the engine does not serve (names only).",
           "type": "boolean"
+        },
+        "narrows_to_targets": {
+          "description": "Whether the check computes findings only for the request's `targets`, which the host then sends. Absent\nreads as `false`: the host sends no targets.",
+          "type": "boolean",
+          "default": false
         }
       },
       "required": ["dir_key", "dir_default", "list_unserved"]

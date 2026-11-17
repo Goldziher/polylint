@@ -167,16 +167,19 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
-## skif-js-types — tsrs file system and program owner (adapted)
+## skif-tsrs — tsrs program layer (imported as `polylint-tsrs`)
 
-- Project: <https://github.com/polylint/skif> (`crates/skif-js-types`)
+- Project: <https://github.com/polylint/skif> (`crates/skif-tsrs`, commit `50436ba0`)
 - License: MIT
 - Copyright (c) 2026 Na'aman Hirschfeld
 
-`components-tsrs/crates/poly-engines-tsrs` adapts two pieces of skif's tsrs boundary: the read-only `tsrs_vfs::FS`
-implementation (`src/vfs.rs`, here over an in-memory tree of the request's files, case-sensitive on every platform)
-and the guard that frees a tsrs program on drop (`src/owner.rs`). The program configuration follows `session.rs` and
-`programs.rs`. skif is by the same author and under the same license; the notice is kept for provenance.
+`components-tsrs/crates/polylint-tsrs` is skif's `skif-tsrs` crate, renamed and published to crates.io from this
+repository (ADR 0078): the file system tsrs reads through, the files and configs the programs of a run share, the
+program host, the owner that frees a program, the observer and the cache seam. Changes made on import: the names, a
+`plain-ptrs` feature, `Limits` and `retire_freed_sources_below` for the constants skif tuned, and file texts held as
+`Arc<str>`. `components-tsrs/crates/poly-engines-tsrs`, which once carried adapted copies of the file system and the
+program owner from `skif-js-types`, now builds its programs through this crate. skif is a project of the same
+organization, by the same author and under the same license; the notice is kept for provenance.
 
 ```text
 MIT License

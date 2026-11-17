@@ -1,7 +1,7 @@
 [licenses]
 version = 2
-# Workspace crates are never published; the alef-generated component producer crate carries no
-# license field.
+# The engine crates are never published (`polylint-tsrs` is, and is MIT, ADR 0078); the alef-generated component
+# producer crate carries no license field.
 private = { ignore = true }
 confidence-threshold = 0.9
 allow = [

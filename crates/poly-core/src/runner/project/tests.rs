@@ -419,3 +419,34 @@ fn an_engine_behind_a_gate_that_is_off_never_reports_an_unavailable_backend() {
         "the unavailable `pyrefly` is reported by the default engine only"
     );
 }
+
+#[test]
+fn the_cache_key_tells_a_narrowed_check_from_a_full_one_and_targets_apart() {
+    let plan = ProjectPlan {
+        engine: Arc::new(pyrefly_component()),
+        config_id: 0,
+        config: EngineConfig {
+            globals: crate::config::GlobalDefaults::default(),
+            indent_width: 4,
+            options: toml::Table::new(),
+        },
+        language: Language::Python,
+        ancestor: false,
+    };
+    let file = |name: &str| ProjectFile {
+        path: PathBuf::from(name),
+        language: Language::Python,
+        content: Arc::from("x = 1\n"),
+    };
+    let files = [file("/r/a.py"), file("/r/b.py")];
+    let environment = ProjectEnvironment::default();
+    let key = |targets: Option<&[PathBuf]>| cache_key(&plan, Path::new("/r"), &files, targets, &environment);
+    let (a, b) = ([PathBuf::from("/r/a.py")], [PathBuf::from("/r/b.py")]);
+    assert_ne!(
+        key(None),
+        key(Some(&a)),
+        "a narrowed result must never answer a full run"
+    );
+    assert_ne!(key(Some(&a)), key(Some(&b)), "nor a run that names other files");
+    assert_eq!(key(Some(&a)), key(Some(&a)));
+}
