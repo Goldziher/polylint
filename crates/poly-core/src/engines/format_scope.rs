@@ -14,7 +14,7 @@ use std::borrow::Cow;
 use crate::config::EngineConfig;
 use crate::engine::{
     BatchSupport, Batching, Capabilities, CatalogTakeover, Diagnostic, Engine, FormatOutput, OptionKeys, OptionTable,
-    PlanPolicy, ProjectAnalysis, ProjectInputs, ProjectRequest, SourceFile, WireSelection,
+    PlanPolicy, ProjectAnalysis, ProjectInputs, ProjectReport, ProjectRequest, SourceFile, WireSelection,
 };
 use crate::language::Language;
 
@@ -170,6 +170,10 @@ impl Batching for FormatScope {
 impl ProjectAnalysis for FormatScope {
     fn project_check(&self, req: &ProjectRequest<'_>) -> anyhow::Result<Vec<(std::path::PathBuf, Vec<Diagnostic>)>> {
         self.inner.project_check(req)
+    }
+
+    fn project_report(&self, req: &ProjectRequest<'_>) -> anyhow::Result<ProjectReport> {
+        self.inner.project_report(req)
     }
 
     fn project_inputs(&self) -> ProjectInputs {
@@ -453,6 +457,10 @@ mod tests {
             self.note("project_check");
             Ok(Vec::new())
         }
+        fn project_report(&self, _req: &ProjectRequest<'_>) -> anyhow::Result<ProjectReport> {
+            self.note("project_report");
+            Ok(ProjectReport::Declined("recorded".to_owned()))
+        }
         fn project_inputs(&self) -> ProjectInputs {
             self.note("project_inputs");
             ProjectInputs::default()
@@ -567,6 +575,18 @@ mod tests {
                     targets: None,
                 };
                 let _ = engine.project_check(&request);
+            }
+            "project_report" => {
+                let environment = crate::engine::ProjectEnvironment::default();
+                let request = ProjectRequest {
+                    root: path,
+                    files: &[],
+                    config: &cfg,
+                    environment: &environment,
+                    threads: None,
+                    targets: None,
+                };
+                let _ = engine.project_report(&request);
             }
             "project_inputs" => {
                 let _ = engine.project_inputs();
