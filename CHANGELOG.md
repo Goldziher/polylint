@@ -7,14 +7,6 @@ binary drives lint, format, hooks, and commit checks from one `poly.toml`.
 
 ## [Unreleased]
 
-## [0.37.1] - 2026-11-18
-
-### Fixed
-
-- **The release builds the Windows components again.** The component SBOM step read `jq` output with the CR the
-  Windows runner adds, so the v0.36.0 and v0.37.0 publish runs failed before any channel was updated. Neither was
-  published; 0.37.1 is the first release since 0.35.0 and carries both. [Fixed]
-
 ## [0.37.0] - 2026-11-18
 
 ### Breaking changes
