@@ -107,8 +107,7 @@ Per-repo `poly.toml` (with `poly.local.toml` for local overrides), schema v2 (AD
 `per_file_ignores`. The loader still reads v1 (`poly migrate --to-v2` converts) but rejects a mix. A top-level `extends` list
 shares any config section from local or pinned-remote base configs (ADR 0020) — bases merge
 beneath the file, `poly.local.toml` wins on top; `poly lock` pins a symbolic remote
-ref (and Git hook sources, whose declared `revision` every `poly lock` re-resolves, so a moved tag is followed) into
-`poly.lock`, and `poly config show` prints the effective merged config. The
+ref (and Git hook sources, re-resolved on every lock) into `poly.lock`, and `poly config show` prints the effective merged config. The
 result cache and hook staged snapshot live in the per-user OS cache dir (`~/.cache/poly/<repo-key>`
 on Linux, `~/Library/Caches/poly/…` on macOS, `%LOCALAPPDATA%\poly\…` on Windows) — not in-repo.
 `POLY_CACHE_HOME` overrides the base; `[cache] dir` pins an explicit path. The staged snapshot
