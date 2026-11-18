@@ -23,6 +23,8 @@ binary drives lint, format, hooks, and commit checks from one `poly.toml`.
   recorded entries are kept with a note. `poly hooks install` never moves a pin but re-pins an entry whose declared
   `revision` changed, and `poly hooks run` refuses one locked for another `revision` instead of running the old
   commit (ADR 0082).
+- **skif 0.9.1.** An explicit `entry` completes a package whose entries a plugin config computes, `stale-js-config`
+  catches a plain pattern that cancels a `!` pattern on a common file, and the `skif` engine's cache key moves with it.
 
 ## [0.36.0] - 2026-11-18
 

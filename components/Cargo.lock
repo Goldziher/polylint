@@ -3631,7 +3631,7 @@ checksum = "d301f5bf187b3c295fce6468d3875037a0bccc5f6b151c63cac2f85babf21912"
 dependencies = [
  "bit-set 0.8.0",
  "regex-automata",
- "regex-syntax 0.8.11",
+ "regex-syntax 0.8.12",
 ]
 
 [[package]]
@@ -3642,7 +3642,7 @@ checksum = "0a2e16b9a584b602f1e0e5e22c30ca0906786088c27500653e432d086def8b53"
 dependencies = [
  "bit-set 0.8.0",
  "regex-automata",
- "regex-syntax 0.8.11",
+ "regex-syntax 0.8.12",
 ]
 
 [[package]]
@@ -4275,7 +4275,7 @@ dependencies = [
  "bstr",
  "log",
  "regex-automata",
- "regex-syntax 0.8.11",
+ "regex-syntax 0.8.12",
 ]
 
 [[package]]
@@ -5363,7 +5363,7 @@ version = "0.61.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7e41151614b6c927e21982be8bef5a26741ae5a0ae6a781eedee2aa930a980e6"
 dependencies = [
- "regex-syntax 0.8.11",
+ "regex-syntax 0.8.12",
 ]
 
 [[package]]
@@ -8943,25 +8943,25 @@ dependencies = [
 
 [[package]]
 name = "regex"
-version = "1.13.1"
+version = "1.13.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f020237b6c8eed93db2e2cb53c00c60a8e1bc73da7d073199a1180401450218d"
+checksum = "9807af0e638c12e753aa1b4e601791bf2a8f71274023c8bbeec12fc149950857"
 dependencies = [
  "aho-corasick",
  "memchr",
  "regex-automata",
- "regex-syntax 0.8.11",
+ "regex-syntax 0.8.12",
 ]
 
 [[package]]
 name = "regex-automata"
-version = "0.4.18"
+version = "0.4.19"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ad8553b9b26413251cbf30e620595c7a41b3887f03da04579c0e6b0d6a06b4b2"
+checksum = "41d60ef07df457506a0a1a2073112eb4aae5733dbd2813c3da77d1b0fd441158"
 dependencies = [
  "aho-corasick",
  "memchr",
- "regex-syntax 0.8.11",
+ "regex-syntax 0.8.12",
 ]
 
 [[package]]
@@ -8972,9 +8972,9 @@ checksum = "f162c6dd7b008981e4d40210aca20b4bd0f9b60ca9271061b07f78537722f2e1"
 
 [[package]]
 name = "regex-syntax"
-version = "0.8.11"
+version = "0.8.12"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d6f6ff9a378485b298a5286656da665ba74413d36db0979633275d2e708145d4"
+checksum = "d902046e6a28a1e4c3cab97258a0ce11e994903f01c2d97a9447a0b3df85f4f6"
 
 [[package]]
 name = "renderdoc-sys"
@@ -10057,9 +10057,9 @@ dependencies = [
 
 [[package]]
 name = "serde-saphyr"
-version = "2.1.1"
+version = "2.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d43fb82d550b07e6f929a58d7d0935182602f48ddead875f5ee313c41c8f07fe"
+checksum = "969cde0349344dbbf58b5f9badbfb8f806db13969364eb8007c057ef687007d9"
 dependencies = [
  "annotate-snippets 0.12.18",
  "base64 0.23.1",
@@ -10372,9 +10372,9 @@ checksum = "33f4fe9184a62d842c9ef383018f3306d8ba224fd9d836f56d7288308847c256"
 
 [[package]]
 name = "skif"
-version = "0.9.0"
+version = "0.9.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f3dac04d1909f17beba9b921f696e9e9f5e33cf048c883374aefe156422b0902"
+checksum = "d56e10d53e7d45a31912fdd34b86610c1c7f0da8c581d145820c3a4726748e46"
 dependencies = [
  "rayon",
  "skif-config",
@@ -10389,9 +10389,9 @@ dependencies = [
 
 [[package]]
 name = "skif-config"
-version = "0.9.0"
+version = "0.9.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "80a33a640030ef3a56d9ddc00b64073dbf5f1d99c6ddf08f20f7a70aa161c709"
+checksum = "9c4f16f2a6ccf0fa5718b611a192b62bd3a68f9e67c05e5cb006816bb55c4b9c"
 dependencies = [
  "globset",
  "ignore",
@@ -10408,9 +10408,9 @@ dependencies = [
 
 [[package]]
 name = "skif-core"
-version = "0.9.0"
+version = "0.9.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "366ba03c0a751bc121163992b0f0934408b3d0a9c3285ddd391a9f6bcc212034"
+checksum = "9c0c295b3c2f3df52c2b28935bd875e829351ee5cffe8d4d750d40b88fe093ee"
 dependencies = [
  "ahash",
  "blake3",
@@ -10423,9 +10423,9 @@ dependencies = [
 
 [[package]]
 name = "skif-edit"
-version = "0.9.0"
+version = "0.9.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "9cf260bf24e29f52c0ef9bee8756197435fbbf7b23267562126c83fabfe851a1"
+checksum = "a2e40ca309b574d0d10b2124fd6694a764dbbee1f3f036717ceb7812fd3f0134"
 dependencies = [
  "jsonc-parser",
  "serde_json",
@@ -10435,9 +10435,9 @@ dependencies = [
 
 [[package]]
 name = "skif-js"
-version = "0.9.0"
+version = "0.9.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "3b276ccdc58198183ac06404c858ea6f94bea84dc6720d775e0dde4090f941fc"
+checksum = "bb13d6fd389778ede481e636a10e698ba8bf032e48df5ca34bf0d06661803148"
 dependencies = [
  "globset",
  "ignore",
@@ -10459,9 +10459,9 @@ dependencies = [
 
 [[package]]
 name = "skif-js-plugins"
-version = "0.9.0"
+version = "0.9.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "2b8634c8b448310c098863b1e01c58dd6793dd06976761d7e52d630e36108b06"
+checksum = "c15c8b25831c003c1a7916809e992fc5389180b72901a4248a2f0e694d5b27c2"
 dependencies = [
  "globset",
  "indexmap 2.14.2",
@@ -10478,9 +10478,9 @@ dependencies = [
 
 [[package]]
 name = "skif-js-syntax"
-version = "0.9.0"
+version = "0.9.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b86ab8fb6efebb1504319bcbc57305d91afc8ed740312b2c070ff6433cdb59d2"
+checksum = "53a46453b6512f04f1038942cfbdec960f3e6285a4b62a34a04c2a5a6f799184"
 dependencies = [
  "ciborium",
  "memchr",
@@ -10498,9 +10498,9 @@ dependencies = [
 
 [[package]]
 name = "skif-lint"
-version = "0.9.0"
+version = "0.9.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "db13ccf7e75d18ce226858fb19db416ef14ea3f787f83c3e869924aa0332f1b9"
+checksum = "ab51aeb9e3518c6203130e2b0db0fc392240690671f50fa70e8869ed7699ea87"
 dependencies = [
  "rayon",
  "serde",
@@ -10514,9 +10514,9 @@ dependencies = [
 
 [[package]]
 name = "skif-rules"
-version = "0.9.0"
+version = "0.9.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "73dea5d9703fec8e8f47fcc741d0e5400768cb3f6f9a1639c52ff94ce1523861"
+checksum = "c66700979f3998d81c063fc683aec5a32c7b84d4da42d33a20b954ce9ac7a30a"
 dependencies = [
  "serde",
  "serde-saphyr",
@@ -10532,9 +10532,9 @@ dependencies = [
 
 [[package]]
 name = "skif-specifier"
-version = "0.9.0"
+version = "0.9.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "33122e1cd6db941be329298babb7c0f8dcc7ebfa1baf4edc25fc88a3552bf2fb"
+checksum = "44fd1ef3b3552fbd26333bc3891760cc20818ffbd1e706db4ee6b08a72ad6709"
 dependencies = [
  "nodejs-semver",
  "skif-core",
@@ -10542,9 +10542,9 @@ dependencies = [
 
 [[package]]
 name = "skif-workspace"
-version = "0.9.0"
+version = "0.9.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "580c6c8d4f673f36556ba04c60208af72128c1b75d70f1f6a235c7a9e2b74fde"
+checksum = "9e2c2ce4c96b544551c2e370ccc8b20974aa186c4c2c3a543e9d180f8608900f"
 dependencies = [
  "globset",
  "ignore",
@@ -11712,7 +11712,7 @@ dependencies = [
  "memchr",
  "ordermap",
  "regex",
- "regex-syntax 0.8.11",
+ "regex-syntax 0.8.12",
  "ruff_db",
  "ruff_memory_usage",
  "ruff_python_ast",

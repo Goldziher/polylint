@@ -71,7 +71,7 @@ pub const ENGINE_NAME: &str = "skif";
 /// Cache-key identity: the wrapped crate version plus a marker for this backend's own mapping.
 ///
 /// Bump the suffix whenever the diagnostic or fix mapping changes, and the version whenever `skif` is upgraded.
-const VERSION: &str = "skif-0.9.0+poly6";
+const VERSION: &str = "skif-0.9.1+poly6";
 
 /// The directory skif is run on, relative to the project root.
 const DEFAULT_DIR: &str = ".";
