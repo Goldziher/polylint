@@ -7,12 +7,6 @@ binary drives lint, format, hooks, and commit checks from one `poly.toml`.
 
 ## [Unreleased]
 
-### Fixed
-
-- **Parallel runs no longer exhaust memory on `.properties` files.** The tree-sitter-properties scanner keeps its state
-  in a process-global variable, so two workers parsing such files at once corrupted each other and a parse grew without
-  bound (over 30 GB on openapi-generator). Parses with that grammar are now serialized.
-
 ## [0.36.0] - 2026-11-18
 
 ### Breaking changes
@@ -218,6 +212,12 @@ Each item is described in full under the section named in brackets.
 
 ### Fixed
 
+- **Parallel runs no longer exhaust memory on `.properties` files.** The tree-sitter-properties scanner keeps its state
+  in a process-global variable, so two workers parsing such files at once corrupted each other and a parse grew without
+  bound (over 30 GB on openapi-generator). Parses with that grammar are now serialized.
+- **A block comment in an indented `<style>` or `<script>` no longer keeps the HTML formatter from settling.** The
+  embedded CSS or JavaScript was formatted with the document's indentation still on it, and the comment's inner lines
+  gained a level on every pass. The body is now dedented before it is formatted.
 - **A type check that found nothing to check is a skip, not a clean pass.** `tsrs` on a project with no
   `tsconfig.json`, and `skif` on one with no `package.json` or JavaScript workspace, used to report no findings, so the
   run read as a passing check. The project root is now in `skipped` with the reason (`tsrs: no tsconfig.json`),

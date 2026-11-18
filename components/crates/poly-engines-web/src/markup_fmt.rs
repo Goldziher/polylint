@@ -18,6 +18,11 @@
 //! on every pass. A file whose output would change such a literal is declined instead
 //! ([`template_guard`]; <https://github.com/g-plane/markup_fmt/issues/280>).
 //!
+//! markup_fmt also hands an embedded body over with the document's indentation still on it, and
+//! indents the formatted body again. A block comment that the formatter prints verbatim (every CSS
+//! comment, and a JavaScript one whose lines do not start with `*`) would keep the old indentation
+//! and gain a level on every pass, so the body is dedented first ([`dedent`]).
+//!
 //! ## Angular detection
 //! Angular templates share the `.html` extension with plain HTML. poly
 //! follows markup_fmt's own `detect_language` heuristic: a file whose stem
@@ -68,7 +73,8 @@ pub struct MarkupFmtEngine;
 /// any stale cached output.
 /// Bumped suffix to +opts-1 after exposing full LanguageOptions (options were
 /// previously ignored — existing caches must be invalidated).
-const VERSION: &str = "0.28.0+opts-2+tmpltarget-2+embedded-oxc-3+rev:7053128+syntax-skip-2+script-fmt-2+tmpl-guard-1";
+const VERSION: &str =
+    "0.28.0+opts-2+tmpltarget-2+embedded-oxc-3+rev:7053128+syntax-skip-2+script-fmt-2+tmpl-guard-1+embed-dedent-1";
 
 /// Reason reported when a general-purpose template does not render markup.
 const NON_MARKUP_TEMPLATE_SKIP: &str = "template does not render markup";
@@ -163,8 +169,14 @@ impl Engine for MarkupFmtEngine {
             embedded_scratch.globals.line_length = hints.print_width;
             let embedded_scratch = &*embedded_scratch;
             if let Some(ext) = script_ext(&src.language, &src.content, code, &hints) {
+                let dedented = dedent(code);
                 let formatted = super::oxc::with_arena(|allocator| {
-                    super::oxc::format_embedded_js(allocator, code, ext, embedded_scratch)
+                    super::oxc::format_embedded_js(
+                        allocator,
+                        dedented.as_deref().unwrap_or(code),
+                        ext,
+                        embedded_scratch,
+                    )
                 });
                 // Astro reports a script that does not parse; elsewhere it is left as written.
                 let body = match formatted {
@@ -181,9 +193,10 @@ impl Engine for MarkupFmtEngine {
             {
                 return Ok(Cow::Borrowed(code));
             }
+            let dedented = dedent(code);
             let formatted = super::oxc::with_arena(|allocator| {
                 let options = super::malva::oxc_css_options(embedded_scratch, css_variant(hints.ext));
-                oxc_formatter_css::format(allocator, code, options)
+                oxc_formatter_css::format(allocator, dedented.as_deref().unwrap_or(code), options)
                     .ok()
                     .and_then(|formatted| formatted.print().ok())
                     .map(|printed| printed.into_code())
@@ -209,6 +222,41 @@ impl Engine for MarkupFmtEngine {
         }
         Ok(FormatOutput::Formatted(formatted))
     }
+}
+
+/// `code` without the indentation its lines share, or `None` when there is none to remove or removing
+/// it could change a value.
+///
+/// markup_fmt passes an embedded body with the host document's indentation and re-indents what the
+/// formatter returns. Lines the formatter keeps verbatim, such as the inside of a block comment,
+/// would otherwise carry the old indentation into the result and gain one level per pass. The first
+/// line is measured only when it starts with whitespace, as markup_fmt's own `detect_indent` does,
+/// since text right after the opening tag has none. A template literal or a backslash line
+/// continuation carries its leading whitespace into a value, so a body holding either is left as
+/// written.
+fn dedent(code: &str) -> Option<String> {
+    if code.contains('`') || code.contains("\\\n") || code.contains("\\\r\n") {
+        return None;
+    }
+    let leading = |line: &str| line.bytes().take_while(|byte| matches!(byte, b' ' | b'\t')).count();
+    let skip_first = usize::from(!code.starts_with([' ', '\t']));
+    let indent = code
+        .split('\n')
+        .skip(skip_first)
+        .filter(|line| !line.trim().is_empty())
+        .map(leading)
+        .min()?;
+    if indent == 0 {
+        return None;
+    }
+    let mut out = String::with_capacity(code.len());
+    for (index, line) in code.split('\n').enumerate() {
+        if index > 0 {
+            out.push('\n');
+        }
+        out.push_str(&line[leading(line).min(indent)..]);
+    }
+    Some(out)
 }
 
 fn css_variant(ext: &str) -> oxc_formatter_css::CssVariant {
@@ -597,6 +645,37 @@ mod tests {
         let expr = &source[source.find("x }}").unwrap()..][..1];
         assert!(!is_script_block(source, expr));
         assert!(!is_script_block(source, "\nlet a\n"));
+    }
+
+    /// Settle check for a block comment in an indented `<style>` / `<script>`: the formatter printed
+    /// the comment's inner lines verbatim and markup_fmt indented them again, two columns per pass
+    /// (`electron/loading.html` in OpenHands never converged).
+    #[test]
+    fn indented_block_comments_in_embedded_code_settle() {
+        for input in [
+            "<head><style>/*\n*/{}</style></head>\n",
+            "<div>\n  <style>\n    /* a\n       b */\n    a{}\n  </style>\n</div>\n",
+            "<div>\n  <style>\n    /*\n     * a\n     */\n    a{}\n  </style>\n</div>\n",
+            "<div>\n  <script>\n    /* a\n       b */\n    a()\n  </script>\n</div>\n",
+        ] {
+            let once = formatted_text(Language::Html, "a.html", input);
+            assert_eq!(formatted_text(Language::Html, "a.html", &once), once, "{input:?}");
+        }
+        let out = formatted_text(
+            Language::Html,
+            "a.html",
+            "<div>\n  <style>\n    /* a\n       b */\n    a{}\n  </style>\n</div>\n",
+        );
+        assert!(out.contains("  /* a\n     b */\n"), "{out}");
+    }
+
+    #[test]
+    fn dedent_removes_shared_indentation_and_keeps_values() {
+        assert_eq!(dedent("\n    a {}\n\n      b\n  ").as_deref(), Some("\na {}\n\n  b\n"));
+        assert_eq!(dedent("a {}\n    b\n    c").as_deref(), Some("a {}\nb\nc"));
+        assert_eq!(dedent("\na {}\n"), None);
+        assert_eq!(dedent("\n  const a = `\n  x`;\n"), None);
+        assert_eq!(dedent("\n  a { content: \"x\\\n  y\" }\n"), None);
     }
 
     #[test]
