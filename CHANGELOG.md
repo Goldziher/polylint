@@ -1082,7 +1082,7 @@ See [Migrating to poly 2](https://goldziher.github.io/poly/guides/migrating-to-v
 - **SQL**: identifier capitalisation (`CP02`) is off unless selected; it lower-cased keywords the
   dialect did not know (`ADD COLUMNS` became `ADD columns`).
 - **Config checks**: a `[lint.<id>]`/`[fmt.<id>]` language id that is a near miss of a known one
-  (`pyhton`, `yml`, `js`) is reported with the likely language; `poly doctor` says when a wildcard
+  (`pyhton`, `yml`, `js`) is reported with the likely language; `poly doctor` says when a wildcard <!-- poly: allow[typo] deliberate near-miss example of a misspelled language id -->
   exclude (`bazel-*`) only prunes directories below the config root.
 - **Dependency refresh.** `cargo upgrade --incompatible --pinned`, plus advancing all three git
   pins to their remotes' HEADs: biome `dd96b11` → `e2e5a36`, oxc `98573d2` → `e2be72d`, rubyfmt
