@@ -7,6 +7,8 @@ binary drives lint, format, hooks, and commit checks from one `poly.toml`.
 
 ## [Unreleased]
 
+## [0.37.0] - 2026-11-18
+
 ### Breaking changes
 
 - **`poly.lock` records the `ref` each Git hook source declares.** A lock written by this version does not parse in

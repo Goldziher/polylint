@@ -2147,7 +2147,7 @@ checksum = "f6b464fbc74e149a392436b17d523f769e057cb6877f6a5c4618bc6f11800548"
 
 [[package]]
 name = "poly-catalog"
-version = "0.36.0"
+version = "0.37.0"
 dependencies = [
  "anyhow",
  "serde",
@@ -2156,7 +2156,7 @@ dependencies = [
 
 [[package]]
 name = "poly-component-host"
-version = "0.36.0"
+version = "0.37.0"
 dependencies = [
  "alef-component-abi",
  "alef-component-runtime",
@@ -2171,7 +2171,7 @@ dependencies = [
 
 [[package]]
 name = "poly-component-index"
-version = "0.36.0"
+version = "0.37.0"
 dependencies = [
  "poly-component-protocol",
  "serde",
@@ -2181,7 +2181,7 @@ dependencies = [
 
 [[package]]
 name = "poly-component-protocol"
-version = "0.36.0"
+version = "0.37.0"
 dependencies = [
  "rmp-serde",
  "serde",
@@ -2192,7 +2192,7 @@ dependencies = [
 
 [[package]]
 name = "poly-config"
-version = "0.36.0"
+version = "0.37.0"
 dependencies = [
  "anyhow",
  "blake3",
@@ -2210,7 +2210,7 @@ dependencies = [
 
 [[package]]
 name = "poly-engine-api"
-version = "0.36.0"
+version = "0.37.0"
 dependencies = [
  "anyhow",
  "blake3",
@@ -2229,7 +2229,7 @@ dependencies = [
 
 [[package]]
 name = "poly-engines"
-version = "0.36.0"
+version = "0.37.0"
 dependencies = [
  "anyhow",
  "poly-component-protocol",
@@ -2241,7 +2241,7 @@ dependencies = [
 
 [[package]]
 name = "poly-engines-pyrefly"
-version = "0.36.0"
+version = "0.37.0"
 dependencies = [
  "anyhow",
  "insta",
@@ -2263,7 +2263,7 @@ dependencies = [
 
 [[package]]
 name = "poly-engines-pyrefly-component"
-version = "0.36.0"
+version = "0.37.0"
 dependencies = [
  "alef-component-abi",
  "poly-engines",
