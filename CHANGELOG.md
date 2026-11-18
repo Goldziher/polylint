@@ -7,6 +7,8 @@ binary drives lint, format, hooks, and commit checks from one `poly.toml`.
 
 ## [Unreleased]
 
+## [0.36.0] - 2026-11-18
+
 ### Breaking changes
 
 Each item is described in full under the section named in brackets.
