@@ -1,6 +1,6 @@
 {
   "name": "@polylint/polylint-linux-x64-gnu",
-  "version": "0.37.0",
+  "version": "0.36.0",
   "description": "The Linux x64 (glibc) poly binary for @polylint/polylint. Not useful on its own.",
   "homepage": "https://github.com/polylint/polylint#readme",
   "bugs": {

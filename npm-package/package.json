@@ -1,6 +1,6 @@
 {
   "name": "@polylint/polylint",
-  "version": "0.37.0",
+  "version": "0.36.0",
   "description": "polylint: one linter & formatter for every language in your repository. Installs the prebuilt poly binary and puts `poly` on PATH.",
   "keywords": [
     "linter",
@@ -34,11 +34,11 @@
     "bin/poly.js"
   ],
   "optionalDependencies": {
-    "@polylint/polylint-darwin-arm64": "0.37.0",
-    "@polylint/polylint-linux-arm64-gnu": "0.37.0",
-    "@polylint/polylint-linux-x64-gnu": "0.37.0",
-    "@polylint/polylint-linux-x64-musl": "0.37.0",
-    "@polylint/polylint-win32-x64": "0.37.0"
+    "@polylint/polylint-darwin-arm64": "0.36.0",
+    "@polylint/polylint-linux-arm64-gnu": "0.36.0",
+    "@polylint/polylint-linux-x64-gnu": "0.36.0",
+    "@polylint/polylint-linux-x64-musl": "0.36.0",
+    "@polylint/polylint-win32-x64": "0.36.0"
   },
   "engines": {
     "node": ">=22"

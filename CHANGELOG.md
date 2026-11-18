@@ -7,31 +7,13 @@ binary drives lint, format, hooks, and commit checks from one `poly.toml`.
 
 ## [Unreleased]
 
-## [0.37.0] - 2026-11-18
+## [0.36.0] - 2026-11-18
 
 ### Breaking changes
 
 - **`poly.lock` records the `ref` each Git hook source declares.** A lock written by this version does not parse in
   an older poly, which rejects the unknown key. [Changed]
-
-### Changed
-
-- **`poly lock` follows a hook source tag that moved.** Every `poly lock` re-resolves each `[[hooks.sources]]`
-  `revision` with `git ls-remote` and moves the pin when the tag or branch moved, the declared `revision` changed, or
-  the entry predates `ref`; it prints `url ref -> sha` only for entries that changed. `--upgrade` still decides
-  remote `extends` refs and `latest` tools. `--check` reports a moved tag or a changed `revision` as drift. Offline,
-  recorded entries are kept with a note. `poly hooks install` never moves a pin but re-pins an entry whose declared
-  `revision` changed, and `poly hooks run` refuses one locked for another `revision` instead of running the old
-  commit (ADR 0082).
-- **skif 0.9.1.** An explicit `entry` completes a package whose entries a plugin config computes, `stale-js-config`
-  catches a plain pattern that cancels a `!` pattern on a common file, and the `skif` engine's cache key moves with it.
-
-## [0.36.0] - 2026-11-18
-
-### Breaking changes
-
 Each item is described in full under the section named in brackets.
-
 - **Repository trust.** Config keys that run programs (`[tools]` overrides, `[hooks]` whole-project jobs, `[cache] dir` and others) are ignored until `poly trust` records the repository, and `[tools]` `bin`, `root`, `url` and `env` are limited even then. Run `poly trust` once per repository, or set `POLY_TRUST=1` in CI. [Security]
 - **Remote `extends` bases and hook sources are fetched over https and ssh only.** `POLY_GIT_ALLOW_PROTOCOLS` allows other transports. [Security]
 - **`poly hooks install` refuses a shared `core.hooksPath`** without `--force` or `POLY_HOOKS_ALLOW_SHARED_PATH=1`. [Security]
@@ -134,6 +116,16 @@ Each item is described in full under the section named in brackets.
 
 ### Changed
 
+- **`poly lock` follows a hook source tag that moved.** Every `poly lock` re-resolves each `[[hooks.sources]]`
+  `revision` with `git ls-remote` and moves the pin when the tag or branch moved, the declared `revision` changed, or
+  the entry predates `ref`; it prints `url ref -> sha` only for entries that changed. `--upgrade` still decides
+  remote `extends` refs and `latest` tools. `--check` reports a moved tag or a changed `revision` as drift. Offline,
+  recorded entries are kept with a note. `poly hooks install` never moves a pin but re-pins an entry whose declared
+  `revision` changed, and `poly hooks run` refuses one locked for another `revision` instead of running the old
+  commit (ADR 0082).
+- **skif 0.9.2.** An explicit `entry` completes a package whose entries a plugin config computes, `stale-js-config`
+  catches a plain pattern that cancels a `!` pattern on a common file but no longer calls a `!` pattern redundant
+  when only a development entry also names its file, and the `skif` engine's cache key moves with it.
 - **The tsrs type check builds its program through `polylint-tsrs`.** The engine's own copies of the in-memory file
   system, the config loading and the program owner are gone; findings are unchanged. The diagnostics the checkers
   make are now freed with the program instead of staying in the worker threads' arenas (ADR 0078).
@@ -231,6 +223,8 @@ Each item is described in full under the section named in brackets.
 
 ### Fixed
 
+- **The release builds the Windows components again.** The component SBOM step read `jq` output with the CR the
+  Windows runner adds, so the publish run failed on `x86_64-pc-windows-msvc` before any channel was updated.
 - **Parallel runs no longer exhaust memory on `.properties` files.** The tree-sitter-properties scanner keeps its state
   in a process-global variable, so two workers parsing such files at once corrupted each other and a parse grew without
   bound (over 30 GB on openapi-generator). Parses with that grammar are now serialized.

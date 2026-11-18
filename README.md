@@ -204,7 +204,7 @@ scoop bucket add polylint https://github.com/polylint/scoop-bucket
 scoop install poly
 ```
 
-The installers verify the archive against `sha256sums.txt`; set `POLY_VERSION=0.37.0` to pin a release. Homebrew is
+The installers verify the archive against `sha256sums.txt`; set `POLY_VERSION=0.36.0` to pin a release. Homebrew is
 a rolling get-latest formula. The npm and PyPI packages are named `polylint` because `poly` is taken on both
 registries; **the command is `poly` on every channel**, with `polylint` as an alias. Details:
 [docs/INSTALL-PACKAGES.md](docs/INSTALL-PACKAGES.md).
