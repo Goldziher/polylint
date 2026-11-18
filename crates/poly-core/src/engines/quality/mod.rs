@@ -249,6 +249,7 @@ fn run_structural_rules(grammar: &str, src: &SourceFile, settings: &Settings, di
         // Another linked engine in this lint pass (ast-grep) may already hold the tree.
         let parser = &mut state.parser;
         let Some(tree) = crate::engines::grammar::shared_tree(&src.content, &state.language, || {
+            let _serial = crate::engines::grammar::serial_parse(grammar);
             parser.parse(src.content.as_bytes(), None)
         }) else {
             return;

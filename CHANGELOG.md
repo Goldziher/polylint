@@ -7,6 +7,12 @@ binary drives lint, format, hooks, and commit checks from one `poly.toml`.
 
 ## [Unreleased]
 
+### Fixed
+
+- **Parallel runs no longer exhaust memory on `.properties` files.** The tree-sitter-properties scanner keeps its state
+  in a process-global variable, so two workers parsing such files at once corrupted each other and a parse grew without
+  bound (over 30 GB on openapi-generator). Parses with that grammar are now serialized.
+
 ## [0.36.0] - 2026-11-18
 
 ### Breaking changes

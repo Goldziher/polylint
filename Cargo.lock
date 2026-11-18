@@ -6583,6 +6583,7 @@ version = "0.36.0"
 dependencies = [
  "poly-config",
  "thiserror 2.0.21",
+ "tree-sitter",
  "tree-sitter-language-pack",
 ]
 

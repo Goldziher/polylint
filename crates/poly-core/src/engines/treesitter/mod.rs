@@ -259,7 +259,9 @@ fn reindent_braces(name: &str, src: &SourceFile, cfg: &EngineConfig) -> Option<S
             pool.insert(name.to_string(), (parser, KindTable::new(&language, name)));
         }
         let (parser, kinds) = pool.get_mut(name)?;
+        let serial = crate::engines::grammar::serial_parse(name);
         let tree = parser.parse(src.content.as_bytes(), None)?;
+        drop(serial);
         let cst = collect_cst(&tree.root_node(), name, kinds);
         Some(reindent(&src.content, name, &cst, cfg))
     })

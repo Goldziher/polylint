@@ -14,10 +14,13 @@
 //!   instead of poisoning the rest of the run.
 //!
 //! It also owns the per-lint-pass parse sharing between linked engines
-//! ([`SharedParses`], [`shared_tree`]).
+//! ([`SharedParses`], [`shared_tree`]), and the lock that serializes parses with a
+//! grammar that is not safe to parse concurrently ([`serial_parse`]).
 
+mod serial;
 mod shared;
 
+pub use serial::serial_parse;
 pub use shared::{SharedParses, parse_count, shared_tree, with_shared_parses};
 
 use std::collections::HashMap;
