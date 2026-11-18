@@ -68,6 +68,9 @@ go_sbom() {
   check_sbom "${out}"
 }
 
+# jq on the Windows runner ends its lines with CRLF; every jq read below strips the CR, which would otherwise
+# land in a component name and the path built from it.
+
 # One field of a [[crates.components]] block in alef.toml. Plain awk, like components:release.
 component_field() {
   awk -v want="$1" -v field="$2" '
@@ -101,8 +104,8 @@ components)
       rust_sbom "${producer_dir:-crates/poly-engines-${component}-component}/Cargo.toml" "${OUT}/${component}.cdx.json"
     fi
     count=$((count + 1))
-  done < <(jq -r --arg t "${TRIPLE}" '.rows[] | select(.action == "build" and .target == $t) | .component' "${plan}")
-  built="$(jq --arg t "${TRIPLE}" '[.rows[] | select(.action == "build" and .target == $t)] | length' "${plan}")"
+  done < <(jq -r --arg t "${TRIPLE}" '.rows[] | select(.action == "build" and .target == $t) | .component' "${plan}" | tr -d '\r')
+  built="$(jq --arg t "${TRIPLE}" '[.rows[] | select(.action == "build" and .target == $t)] | length' "${plan}" | tr -d '\r')"
   [[ "${count}" == "${built}" ]] || die "${TRIPLE} plans ${built} build(s), wrote ${count} SBOM(s)"
   echo "wrote ${count} component SBOM(s) for ${TRIPLE} into ${OUT}"
   ;;
