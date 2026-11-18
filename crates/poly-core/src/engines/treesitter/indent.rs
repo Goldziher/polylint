@@ -215,7 +215,9 @@ fn builtin_facts(name: &str, query_src: &str, src: &SourceFile) -> Option<(Adjus
             );
         }
         let entry = pool.get_mut(name)?;
+        let serial = crate::engines::grammar::serial_parse(name);
         let tree = entry.0.parse(src.content.as_bytes(), None)?;
+        drop(serial);
         // ~keep A tree containing ERROR/MISSING nodes does not describe the file's real
         // structure, and the damage is not merely cosmetic: a heredoc swallowed by an error
         // node is no longer collected as a protected range, so its body and terminator would
@@ -290,7 +292,9 @@ pub fn try_reindent_query(name: &str, src: &SourceFile, cfg: &EngineConfig) -> O
             );
         }
         let entry = pool.get_mut(name)?;
+        let serial = crate::engines::grammar::serial_parse(name);
         let tree = entry.0.parse(src.content.as_bytes(), None)?;
+        drop(serial);
         let adjustments = collect_adjustments(&query, &mut entry.1, &tree, src.content.as_bytes());
         let protected = collect_protected_ranges(&tree, src.content.as_bytes(), &entry.2);
         Some((adjustments, protected))

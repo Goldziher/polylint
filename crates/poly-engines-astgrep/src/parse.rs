@@ -20,6 +20,7 @@ pub(crate) fn root(content: &Arc<str>, language: TslpLanguage) -> Result<AstGrep
     let mut parsed: Option<StrDoc<TslpLanguage>> = None;
     let mut failure: Option<String> = None;
     let tree = poly_grammar::shared_tree(content, &ts_language, || {
+        let _serial = poly_grammar::serial_parse(language.name());
         match StrDoc::try_new(content, language.clone()) {
             Ok(doc) => {
                 let tree = doc.tree.clone();
