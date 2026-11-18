@@ -40,11 +40,11 @@ tokio.workspace = true
 [dev-dependencies]
 # The `tools/list` snapshot: a change to the surface a model pays for is a reviewed diff.
 insta = { workspace = true, features = ["json"] }
+# Seeds an entry in a configured `[cache] dir`, which the per-file runner does not write to.
+poly-cache.workspace = true
 # The tests run the server over the real host services, in process: the same wire path a
 # downloaded component takes, with `Services` standing in for the component ABI's service table.
 poly-core = { workspace = true, features = ["all-engines", "schemars"] }
-# Seeds an entry in a configured `[cache] dir`, which the per-file runner does not write to.
-poly-cache.workspace = true
 poly-host-services = { workspace = true, features = ["all-engines"] }
 rmcp = { workspace = true, features = ["client"] }
 tempfile.workspace = true
