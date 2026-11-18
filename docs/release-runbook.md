@@ -43,10 +43,19 @@ old tag, or publish by hand, and set `skip_ci_check` if a dispatch is still atte
 `latest` only moves for the newest stable `vX.Y.Z` tag. Re-running an older stable tag publishes the umbrella,
 platform and plugin packages under `release-<major>.<minor>` instead; prereleases use `next`.
 
+## When a release run fails before publishing
+
+If the run fails before `finalize_release`, the release is still a draft and no channel has the version, so the
+version is not spent. Fix the cause on a branch from the tagged commit (`git switch -c release/X.Y.Z vX.Y.Z`, cherry-pick
+the fix), push that branch and dispatch `ci.yaml` on it, then move the tag onto the fixed commit:
+`git tag -f -s vX.Y.Z <commit> -m vX.Y.Z && git push -f origin refs/tags/vX.Y.Z`. The push starts a new run, which reuses
+the existing draft release. Do not bump to a new patch version for a release nobody received.
+
 ## Rolling back
 
 - **GitHub release**: `gh release edit vX.Y.Z --draft=true`. The installers and the Action resolve
-  `/releases/latest`, so a draft drops out of reach at once. Fix forward with a new patch tag; do not reuse the tag.
+  `/releases/latest`, so a draft drops out of reach at once. Once a version has reached a registry or a tap, fix
+  forward with a new patch tag: npm and PyPI never accept the same version twice.
 - **Major tag (`v0`)**: never delete it, since `polylint/polylint@v0` users would break. Re-point it to the previous
   good release: `git tag -f v0 vX.Y.(Z-1)^{commit} && git push -f origin refs/tags/v0` (needs a token with
   workflows write access when workflows changed between the two commits).
