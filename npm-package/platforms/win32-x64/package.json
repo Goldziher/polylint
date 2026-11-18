@@ -1,6 +1,6 @@
 {
   "name": "@polylint/polylint-win32-x64",
-  "version": "0.37.0",
+  "version": "0.37.1",
   "description": "The Windows x64 poly binary for @polylint/polylint. Not useful on its own.",
   "homepage": "https://github.com/polylint/polylint#readme",
   "bugs": {
