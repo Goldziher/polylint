@@ -789,8 +789,8 @@ jobs:
           n=0
           for record in components/*.record.json; do
             archive="$(jq -er .archive "$record")"
-            component="$(jq -er .identity.component "$record")"
-            target="$(jq -er .identity.target "$record")"
+            component="$(jq -er .manifest.identity.component "$record")"
+            target="$(jq -er .manifest.identity.target "$record")"
             sbom="sboms/component-sboms-$target/$component.cdx.json"
             [ -f "$sbom" ] || { echo "::error::no SBOM for $component on $target ($archive)"; exit 1; }
             cp "$sbom" "component-sboms/$archive.cdx.json"
@@ -997,6 +997,8 @@ jobs:
               cp target/release/poly "target/${{ matrix.triple }}/release/poly"
               strip "target/${{ matrix.triple }}/release/poly"
             '
+          # The container ran as root; later steps write into target/ as the runner user.
+          sudo chown -R "$(id -u):$(id -g)" target
         shell: bash
 
       - name: Smoke-test the musl binary on stock Alpine
