@@ -6,7 +6,7 @@ resolver = "3"
 members = ["crates/*"]
 
 [workspace.package]
-version = "0.37.0"
+version = "0.36.0"
 edition = "2024"
 rust-version = "1.100"
 license = "MIT"
@@ -63,7 +63,7 @@ rumdl_lib = { package = "polylint-rumdl", version = "=0.3.6", default-features =
 serde = { version = "1", features = ["derive"] }
 serde_json = { version = "1", features = ["preserve_order"] }
 serde_yaml = "0.9"
-skif = { version = "0.9.1", default-features = false, features = ["manifest", "js-analysis", "fix"] }
+skif = { version = "0.9.2", default-features = false, features = ["manifest", "js-analysis", "fix"] }
 sort-package-json = "1.0.0"
 taplo = "0.14"
 tempfile = "3"

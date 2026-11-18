@@ -602,7 +602,7 @@
             "fix": false,
             "project": true
           },
-          "version": "skif-0.9.1+poly6",
+          "version": "skif-0.9.2+poly6",
           "option_keys": [
             {
               "table": "Lint",
