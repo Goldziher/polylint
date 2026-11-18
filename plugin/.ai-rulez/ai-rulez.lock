@@ -2,9 +2,9 @@
 # Refresh it with `ai-rulez lock`; `ai-rulez generate --locked` fails when it is stale.
 
 version = 1
-ai_rulez_version = '5.13.4'
+ai_rulez_version = '5.14.0'
 scope = 'all'
-tree = 'sha256:e89448daaea99157915a780b6f46b2a8d323d225a2c7459cdf348465a8ea837f'
+tree = 'sha256:81bf48f3ed4414bc3086596cc899795b063ebeeaf4e176586abb5609fc76c97f'
 
 [[item]]
 kind = 'command'
@@ -34,7 +34,7 @@ digest = 'sha256:59686c06ad64f2c186679c7bf0ea44ca34dfd61e474c5e20a0a780e359b2145
 kind = 'skill'
 id = 'poly-orchestrator'
 path = 'skills/poly-orchestrator'
-digest = 'sha256:90af84a116012f373aebb880bc6ba5850cac15101df3008c282d15fe82bf1b13'
+digest = 'sha256:dd3e1ba4844d1f35e59969136441ab6e459c7e874d182943d73bc0df57600f60'
 
 [[item]]
 kind = 'skill'
