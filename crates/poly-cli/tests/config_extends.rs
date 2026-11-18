@@ -10,7 +10,7 @@ use std::process::Command;
 use std::sync::{Once, OnceLock};
 
 use poly_cli::config_sources::RemoteExtendsResolver;
-use poly_cli::lock_cmd::{LockOutcome, sync};
+use poly_cli::lock_cmd::{HookPins, LockOutcome, sync};
 use poly_cli::polylock;
 use poly_config::{Patterns, PolyConfig};
 
@@ -187,7 +187,9 @@ fn lock_pins_symbolic_ref_then_offline_load_succeeds() {
     ));
     let root = consumer_dir.path();
 
-    let LockOutcome::Written(lock) = sync(root, &config_path, false, false).expect("lock writes poly.lock") else {
+    let LockOutcome::Written(lock) =
+        sync(root, &config_path, false, false, HookPins::Refresh).expect("lock writes poly.lock")
+    else {
         panic!("first lock must write");
     };
     assert_eq!(lock.extends.len(), 1);
@@ -221,12 +223,15 @@ fn lock_check_reports_drift_and_upgrade_moves_the_pin() {
     let lock_path = root.join(polylock::LOCK_FILE_NAME);
 
     // Nothing locked yet: --check flags drift and writes nothing.
-    assert_eq!(sync(root, &config_path, false, true).unwrap(), LockOutcome::Drift);
+    assert_eq!(
+        sync(root, &config_path, false, true, HookPins::Refresh).unwrap(),
+        LockOutcome::Drift
+    );
     assert!(!lock_path.exists());
 
-    sync(root, &config_path, false, false).unwrap();
+    sync(root, &config_path, false, false, HookPins::Refresh).unwrap();
     assert!(matches!(
-        sync(root, &config_path, false, true).unwrap(),
+        sync(root, &config_path, false, true, HookPins::Refresh).unwrap(),
         LockOutcome::InSync(_)
     ));
 
@@ -234,21 +239,24 @@ fn lock_check_reports_drift_and_upgrade_moves_the_pin() {
     let second_oid = commit_base(base.path(), "[defaults]\nline_length = 56\n");
     assert_ne!(first_oid, second_oid);
     assert!(matches!(
-        sync(root, &config_path, false, false).unwrap(),
+        sync(root, &config_path, false, false, HookPins::Refresh).unwrap(),
         LockOutcome::InSync(_)
     ));
-    assert_eq!(sync(root, &config_path, true, true).unwrap(), LockOutcome::Drift);
+    assert_eq!(
+        sync(root, &config_path, true, true, HookPins::Refresh).unwrap(),
+        LockOutcome::Drift
+    );
     assert!(
         std::fs::read_to_string(&lock_path).unwrap().contains(&first_oid),
         "--check must not write"
     );
 
-    let LockOutcome::Written(lock) = sync(root, &config_path, true, false).unwrap() else {
+    let LockOutcome::Written(lock) = sync(root, &config_path, true, false, HookPins::Refresh).unwrap() else {
         panic!("--upgrade must rewrite the moved pin");
     };
     assert_eq!(lock.extends[0].locked, second_oid);
     assert!(matches!(
-        sync(root, &config_path, true, true).unwrap(),
+        sync(root, &config_path, true, true, HookPins::Refresh).unwrap(),
         LockOutcome::InSync(_)
     ));
 }
@@ -399,12 +407,12 @@ fn a_cache_only_resolver_follows_the_lock_on_disk() {
         "{unlocked:#}"
     );
 
-    sync(root, &config_path, false, false).expect("lock the ref");
+    sync(root, &config_path, false, false, HookPins::Refresh).expect("lock the ref");
     let locked = PolyConfig::load_file_with(&config_path, &resolver).expect("the lock written after the resolver");
     assert_eq!(locked.defaults.line_length, 55);
 
     commit_base(base.path(), "[defaults]\nline_length = 56\n");
-    sync(root, &config_path, true, false).expect("move the pin");
+    sync(root, &config_path, true, false, HookPins::Refresh).expect("move the pin");
     let moved = PolyConfig::load_file_with(&config_path, &resolver).expect("the moved pin");
     assert_eq!(moved.defaults.line_length, 56, "the resolver must not keep the old pin");
 }

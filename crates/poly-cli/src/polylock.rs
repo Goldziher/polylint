@@ -47,6 +47,12 @@ pub struct LockedHookSource {
     pub id: String,
     /// Repository URL of the source.
     pub source: String,
+    /// The `revision` declared in `[[hooks.sources]]` when this entry was pinned,
+    /// written as `ref`. `poly lock` re-resolves it, and a run whose declared
+    /// revision no longer matches refuses the entry. Absent in locks written
+    /// before it was recorded.
+    #[serde(rename = "ref", default, skip_serializing_if = "Option::is_none")]
+    pub declared: Option<String>,
     /// Full object ID the declared revision resolved to.
     pub revision: String,
     /// Cache location of the checkout.
@@ -200,6 +206,7 @@ mod tests {
         LockedHookSource {
             id: id.to_string(),
             source: format!("https://example.invalid/{id}.git"),
+            declared: Some("v1".to_string()),
             revision: "b".repeat(40),
             path: format!("cache://hook-sources/key/{id}"),
         }
@@ -273,6 +280,34 @@ mod tests {
         assert!(read(dir.path()).unwrap_err().to_string().contains("unsupported"));
         std::fs::write(&path, "version = 1\nsources = []\n").unwrap();
         assert!(read(dir.path()).is_err());
+    }
+
+    #[test]
+    fn hook_source_ref_round_trips_and_may_be_absent() {
+        let dir = tempfile::tempdir().unwrap();
+        write(
+            dir.path(),
+            &PolyLock {
+                hook_sources: vec![hook("a")],
+                ..PolyLock::default()
+            },
+        )
+        .unwrap();
+        let text = std::fs::read_to_string(dir.path().join(LOCK_FILE_NAME)).unwrap();
+        assert!(text.contains("ref = \"v1\"\n"), "{text}");
+
+        let oid = "c".repeat(40);
+        std::fs::write(
+            dir.path().join(LOCK_FILE_NAME),
+            format!(
+                "version = 1\n\n[[hook_sources]]\nid = \"a\"\nsource = \"https://example.invalid/a.git\"\n\
+                 revision = \"{oid}\"\npath = \"cache://x\"\n"
+            ),
+        )
+        .unwrap();
+        let lock = read(dir.path()).unwrap().unwrap();
+        assert_eq!(lock.hook_sources[0].declared, None);
+        assert_eq!(lock.hook_sources[0].revision, oid);
     }
 
     #[test]

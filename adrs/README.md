@@ -96,6 +96,7 @@ Context, Decision, Consequences (positive and negative/risks), and Alternatives 
 | [0079](0079-a-project-check-may-decline-the-project.md) | A Project Check May Decline the Project | Accepted |
 | [0080](0080-engines-keep-their-own-cache-in-polys-cache.md) | Engines Keep Their Own Cache in poly's Cache | Accepted |
 | [0081](0081-polylint-js-types-published-type-facts.md) | skif's Type-Aware Analysis Is the Published Crate `polylint-js-types` | Accepted |
+| [0082](0082-poly-lock-follows-moved-hook-source-tags.md) | `poly lock` Follows Moved Hook Source Tags | Accepted |
 
 ## Conventions
 

@@ -14,19 +14,23 @@ use crate::config_sources::{self, RemoteExtendsResolver};
 use crate::hooks::sources;
 use crate::polylock::{self, LockedTool, PolyLock};
 
+pub use crate::hooks::sources::HookPins;
+
 /// `poly lock` argument surface.
 #[derive(Args)]
 pub struct LockArgs {
-    /// Re-resolve every symbolic ref to its latest object ID, and every `latest`
-    /// tool to its newest release, instead of keeping what `poly.lock` records.
+    /// Re-resolve every remote `extends` ref to its latest object ID, and every
+    /// `latest` tool to its newest release, instead of keeping what `poly.lock`
+    /// records. Git hook source refs are re-resolved by every `poly lock`.
     #[arg(long)]
     upgrade: bool,
 
     /// Write nothing; exit 1 when `poly.lock` would change.
     ///
-    /// Without `--upgrade` this is an offline comparison of what the config
-    /// declares against what `poly.lock` records. With it, refs are re-resolved
-    /// against their remotes and compared.
+    /// Without `--upgrade`, `extends` bases and tools are compared offline with
+    /// what `poly.lock` records, while each Git hook source ref is re-resolved
+    /// with `git ls-remote` so a moved tag is drift (offline, only the recorded
+    /// `ref` is compared). With it, every ref is re-resolved and compared.
     #[arg(long)]
     check: bool,
 }
@@ -62,7 +66,7 @@ fn lock(args: LockArgs) -> Result<ExitCode> {
     if !config_path.is_file() {
         bail!("config file not found: {}", config_path.display());
     }
-    match sync(&root, &config_path, args.upgrade, args.check)? {
+    match sync(&root, &config_path, args.upgrade, args.check, HookPins::Refresh)? {
         LockOutcome::Drift => {
             eprintln!(
                 "poly lock: {} is out of date; run `poly lock`",
@@ -94,13 +98,17 @@ fn summary(lock: &PolyLock) -> String {
 /// Bring `<root>/poly.lock` in line with what `config_path` declares.
 ///
 /// With `check`, nothing is written and drift is reported as
-/// [`LockOutcome::Drift`]. Without `upgrade`, entries already in `poly.lock` keep
-/// their pinned revision; entries for sources no longer declared are dropped.
-pub fn sync(root: &Path, config_path: &Path, upgrade: bool, check: bool) -> Result<LockOutcome> {
+/// [`LockOutcome::Drift`]. Without `upgrade`, `extends` and tool entries already
+/// in `poly.lock` keep their pin; entries for sources no longer declared are
+/// dropped. `pins` alone decides whether Git hook source pins are re-resolved
+/// ([`HookPins::Refresh`], `poly lock`) or kept ([`HookPins::Keep`], the
+/// auto-lock of `poly hooks install`); an entry recorded for another declared
+/// revision is re-pinned either way.
+pub fn sync(root: &Path, config_path: &Path, upgrade: bool, check: bool, pins: HookPins) -> Result<LockOutcome> {
     let existing = polylock::read(root)?.unwrap_or_default();
     let declared = config_sources::declared_extends(config_path)?;
     if check && !upgrade {
-        return check_declared(root, config_path, &declared, existing);
+        return check_declared(root, config_path, &declared, existing, pins);
     }
 
     let mut next = PolyLock {
@@ -112,7 +120,7 @@ pub fn sync(root: &Path, config_path: &Path, upgrade: bool, check: bool) -> Resu
     let resolver = RemoteExtendsResolver::from_lock(root, next.clone());
     let config = PolyConfig::load_file_with(config_path, &resolver)
         .with_context(|| format!("loading {} to find hook sources", config_path.display()))?;
-    next.hook_sources = sources::lock_sources(&config.hooks, &existing, upgrade)?;
+    next.hook_sources = sources::lock_sources(&config.hooks, &existing, pins)?;
     next.tools = lock_tools(&config.tools, &existing, upgrade)?;
     next.normalize();
 
@@ -129,12 +137,14 @@ pub fn sync(root: &Path, config_path: &Path, upgrade: bool, check: bool) -> Resu
     Ok(LockOutcome::Written(next))
 }
 
-/// Offline `--check`: compare the declared lockable sources with the recorded ones.
+/// `--check` without `--upgrade`: compare the declared lockable sources with the
+/// recorded ones, re-resolving hook source refs only under [`HookPins::Refresh`].
 fn check_declared(
     root: &Path,
     config_path: &Path,
     declared: &[ExtendsSource],
     existing: PolyLock,
+    pins: HookPins,
 ) -> Result<LockOutcome> {
     let recorded_extends = sorted(
         existing
@@ -154,7 +164,9 @@ fn check_declared(
             .iter()
             .map(|entry| (entry.id.clone(), entry.source.clone())),
     );
-    if sources::declared_git_keys(&config.hooks) != recorded_hooks {
+    if sources::declared_git_keys(&config.hooks) != recorded_hooks
+        || sources::hook_pins_drift(&config.hooks, &existing, pins)?
+    {
         return Ok(LockOutcome::Drift);
     }
     if !tools_in_sync(&config.tools, &existing) {
@@ -231,16 +243,16 @@ mod tests {
         std::fs::write(dir.path().join("base.toml"), "[defaults]\nline_length = 66\n").unwrap();
         let config = write_config(dir.path(), "extends = [{ path = \"./base.toml\" }]\n");
         assert!(matches!(
-            sync(dir.path(), &config, false, true).unwrap(),
+            sync(dir.path(), &config, false, true, HookPins::Refresh).unwrap(),
             LockOutcome::InSync(_)
         ));
         assert!(matches!(
-            sync(dir.path(), &config, false, false).unwrap(),
+            sync(dir.path(), &config, false, false, HookPins::Refresh).unwrap(),
             LockOutcome::InSync(_)
         ));
         assert!(!dir.path().join(polylock::LOCK_FILE_NAME).exists());
         assert!(matches!(
-            sync(dir.path(), &config, true, false).unwrap(),
+            sync(dir.path(), &config, true, false, HookPins::Refresh).unwrap(),
             LockOutcome::InSync(_)
         ));
     }
@@ -255,18 +267,21 @@ mod tests {
              revision = \"cccccccccccccccccccccccccccccccccccccccc\"\npath = \"cache://x\"\n",
         )
         .unwrap();
-        assert_eq!(sync(dir.path(), &config, false, true).unwrap(), LockOutcome::Drift);
+        assert_eq!(
+            sync(dir.path(), &config, false, true, HookPins::Refresh).unwrap(),
+            LockOutcome::Drift
+        );
         assert!(
             dir.path().join(polylock::LOCK_FILE_NAME).is_file(),
             "--check writes nothing"
         );
         assert!(matches!(
-            sync(dir.path(), &config, false, false).unwrap(),
+            sync(dir.path(), &config, false, false, HookPins::Refresh).unwrap(),
             LockOutcome::Written(lock) if lock.is_empty()
         ));
         assert!(!dir.path().join(polylock::LOCK_FILE_NAME).exists());
         assert!(matches!(
-            sync(dir.path(), &config, false, true).unwrap(),
+            sync(dir.path(), &config, false, true, HookPins::Refresh).unwrap(),
             LockOutcome::InSync(_)
         ));
     }
@@ -281,7 +296,7 @@ mod tests {
             "[[hooks.sources]]\nid = \"local\"\npath = \"producer\"\nhooks = [\"validate\"]\n",
         );
         assert!(matches!(
-            sync(dir.path(), &config, false, true).unwrap(),
+            sync(dir.path(), &config, false, true, HookPins::Refresh).unwrap(),
             LockOutcome::InSync(_)
         ));
     }

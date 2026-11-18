@@ -13,7 +13,7 @@ use std::sync::{Arc, Mutex};
 
 use poly_catalog::{Catalog, Source};
 use poly_cli::config_sources::RemoteExtendsResolver;
-use poly_cli::lock_cmd::{LockOutcome, sync};
+use poly_cli::lock_cmd::{HookPins, LockOutcome, sync};
 use poly_cli::polylock;
 
 type Handler = dyn Fn(&str) -> (u16, String) + Send + Sync;
@@ -94,11 +94,10 @@ fn locked(root: &Path) -> polylock::LockedTool {
     polylock::read(root).unwrap().expect("poly.lock").tools.remove(0)
 }
 
-#[test]
-fn poly_lock_pins_tool_releases_and_check_and_upgrade_follow_them() {
-    let cache = tempfile::tempdir().unwrap();
-    let generation = Arc::new(AtomicUsize::new(0));
-    let served = Arc::clone(&generation);
+/// Serve `latest` as v9.9.9 while `generation` is 0 and v9.9.10 once it is 1, and
+/// point the process's cache and GitHub API at the fake.
+fn start_fake(cache: &Path, generation: &Arc<AtomicUsize>) -> Fake {
+    let served = Arc::clone(generation);
     let base_cell: Arc<Mutex<String>> = Arc::default();
     let base_for_handler = Arc::clone(&base_cell);
     let fake = Fake::start(Arc::new(move |path| {
@@ -113,16 +112,24 @@ fn poly_lock_pins_tool_releases_and_check_and_upgrade_follow_them() {
     *base_cell.lock().unwrap() = fake.base.clone();
     // SAFETY: the only test in this binary; set before any thread reads the environment.
     unsafe {
-        std::env::set_var("POLY_CACHE_HOME", cache.path());
+        std::env::set_var("POLY_CACHE_HOME", cache);
         std::env::set_var("POLY_GITHUB_API_URL", &fake.base);
         std::env::remove_var("POLY_OFFLINE");
     }
+    fake
+}
+
+#[test]
+fn poly_lock_pins_tool_releases_and_check_and_upgrade_follow_them() {
+    let cache = tempfile::tempdir().unwrap();
+    let generation = Arc::new(AtomicUsize::new(0));
+    let fake = start_fake(cache.path(), &generation);
     let repo = tempfile::tempdir().unwrap();
     let root = repo.path();
     let config_path = config(root, "");
 
     // `latest` resolves into the lock, one entry per platform, with the API's digests.
-    let LockOutcome::Written(lock) = sync(root, &config_path, false, false).unwrap() else {
+    let LockOutcome::Written(lock) = sync(root, &config_path, false, false, HookPins::Refresh).unwrap() else {
         panic!("first lock must write");
     };
     let entry = lock.tool("hadolint").expect("hadolint locked");
@@ -138,21 +145,24 @@ fn poly_lock_pins_tool_releases_and_check_and_upgrade_follow_them() {
     // The lock is current; neither re-locking nor checking asks upstream again.
     generation.store(1, Ordering::SeqCst);
     assert!(matches!(
-        sync(root, &config_path, false, true).unwrap(),
+        sync(root, &config_path, false, true, HookPins::Refresh).unwrap(),
         LockOutcome::InSync(_)
     ));
     assert!(matches!(
-        sync(root, &config_path, false, false).unwrap(),
+        sync(root, &config_path, false, false, HookPins::Refresh).unwrap(),
         LockOutcome::InSync(_)
     ));
     assert_eq!(fake.count(), 1, "a satisfied lock needs no network");
 
     // `--check --upgrade` sees the newer release as drift and writes nothing.
-    assert_eq!(sync(root, &config_path, true, true).unwrap(), LockOutcome::Drift);
+    assert_eq!(
+        sync(root, &config_path, true, true, HookPins::Refresh).unwrap(),
+        LockOutcome::Drift
+    );
     assert_eq!(locked(root).version, "9.9.9");
     // `--upgrade` moves the pin.
     assert!(matches!(
-        sync(root, &config_path, true, false).unwrap(),
+        sync(root, &config_path, true, false, HookPins::Refresh).unwrap(),
         LockOutcome::Written(_)
     ));
     assert_eq!(locked(root).version, "9.9.10");
@@ -160,21 +170,24 @@ fn poly_lock_pins_tool_releases_and_check_and_upgrade_follow_them() {
     // An exact version the catalog never listed locks through the source, and an edit
     // of `version` is drift for the offline check.
     let pinned = config(root, "version = \"1.0.0\"\n");
-    assert_eq!(sync(root, &pinned, false, true).unwrap(), LockOutcome::Drift);
+    assert_eq!(
+        sync(root, &pinned, false, true, HookPins::Refresh).unwrap(),
+        LockOutcome::Drift
+    );
     assert!(matches!(
-        sync(root, &pinned, false, false).unwrap(),
+        sync(root, &pinned, false, false, HookPins::Refresh).unwrap(),
         LockOutcome::Written(_)
     ));
     assert_eq!(locked(root).version, "1.0.0");
     assert!(matches!(
-        sync(root, &pinned, false, true).unwrap(),
+        sync(root, &pinned, false, true, HookPins::Refresh).unwrap(),
         LockOutcome::InSync(_)
     ));
 
     // Disabling the tool drops its entry.
     std::fs::write(root.join("poly.toml"), "[tools.hadolint]\nenabled = false\n").unwrap();
     assert!(matches!(
-        sync(root, &root.join("poly.toml"), false, false).unwrap(),
+        sync(root, &root.join("poly.toml"), false, false, HookPins::Refresh).unwrap(),
         LockOutcome::Written(lock) if lock.is_empty()
     ));
 }

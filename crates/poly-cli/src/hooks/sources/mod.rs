@@ -14,5 +14,5 @@ mod select;
 mod test_support;
 
 pub use merge::merge_stage;
-pub use provision::{declared_git_keys, lock_sources, provision};
+pub use provision::{HookPins, declared_git_keys, hook_pins_drift, lock_sources, provision};
 pub use select::ResolvedHook;

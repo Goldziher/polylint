@@ -7,6 +7,21 @@ binary drives lint, format, hooks, and commit checks from one `poly.toml`.
 
 ## [Unreleased]
 
+### Breaking changes
+
+- **`poly.lock` records the `ref` each Git hook source declares.** A lock written by this version does not parse in
+  an older poly, which rejects the unknown key. [Changed]
+
+### Changed
+
+- **`poly lock` follows a hook source tag that moved.** Every `poly lock` re-resolves each `[[hooks.sources]]`
+  `revision` with `git ls-remote` and moves the pin when the tag or branch moved, the declared `revision` changed, or
+  the entry predates `ref`; it prints `url ref -> sha` only for entries that changed. `--upgrade` still decides
+  remote `extends` refs and `latest` tools. `--check` reports a moved tag or a changed `revision` as drift. Offline,
+  recorded entries are kept with a note. `poly hooks install` never moves a pin but re-pins an entry whose declared
+  `revision` changed, and `poly hooks run` refuses one locked for another `revision` instead of running the old
+  commit (ADR 0082).
+
 ## [0.36.0] - 2026-11-18
 
 ### Breaking changes

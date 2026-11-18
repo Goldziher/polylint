@@ -88,40 +88,142 @@ pub fn declared_git_keys(hooks: &HooksConfig) -> Vec<(String, String)> {
     keys
 }
 
+/// How a Git hook source pin already recorded in `poly.lock` is treated.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum HookPins {
+    /// Re-resolve every declared ref and move a pin whose tag or branch moved
+    /// upstream (`poly lock`).
+    Refresh,
+    /// Keep a recorded pin as it is, re-pinning only an entry whose recorded
+    /// `ref` differs from the declared revision, so a complete lock needs no
+    /// network (`poly hooks install`).
+    Keep,
+}
+
+/// What locking one declared Git hook source requires.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum PinAction {
+    /// The recorded entry stands as it is.
+    Keep,
+    /// The recorded entry stands only because the run is offline.
+    KeepOffline,
+    /// Re-resolve the declared ref and compare it with the recorded pin.
+    Resolve,
+    /// The entry is missing or pins another declared revision.
+    Repin,
+}
+
+fn pin_action(entry: Option<&LockedHookSource>, declared: &str, pins: HookPins, offline: bool) -> PinAction {
+    let Some(entry) = entry else {
+        return PinAction::Repin;
+    };
+    match entry.declared.as_deref() {
+        Some(recorded) if recorded != declared => return PinAction::Repin,
+        _ if pins == HookPins::Keep => return PinAction::Keep,
+        Some(_) if entry.revision == declared => return PinAction::Keep,
+        _ => {}
+    }
+    if offline {
+        PinAction::KeepOffline
+    } else if entry.declared.is_none() {
+        PinAction::Repin
+    } else {
+        PinAction::Resolve
+    }
+}
+
+fn note_offline() {
+    eprintln!("poly lock: offline: hook source refs were not refreshed; run `poly lock` online to follow moved tags");
+}
+
+fn hook_source_cache() -> anyhow::Result<PathBuf> {
+    let dir = poly_cache::hook_sources_dir()?;
+    std::fs::create_dir_all(&dir).with_context(|| format!("creating hook source cache {}", dir.display()))?;
+    Ok(dir)
+}
+
 /// Resolve every Git hook source in `hooks` to a pinned revision for `poly.lock`.
 ///
-/// Without `upgrade`, a source already recorded in `existing` keeps its entry;
-/// with it, each declared revision is re-resolved against the remote. Local
-/// `path` sources need no entry.
+/// With [`HookPins::Refresh`], each declared ref is re-resolved and a pin is
+/// moved when its tag or branch moved; offline, recorded entries are kept and a
+/// note says so. With [`HookPins::Keep`], a recorded entry stands. Either way an
+/// entry recorded for another declared revision is re-pinned, and a declared
+/// full object ID already pinned needs no network. Local `path` sources need no
+/// entry. One `url ref -> oid` line is printed per entry that changed.
 ///
 /// A ref is resolved with `git ls-remote` and nothing is downloaded; the checkout
 /// is materialized, shallowly, the first time the hooks run. A full object ID is
 /// verified by fetching that one commit, so a mistyped one fails here rather
 /// than on every later run.
-pub fn lock_sources(hooks: &HooksConfig, existing: &PolyLock, upgrade: bool) -> anyhow::Result<Vec<LockedHookSource>> {
+pub fn lock_sources(hooks: &HooksConfig, existing: &PolyLock, pins: HookPins) -> anyhow::Result<Vec<LockedHookSource>> {
+    let offline = crate::offline();
+    let mut kept_offline = false;
     let mut locked = Vec::new();
     let mut cache_root = None;
     for source in hooks.sources.iter().filter(|source| source.path.is_none()) {
         let url = source.git.as_deref().expect("validated Git source");
-        if !upgrade && let Some(entry) = existing.hook_source(&source.id, url) {
+        let declared = source.revision.as_deref().expect("validated Git revision");
+        let recorded = existing.hook_source(&source.id, url);
+        let action = pin_action(recorded, declared, pins, offline);
+        if let (PinAction::Keep | PinAction::KeepOffline, Some(entry)) = (action, recorded) {
+            kept_offline |= action == PinAction::KeepOffline;
             locked.push(entry.clone());
             continue;
         }
         if cache_root.is_none() {
-            let dir = poly_cache::hook_sources_dir()?;
-            std::fs::create_dir_all(&dir).with_context(|| format!("creating hook source cache {}", dir.display()))?;
-            cache_root = Some(dir);
+            cache_root = Some(hook_source_cache()?);
         }
         let entry = pin_source(cache_root.as_deref().expect("cache root set above"), source)?;
-        println!(
-            "{} {} -> {}",
-            entry.source,
-            source.revision.as_deref().unwrap_or_default(),
-            entry.revision
-        );
+        if recorded != Some(&entry) {
+            println!("{} {declared} -> {}", entry.source, entry.revision);
+        }
         locked.push(entry);
     }
+    if kept_offline {
+        note_offline();
+    }
     Ok(locked)
+}
+
+/// Whether `existing` no longer pins what the Git hook sources in `hooks`
+/// declare: an entry is missing or records another declared revision, and with
+/// [`HookPins::Refresh`] also one that records no `ref` or whose tag or branch
+/// moved upstream (re-resolved with `git ls-remote`, skipped with a note offline).
+///
+/// # Errors
+///
+/// When the cache directory cannot be created or a ref cannot be resolved.
+pub fn hook_pins_drift(hooks: &HooksConfig, existing: &PolyLock, pins: HookPins) -> anyhow::Result<bool> {
+    let offline = crate::offline();
+    let mut kept_offline = false;
+    let mut cache_root = None;
+    for source in hooks.sources.iter().filter(|source| source.path.is_none()) {
+        let url = source.git.as_deref().expect("validated Git source");
+        let declared = source.revision.as_deref().expect("validated Git revision");
+        let recorded = existing.hook_source(&source.id, url);
+        let missing_ref = pins == HookPins::Refresh && recorded.is_some_and(|entry| entry.declared.is_none());
+        match pin_action(recorded, declared, pins, offline) {
+            PinAction::Repin => return Ok(true),
+            _ if missing_ref => return Ok(true),
+            PinAction::Keep => {}
+            PinAction::KeepOffline => kept_offline = true,
+            PinAction::Resolve => {
+                if cache_root.is_none() {
+                    cache_root = Some(hook_source_cache()?);
+                }
+                let neutral = cache_root.as_deref().expect("cache root set above");
+                let resolved = resolve_remote_revision(url, declared, neutral)
+                    .with_context(|| format!("resolving hook source {:?} at {declared}", source.id))?;
+                if recorded.is_none_or(|entry| entry.revision != resolved) {
+                    return Ok(true);
+                }
+            }
+        }
+    }
+    if kept_offline {
+        note_offline();
+    }
+    Ok(false)
 }
 
 /// Resolve a Git hook source's declared revision to the lock entry pinning it.
@@ -148,6 +250,7 @@ fn pin_source(cache_root: &Path, source: &HookSource) -> anyhow::Result<LockedHo
     Ok(LockedHookSource {
         id: source.id.clone(),
         source: url.to_string(),
+        declared: Some(revision.to_string()),
         path: format!("cache://hook-sources/{source_key}/{resolved}"),
         revision: resolved,
     })
@@ -186,6 +289,15 @@ fn provision_source(
             polylock::legacy_hint(root)
         )
     })?;
+    if let (Some(recorded), Some(declared)) = (locked.declared.as_deref(), source.revision.as_deref())
+        && recorded != declared
+    {
+        anyhow::bail!(
+            "Git hook source {:?} is locked for revision {recorded:?}, but the config declares {declared:?}; \
+             run `poly lock` to re-pin it",
+            source.id
+        );
+    }
     validate_locked_revision(&locked.revision)?;
     let checkout = source_cache.join("checkouts").join(&locked.revision);
     let _guard = lock_source(&source_cache)?;
@@ -611,6 +723,7 @@ run = "printf"
         let lock = vec![LockedHookSource {
             id: source.id.clone(),
             source: source.git.clone().unwrap(),
+            declared: None,
             revision: revision.clone(),
             path: format!("cache://hook-sources/x/{revision}"),
         }];
@@ -636,6 +749,7 @@ run = "printf"
         let lock = vec![LockedHookSource {
             id: source.id.clone(),
             source: source.git.clone().unwrap(),
+            declared: None,
             revision,
             path: "cache://x".to_string(),
         }];
@@ -651,6 +765,29 @@ run = "printf"
     }
 
     #[test]
+    fn provisioning_rejects_an_entry_locked_for_another_revision() {
+        let producer = create_git_source();
+        let cache = tempfile::tempdir().unwrap();
+        let source = git_source(producer.path());
+        let mut entry = pin_source(cache.path(), &source).unwrap();
+        entry.declared = Some("v0".to_string());
+
+        let error = format!(
+            "{:#}",
+            provision_source(
+                Path::new("."),
+                cache.path(),
+                &source,
+                Some(std::slice::from_ref(&entry))
+            )
+            .unwrap_err()
+        );
+
+        assert!(error.contains("\"v0\"") && error.contains("\"HEAD\""), "{error}");
+        assert!(error.contains("run `poly lock`"), "{error}");
+    }
+
+    #[test]
     fn normal_run_rejects_non_oid_lock_revision() {
         let producer = create_git_source();
         let cache = tempfile::tempdir().unwrap();
@@ -658,6 +795,7 @@ run = "printf"
         let lock = vec![LockedHookSource {
             id: source.id.clone(),
             source: source.git.clone().unwrap(),
+            declared: None,
             revision: "../../outside".to_string(),
             path: "cache://invalid".to_string(),
         }];

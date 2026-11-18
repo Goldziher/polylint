@@ -9,8 +9,8 @@ metadata:
 
 <!--
 AI-RULEZ :: GENERATED FILE — DO NOT EDIT
-Content-Hash: blake3:efb6450fef38801d3068a33db31c776a38c84826abbd35f840665c68c80bcfef
-Source-Hash: blake3:f60abe81ffa53c7bfcfe0e481f708fc4b973b82c737833378c665357ef68bff1
+Content-Hash: blake3:e1f83103977707b9d506be3043c135df006cbf39ae29e0f9115cbca003608633
+Source-Hash: blake3:2105248e055233d18cdf5c6ac271716eec6f81acf10bfee5eab79967b4126223
 Schema-Version: v1
 -->
 
@@ -57,7 +57,9 @@ ast-grep rule pack, behind one binary, one config, and one report.
   `install = "auto"` to have poly download a checksum-verified release when it is missing; by
   default it never downloads anything.
 - **`poly config show`** prints the effective merged config; **`poly lock [--upgrade] [--check]`**
-  pins symbolic remote `extends` refs and Git hook sources into `poly.lock`; **`poly config schema`** prints the
+  pins symbolic remote `extends` refs and Git hook sources into `poly.lock` (every run re-resolves a hook source's
+  declared `revision`, so a moved tag is followed; `--upgrade` also moves `extends` refs and `latest` tools);
+  **`poly config schema`** prints the
   JSON Schema for `poly.toml`. An unknown key in an engine table is an `unknown-config-key`
   warning that suggests the nearest valid key (`--verbose` lists every key the table reads).
 - **Components.** Only the Linux musl release binary is bundled (every engine linked in). Every

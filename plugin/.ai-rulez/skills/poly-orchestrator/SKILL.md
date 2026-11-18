@@ -56,7 +56,9 @@ ast-grep rule pack, behind one binary, one config, and one report.
   `install = "auto"` to have poly download a checksum-verified release when it is missing; by
   default it never downloads anything.
 - **`poly config show`** prints the effective merged config; **`poly lock [--upgrade] [--check]`**
-  pins symbolic remote `extends` refs and Git hook sources into `poly.lock`; **`poly config schema`** prints the
+  pins symbolic remote `extends` refs and Git hook sources into `poly.lock` (every run re-resolves a hook source's
+  declared `revision`, so a moved tag is followed; `--upgrade` also moves `extends` refs and `latest` tools);
+  **`poly config schema`** prints the
   JSON Schema for `poly.toml`. An unknown key in an engine table is an `unknown-config-key`
   warning that suggests the nearest valid key (`--verbose` lists every key the table reads).
 - **Components.** Only the Linux musl release binary is bundled (every engine linked in). Every

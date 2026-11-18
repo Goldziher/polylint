@@ -4,16 +4,18 @@
 //! need a remote `extends` base: both are read from `poly.lock` only. Rather than
 //! refusing until `poly lock` has been run, the command records the entries the
 //! lock is missing first, the way `cargo build` writes `Cargo.lock` — through
-//! [`lock_cmd::sync`] without `upgrade`, so an entry already recorded keeps its
-//! pin. `--locked` (or [`LOCKED_ENV`]) turns this off and keeps the strict
-//! "no lock entry" failure, for CI that must never change the lock.
+//! [`lock_cmd::sync`] without `upgrade` and with [`HookPins::Keep`], so an entry
+//! already recorded keeps its pin (a moved tag is left for `poly lock`), and only
+//! a hook source whose declared revision changed is re-pinned. `--locked` (or
+//! [`LOCKED_ENV`]) turns this off and keeps the strict "no lock entry" failure,
+//! for CI that must never change the lock.
 
 use std::path::Path;
 
 use anyhow::Result;
 
 use crate::config_sources;
-use crate::lock_cmd::{self, LockOutcome};
+use crate::lock_cmd::{self, HookPins, LockOutcome};
 use crate::polylock::{self, PolyLock};
 
 /// Environment variable that, like `--locked`, forbids adding missing
@@ -30,7 +32,8 @@ pub fn locked(flag: bool) -> bool {
 /// lacks, printing one line per change on stderr prefixed with `command`.
 ///
 /// Does nothing when the lock is already complete (an offline comparison, so no
-/// network), when there is no top-level config, or offline — the command then
+/// network; a hook source pinned for another declared revision is incomplete),
+/// when there is no top-level config, or offline — the command then
 /// fails on the missing entry exactly as without this step.
 ///
 /// # Errors
@@ -61,11 +64,14 @@ pub fn lock_missing(command: &str) -> Result<()> {
 ///
 /// As [`lock_missing`].
 pub fn lock_missing_at(root: &Path, config_path: &Path) -> Result<Vec<String>> {
-    if matches!(lock_cmd::sync(root, config_path, false, true)?, LockOutcome::InSync(_)) {
+    if matches!(
+        lock_cmd::sync(root, config_path, false, true, HookPins::Keep)?,
+        LockOutcome::InSync(_)
+    ) {
         return Ok(Vec::new());
     }
     let before = polylock::read(root)?.unwrap_or_default();
-    let after = match lock_cmd::sync(root, config_path, false, false)? {
+    let after = match lock_cmd::sync(root, config_path, false, false, HookPins::Keep)? {
         LockOutcome::Written(lock) | LockOutcome::InSync(lock) => lock,
         LockOutcome::Drift => unreachable!("sync reports drift only when asked to check"),
     };
@@ -130,6 +136,7 @@ mod tests {
         LockedHookSource {
             id: id.to_string(),
             source: format!("https://example.invalid/{id}.git"),
+            declared: Some("HEAD".to_string()),
             revision: revision.to_string().repeat(40),
             path: format!("cache://hook-sources/key/{id}"),
         }
