@@ -387,6 +387,23 @@ fn codes(found: &Findings) -> Vec<(String, String)> {
 }
 
 #[test]
+fn a_types_entry_of_a_package_that_is_not_an_at_types_package_still_stops_the_check() {
+    let config = tsconfig(r#", "types": ["vite/client"]"#);
+    let found = check(
+        &[
+            ("tsconfig.json", &config),
+            ("package.json", r#"{ "devDependencies": { "vite": "6.0.0" } }"#),
+            ("src/a.ts", "export const mode: string = import.meta.env.MODE;\n"),
+        ],
+        "",
+    );
+    assert!(
+        codes(&found).is_empty(),
+        "dropping vite/client would report import.meta.env as an error: {found:?}"
+    );
+}
+
+#[test]
 fn an_undeclared_types_entry_stays_an_error() {
     let config = tsconfig(r#", "types": ["node"]"#);
     let found = check(

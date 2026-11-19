@@ -19,11 +19,12 @@ binary drives lint, format, hooks, and commit checks from one `poly.toml`.
   tool had done before they changed; and a tool without a recipe ignored both. A recipe tool with `files` set claims
   those files, less its `exclude` and read from its `root`, from the language's formatter (or the generic one) instead
   of taking the whole language.
-- **tsrs type-checks a project whose tsconfig lists a declared `types` package.** `"types": ["node"]` with
+- **tsrs type-checks a project whose tsconfig lists a declared `@types` package.** `"types": ["node"]` with
   `@types/node` declared but not installed produced a `TS2688` program diagnostic; poly dropped it as a missing
   install, but tsc stops at the first diagnostic group that has any, so no type error in the project was reported.
-  Such entries are now left out of the program, and the semantic check runs. `report_unresolved_modules = true` keeps
-  them and reports the `TS2688`.
+  An entry whose `@types` package is declared is now left out of the program, and the semantic check runs; another
+  package's entry, such as `vite/client`, still stops it, since its missing globals would read as type errors.
+  `report_unresolved_modules = true` keeps every entry and reports the `TS2688`.
 - **`poly migrate` keeps ruff's `extend-select` an extension.** A `[tool.ruff]` with `extend-select` and no `select`
   was absorbed as `select`, which drops ruff's default rules; it is now written as `extend_select`.
 - **`inherit_mode` validates in `[engines.<id>]` tables.** `poly config validate` reported it as an unknown option

@@ -28,7 +28,7 @@ use tsrs_core::{CompilerOptions, P, Tristate, tspath};
 use tsrs_diagnostics::Category;
 use tsrs_tsoptions::ParsedCommandLine;
 
-use crate::external::{Declared, TYPE_FILE_CODE, package_name};
+use crate::external::{Declared, package_name, types_package};
 use crate::settings::Settings;
 use crate::vfs::{tsrs_name, tsrs_path};
 
@@ -239,11 +239,14 @@ fn forgive_declared_extends(
     warnings
 }
 
-/// Drops the `types` entries of packages the project declares but the hermetic run does not have.
+/// Drops the `types` entries whose DefinitelyTyped package (`node` for `@types/node`) the project declares but the
+/// hermetic run does not have.
 ///
 /// Each would be a `Cannot find type definition file` program diagnostic, which the findings drop as a missing
 /// install; but tsc stops at the first group with any diagnostic, so left in, it would end the check before the
-/// semantic pass and hide every type error.
+/// semantic pass and hide every type error. Only `@types` packages are dropped: the globals they leave undeclared
+/// are reported with the install hints the findings drop, while those of another package's entry (`vite/client`'s
+/// `import.meta.env`) would surface as type errors the project does not have.
 fn drop_declared_types(config: &mut ParsedCommandLine, host_config: &Path, declared: &Declared) {
     let Some(base) = config.compiler_options() else {
         return;
@@ -253,7 +256,7 @@ fn drop_declared_types(config: &mut ParsedCommandLine, host_config: &Path, decla
     };
     let kept: Vec<String> = types
         .iter()
-        .filter(|entry| !declared.is_missing_install(host_config, TYPE_FILE_CODE, Some(entry), false))
+        .filter(|entry| !declared.declares(host_config, &types_package(entry)))
         .cloned()
         .collect();
     if kept.len() == types.len() {
