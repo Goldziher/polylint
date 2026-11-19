@@ -549,7 +549,7 @@ kept. `--write` outside a git work tree needs `--allow-dirty`, and writes `poly.
 | `--recurse` | Walk nested projects, skipping `.git`, `node_modules`, virtualenvs, build output and `.gitignore`d trees. |
 | `--verify` | Re-run lint and format after writing. |
 | `--strip-superseded` | Additionally strip `pyproject.toml` `[tool.*]` sections for the Python tools ruff supersedes — black, isort, flake8, … |
-| `--to-v2` | After the importers, rewrite `poly.toml` and `poly.local.toml` from the v1 to the v2 schema (ADR 0038), keeping comments. Conflicts with `--verify`. See [Migrating to the v2 config schema](/polylint/guides/migrating-to-v2/). |
+| `--to-v2` | Rewrite `poly.toml` and `poly.local.toml` from the v1 to the v2 schema (ADR 0038), keeping comments. Only poly's own configs change: the importers do not run, so foreign tool configs are neither absorbed nor deleted. With `--recurse`, every directory holding a poly config is rewritten. Conflicts with `--verify` and `--strip-superseded`. See [Migrating to the v2 config schema](/polylint/guides/migrating-to-v2/). |
 | `--allow-dirty` | Let it write into a repository with uncommitted changes, or outside a git work tree (deleted source configs are then unrecoverable). |
 
 It takes an optional path, defaulting to the current directory.

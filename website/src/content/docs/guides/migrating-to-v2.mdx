@@ -27,8 +27,10 @@ poly migrate --to-v2 --write    # rewrite poly.toml and poly.local.toml, keeping
 poly config validate            # check the result against the component index, offline
 ```
 
-`--to-v2` is idempotent: a file with no v1 constructs is left untouched. It conflicts with
-`--verify`. Anything it cannot place without loss is listed in the plan's notes.
+`--to-v2` is idempotent: a file with no v1 constructs is left untouched. It changes poly's own
+configs only: `pyproject.toml [tool.ruff]`, `_typos.toml` and the other tool configs a plain
+`poly migrate` absorbs stay where they are. It conflicts with `--verify` and
+`--strip-superseded`. Anything it cannot place without loss is listed in the plan's notes.
 
 ## Config changes
 

@@ -27,6 +27,11 @@ binary drives lint, format, hooks, and commit checks from one `poly.toml`.
 - **`inherit_mode` validates in `[engines.<id>]` tables.** `poly config validate` reported it as an unknown option
   of the engine, so a nested config that replaces its parent's ruff settings, as `poly migrate --to-v2` writes one
   from a v1 `[lint.python.ruff]`, failed validation; it is a merge directive the loader already honoured.
+- **`poly migrate --to-v2` converts poly's own configs only.** It also ran the foreign-config importers, so it
+  absorbed `pyproject.toml [tool.ruff]` and `_typos.toml` into `poly.toml` and deleted or stripped them, and with
+  `--recurse` planned a new `poly.toml` for every directory holding a `pyproject.toml`. It now rewrites `poly.toml` and
+  `poly.local.toml` alone, visits only directories that hold one, and never creates a `poly.toml`; absorbing tool
+  configs stays the plain `poly migrate`. `--to-v2` now conflicts with `--strip-superseded`.
 
 ## [0.36.0] - 2026-11-18
 

@@ -107,10 +107,11 @@ pub struct MigrateArgs {
     #[arg(long)]
     pub strip_superseded: bool,
 
-    /// After the foreign-config importers, rewrite `poly.toml` (and `poly.local.toml`) from the
-    /// v1 schema to the v2 schema, keeping comments (ADR 0038). With `--recurse`, nested
-    /// configs are rewritten too.
-    #[arg(long, conflicts_with = "verify")]
+    /// Rewrite `poly.toml` (and `poly.local.toml`) from the v1 schema to the v2 schema, keeping
+    /// comments (ADR 0038). Only poly's own configs change: foreign tool configs stay where they
+    /// are (absorbing them is a plain `poly migrate`). With `--recurse`, every nested poly config
+    /// is rewritten too.
+    #[arg(long, conflicts_with_all = ["verify", "strip_superseded"])]
     pub to_v2: bool,
 }
 
@@ -200,16 +201,19 @@ fn run(args: MigrateArgs) -> Result<ExitCode> {
 
     let mut any_change = false;
     for dir in &dirs {
-        let mut plan = build_plan(dir)?;
-        if dir != &root {
+        let mut plan = if args.to_v2 {
+            let mut plan = poly_config_plan(dir)?;
+            v2::apply_to_plan(&mut plan)?;
+            plan
+        } else {
+            build_plan(dir)?
+        };
+        if dir != &root && !args.to_v2 {
             mark_replacing_ruff(&mut plan);
             note_nested_hooks(&mut plan);
         }
         if args.strip_superseded {
             plan.actions.extend(superseded_actions(dir));
-        }
-        if args.to_v2 {
-            v2::apply_to_plan(&mut plan)?;
         }
         if plan.results.iter().any(|r| r.absorb != Absorb::None)
             || !plan.kept.is_empty()
@@ -281,6 +285,34 @@ pub fn build_plan(dir: &Path) -> Result<MigrationPlan> {
         kept,
         conflicts,
         parse_errors,
+        v2: None,
+        local_v2: None,
+    })
+}
+
+/// The plan of a `--to-v2` run for one directory: its own `poly.toml`, with no importer run, so
+/// foreign tool configs are neither absorbed nor deleted.
+fn poly_config_plan(dir: &Path) -> Result<MigrationPlan> {
+    let poly_toml_path = dir.join("poly.toml");
+    let existed = poly_toml_path.is_file();
+    let doc = if existed {
+        let text = std::fs::read_to_string(&poly_toml_path)
+            .with_context(|| format!("reading {}", poly_toml_path.display()))?;
+        text.parse::<DocumentMut>()
+            .with_context(|| format!("parsing {}", poly_toml_path.display()))?
+    } else {
+        DocumentMut::new()
+    };
+    Ok(MigrationPlan {
+        dir: dir.to_path_buf(),
+        poly_toml_path,
+        existed,
+        doc,
+        results: Vec::new(),
+        actions: Vec::new(),
+        kept: Vec::new(),
+        conflicts: Vec::new(),
+        parse_errors: Vec::new(),
         v2: None,
         local_v2: None,
     })
@@ -358,8 +390,11 @@ fn set_replace_marker(root: &mut toml_edit::Table, path: &[&str]) -> bool {
 
 /// Apply a plan: write `poly.toml`, then delete/strip absorbed sources.
 fn apply_plan(plan: &MigrationPlan) -> Result<()> {
-    write_atomic(&plan.poly_toml_path, &plan.doc.to_string())
-        .with_context(|| format!("writing {}", plan.poly_toml_path.display()))?;
+    // A directory with only a `poly.local.toml` to rewrite gets no empty `poly.toml` beside it.
+    if plan.existed || plan.results.iter().any(ImportResult::has_fragments) {
+        write_atomic(&plan.poly_toml_path, &plan.doc.to_string())
+            .with_context(|| format!("writing {}", plan.poly_toml_path.display()))?;
+    }
     if let Some(local) = &plan.local_v2 {
         write_atomic(&local.path, &local.doc.to_string())
             .with_context(|| format!("writing {}", local.path.display()))?;
@@ -512,10 +547,11 @@ fn discover_dirs(root: &Path, to_v2: bool) -> Vec<PathBuf> {
         .collect()
 }
 
-/// Whether `dir` directly contains any migratable source file; under `--to-v2` a poly config is one.
+/// Whether `dir` directly contains a source to migrate: under `--to-v2` a poly config, else a
+/// foreign tool config.
 fn dir_has_source(dir: &Path, to_v2: bool) -> bool {
-    MIGRATABLE_SOURCES.iter().any(|name| dir.join(name).is_file())
-        || (to_v2 && V2_SOURCES.iter().any(|name| dir.join(name).is_file()))
+    let sources = if to_v2 { V2_SOURCES } else { MIGRATABLE_SOURCES };
+    sources.iter().any(|name| dir.join(name).is_file())
 }
 
 /// The run options `--verify` re-runs lint and format under.
