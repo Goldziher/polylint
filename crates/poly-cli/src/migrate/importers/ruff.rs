@@ -64,10 +64,15 @@ pub fn import(dir: &Path) -> Option<ImportResult> {
         ruff_entries.push(("line_length".to_string(), int_item(value)));
     }
 
-    let mut select = toml_string_list(pick("select"));
-    select.extend(toml_string_list(pick("extend-select")));
-    if !select.is_empty() {
+    // `extend-select` adds to `select`, or to ruff's defaults when there is none: folded into a
+    // `select` of its own it would drop the defaults.
+    let extend_select = toml_string_list(pick("extend-select"));
+    if pick("select").is_some() {
+        let mut select = toml_string_list(pick("select"));
+        select.extend(extend_select);
         ruff_entries.push(("select".to_string(), str_array(&select)));
+    } else if !extend_select.is_empty() {
+        ruff_entries.push(("extend_select".to_string(), str_array(&extend_select)));
     }
     let mut ignore = toml_string_list(pick("ignore"));
     ignore.extend(toml_string_list(pick("extend-ignore")));

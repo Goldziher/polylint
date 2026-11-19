@@ -22,6 +22,8 @@ binary drives lint, format, hooks, and commit checks from one `poly.toml`.
   install, but tsc stops at the first diagnostic group that has any, so no type error in the project was reported.
   Such entries are now left out of the program, and the semantic check runs. `report_unresolved_modules = true` keeps
   them and reports the `TS2688`.
+- **`poly migrate` keeps ruff's `extend-select` an extension.** A `[tool.ruff]` with `extend-select` and no `select`
+  was absorbed as `select`, which drops ruff's default rules; it is now written as `extend_select`.
 
 ## [0.36.0] - 2026-11-18
 

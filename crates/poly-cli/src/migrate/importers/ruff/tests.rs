@@ -575,3 +575,27 @@ fn a_plugin_key_ruff_does_not_define_is_still_reported() {
         Absorb::Partial(vec!["lint.flake8-bugbear.made-up".to_string()])
     );
 }
+
+/// `extend-select` without `select` adds to ruff's default rules; written as `select` it would replace them.
+#[test]
+fn extend_select_without_select_keeps_the_ruff_defaults() {
+    let dir = tempdir().unwrap();
+    std::fs::write(
+        dir.path().join("pyproject.toml"),
+        "[tool.ruff.lint]\nextend-select = [\"B\", \"UP\"]\n",
+    )
+    .unwrap();
+    let result = import(dir.path()).unwrap();
+    let mut doc = DocumentMut::new();
+    super::super::apply(&mut doc, &result.fragments);
+    let doc: toml::Table = toml::from_str(&doc.to_string()).unwrap();
+    let ruff = doc["lint"]["python"]["ruff"].as_table().unwrap();
+    assert!(!ruff.contains_key("select"), "{ruff:?}");
+    let extend: Vec<&str> = ruff["extend_select"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .filter_map(|v| v.as_str())
+        .collect();
+    assert_eq!(extend, ["B", "UP"]);
+}
