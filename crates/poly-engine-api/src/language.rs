@@ -394,6 +394,8 @@ impl Language {
             "lua" => Language::Lua,
             "make" | "makefile" => Language::Other("make".to_string()),
             "vim" | "vimscript" => Language::Other("vim".to_string()),
+            // The tree-sitter pack routes `.m` files as `objc`.
+            "objective-c" | "objc" => Language::Other("objc".to_string()),
             other => Language::Other(other.to_string()),
         }
     }

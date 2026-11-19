@@ -86,6 +86,10 @@ pub(super) struct RecipeTool {
     filter: Option<Filter>,
     /// The user's `files`, when set: the files the tool claims from a language's own formatter.
     files: Option<Vec<String>>,
+    /// The user's `exclude`: files the tool leaves to the language's own formatter.
+    exclude: Vec<String>,
+    /// The user's `root`, which `files` and `exclude` are relative to.
+    root: Option<String>,
     /// Context files copied beside a scratch copy: markers and config names.
     context_names: Vec<String>,
     /// The part of the cache key that does not vary per file.
@@ -246,6 +250,12 @@ impl RecipeTool {
             fix_passes,
             filter: filter_for(tool, config)?,
             files: config.files.as_ref().map(|files| files.as_slice().to_vec()),
+            exclude: config
+                .exclude
+                .as_ref()
+                .map(|patterns| patterns.as_slice().to_vec())
+                .unwrap_or_default(),
+            root: config.root.clone(),
             context_names,
             version,
             units,
@@ -279,7 +289,31 @@ impl RecipeTool {
     /// The globs of the files this tool formats, for displacing the tier-one
     /// formatter from them: the user's `files`, else the catalog's `path_globs`.
     pub(super) fn claimed_globs(&self) -> Vec<String> {
-        self.files.clone().unwrap_or_else(|| self.tool.path_globs.clone())
+        match &self.files {
+            Some(files) => self.under_root(files),
+            None => self.tool.path_globs.clone(),
+        }
+    }
+
+    /// The user's `exclude`, as globs relative to the run root like [`RecipeTool::claimed_globs`].
+    pub(super) fn unclaimed_globs(&self) -> Vec<String> {
+        self.under_root(&self.exclude)
+    }
+
+    /// `patterns`, written relative to the tool's `root`, as globs relative to the run root.
+    fn under_root(&self, patterns: &[String]) -> Vec<String> {
+        let root = self
+            .root
+            .as_deref()
+            .map(|root| root.trim_matches('/'))
+            .filter(|root| !root.is_empty() && *root != ".");
+        patterns
+            .iter()
+            .map(|pattern| match root {
+                Some(root) => format!("{root}/{pattern}"),
+                None => pattern.clone(),
+            })
+            .collect()
     }
 
     /// Whether the user's `files` names the files this tool takes.

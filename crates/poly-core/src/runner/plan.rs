@@ -18,7 +18,7 @@ use crate::config::{Config, EngineConfig, Kind};
 use crate::discover::DiscoveredFile;
 use crate::engine::{ENABLED_OPTION_KEY, Engine};
 use crate::engines::catalog_tool::{CatalogToolEngine, LintRefusal};
-use crate::engines::format_scope::FormatScope;
+use crate::engines::format_scope::{Claim, FormatScope};
 use crate::engines::rule_config::RuleSelection;
 use crate::filter::SeverityRemap;
 use crate::host_hooks::oxfmt_native::FormatIgnore;
@@ -452,14 +452,14 @@ pub(super) fn plan_engines_with(
                 .into_iter()
                 .filter(|engine| engine.supplements_tier_one())
                 .collect();
-            let claimed: Vec<String> = scoped.iter().flat_map(|engine| engine.claimed_paths()).collect();
-            if let Some(set) = glob_set(&claimed) {
+            let claims = || claims_of(&scoped);
+            if !claims().is_empty() {
                 engines = engines
                     .into_iter()
                     .map(|engine| -> Box<dyn Engine> {
                         let cfg = config.engine_config(language, engine.name(), kind);
                         if engine.provides_language_format(language, &cfg) {
-                            Box::new(FormatScope::new(engine, set.clone()))
+                            Box::new(FormatScope::with_claims(engine, claims()))
                         } else {
                             engine
                         }
@@ -472,7 +472,21 @@ pub(super) fn plan_engines_with(
         retaining_capable(catalog_engines_for(language, config, kind), kind)
     };
     if generic_formatter_superseded(kind, &catalog) {
-        engines.retain(|engine| engine.name() != TREE_SITTER_ENGINE);
+        // A tool confined by `files` takes only those files from the generic formatter.
+        if catalog.iter().all(|engine| engine.supplements_tier_one()) {
+            engines = engines
+                .into_iter()
+                .map(|engine| -> Box<dyn Engine> {
+                    if engine.name() == TREE_SITTER_ENGINE {
+                        Box::new(FormatScope::with_claims(engine, claims_of(&catalog)))
+                    } else {
+                        engine
+                    }
+                })
+                .collect();
+        } else {
+            engines.retain(|engine| engine.name() != TREE_SITTER_ENGINE);
+        }
     }
     let merged = merge_catalog_engines(language, config, kind, engines, catalog);
     let (merged, selection_emptied) = selection::apply(selection, merged, language, config, kind);
@@ -832,6 +846,17 @@ pub(super) fn plan_by_config_language(
 // These tests lint real Python/JS/... sources, so they need every engine family.
 #[cfg(all(test, feature = "all-engines"))]
 mod tests;
+
+/// The files each of `scoped` claims, less its own excludes, which it leaves to the formatter it supplements.
+fn claims_of(scoped: &[Box<dyn Engine>]) -> Vec<Claim> {
+    scoped
+        .iter()
+        .filter_map(|engine| {
+            let files = glob_set(&engine.claimed_paths())?;
+            Some(Claim::new(files, glob_set(&engine.unclaimed_paths())))
+        })
+        .collect()
+}
 
 fn glob_set(patterns: &[String]) -> Option<globset::GlobSet> {
     if patterns.is_empty() {

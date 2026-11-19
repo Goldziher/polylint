@@ -357,6 +357,37 @@ fn clang_format_takes_only_the_c_family_unless_files_names_more() {
     }
 }
 
+/// An Objective-C file is routed by the tree-sitter pack's name for it, which is not the catalog's.
+#[test]
+fn clang_format_takes_a_routed_objective_c_file() {
+    let enabled = Config {
+        tools: toml::from_str("[clang-format]\nenabled = true\n").expect("valid tool config"),
+        ..Config::default()
+    };
+    let language = crate::discover::detect(std::path::Path::new("src/View.m")).expect("a language for .m");
+    assert_eq!(
+        catalog_engines_for(&language, &enabled, Kind::Format).len(),
+        1,
+        "{language:?}"
+    );
+}
+
+/// clang-format confined by `files` to JSON keeps C files outside the claim with the generic formatter
+/// instead of leaving them to a tool that will not touch them.
+#[cfg(unix)]
+#[test]
+fn a_files_confined_catalog_formatter_leaves_the_rest_of_the_language_to_the_generic_one() {
+    let config = Config {
+        tools: toml::from_str("[clang-format]\nenabled = true\nbin = \"/bin/cat\"\nfiles = [\"**/*.json\"]\n")
+            .expect("valid tool config"),
+        ..Config::default()
+    };
+    let plan = plan_engines(&Language::C, &config, Kind::Format, unrestricted(), &mut None);
+    let names: Vec<&str> = plan.iter().map(|entry| entry.engine.name()).collect();
+    assert!(names.contains(&"clang-format"), "{names:?}");
+    assert!(names.contains(&TREE_SITTER_ENGINE), "{names:?}");
+}
+
 /// Build a config from a literal `poly.toml` body, so these tests exercise
 /// the same parse path a user's file takes.
 fn config_from(source: &str) -> Config {

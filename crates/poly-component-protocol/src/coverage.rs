@@ -53,6 +53,10 @@ pub const ENGINE_METHODS: &[(&str, Coverage)] = &[
         Coverage::Index("WireEngineDesc.takes_over_tier_one"),
     ),
     ("claimed_paths", Coverage::Index("WireEngineDesc.claimed_paths")),
+    (
+        "unclaimed_paths",
+        Coverage::HostSide("only a host catalog tool's `[tools.<name>] exclude` leaves files of a claim"),
+    ),
     ("host_hook", Coverage::Index("WireEngineDesc.host_hook")),
     (
         "supplements_tier_one",

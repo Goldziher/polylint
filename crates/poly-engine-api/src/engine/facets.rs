@@ -258,6 +258,12 @@ pub trait CatalogTakeover: Engine {
         Vec::new()
     }
 
+    /// Glob patterns of files among [`CatalogTakeover::claimed_paths`] this backend still leaves to
+    /// the tier-one formatter (the user's `exclude`).
+    fn unclaimed_paths(&self) -> Vec<String> {
+        Vec::new()
+    }
+
     /// Whether this catalog backend, confined to named files, may run in
     /// addition to the language's tier-one formatter.
     fn supplements_tier_one(&self) -> bool {
@@ -388,6 +394,12 @@ impl dyn Engine + '_ {
     pub fn claimed_paths(&self) -> Vec<String> {
         self.catalog_takeover()
             .map_or_else(Vec::new, |facet| facet.claimed_paths())
+    }
+
+    /// [`CatalogTakeover::unclaimed_paths`], or none for an engine without the facet.
+    pub fn unclaimed_paths(&self) -> Vec<String> {
+        self.catalog_takeover()
+            .map_or_else(Vec::new, |facet| facet.unclaimed_paths())
     }
 
     /// [`CatalogTakeover::supplements_tier_one`], or `false` for an engine without the facet.

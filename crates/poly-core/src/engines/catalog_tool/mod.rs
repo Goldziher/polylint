@@ -730,6 +730,10 @@ impl CatalogTakeover for CatalogToolEngine {
         self.recipe.as_ref().map_or_else(Vec::new, RecipeTool::claimed_globs)
     }
 
+    fn unclaimed_paths(&self) -> Vec<String> {
+        self.recipe.as_ref().map_or_else(Vec::new, RecipeTool::unclaimed_globs)
+    }
+
     fn supplements_tier_one(&self) -> bool {
         let user_scoped = self.recipe.as_ref().is_some_and(RecipeTool::user_scoped);
         !self.is_lint() && (!self.tool.path_globs.is_empty() || user_scoped) && self.tool.recipe.is_some()

@@ -1165,3 +1165,21 @@ fn files_scopes_the_tool_to_the_files_it_names() {
     assert!(scoped.user_scoped());
     assert_eq!(scoped.claimed_globs(), ["src/**/*.c"]);
 }
+
+/// What the tool claims from the language's own formatter is `files` less `exclude`, both read from the
+/// tool's `root`, as the tool itself reads them.
+#[test]
+fn the_claim_carries_exclude_and_the_tool_root() {
+    let fx = Fixture::new();
+    let mut config = fx.config(fx.script("fmt", UPPERCASER));
+    config.files = Some(vec!["src/**/*.c".to_owned()].into());
+    config.exclude = Some(vec!["src/vendor/**".to_owned()].into());
+    let tool = fx.tool("run $FILES", serde_json::json!({}), Role::Format, &config);
+    assert_eq!(tool.claimed_globs(), ["src/**/*.c"]);
+    assert_eq!(tool.unclaimed_globs(), ["src/vendor/**"]);
+
+    config.root = Some("native".to_owned());
+    let rooted = fx.tool("run $FILES", serde_json::json!({}), Role::Format, &config);
+    assert_eq!(rooted.claimed_globs(), ["native/src/**/*.c"]);
+    assert_eq!(rooted.unclaimed_globs(), ["native/src/vendor/**"]);
+}

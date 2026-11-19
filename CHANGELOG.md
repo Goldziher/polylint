@@ -13,10 +13,12 @@ binary drives lint, format, hooks, and commit checks from one `poly.toml`.
   meant for C sources, displaced the language's own formatter, so `poly fmt` rewrote `tsconfig.json` to the
   `.clang-format` indent. It now takes C, C++ and Objective-C; the other languages it knows reach it only when
   `[tools.clang-format] files` names them, and then it formats those files alone, beside the language's formatter. The
-  generic formatter likewise stands aside under a `.clang-format` for C-family files only.
+  generic formatter likewise stands aside under a `.clang-format` for C-family files only. Objective-C `.m` files now
+  reach clang-format at all: the catalog's `objective-c` did not match the language they are routed as.
 - **`[tools.<name>] files` and `exclude` take effect.** The result cache key left them out, so a run replayed what the
   tool had done before they changed; and a tool without a recipe ignored both. A recipe tool with `files` set claims
-  those files from the language's formatter instead of taking the whole language.
+  those files, less its `exclude` and read from its `root`, from the language's formatter (or the generic one) instead
+  of taking the whole language.
 - **tsrs type-checks a project whose tsconfig lists a declared `types` package.** `"types": ["node"]` with
   `@types/node` declared but not installed produced a `TS2688` program diagnostic; poly dropped it as a missing
   install, but tsc stops at the first diagnostic group that has any, so no type error in the project was reported.

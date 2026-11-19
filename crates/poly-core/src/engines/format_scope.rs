@@ -18,20 +18,43 @@ use crate::engine::{
 };
 use crate::language::Language;
 
-/// An engine that does not format the files `claimed` matches.
+/// The files one formatter claims: those `files` matches and `except` does not.
+pub struct Claim {
+    files: GlobSet,
+    except: Option<GlobSet>,
+}
+
+impl Claim {
+    /// Files matching `files`, less those matching `except`.
+    pub fn new(files: GlobSet, except: Option<GlobSet>) -> Self {
+        Claim { files, except }
+    }
+
+    fn matches(&self, path: &std::path::Path) -> bool {
+        self.files.is_match(path) && !self.except.as_ref().is_some_and(|set| set.is_match(path))
+    }
+}
+
+/// An engine that does not format the files its claims match.
 pub struct FormatScope {
     inner: Box<dyn Engine>,
-    claimed: GlobSet,
+    claims: Vec<Claim>,
 }
 
 impl FormatScope {
     /// Wrap `inner` so it leaves the files matching `claimed` to someone else.
     pub fn new(inner: Box<dyn Engine>, claimed: GlobSet) -> Self {
-        FormatScope { inner, claimed }
+        Self::with_claims(inner, vec![Claim::new(claimed, None)])
+    }
+
+    /// Wrap `inner` so it leaves the files of every claim to someone else.
+    pub fn with_claims(inner: Box<dyn Engine>, claims: Vec<Claim>) -> Self {
+        FormatScope { inner, claims }
     }
 
     fn claims(&self, src: &SourceFile) -> bool {
-        self.claimed.is_match(poly_engine_api::run_root::relative(&src.path))
+        let path = poly_engine_api::run_root::relative(&src.path);
+        self.claims.iter().any(|claim| claim.matches(path))
     }
 }
 
@@ -216,6 +239,10 @@ impl CatalogTakeover for FormatScope {
         self.inner.claimed_paths()
     }
 
+    fn unclaimed_paths(&self) -> Vec<String> {
+        self.inner.unclaimed_paths()
+    }
+
     fn supplements_tier_one(&self) -> bool {
         self.inner.supplements_tier_one()
     }
@@ -306,6 +333,28 @@ mod tests {
         assert!(matches!(
             engine.format(&source("svc/other.toml"), &cfg()),
             Ok(FormatOutput::Formatted(text)) if text == "A = 1\n"
+        ));
+    }
+
+    /// A file the specific formatter excludes stays with the wrapped formatter, or nobody formats it.
+    #[test]
+    fn a_file_the_claim_excepts_is_formatted_by_the_wrapped_engine() {
+        let set = |pattern: &str| {
+            let mut builder = GlobSetBuilder::new();
+            builder.add(Glob::new(pattern).expect("glob"));
+            builder.build().expect("set")
+        };
+        let engine = FormatScope::with_claims(
+            Box::new(Upper),
+            vec![Claim::new(set("**/*.toml"), Some(set("vendor/**")))],
+        );
+        assert!(matches!(
+            engine.format(&source("svc/a.toml"), &cfg()),
+            Ok(FormatOutput::Unchanged)
+        ));
+        assert!(matches!(
+            engine.format(&source("vendor/a.toml"), &cfg()),
+            Ok(FormatOutput::Formatted(_))
         ));
     }
 
