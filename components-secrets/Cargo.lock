@@ -3436,11 +3436,11 @@ checksum = "f6b464fbc74e149a392436b17d523f769e057cb6877f6a5c4618bc6f11800548"
 
 [[package]]
 name = "poly-buildinfo"
-version = "0.36.0"
+version = "0.36.1"
 
 [[package]]
 name = "poly-cache"
-version = "0.36.0"
+version = "0.36.1"
 dependencies = [
  "anyhow",
  "blake3",
@@ -3455,7 +3455,7 @@ dependencies = [
 
 [[package]]
 name = "poly-catalog"
-version = "0.36.0"
+version = "0.36.1"
 dependencies = [
  "anyhow",
  "serde",
@@ -3464,7 +3464,7 @@ dependencies = [
 
 [[package]]
 name = "poly-component-host"
-version = "0.36.0"
+version = "0.36.1"
 dependencies = [
  "alef-component-abi",
  "alef-component-runtime",
@@ -3479,7 +3479,7 @@ dependencies = [
 
 [[package]]
 name = "poly-component-index"
-version = "0.36.0"
+version = "0.36.1"
 dependencies = [
  "poly-component-protocol",
  "serde",
@@ -3489,7 +3489,7 @@ dependencies = [
 
 [[package]]
 name = "poly-component-protocol"
-version = "0.36.0"
+version = "0.36.1"
 dependencies = [
  "rmp-serde",
  "serde",
@@ -3500,7 +3500,7 @@ dependencies = [
 
 [[package]]
 name = "poly-config"
-version = "0.36.0"
+version = "0.36.1"
 dependencies = [
  "anyhow",
  "blake3",
@@ -3518,7 +3518,7 @@ dependencies = [
 
 [[package]]
 name = "poly-core"
-version = "0.36.0"
+version = "0.36.1"
 dependencies = [
  "anyhow",
  "blake3",
@@ -3561,7 +3561,7 @@ dependencies = [
 
 [[package]]
 name = "poly-engine-api"
-version = "0.36.0"
+version = "0.36.1"
 dependencies = [
  "anyhow",
  "blake3",
@@ -3580,7 +3580,7 @@ dependencies = [
 
 [[package]]
 name = "poly-engines"
-version = "0.36.0"
+version = "0.36.1"
 dependencies = [
  "anyhow",
  "poly-component-protocol",
@@ -3592,7 +3592,7 @@ dependencies = [
 
 [[package]]
 name = "poly-engines-astgrep"
-version = "0.36.0"
+version = "0.36.1"
 dependencies = [
  "anyhow",
  "ast-grep-config",
@@ -3610,7 +3610,7 @@ dependencies = [
 
 [[package]]
 name = "poly-engines-misc"
-version = "0.36.0"
+version = "0.36.1"
 dependencies = [
  "anyhow",
  "dockerfile-parser",
@@ -3627,7 +3627,7 @@ dependencies = [
 
 [[package]]
 name = "poly-engines-secrets"
-version = "0.36.0"
+version = "0.36.1"
 dependencies = [
  "anyhow",
  "kingfisher-rules",
@@ -3647,7 +3647,7 @@ dependencies = [
 
 [[package]]
 name = "poly-engines-secrets-component"
-version = "0.36.0"
+version = "0.36.1"
 dependencies = [
  "alef-component-abi",
  "poly-engines",
@@ -3656,7 +3656,7 @@ dependencies = [
 
 [[package]]
 name = "poly-engines-uncomment"
-version = "0.36.0"
+version = "0.36.1"
 dependencies = [
  "anyhow",
  "poly-engine-api",
@@ -3668,7 +3668,7 @@ dependencies = [
 
 [[package]]
 name = "poly-grammar"
-version = "0.36.0"
+version = "0.36.1"
 dependencies = [
  "poly-config",
  "thiserror 2.0.21",

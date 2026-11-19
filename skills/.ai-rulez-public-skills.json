@@ -2,15 +2,15 @@
   "source": "plugin/skills",
   "skill_count": 5,
   "files": {
-    "poly-lint-and-format/SKILL.md": "5d436d7c253fbbff6f1721258f535a28696d19efd10e13bbca939161135c26b1",
-    "poly-lint-and-format/index.md": "4404546f0c73fcecf8e13569138d6e87e7df17bc9b1ba221d2f677e44164ac57",
-    "poly-mcp/SKILL.md": "1ca66dedd245c75f902df474f2e7b3bb3561bbd1f424fdea706d6e6ffa5ab74a",
-    "poly-mcp/index.md": "88de1334bddaba6477089569f462d6bd13cc8f6b60f5f9b7d48e18c94a2102c8",
-    "poly-orchestrator/SKILL.md": "f172739694aa02a68a8351b78868492fbc7314f04b1ceb7085b9594807a40f87",
-    "poly-orchestrator/index.md": "bfbd1def9eeb961fdb56cb3f51678b5e2e645e3090c7e9624eede94f0846987d",
-    "poly-overview/SKILL.md": "dfebb357c92c62bc424b4ab25468d83c22843bfab4b8a457c11df10d4eb1a6ab",
-    "poly-overview/index.md": "23adedcc7bd6f80dc14d5709d9f338591b2ad1d7ab1c504a49f10d93b236ce56",
-    "poly-tiers-and-scope/SKILL.md": "25e3fb7d949006c2e429dc7d993a9598c5b0e2a72ed917b453c65f65a5ccc825",
-    "poly-tiers-and-scope/index.md": "0ce333a493449ad80e4e6320dbfeebcef605fca0479cf2fd4b378c0d59bcb9fb"
+    "poly-lint-and-format/SKILL.md": "4e8e07f3feea44c90e2c64a6b5daf0a3f7e867ecd98927c2e4ca5e5774bf0486",
+    "poly-lint-and-format/index.md": "9d415bd57fb2ac54635df1099f56bf47575b5a7ccaf60311c587d915d096021a",
+    "poly-mcp/SKILL.md": "50452ca50bf87252a6cc5ce64fdf26fc3d58aff7ca96390f5c81c53d28b845ee",
+    "poly-mcp/index.md": "56572f87439dd28e5295616b2fad457543efe40555354d146d8d1b65e02380bb",
+    "poly-orchestrator/SKILL.md": "10af81d3a8dfc9156fd4fe49a15f8f8bcc7843fc201d23260de0ef16396ef7ec",
+    "poly-orchestrator/index.md": "85ff3f10dba11e7c621cb700aa07b2ee3b810cb128dbcc07c253397221aefd39",
+    "poly-overview/SKILL.md": "6f0cef31f3d021a363b7bf114851a60f55f5d8c2fc03ff18919873dea2a2b866",
+    "poly-overview/index.md": "ad50dbea95680e8aa6df3640950f9c90285f6bc4ab2a67feb9e605703b1ccd2f",
+    "poly-tiers-and-scope/SKILL.md": "f6bc6c9898f4a6a567a4e26040b7bce865e94c8886c51ab7de5bd0a223b6f3b7",
+    "poly-tiers-and-scope/index.md": "d049421a9fef01d3d51c6908861cce75228b90c0a080dcbe30a16dce4fff2676"
   }
 }

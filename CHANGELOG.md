@@ -7,6 +7,8 @@ binary drives lint, format, hooks, and commit checks from one `poly.toml`.
 
 ## [Unreleased]
 
+## [0.36.1] - 2026-11-19
+
 ### Fixed
 
 - **clang-format no longer takes over JSON, JavaScript, Java, C# and protobuf.** `[tools.clang-format] enabled = true`,
