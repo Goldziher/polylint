@@ -699,7 +699,7 @@ fn catalog_engines_for(language: &Language, config: &Config, kind: Kind) -> Vec<
                 .languages
                 .iter()
                 .any(|catalog_lang| &Language::from_catalog_name(catalog_lang) == language);
-        if !serves_language {
+        if !serves_language || !takes_by_default(tool, tool_config, language) {
             continue;
         }
         if kind == Kind::Lint && tool.recipe.is_none() && crate::engines::catalog_tool::is_whole_project_linter(name) {
@@ -724,6 +724,19 @@ fn catalog_engines_for(language: &Language, config: &Config, kind: Kind) -> Vec<
         }
     }
     engines
+}
+
+/// Whether `tool` takes `language` as enabled: always when `files` names its files, else when the language
+/// is among the recipe's `default_languages` (all of the tool's languages when that list is empty).
+fn takes_by_default(tool: &poly_catalog::Tool, config: &poly_config::ToolConfig, language: &Language) -> bool {
+    config.files.is_some()
+        || tool.recipe.as_ref().is_none_or(|recipe| {
+            recipe.default_languages.is_empty()
+                || recipe
+                    .default_languages
+                    .iter()
+                    .any(|name| &Language::from_catalog_name(name) == language)
+        })
 }
 
 /// Warm the tree-sitter-language-pack grammars the generic (tier-2) backend will

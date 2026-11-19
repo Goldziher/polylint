@@ -1511,6 +1511,11 @@
         ".clang-format",
         "_clang-format"
       ],
+      "default_languages": [
+        "c",
+        "c++",
+        "objective-c"
+      ],
       "install": {
         "hint": "brew install clang-format, or set [tools.clang-format] version = \"21.1.8\" to use the pinned static build poly can download",
         "releases": {

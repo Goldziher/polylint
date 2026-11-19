@@ -233,6 +233,10 @@ pub struct Recipe {
     /// failure is reported for every file of the invocation and not retried on
     /// halves of it, which would only repeat it.
     pub unsplittable_exits: Vec<i32>,
+    /// The catalog languages the tool takes without `[tools.<name>] files` naming them; empty for all of the
+    /// tool's languages. clang-format knows JSON, JavaScript, Java, C# and protobuf, which have formatters of
+    /// their own, so enabling it for C must not hand it those.
+    pub default_languages: Vec<String>,
     /// Absence handling and pinned downloads.
     pub install: Option<Install>,
     /// Directories of the project root a scratch copy links to instead of copying: the tool

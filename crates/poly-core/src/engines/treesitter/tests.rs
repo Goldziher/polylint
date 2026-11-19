@@ -1618,6 +1618,22 @@ fn proguard_rules_are_left_untouched_not_formatted_as_prolog() {
     ));
 }
 
+/// clang-format formats Java, JavaScript and protobuf only when `[tools.clang-format] files` names them, so a
+/// `.clang-format` for the C sources of a repository leaves those languages with their own formatters.
+#[test]
+fn a_clang_format_file_leaves_languages_beyond_the_c_family_to_the_generic_formatter() {
+    let styled = tempfile::tempdir().unwrap();
+    std::fs::write(styled.path().join(".clang-format"), "BasedOnStyle: LLVM\n").unwrap();
+    for (name, language) in [
+        ("A.java", Language::Java),
+        ("a.js", Language::JavaScript),
+        ("a.proto", Language::Proto),
+    ] {
+        let file = src(styled.path().join(name).to_str().unwrap(), language.clone(), "x\n");
+        assert_eq!(TreeSitterEngine.skip_reason(&file), None, "{language:?}");
+    }
+}
+
 #[test]
 fn a_clang_format_file_takes_c_family_sources_out_of_the_generic_formatter() {
     let input = "int main(void) {\nreturn 0;\n}\n";

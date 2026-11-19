@@ -15,12 +15,12 @@ use crate::language::Language;
 pub(super) const SKIP: &str =
     "formatted by clang-format (.clang-format present); enable [tools.clang-format] to format it";
 
-/// Languages clang-format formats, by [`Language::id`] of the tier-2 routing.
+/// Languages clang-format takes by default (its catalog recipe's `default_languages`), by [`Language::id`] of the
+/// tier-2 routing. Java, JavaScript and protobuf reach it only through `[tools.clang-format] files`, so a
+/// `.clang-format` alone does not take them from this formatter.
 pub(super) fn is_clang_language(language: &Language) -> bool {
-    matches!(
-        language,
-        Language::C | Language::Cpp | Language::Java | Language::JavaScript | Language::Proto
-    ) || matches!(language, Language::Other(id) if matches!(id.as_str(), "objc" | "objectivec" | "objective-c"))
+    matches!(language, Language::C | Language::Cpp)
+        || matches!(language, Language::Other(id) if matches!(id.as_str(), "objc" | "objectivec" | "objective-c"))
 }
 
 fn memo() -> &'static RwLock<HashMap<PathBuf, bool>> {

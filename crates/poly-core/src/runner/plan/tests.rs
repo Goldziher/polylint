@@ -314,6 +314,49 @@ fn generic_language_allows_catalog_formatter() {
     assert!(plan.iter().any(|entry| entry.engine.name() == "clang-format"));
 }
 
+/// clang-format knows Java, JavaScript, JSON, C# and protobuf too, but each has a formatter of its own:
+/// enabling clang-format for a C header must not hand a `tsconfig.json` to it. Those languages reach it
+/// only through `files`.
+#[test]
+fn clang_format_takes_only_the_c_family_unless_files_names_more() {
+    let enabled = Config {
+        tools: toml::from_str("[clang-format]\nenabled = true\n").expect("valid tool config"),
+        ..Config::default()
+    };
+    for language in [Language::C, Language::Cpp, Language::from_catalog_name("objective-c")] {
+        assert_eq!(
+            catalog_engines_for(&language, &enabled, Kind::Format).len(),
+            1,
+            "clang-format formats {language:?}"
+        );
+    }
+    let others = [
+        Language::Json,
+        Language::JavaScript,
+        Language::Java,
+        Language::CSharp,
+        Language::Proto,
+    ];
+    for language in &others {
+        assert!(
+            catalog_engines_for(language, &enabled, Kind::Format).is_empty(),
+            "clang-format must not take {language:?} without `files`"
+        );
+    }
+    let scoped = Config {
+        tools: toml::from_str("[clang-format]\nenabled = true\nfiles = [\"**/*.proto\", \"**/*.json\"]\n")
+            .expect("valid tool config"),
+        ..Config::default()
+    };
+    for language in &others {
+        assert_eq!(
+            catalog_engines_for(language, &scoped, Kind::Format).len(),
+            1,
+            "`files` opts {language:?} in"
+        );
+    }
+}
+
 /// Build a config from a literal `poly.toml` body, so these tests exercise
 /// the same parse path a user's file takes.
 fn config_from(source: &str) -> Config {

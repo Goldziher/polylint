@@ -52,7 +52,7 @@ pre-commit gate typically runs, and `poly migrate` maps those jobs onto them.
 | `swiftlint` | lint | Swift files | SARIF (rule, URL) |
 | `scalafmt` | format | Scala files, in place on a scratch copy | -- |
 | `shellcheck` | lint | shell files | JSON (rule, line, column) |
-| `clang-format` | format | C, C++, Objective-C, Java, JavaScript, JSON and protobuf files, in place on a scratch copy | -- |
+| `clang-format` | format | C, C++ and Objective-C files, in place on a scratch copy; Java, JavaScript, JSON, C# and protobuf only through `files` | -- |
 | `zizmor` | lint | all workflow files | SARIF (rule, URL) |
 | `kubeconform` | lint | Kubernetes manifests, all files | JSON (kind, name; line from the resource's document) |
 | `ktlint` | lint, fix | Kotlin files, one JVM per shard | JSON (rule, line, column) |

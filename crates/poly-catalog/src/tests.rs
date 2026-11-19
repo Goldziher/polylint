@@ -366,6 +366,7 @@ fn clang_format_is_a_pinned_static_download_formatted_in_place_with_project_conf
     assert_eq!(format.arguments, ["-i", "$FILES"]);
     let recipe = recipe_of("clang-format");
     assert_eq!(recipe.config_files, [".clang-format", "_clang-format"]);
+    assert_eq!(recipe.default_languages, ["c", "c++", "objective-c"]);
     let install = recipe.install.as_ref().expect("install");
     assert!(
         install.source.is_none(),
