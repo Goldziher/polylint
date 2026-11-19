@@ -552,6 +552,10 @@ mod tests {
             self.note("claimed_paths");
             Vec::new()
         }
+        fn unclaimed_paths(&self) -> Vec<String> {
+            self.note("unclaimed_paths");
+            Vec::new()
+        }
         fn supplements_tier_one(&self) -> bool {
             self.note("supplements_tier_one");
             false
@@ -671,6 +675,9 @@ mod tests {
             }
             "claimed_paths" => {
                 let _ = engine.claimed_paths();
+            }
+            "unclaimed_paths" => {
+                let _ = engine.unclaimed_paths();
             }
             "supplements_tier_one" => {
                 let _ = engine.supplements_tier_one();
