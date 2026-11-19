@@ -351,6 +351,56 @@ fn an_extended_package_nothing_declares_stays_an_error() {
 }
 
 #[test]
+fn a_declared_types_entry_that_is_not_installed_does_not_stop_the_check() {
+    let config = tsconfig(r#", "types": ["node"]"#);
+    let package = r#"{ "devDependencies": { "@types/node": "22.0.0" } }"#;
+    let source = "export const a: number = \"x\";\nexport const cwd: string = process.cwd();\n";
+    let files = [
+        ("tsconfig.json", config.as_str()),
+        ("package.json", package),
+        ("src/a.ts", source),
+    ];
+    assert_eq!(
+        triples(&check(&files, "")),
+        [triple("src/a.ts", "TS2322", 1)],
+        "the missing @types/node is dropped and the source is still type-checked"
+    );
+    assert_eq!(
+        codes(&check(&files, "report_unresolved_modules = true")),
+        [("tsconfig.json".to_owned(), "TS2688".to_owned())],
+        "asked for, the missing type definition is reported as tsc reports it"
+    );
+}
+
+/// `(path relative to the root, code)` of every finding, sorted: a program diagnostic has no span.
+fn codes(found: &Findings) -> Vec<(String, String)> {
+    let mut out: Vec<_> = found
+        .iter()
+        .flat_map(|(path, diagnostics)| {
+            diagnostics
+                .iter()
+                .map(move |d| (slashed(path), d.code.clone().expect("a code")))
+        })
+        .collect();
+    out.sort();
+    out
+}
+
+#[test]
+fn an_undeclared_types_entry_stays_an_error() {
+    let config = tsconfig(r#", "types": ["node"]"#);
+    let found = check(
+        &[
+            ("tsconfig.json", &config),
+            ("package.json", r#"{ "dependencies": { "left-pad": "1.0.0" } }"#),
+            ("src/a.ts", "export const a: number = \"x\";\n"),
+        ],
+        "",
+    );
+    assert_eq!(codes(&found), [("tsconfig.json".to_owned(), "TS2688".to_owned())]);
+}
+
+#[test]
 fn declared_packages_are_scoped_to_the_package_that_imports_them() {
     let config = r#"{ "compilerOptions": { "target": "es2022", "module": "esnext", "moduleResolution": "bundler" }, "include": ["packages"] }"#;
     let a = manifest(r#""only-a": "1.0.0""#);

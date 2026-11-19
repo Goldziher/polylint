@@ -28,7 +28,7 @@ use tsrs_core::{CompilerOptions, P, Tristate, tspath};
 use tsrs_diagnostics::Category;
 use tsrs_tsoptions::ParsedCommandLine;
 
-use crate::external::{Declared, package_name};
+use crate::external::{Declared, TYPE_FILE_CODE, package_name};
 use crate::settings::Settings;
 use crate::vfs::{tsrs_name, tsrs_path};
 
@@ -239,6 +239,32 @@ fn forgive_declared_extends(
     warnings
 }
 
+/// Drops the `types` entries of packages the project declares but the hermetic run does not have.
+///
+/// Each would be a `Cannot find type definition file` program diagnostic, which the findings drop as a missing
+/// install; but tsc stops at the first group with any diagnostic, so left in, it would end the check before the
+/// semantic pass and hide every type error.
+fn drop_declared_types(config: &mut ParsedCommandLine, host_config: &Path, declared: &Declared) {
+    let Some(base) = config.compiler_options() else {
+        return;
+    };
+    let Some(types) = &base.types else {
+        return;
+    };
+    let kept: Vec<String> = types
+        .iter()
+        .filter(|entry| !declared.is_missing_install(host_config, TYPE_FILE_CODE, Some(entry), false))
+        .cloned()
+        .collect();
+    if kept.len() == types.len() {
+        return;
+    }
+    config.parsed_config.compiler_options = Some(P::new(CompilerOptions {
+        types: Some(kept),
+        ..(*base).clone()
+    }));
+}
+
 /// What a check is about: the `tsconfig` (as tsrs names it), its host path, and the files whose diagnostics are
 /// wanted (tsrs names; `None` for every file).
 struct Subject<'a> {
@@ -272,6 +298,9 @@ fn check(
     };
     let built = host.build(&request, Arc::clone(files), None, |config| {
         warnings = forgive_declared_extends(config, config_path, host_config, declared);
+        if !settings.report_unresolved_modules {
+            drop_declared_types(config, host_config, declared);
+        }
         apply_settings(config, settings);
     });
     let BuiltProgram {

@@ -14,7 +14,7 @@ use poly_engine_api::engine::ProjectFile;
 const MODULE_CODES: &[i32] = &[2307, 2792, 7016];
 
 /// `Cannot find type definition file for '{0}'`: the argument is a `types` entry.
-const TYPE_FILE_CODE: i32 = 2688;
+pub(crate) const TYPE_FILE_CODE: i32 = 2688;
 
 /// `Cannot find name '{x}'. Do you need to install type definitions for ...`, with the packages that provide
 /// them. They are suggestions only when the package is missing, so they are the same finding as the module codes.
