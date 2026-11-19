@@ -24,6 +24,9 @@ binary drives lint, format, hooks, and commit checks from one `poly.toml`.
   them and reports the `TS2688`.
 - **`poly migrate` keeps ruff's `extend-select` an extension.** A `[tool.ruff]` with `extend-select` and no `select`
   was absorbed as `select`, which drops ruff's default rules; it is now written as `extend_select`.
+- **`inherit_mode` validates in `[engines.<id>]` tables.** `poly config validate` reported it as an unknown option
+  of the engine, so a nested config that replaces its parent's ruff settings, as `poly migrate --to-v2` writes one
+  from a v1 `[lint.python.ruff]`, failed validation; it is a merge directive the loader already honoured.
 
 ## [0.36.0] - 2026-11-18
 

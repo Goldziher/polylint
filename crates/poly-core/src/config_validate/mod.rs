@@ -336,6 +336,10 @@ impl Checker<'_> {
             if self.id == "astgrep" && (key == RULE_DIRS_KEY || key == BUILTIN_PACK_KEY) {
                 continue;
             }
+            // A merge directive, read (and its value checked) by the loader in any table.
+            if key == poly_config::INHERIT_MODE_KEY {
+                continue;
+            }
             if keys.iter().any(|k| !k.is_checked()) {
                 continue;
             }

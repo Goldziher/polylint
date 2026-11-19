@@ -39,7 +39,7 @@ const EXCLUDE_MODE_KEY: &str = "exclude_mode";
 /// configs replace their parents' (ruff) need it: the directory cascade merges
 /// table by table, so without it a nested `[lint.python.ruff]` would inherit
 /// every option its parent set and it did not.
-const INHERIT_MODE_KEY: &str = "inherit_mode";
+pub const INHERIT_MODE_KEY: &str = "inherit_mode";
 
 /// Accepted values of [`INHERIT_MODE_KEY`].
 const MERGE_INHERIT: &str = "merge";

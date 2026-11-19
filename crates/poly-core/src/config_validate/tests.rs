@@ -195,3 +195,20 @@ fn a_pure_v1_file_is_still_checked_as_v1() {
         messages(&report)
     );
 }
+
+/// `inherit_mode` is a merge directive the loader reads in any table, so a nested config migrated from v1
+/// keeps it on its engine tables; it is not an option of the engine.
+#[test]
+fn inherit_mode_is_accepted_in_engine_tables() {
+    let report = validate_source(
+        r#"
+[engines.ruff]
+inherit_mode = "replace"
+
+[engines.ruff.lint]
+inherit_mode = "replace"
+select = ["F"]
+"#,
+    );
+    assert!(report.is_valid(), "{:?}", messages(&report));
+}
