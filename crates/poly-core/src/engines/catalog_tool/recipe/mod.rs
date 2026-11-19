@@ -84,6 +84,8 @@ pub(super) struct RecipeTool {
     fix_passes: Vec<Template>,
     /// Include/exclude filter from `path_globs` and the user's `files`/`exclude`.
     filter: Option<Filter>,
+    /// The user's `files`, when set: the files the tool claims from a language's own formatter.
+    files: Option<Vec<String>>,
     /// Context files copied beside a scratch copy: markers and config names.
     context_names: Vec<String>,
     /// The part of the cache key that does not vary per file.
@@ -221,7 +223,7 @@ impl RecipeTool {
         let resolved_rev = config.new_from_rev.as_deref().map(|rev| resolve_rev(&cwd, rev));
         let goos = config.goos.clone();
         let version = format!(
-            "{}:{}:parser={}:rev={resolved_rev:?}:goos={goos:?}:role={role:?}:passes={:?}:fix={:?}:stdin={stdin:?}:env={:?}:units={}:cfg={fingerprint}",
+            "{}:{}:parser={}:rev={resolved_rev:?}:goos={goos:?}:role={role:?}:passes={:?}:fix={:?}:stdin={stdin:?}:env={:?}:units={}:files={:?}:exclude={:?}:cfg={fingerprint}",
             tool.name,
             launcher.identity,
             output::revision(recipe.output),
@@ -229,6 +231,8 @@ impl RecipeTool {
             fix_passes.iter().map(Template::fingerprint).collect::<Vec<_>>(),
             config.env,
             units.fingerprint(),
+            config.files,
+            config.exclude,
         );
 
         Ok(RecipeTool {
@@ -241,6 +245,7 @@ impl RecipeTool {
             stdin,
             fix_passes,
             filter: filter_for(tool, config)?,
+            files: config.files.as_ref().map(|files| files.as_slice().to_vec()),
             context_names,
             version,
             units,
@@ -272,9 +277,14 @@ impl RecipeTool {
     }
 
     /// The globs of the files this tool formats, for displacing the tier-one
-    /// formatter from them.
+    /// formatter from them: the user's `files`, else the catalog's `path_globs`.
     pub(super) fn claimed_globs(&self) -> Vec<String> {
-        self.tool.path_globs.clone()
+        self.files.clone().unwrap_or_else(|| self.tool.path_globs.clone())
+    }
+
+    /// Whether the user's `files` names the files this tool takes.
+    pub(super) fn user_scoped(&self) -> bool {
+        self.files.is_some()
     }
 
     pub(super) fn can_fix(&self) -> bool {

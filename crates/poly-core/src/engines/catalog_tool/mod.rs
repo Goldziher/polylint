@@ -34,7 +34,6 @@ use std::process::Command;
 use std::sync::{Arc, Mutex, OnceLock};
 
 use anyhow::Context;
-use globset::GlobSet;
 use poly_catalog::{PATH_PLACEHOLDER, Tool};
 use poly_config::ToolConfig;
 use poly_engine_api::options::OptionsExt;
@@ -46,12 +45,16 @@ use crate::engine::{
 };
 use crate::language::Language;
 
+mod batch_select;
 mod config_salt;
+mod file_filter;
 mod lock;
 mod recipe;
 
 pub use self::lock::{lock_satisfies, lock_tool, lockable_tools};
 
+use self::batch_select::{scatter, select};
+use self::file_filter::FileFilter;
 pub(crate) use self::recipe::locate_or_install;
 use self::recipe::{RecipeTool, Role};
 
@@ -291,10 +294,9 @@ pub struct CatalogToolEngine {
     /// Working directory override for the spawned process; `None` means the
     /// process inherits the caller's cwd (the repo root at runtime).
     root: Option<PathBuf>,
-    /// Pre-compiled glob set for fast matching. Built from the catalog tool's
-    /// `path_globs` at construction time; `None` when `path_globs` is empty.
-    /// When `Some`, only files whose path matches at least one pattern are linted.
-    path_glob_set: Option<GlobSet>,
+    /// The files a tool without a recipe takes: `path_globs` or the user's
+    /// `files`, less `exclude`. A recipe tool filters in [`RecipeTool`].
+    filter: FileFilter,
     /// Batched, grouped, report-parsing execution for a tool with a recipe.
     recipe: Option<RecipeTool>,
     /// Why a recipe tool cannot run (not installed); the engine is then inert.
@@ -320,10 +322,11 @@ impl CatalogToolEngine {
         let args = config.args.as_deref();
         let root = config.root.as_ref().map(PathBuf::from);
         let Some(recipe) = tool.recipe.as_ref() else {
-            return match mode {
+            let engine = match mode {
                 Mode::Format => Self::format_engine(tool, command, args, config.env.clone(), root),
                 Mode::Lint => Self::lint_engine(tool, command, args, config.env.clone(), root),
             };
+            return engine.map(|engine| engine.filtered_by(config));
         };
         let role = match mode {
             Mode::Format => Role::Format,
@@ -356,7 +359,7 @@ impl CatalogToolEngine {
             version,
             env: config.env.clone(),
             root,
-            path_glob_set: None,
+            filter: FileFilter::default(),
             recipe: recipe_tool,
             unavailable,
         })
@@ -443,13 +446,12 @@ impl CatalogToolEngine {
                 ),
             );
         }
-        let path_globs = tool.path_globs.clone();
-        let path_glob_set =
-            (!path_globs.is_empty()).then(|| poly_engine_api::glob_set::build_glob_set_lossy(&path_globs));
+        let filter = FileFilter::catalog(&tool.path_globs);
         let version = format!(
-            "{CATALOG_VERSION_PREFIX}{}:{}:mode={mode:?}:stdin={stdin}:args={arguments:?}:env={env:?}:root={root:?}:path_globs={path_globs:?}",
+            "{CATALOG_VERSION_PREFIX}{}:{}:mode={mode:?}:stdin={stdin}:args={arguments:?}:env={env:?}:root={root:?}:{}",
             tool.name,
             probe.as_deref().unwrap_or("absent"),
+            filter.key(),
         );
         CatalogToolEngine {
             tool,
@@ -459,10 +461,26 @@ impl CatalogToolEngine {
             version,
             env,
             root,
-            path_glob_set,
+            filter,
             recipe: None,
             unavailable: None,
         }
+    }
+
+    /// Applies the user's `files` and `exclude` to a tool without a recipe; a malformed pattern leaves
+    /// it inert and says so, as a recipe tool's does.
+    fn filtered_by(mut self, config: &ToolConfig) -> Self {
+        match FileFilter::for_config(&self.tool.path_globs, config) {
+            Ok(filter) => {
+                self.version = self.version.replacen(self.filter.key(), filter.key(), 1);
+                self.filter = filter;
+            }
+            Err(message) => {
+                warn_unavailable_once(&self.tool.name, &message);
+                self.unavailable = Some(message);
+            }
+        }
+        self
     }
 
     /// Whether `mode` is the lint role (a small helper kept for readability at
@@ -560,9 +578,7 @@ impl Engine for CatalogToolEngine {
         if self.unavailable.is_some() {
             return Ok(FormatOutput::Unchanged);
         }
-        if let Some(ref set) = self.path_glob_set
-            && !set.is_match(poly_engine_api::run_root::relative(&src.path))
-        {
+        if !self.filter.matches(&src.path) {
             return Ok(FormatOutput::Unchanged);
         }
         if probe_binary(&self.tool.binary).is_none() {
@@ -588,9 +604,7 @@ impl Engine for CatalogToolEngine {
         if self.unavailable.is_some() {
             return Ok(Vec::new());
         }
-        if let Some(ref set) = self.path_glob_set
-            && !set.is_match(poly_engine_api::run_root::relative(&src.path))
-        {
+        if !self.filter.matches(&src.path) {
             return Ok(Vec::new());
         }
         if probe_binary(&self.tool.binary).is_none() {
@@ -707,7 +721,9 @@ impl PlanPolicy for CatalogToolEngine {
 
 impl CatalogTakeover for CatalogToolEngine {
     fn takes_over_tier_one(&self) -> bool {
-        !self.is_lint() && self.tool.path_globs.is_empty() && self.recipe.is_some()
+        !self.is_lint()
+            && self.tool.path_globs.is_empty()
+            && self.recipe.as_ref().is_some_and(|recipe| !recipe.user_scoped())
     }
 
     fn claimed_paths(&self) -> Vec<String> {
@@ -715,35 +731,9 @@ impl CatalogTakeover for CatalogToolEngine {
     }
 
     fn supplements_tier_one(&self) -> bool {
-        !self.is_lint() && !self.tool.path_globs.is_empty() && self.tool.recipe.is_some()
+        let user_scoped = self.recipe.as_ref().is_some_and(RecipeTool::user_scoped);
+        !self.is_lint() && (!self.tool.path_globs.is_empty() || user_scoped) && self.tool.recipe.is_some()
     }
-}
-
-/// The members of `batch` that satisfy `keep`, and where each came from.
-fn select(batch: &[SourceFile], keep: impl Fn(&SourceFile) -> bool) -> (Vec<&SourceFile>, Vec<usize>) {
-    batch
-        .iter()
-        .enumerate()
-        .filter(|(_, src)| keep(src))
-        .map(|(index, src)| (src, index))
-        .unzip()
-}
-
-/// Spread `answers` (one per selected member) back to their positions in a batch
-/// of `len`, with `otherwise` for every member that was not selected.
-fn scatter<T>(
-    len: usize,
-    positions: &[usize],
-    answers: &mut impl Iterator<Item = T>,
-    otherwise: impl Fn() -> T,
-) -> Vec<T> {
-    let mut out: Vec<T> = (0..len).map(|_| otherwise()).collect();
-    for &position in positions {
-        if let Some(answer) = answers.next() {
-            out[position] = answer;
-        }
-    }
-    out
 }
 
 impl CatalogToolEngine {

@@ -1126,3 +1126,42 @@ fn a_tool_killed_by_a_signal_is_an_error_even_with_a_partial_report() {
     let error = results[0].as_ref().expect_err("a crashed tool is not a verdict");
     assert!(format!("{error:#}").contains("killed by a signal"), "{error:#}");
 }
+
+/// A result cached before `files` or `exclude` changed must not be replayed: a file the tool rewrote
+/// stays "would reformat" after the user excludes it, as if the key were ignored.
+#[test]
+fn files_and_exclude_are_part_of_the_cache_identity() {
+    let fx = Fixture::new();
+    let plain = fx.config(fx.script("fmt", UPPERCASER));
+    let mut excluded = plain.clone();
+    excluded.exclude = Some(vec!["docs/**".to_owned()].into());
+    let mut scoped = plain.clone();
+    scoped.files = Some(vec!["**/*.proto".to_owned()].into());
+    let recipe = || serde_json::json!({});
+    let version = |config: &ToolConfig| {
+        fx.tool("run $FILES", recipe(), Role::Format, config)
+            .version()
+            .to_owned()
+    };
+    let (plain, excluded, scoped) = (version(&plain), version(&excluded), version(&scoped));
+    assert_ne!(plain, excluded);
+    assert_ne!(plain, scoped);
+    assert_ne!(excluded, scoped);
+}
+
+/// `files` is the user naming the tool's files: those are the ones it claims from a language's own
+/// formatter, instead of taking the whole language.
+#[test]
+fn files_scopes_the_tool_to_the_files_it_names() {
+    let fx = Fixture::new();
+    let plain = fx.config(fx.script("fmt", UPPERCASER));
+    let unscoped = fx.tool("run $FILES", serde_json::json!({}), Role::Format, &plain);
+    assert!(!unscoped.user_scoped());
+    assert!(unscoped.claimed_globs().is_empty());
+
+    let mut config = plain;
+    config.files = Some(vec!["src/**/*.c".to_owned()].into());
+    let scoped = fx.tool("run $FILES", serde_json::json!({}), Role::Format, &config);
+    assert!(scoped.user_scoped());
+    assert_eq!(scoped.claimed_globs(), ["src/**/*.c"]);
+}

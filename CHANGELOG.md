@@ -9,6 +9,9 @@ binary drives lint, format, hooks, and commit checks from one `poly.toml`.
 
 ### Fixed
 
+- **`[tools.<name>] files` and `exclude` take effect.** The result cache key left them out, so a run replayed what the
+  tool had done before they changed; and a tool without a recipe ignored both. A recipe tool with `files` set claims
+  those files from the language's formatter instead of taking the whole language.
 - **tsrs type-checks a project whose tsconfig lists a declared `types` package.** `"types": ["node"]` with
   `@types/node` declared but not installed produced a `TS2688` program diagnostic; poly dropped it as a missing
   install, but tsc stops at the first diagnostic group that has any, so no type error in the project was reported.

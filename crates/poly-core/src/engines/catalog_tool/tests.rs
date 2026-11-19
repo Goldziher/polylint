@@ -639,3 +639,45 @@ fn a_plain_tool_s_config_edit_changes_the_cache_key() {
     assert_ne!(before.0, after.0, "lint key");
     assert_ne!(before.1, after.1, "format key");
 }
+
+/// A catalog tool without a recipe honours `[tools.<name>] files` and `exclude` like a recipe tool, and
+/// both are part of its cache identity.
+#[cfg(unix)]
+#[test]
+fn a_plain_catalog_tool_honours_files_and_exclude() {
+    let tool = leak_tool(
+        "failcheck",
+        "sh",
+        "linter",
+        vec!["-c".to_string(), "exit 1".to_string(), PATH_PLACEHOLDER.to_string()],
+    );
+    let findings = |config: &ToolConfig, path: &str| {
+        let engine = CatalogToolEngine::lint_engine_for(tool, config).expect("non-mutating linter wires");
+        engine.lint(&make_src(path, "content\n"), &cfg()).unwrap().len()
+    };
+    let plain = ToolConfig::default();
+    assert_eq!(findings(&plain, "docs/a.txt"), 1);
+
+    let excluded = ToolConfig {
+        exclude: Some(vec!["docs/**".to_owned()].into()),
+        ..ToolConfig::default()
+    };
+    assert_eq!(findings(&excluded, "docs/a.txt"), 0, "excluded");
+    assert_eq!(findings(&excluded, "src/a.txt"), 1);
+
+    let scoped = ToolConfig {
+        files: Some(vec!["src/**".to_owned()].into()),
+        ..ToolConfig::default()
+    };
+    assert_eq!(findings(&scoped, "docs/a.txt"), 0, "not among `files`");
+    assert_eq!(findings(&scoped, "src/a.txt"), 1);
+
+    let version = |config: &ToolConfig| {
+        CatalogToolEngine::lint_engine_for(tool, config)
+            .expect("wires")
+            .version()
+            .to_owned()
+    };
+    assert_ne!(version(&plain), version(&excluded));
+    assert_ne!(version(&plain), version(&scoped));
+}
